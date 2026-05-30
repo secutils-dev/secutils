@@ -377,6 +377,10 @@ Responder scripts can forward incoming requests to a real backend using `Deno.co
 
 See [`Deno.core.ops.op_proxy_request()`](/docs/guides/platform/deno_runtime#op_proxy_request) for the full API reference including request/response interfaces, error handling, and security considerations.
 
+### Persist state across requests
+
+Responder scripts are stateless by default - each request runs in a fresh isolate. To accumulate state (counters, deduplication markers, or a log of captured requests), use the per-responder [key-value store](/docs/guides/platform/deno_runtime#kv) exposed under `secutils.kv` (`get` / `set` / `delete` / `list` / `watch`). For responders that need to store data the server operator cannot read, [`secutils.crypto.seal()`](/docs/guides/platform/deno_runtime#crypto) encrypts payloads to a recipient public key using a Web Crypto-compatible sealed box.
+
 ### Protect a responder with HTTP Basic auth
 
 Responder URLs are public by design - anyone who knows the URL can hit them. For HTML apps you self-host or for JSON APIs you want to lock down, the script can gate access behind a password using **HTTP Basic Authentication**: browsers show a native sign-in prompt automatically, and `curl -u user:pass` works for API clients.

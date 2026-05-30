@@ -11,7 +11,7 @@ pub use self::{
 use crate::{
     api::Api,
     network::{DnsResolver, EmailTransport, EmailTransportError},
-    scheduler::scheduler_jobs::NotificationsSendJob,
+    scheduler::scheduler_jobs::{NotificationsSendJob, WebhooksKvSweepJob},
 };
 use anyhow::anyhow;
 use futures::{StreamExt, pin_mut};
@@ -90,6 +90,12 @@ where
                 .add(NotificationsSendJob::create(scheduler.api.clone()).await?)
                 .await?;
         }
+        if !resumed_unique_jobs.contains(&SchedulerJob::WebhooksKvSweep) {
+            scheduler
+                .inner_scheduler
+                .add(WebhooksKvSweepJob::create(scheduler.api.clone()).await?)
+                .await?;
+        }
 
         scheduler.inner_scheduler.start().await?;
         Ok(scheduler)
@@ -138,6 +144,9 @@ where
             let job = match &job_meta.job_type {
                 SchedulerJob::NotificationsSend => {
                     NotificationsSendJob::try_resume(self.api.clone(), job_data).await?
+                }
+                SchedulerJob::WebhooksKvSweep => {
+                    WebhooksKvSweepJob::try_resume(self.api.clone(), job_data).await?
                 }
             };
 
@@ -304,7 +313,7 @@ pub mod tests {
         Scheduler::start(api.clone()).await?;
 
         let jobs = api.db.get_scheduler_jobs(10).collect::<Vec<_>>().await;
-        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs.len(), 2);
 
         let mut jobs = jobs
             .into_iter()
@@ -323,6 +332,17 @@ pub mod tests {
                 ),
                 Some(
                     "0 * 2 * * *",
+                ),
+            ),
+            (
+                0,
+                Some(
+                    [
+                        1,
+                    ],
+                ),
+                Some(
+                    "0 */5 * * * *",
                 ),
             ),
         ]
@@ -360,7 +380,7 @@ pub mod tests {
         );
 
         let jobs = api.db.get_scheduler_jobs(10).collect::<Vec<_>>().await;
-        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs.len(), 2);
 
         let mut jobs = jobs
             .into_iter()
@@ -379,6 +399,17 @@ pub mod tests {
                 ),
                 Some(
                     "0 * 2 * * *",
+                ),
+            ),
+            (
+                0,
+                Some(
+                    [
+                        1,
+                    ],
+                ),
+                Some(
+                    "0 */5 * * * *",
                 ),
             ),
         ]

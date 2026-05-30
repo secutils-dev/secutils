@@ -399,3 +399,148 @@ Examples:
   return { ...resp, body: data };
 })()
 ```
+
+## Key-value storage {#kv}
+
+Responder scripts have access to a small, durable key-value store under the `secutils.kv` namespace. It lets a responder
+accumulate state across requests - counters, deduplication markers, or a log of captured requests for an ephemeral
+inspector - without an external database.
+
+Every entry is **implicitly scoped to the responder that is executing the script**: one responder can never read or
+write another responder's keys. Keys are UTF-8 strings, values are binary and cross the JS boundary as [base64url](https://datatracker.ietf.org/doc/html/rfc4648#section-5)
+(unpadded) strings. All methods are asynchronous and return promises.
+
+### `secutils.kv.set(key, value, opts?)`
+
+Writes `value` (a base64url string) under `key`. Options:
+
+| Option     | Type      | Description                                                                                                    |
+|------------|-----------|----------------------------------------------------------------------------------------------------------------|
+| `ttlSec`   | `number`  | Optional time-to-live in seconds. Clamped to the tier's maximum. Omit for a non-expiring entry.                |
+| `ifAbsent` | `boolean` | When `true`, an existing **live** entry is preserved (first-writer-wins). Expired rows are always reclaimable. |
+
+```javascript
+// `value` is always a base64url string - encode your bytes before storing.
+await secutils.kv.set('last-seen', sealedBlobB64, { ttlSec: 3600 });
+
+// Claim a slot exactly once (idempotent registration).
+await secutils.kv.set('owner', publicKeyB64, { ifAbsent: true });
+```
+
+:::note Absolute lifespan backstop
+Each tier also defines an **absolute lifespan**. When set, every write expires no later than `now + lifespan`, and a
+write with **no** `ttlSec` is still forced to expire at that bound - so nothing the store holds can outlive it. To make
+a set of related rows expire **together** (for example, an ephemeral webhook's key, config, and captured requests), read
+the anchor row's `expiresAt` (see below) and derive each dependent row's `ttlSec` from it.
+:::
+
+### `secutils.kv.get(key)`
+
+Returns the stored value as a base64url string, or `null` when the key is absent or expired.
+
+```javascript
+const value = await secutils.kv.get('owner'); // base64url string, or null when absent/expired
+```
+
+### `secutils.kv.getEntry(key)`
+
+Like `get`, but returns the full entry `{ value, expiresAt }` instead of just the value. `value` is a base64url string
+(or `null` when absent/expired) and `expiresAt` is the row's expiry as a unix timestamp in seconds (or `null` when the
+key is absent or never expires). Use it to anchor dependent writes to a row's deadline:
+
+```javascript
+const { value: owner, expiresAt } = await secutils.kv.getEntry('owner');
+if (owner) {
+  // Make this write share the owner row's deadline rather than its own fresh window.
+  const ttlSec = expiresAt ? Math.max(1, expiresAt - Math.floor(Date.now() / 1000)) : undefined;
+  await secutils.kv.set(`event/${id}`, payloadB64, { ttlSec });
+}
+```
+
+### `secutils.kv.delete(key)`
+
+Removes `key`, returning `true` when a row was deleted and `false` when the key did not exist.
+
+```javascript
+const existed = await secutils.kv.delete('counter');
+```
+
+### `secutils.kv.list(opts?)`
+
+Returns an expiry-aware, lexicographically ordered page of entries. Options:
+
+| Option           | Type      | Default | Description                                                          |
+|------------------|-----------|---------|----------------------------------------------------------------------|
+| `prefix`         | `string`  | -       | Only return keys starting with this prefix.                          |
+| `after`          | `string`  | -       | Exclusive cursor - only keys strictly greater than this value.       |
+| `limit`          | `number`  | `1000`  | Maximum entries per page (hard-capped at `1000`).                    |
+| `valuesIncluded` | `boolean` | `true`  | When `false`, entries omit `value` (cheaper key-only scans).         |
+
+The result is `{ entries, cursor, timedOut }` where each entry is `{ key, createdAt, value }` (`createdAt` is a unix
+timestamp in seconds, `value` is a base64url string or `null`). `cursor` is the key of the last returned entry - pass it
+back as `after` to page forward.
+
+```javascript
+const { entries, cursor } = await secutils.kv.list({ prefix: 'req/', limit: 50 });
+for (const entry of entries) {
+  Deno.core.print(`${entry.key} @ ${entry.createdAt}\n`, false);
+}
+```
+
+### `secutils.kv.watch(opts)`
+
+Like `list`, but **long-polls**: if no entries match after the cursor, it blocks until a matching `set` lands or the
+timeout elapses. Options are the same as `list` (`prefix` is required) plus a `timeoutMs` (default 25s, always bounded
+by the script's execution-time budget). When the deadline is reached with no new rows, it resolves with
+`{ entries: [], cursor: null, timedOut: true }`.
+
+```javascript
+// Stream new requests to a long-polling client.
+const { entries, cursor, timedOut } = await secutils.kv.watch({
+  prefix: 'req/',
+  after: lastSeenCursor,
+  timeoutMs: 20000,
+});
+```
+
+:::info Limits
+KV usage is governed by per-subscription-tier quotas: maximum key size, maximum value size, maximum number of live
+entries, maximum total bytes per responder, and a maximum TTL (writes that would breach a quota are rejected with a
+descriptive error). Each script invocation also has a bounded number of KV operations it may perform. Expired entries
+are invisible immediately and are physically reaped by a periodic background sweep.
+:::
+
+## End-to-end encryption {#crypto}
+
+The `secutils.crypto` namespace exposes a minimal set of primitives so a responder can store data that **even the server
+operator cannot read**. The canonical use case is the ephemeral webhook inspector: each captured request is sealed to a
+public key that only the visitor's browser holds the private half of, so the per-visitor request log is opaque at rest.
+
+### `secutils.crypto.seal(recipientPublicKey, plaintext)`
+
+Encrypts `plaintext` (a UTF-8 string) to `recipientPublicKey`, returning the sealed blob as a base64url string. This is
+a [sealed box](https://doc.libsodium.org/public-key_cryptography/sealed_boxes) (ECIES) construction:
+
+- `recipientPublicKey` is the recipient's **P-256** public key in SEC1 uncompressed form (65 bytes: `0x04` prefix + X +
+Y), base64url-encoded.
+- A fresh ephemeral key pair is generated per call, so sealing identical plaintext twice yields different ciphertexts.
+- Key agreement is ECDH P-256, the AES-256-GCM key is derived via HKDF-SHA256, the result is authenticated.
+
+The wire format is `ephemeralPublicKey(65) | iv(12) | ciphertext+tag(N)`, **byte-for-byte compatible with the browser
+[Web Crypto API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API)**, so a recipient decrypts with standard `crypto.subtle` calls (`deriveBits` over ECDH, `HKDF`,
+then `AES-GCM` decrypt) - no third-party library required.
+
+```javascript
+const sealed = await secutils.crypto.seal(visitorPublicKeyB64, JSON.stringify(request));
+await secutils.kv.set(`req/${token}/${id}`, sealed, { ttlSec: 3600 });
+```
+
+### `secutils.crypto.sha256(data)`
+
+Returns the lowercase hex SHA-256 digest of `data`, where `data` is a **base64url-encoded** byte string (the same
+encoding KV values use). Handy for deriving a stable fingerprint of a key or payload.
+
+```javascript
+// Fingerprint a registered public key (already base64url).
+const fingerprint = await secutils.crypto.sha256(publicKeyB64);
+```

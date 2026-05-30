@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nSELECT value, expires_at FROM user_data_webhooks_responders_kv\nWHERE responder_id = $1 AND key = $2 AND (expires_at IS NULL OR expires_at > now())\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "value",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 1,
+        "name": "expires_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "0cdb72df0de6efdd0570af0ae8e5b2fb46b882325ebdca726d1634e7cb0b52cc"
+}

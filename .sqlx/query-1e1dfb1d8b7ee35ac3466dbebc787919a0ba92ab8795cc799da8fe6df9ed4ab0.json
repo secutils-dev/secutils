@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nSELECT length(value) AS \"len!\" FROM user_data_webhooks_responders_kv\nWHERE responder_id = $1 AND key = $2 AND (expires_at IS NULL OR expires_at > now())\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "len!",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "1e1dfb1d8b7ee35ac3466dbebc787919a0ba92ab8795cc799da8fe6df9ed4ab0"
+}

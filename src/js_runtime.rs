@@ -1,11 +1,14 @@
 mod js_runtime_config;
+mod op_crypto_seal;
 mod op_proxy_request;
+mod op_responder_kv;
 mod script_termination_reason;
 mod worker_pool;
 
 pub use self::{
     js_runtime_config::JsRuntimeConfig,
     op_proxy_request::{ProxyState, PublicUrlValidator},
+    op_responder_kv::{KvQuotas, KvState, WebhooksKvNotifier},
 };
 use crate::js_runtime::{
     script_termination_reason::ScriptTerminationReason, worker_pool::ScriptTask,
@@ -26,7 +29,42 @@ use tracing::error;
 /// Defines a maximum interval on which script is checked for timeout.
 const SCRIPT_TIMEOUT_CHECK_INTERVAL: Duration = Duration::from_secs(2);
 
-deno_core::extension!(secutils_ext, ops = [op_proxy_request::op_proxy_request]);
+deno_core::extension!(
+    secutils_ext,
+    ops = [
+        op_proxy_request::op_proxy_request,
+        op_responder_kv::op_responder_kv_get,
+        op_responder_kv::op_responder_kv_set,
+        op_responder_kv::op_responder_kv_delete,
+        op_responder_kv::op_responder_kv_list,
+        op_responder_kv::op_responder_kv_wait,
+        op_crypto_seal::op_crypto_seal,
+        op_crypto_seal::op_crypto_sha256,
+    ]
+);
+
+/// JS bootstrap evaluated in every fresh isolate before the user script. It
+/// exposes the raw ops under a friendly, implicitly responder-scoped
+/// `globalThis.secutils` namespace (`kv.*` + `crypto.*`). Binary values cross
+/// the boundary as base64url strings. Kept as a plain script (rather than an
+/// extension ESM module) so it composes cleanly with the runtime-loaded
+/// extension on top of the shared startup snapshot.
+const SECUTILS_BOOTSTRAP: &str = r#"
+globalThis.secutils = {
+  kv: {
+    get: async (key) => (await Deno.core.ops.op_responder_kv_get(key)).value,
+    getEntry: (key) => Deno.core.ops.op_responder_kv_get(key),
+    set: (key, value, opts) => Deno.core.ops.op_responder_kv_set(key, value, opts ?? {}),
+    delete: (key) => Deno.core.ops.op_responder_kv_delete(key),
+    list: (opts) => Deno.core.ops.op_responder_kv_list(opts ?? {}),
+    watch: (opts) => Deno.core.ops.op_responder_kv_wait(opts ?? {}),
+  },
+  crypto: {
+    seal: (recipientPublicKey, plaintext) => Deno.core.ops.op_crypto_seal(recipientPublicKey, plaintext),
+    sha256: (data) => Deno.core.ops.op_crypto_sha256(data),
+  },
+};
+"#;
 
 /// Cached V8 startup snapshot, built once on the main thread at `init_platform`
 /// time and reused by every subsequent `deno_core::JsRuntime::new` call across
@@ -185,11 +223,28 @@ impl JsRuntime {
     ///
     /// `js_script_context` is an optional JSON string that will be parsed by V8's native
     /// JSON parser and made available as the global `context` variable.
+    // Convenience entry point without KV state. It is part of the library surface (the perf benches
+    // and the in-crate tests call it), but the `secutils` binary itself only ever goes through
+    // `execute_script_with_state`, so the non-test binary build would otherwise flag it as dead.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub async fn execute_script<R: for<'de> Deserialize<'de> + Send + 'static>(
         config: JsRuntimeConfig,
         js_code: String,
         js_script_context: Option<String>,
         proxy_state: Option<ProxyState>,
+    ) -> Result<(R, Duration), anyhow::Error> {
+        Self::execute_script_with_state(config, js_code, js_script_context, proxy_state, None).await
+    }
+
+    /// Like [`Self::execute_script`], but additionally injects per-responder KV state so the script
+    /// can use the `secutils.kv.*` primitive. Kept as a separate entry point so the many existing
+    /// call sites (and benches) that do not need KV remain unchanged.
+    pub async fn execute_script_with_state<R: for<'de> Deserialize<'de> + Send + 'static>(
+        config: JsRuntimeConfig,
+        js_code: String,
+        js_script_context: Option<String>,
+        proxy_state: Option<ProxyState>,
+        kv_state: Option<KvState>,
     ) -> Result<(R, Duration), anyhow::Error> {
         let wrapped = wrap_user_script_in_async_iife(&js_code);
         let (tx, rx) = oneshot::channel::<Result<(R, Duration), anyhow::Error>>();
@@ -200,6 +255,7 @@ impl JsRuntime {
                     wrapped,
                     js_script_context,
                     proxy_state,
+                    kv_state,
                 )
                 .await;
                 // Ignore a dropped receiver: the caller awaiting `rx` either
@@ -221,6 +277,7 @@ impl JsRuntime {
         js_code: String,
         js_script_context: Option<String>,
         proxy_state: Option<ProxyState>,
+        kv_state: Option<KvState>,
     ) -> Result<(R, Duration), anyhow::Error> {
         let now = Instant::now();
 
@@ -235,6 +292,19 @@ impl JsRuntime {
             let op_state = runtime.op_state();
             op_state.borrow_mut().put(proxy_state);
         }
+
+        if let Some(kv_state) = kv_state {
+            let op_state = runtime.op_state();
+            op_state.borrow_mut().put(kv_state);
+        }
+
+        // Expose the friendly `globalThis.secutils` wrappers before the user
+        // script runs. This is a synchronous global assignment, so executing it
+        // as a plain script (vs an extension ESM module) keeps isolate setup
+        // free of module-loader/snapshot interactions.
+        runtime
+            .execute_script("ext:secutils_ext/bootstrap.js", SECUTILS_BOOTSTRAP)
+            .with_context(|| "Failed to install secutils script bootstrap")?;
 
         let termination_reason =
             Arc::new(AtomicUsize::new(ScriptTerminationReason::Unknown as usize));

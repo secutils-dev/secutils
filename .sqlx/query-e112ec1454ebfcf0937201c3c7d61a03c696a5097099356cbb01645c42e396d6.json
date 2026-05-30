@@ -1,0 +1,31 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nSELECT key, created_at FROM user_data_webhooks_responders_kv\nWHERE responder_id = $1\n  AND ($2::text IS NULL OR starts_with(key, $2))\n  AND ($3::text IS NULL OR key > $3)\n  AND (expires_at IS NULL OR expires_at > now())\nORDER BY key ASC\nLIMIT $4\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "key",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "e112ec1454ebfcf0937201c3c7d61a03c696a5097099356cbb01645c42e396d6"
+}

@@ -450,6 +450,15 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
     }
 }
 
+impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
+    /// Removes expired responder KV entries across every responder, returning the number of rows
+    /// reaped. This is a global maintenance operation (not user-scoped) that backs the periodic
+    /// `WebhooksKvSweepJob`.
+    pub async fn remove_expired_responder_kv(&self) -> anyhow::Result<u64> {
+        self.db.webhooks().delete_expired_responder_kv().await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{

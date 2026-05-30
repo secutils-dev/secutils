@@ -116,6 +116,7 @@ mod tests {
 
         [scheduler]
         notifications_send = '0/30 * * * * *'
+        webhooks_kv_sweep = '0 */5 * * * *'
 
         [subscriptions]
         feature_overview_url = 'http://localhost:7272/'
@@ -129,6 +130,13 @@ mod tests {
         max_concurrent_responder_requests = 10
         max_tracked_response_size = 1048576
         max_proxy_request_timeout = 30000
+        responder_kv_max_key_bytes = 256
+        responder_kv_max_value_bytes = 1048576
+        responder_kv_max_entries = 100000
+        responder_kv_max_total_bytes = 1073741824
+        responder_kv_max_ttl_sec = 2592000
+        responder_kv_max_lifespan_sec = 0
+        responder_kv_ops_per_script = 200
         [subscriptions.basic.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -154,6 +162,13 @@ mod tests {
         max_concurrent_responder_requests = 10
         max_tracked_response_size = 1048576
         max_proxy_request_timeout = 30000
+        responder_kv_max_key_bytes = 256
+        responder_kv_max_value_bytes = 1048576
+        responder_kv_max_entries = 100000
+        responder_kv_max_total_bytes = 1073741824
+        responder_kv_max_ttl_sec = 2592000
+        responder_kv_max_lifespan_sec = 0
+        responder_kv_ops_per_script = 200
         [subscriptions.standard.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -179,6 +194,13 @@ mod tests {
         max_concurrent_responder_requests = 10
         max_tracked_response_size = 1048576
         max_proxy_request_timeout = 30000
+        responder_kv_max_key_bytes = 256
+        responder_kv_max_value_bytes = 1048576
+        responder_kv_max_entries = 100000
+        responder_kv_max_total_bytes = 1073741824
+        responder_kv_max_ttl_sec = 2592000
+        responder_kv_max_lifespan_sec = 0
+        responder_kv_ops_per_script = 200
         [subscriptions.professional.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -204,6 +226,13 @@ mod tests {
         max_concurrent_responder_requests = 10
         max_tracked_response_size = 1048576
         max_proxy_request_timeout = 30000
+        responder_kv_max_key_bytes = 256
+        responder_kv_max_value_bytes = 1048576
+        responder_kv_max_entries = 100000
+        responder_kv_max_total_bytes = 1073741824
+        responder_kv_max_ttl_sec = 2592000
+        responder_kv_max_lifespan_sec = 0
+        responder_kv_ops_per_script = 200
         [subscriptions.ultimate.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -452,6 +481,7 @@ mod tests {
             },
             scheduler: SchedulerJobsConfig {
                 notifications_send: "0/30 * * * * * *",
+                webhooks_kv_sweep: "0 */5 * * * *",
             },
             subscriptions: SubscriptionsConfig {
                 manage_url: None,
@@ -485,6 +515,13 @@ mod tests {
                         max_concurrent_responder_requests: 10,
                         max_tracked_response_size: 1048576,
                         max_proxy_request_timeout: 30s,
+                        responder_kv_max_key_bytes: 256,
+                        responder_kv_max_value_bytes: 1048576,
+                        responder_kv_max_entries: 100000,
+                        responder_kv_max_total_bytes: 1073741824,
+                        responder_kv_max_ttl_sec: 2592000,
+                        responder_kv_max_lifespan_sec: 0,
+                        responder_kv_ops_per_script: 200,
                     },
                     web_scraping: SubscriptionWebScrapingConfig {
                         trackers: 1,
@@ -524,6 +561,13 @@ mod tests {
                         max_concurrent_responder_requests: 10,
                         max_tracked_response_size: 1048576,
                         max_proxy_request_timeout: 30s,
+                        responder_kv_max_key_bytes: 256,
+                        responder_kv_max_value_bytes: 1048576,
+                        responder_kv_max_entries: 100000,
+                        responder_kv_max_total_bytes: 1073741824,
+                        responder_kv_max_ttl_sec: 2592000,
+                        responder_kv_max_lifespan_sec: 0,
+                        responder_kv_ops_per_script: 200,
                     },
                     web_scraping: SubscriptionWebScrapingConfig {
                         trackers: 2,
@@ -563,6 +607,13 @@ mod tests {
                         max_concurrent_responder_requests: 10,
                         max_tracked_response_size: 1048576,
                         max_proxy_request_timeout: 30s,
+                        responder_kv_max_key_bytes: 256,
+                        responder_kv_max_value_bytes: 1048576,
+                        responder_kv_max_entries: 100000,
+                        responder_kv_max_total_bytes: 1073741824,
+                        responder_kv_max_ttl_sec: 2592000,
+                        responder_kv_max_lifespan_sec: 0,
+                        responder_kv_ops_per_script: 200,
                     },
                     web_scraping: SubscriptionWebScrapingConfig {
                         trackers: 3,
@@ -602,6 +653,13 @@ mod tests {
                         max_concurrent_responder_requests: 10,
                         max_tracked_response_size: 1048576,
                         max_proxy_request_timeout: 30s,
+                        responder_kv_max_key_bytes: 256,
+                        responder_kv_max_value_bytes: 1048576,
+                        responder_kv_max_entries: 100000,
+                        responder_kv_max_total_bytes: 1073741824,
+                        responder_kv_max_ttl_sec: 2592000,
+                        responder_kv_max_lifespan_sec: 0,
+                        responder_kv_ops_per_script: 200,
                     },
                     web_scraping: SubscriptionWebScrapingConfig {
                         trackers: 4,

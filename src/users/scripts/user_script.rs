@@ -174,11 +174,11 @@ mod tests {
     fn script_type_serialization() {
         use insta::assert_json_snapshot;
 
-        assert_json_snapshot!(UserScriptType::Responder, @"\"responder\"");
-        assert_json_snapshot!(UserScriptType::ApiConfigurator, @"\"api_configurator\"");
-        assert_json_snapshot!(UserScriptType::ApiExtractor, @"\"api_extractor\"");
-        assert_json_snapshot!(UserScriptType::PageExtractor, @"\"page_extractor\"");
-        assert_json_snapshot!(UserScriptType::Universal, @"\"universal\"");
+        assert_json_snapshot!(UserScriptType::Responder, @r###""responder""###);
+        assert_json_snapshot!(UserScriptType::ApiConfigurator, @r###""api_configurator""###);
+        assert_json_snapshot!(UserScriptType::ApiExtractor, @r###""api_extractor""###);
+        assert_json_snapshot!(UserScriptType::PageExtractor, @r###""page_extractor""###);
+        assert_json_snapshot!(UserScriptType::Universal, @r###""universal""###);
     }
 
     #[test]

@@ -260,6 +260,7 @@ mod tests {
             components: Default::default(),
             scheduler: SchedulerJobsConfig {
                 notifications_send: "0 * 2 * * *".to_string(),
+                webhooks_kv_sweep: "0 */5 * * * *".to_string(),
             },
             security: Default::default(),
             subscriptions: SubscriptionsConfig {

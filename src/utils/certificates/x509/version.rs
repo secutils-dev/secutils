@@ -44,9 +44,9 @@ mod tests {
 
     #[test]
     fn serialization() -> anyhow::Result<()> {
-        assert_json_snapshot!(Version::One, @r###"1"###);
-        assert_json_snapshot!(Version::Two, @r###"2"###);
-        assert_json_snapshot!(Version::Three, @r###"3"###);
+        assert_json_snapshot!(Version::One, @"1");
+        assert_json_snapshot!(Version::Two, @"2");
+        assert_json_snapshot!(Version::Three, @"3");
 
         Ok(())
     }

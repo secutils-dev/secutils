@@ -86,7 +86,7 @@ mod tests {
           "type": "all"
         }
         "###);
-        assert_json_snapshot!(SecretsAccess::Selected { secrets: vec!["A".into(), "B".into()] }, @r#"
+        assert_json_snapshot!(SecretsAccess::Selected { secrets: vec!["A".into(), "B".into()] }, @r###"
         {
           "type": "selected",
           "secrets": [
@@ -94,7 +94,7 @@ mod tests {
             "B"
           ]
         }
-        "#);
+        "###);
     }
 
     #[test]

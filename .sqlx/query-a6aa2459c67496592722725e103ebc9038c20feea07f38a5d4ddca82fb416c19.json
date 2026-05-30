@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nINSERT INTO user_data_webhooks_responders_kv (responder_id, key, value, created_at, expires_at)\nVALUES ($1, $2, $3, now(), $4)\nON CONFLICT (responder_id, key) DO UPDATE\nSET value = EXCLUDED.value, created_at = EXCLUDED.created_at, expires_at = EXCLUDED.expires_at\nWHERE user_data_webhooks_responders_kv.expires_at IS NOT NULL\n  AND user_data_webhooks_responders_kv.expires_at <= now()\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Bytea",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a6aa2459c67496592722725e103ebc9038c20feea07f38a5d4ddca82fb416c19"
+}

@@ -28,16 +28,12 @@ mod tests {
 
     #[test]
     fn serialization_and_default() {
-        assert_toml_snapshot!(PlatformConfig::default(), @r###"
-        max_import_file_size = 10485760
-        "###);
+        assert_toml_snapshot!(PlatformConfig::default(), @"max_import_file_size = 10485760");
 
         let config = PlatformConfig {
             max_import_file_size: 20 * 1024 * 1024,
         };
-        assert_toml_snapshot!(config, @r###"
-        max_import_file_size = 20971520
-        "###);
+        assert_toml_snapshot!(config, @"max_import_file_size = 20971520");
     }
 
     #[test]

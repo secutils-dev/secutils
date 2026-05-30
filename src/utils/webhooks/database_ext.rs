@@ -550,6 +550,17 @@ ORDER BY t.name ASC
         .fetch_all(&mut *conn)
         .await?)
     }
+
+    /// Deletes every expired responder KV row across all responders, returning
+    /// the number of rows removed. Backs the periodic `WebhooksKvSweep` job.
+    pub async fn delete_expired_responder_kv(&self) -> anyhow::Result<u64> {
+        Ok(query!(
+            r#"DELETE FROM user_data_webhooks_responders_kv WHERE expires_at IS NOT NULL AND expires_at < now()"#
+        )
+        .execute(self.pool)
+        .await?
+        .rows_affected())
+    }
 }
 
 impl Database {
@@ -2374,6 +2385,59 @@ mod tests {
         assert_eq!(map_b[&responder_b.id].len(), 1);
         assert_eq!(map_a[&responder_a.id][0].name, "alpha");
         assert_eq!(map_b[&responder_b.id][0].name, "beta");
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn delete_expired_responder_kv_removes_only_expired_rows(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let responder = MockResponderBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "kv-resp",
+            "/webhook",
+        )?
+        .build();
+        let webhooks = db.webhooks();
+        webhooks.insert_responder(user.id, &responder).await?;
+
+        // Three rows: already expired, expiring in the future, and never-expiring.
+        let now = OffsetDateTime::now_utc();
+        for (key, expires_at) in [
+            ("expired", Some(now - time::Duration::hours(1))),
+            ("live", Some(now + time::Duration::hours(1))),
+            ("eternal", None),
+        ] {
+            sqlx::query!(
+                r#"
+INSERT INTO user_data_webhooks_responders_kv (responder_id, key, value, created_at, expires_at)
+VALUES ($1, $2, $3, $4, $5)
+                "#,
+                responder.id,
+                key,
+                &b"payload"[..],
+                now,
+                expires_at,
+            )
+            .execute(&db.pool)
+            .await?;
+        }
+
+        let removed = webhooks.delete_expired_responder_kv().await?;
+        assert_eq!(removed, 1);
+
+        let remaining: Vec<String> = sqlx::query_scalar!(
+            r#"SELECT key FROM user_data_webhooks_responders_kv WHERE responder_id = $1 ORDER BY key"#,
+            responder.id
+        )
+        .fetch_all(&db.pool)
+        .await?;
+        assert_eq!(remaining, vec!["eternal".to_string(), "live".to_string()]);
 
         Ok(())
     }

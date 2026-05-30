@@ -1,7 +1,11 @@
 //! A pool of long-lived worker threads, each owning a persistent
 //! `CurrentThread` tokio runtime + `LocalSet`. Script executions are
 //! dispatched round-robin to workers over an unbounded mpsc channel and run
-//! sequentially within each worker.
+//! *concurrently* within each worker (each task is `spawn_local`-ed), so a
+//! script that parks on an async op - e.g. a `secutils.kv.watch` long-poll
+//! that can idle for tens of seconds - never blocks the other scripts sharing
+//! its worker thread. CPU-bound work is still cooperative: a script doing
+//! synchronous V8 work holds the thread until its next await point.
 //!
 //! This replaces the previous per-call `spawn_blocking` + `new_current_thread`
 //! pattern, which paid the full cost of building a fresh tokio runtime (and
@@ -107,8 +111,12 @@ fn spawn_worker(index: usize) -> mpsc::UnboundedSender<ScriptTask> {
             let local = LocalSet::new();
             local.spawn_local(async move {
                 while let Some(task) = rx.recv().await {
+                    // Spawn each task onto the LocalSet so independent scripts
+                    // make progress concurrently on this single thread. A task
+                    // that awaits (DB round-trip, `kv.watch` long-poll, timer)
+                    // yields the thread to its peers instead of blocking them.
                     let future = (task.build)();
-                    future.await;
+                    tokio::task::spawn_local(future);
                 }
             });
             rt.block_on(local);

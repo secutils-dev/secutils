@@ -76,6 +76,13 @@ mod tests {
         max_concurrent_responder_requests = 10
         max_tracked_response_size = 1048576
         max_proxy_request_timeout = 30000
+        responder_kv_max_key_bytes = 256
+        responder_kv_max_value_bytes = 1048576
+        responder_kv_max_entries = 100000
+        responder_kv_max_total_bytes = 1073741824
+        responder_kv_max_ttl_sec = 2592000
+        responder_kv_max_lifespan_sec = 0
+        responder_kv_ops_per_script = 200
         [basic.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -101,6 +108,13 @@ mod tests {
         max_concurrent_responder_requests = 10
         max_tracked_response_size = 1048576
         max_proxy_request_timeout = 30000
+        responder_kv_max_key_bytes = 256
+        responder_kv_max_value_bytes = 1048576
+        responder_kv_max_entries = 100000
+        responder_kv_max_total_bytes = 1073741824
+        responder_kv_max_ttl_sec = 2592000
+        responder_kv_max_lifespan_sec = 0
+        responder_kv_ops_per_script = 200
         [standard.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -126,6 +140,13 @@ mod tests {
         max_concurrent_responder_requests = 10
         max_tracked_response_size = 1048576
         max_proxy_request_timeout = 30000
+        responder_kv_max_key_bytes = 256
+        responder_kv_max_value_bytes = 1048576
+        responder_kv_max_entries = 100000
+        responder_kv_max_total_bytes = 1073741824
+        responder_kv_max_ttl_sec = 2592000
+        responder_kv_max_lifespan_sec = 0
+        responder_kv_ops_per_script = 200
         [professional.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -151,6 +172,13 @@ mod tests {
         max_concurrent_responder_requests = 10
         max_tracked_response_size = 1048576
         max_proxy_request_timeout = 30000
+        responder_kv_max_key_bytes = 256
+        responder_kv_max_value_bytes = 1048576
+        responder_kv_max_entries = 100000
+        responder_kv_max_total_bytes = 1073741824
+        responder_kv_max_ttl_sec = 2592000
+        responder_kv_max_lifespan_sec = 0
+        responder_kv_ops_per_script = 200
         [ultimate.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -189,6 +217,13 @@ mod tests {
         max_concurrent_responder_requests = 10
         max_tracked_response_size = 1048576
         max_proxy_request_timeout = 30000
+        responder_kv_max_key_bytes = 256
+        responder_kv_max_value_bytes = 1048576
+        responder_kv_max_entries = 100000
+        responder_kv_max_total_bytes = 1073741824
+        responder_kv_max_ttl_sec = 2592000
+        responder_kv_max_lifespan_sec = 0
+        responder_kv_ops_per_script = 200
         [basic.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -214,6 +249,13 @@ mod tests {
         max_concurrent_responder_requests = 10
         max_tracked_response_size = 1048576
         max_proxy_request_timeout = 30000
+        responder_kv_max_key_bytes = 256
+        responder_kv_max_value_bytes = 1048576
+        responder_kv_max_entries = 100000
+        responder_kv_max_total_bytes = 1073741824
+        responder_kv_max_ttl_sec = 2592000
+        responder_kv_max_lifespan_sec = 0
+        responder_kv_ops_per_script = 200
         [standard.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -239,6 +281,13 @@ mod tests {
         max_concurrent_responder_requests = 10
         max_tracked_response_size = 1048576
         max_proxy_request_timeout = 30000
+        responder_kv_max_key_bytes = 256
+        responder_kv_max_value_bytes = 1048576
+        responder_kv_max_entries = 100000
+        responder_kv_max_total_bytes = 1073741824
+        responder_kv_max_ttl_sec = 2592000
+        responder_kv_max_lifespan_sec = 0
+        responder_kv_ops_per_script = 200
         [professional.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -264,6 +313,13 @@ mod tests {
         max_concurrent_responder_requests = 10
         max_tracked_response_size = 1048576
         max_proxy_request_timeout = 30000
+        responder_kv_max_key_bytes = 256
+        responder_kv_max_value_bytes = 1048576
+        responder_kv_max_entries = 100000
+        responder_kv_max_total_bytes = 1073741824
+        responder_kv_max_ttl_sec = 2592000
+        responder_kv_max_lifespan_sec = 0
+        responder_kv_ops_per_script = 200
         [ultimate.web_scraping]
         trackers = 100
         tracker_revisions = 30

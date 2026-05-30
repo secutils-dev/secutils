@@ -55,6 +55,10 @@ mod tests {
             Vec::try_from(SchedulerJobMetadata::new(SchedulerJob::NotificationsSend))?,
             vec![0]
         );
+        assert_eq!(
+            Vec::try_from(SchedulerJobMetadata::new(SchedulerJob::WebhooksKvSweep))?,
+            vec![1]
+        );
 
         Ok(())
     }
@@ -65,8 +69,12 @@ mod tests {
             SchedulerJobMetadata::try_from([0].as_ref())?,
             SchedulerJobMetadata::new(SchedulerJob::NotificationsSend)
         );
+        assert_eq!(
+            SchedulerJobMetadata::try_from([1].as_ref())?,
+            SchedulerJobMetadata::new(SchedulerJob::WebhooksKvSweep)
+        );
 
-        assert_debug_snapshot!(SchedulerJobMetadata::try_from([1].as_ref()), @r###"
+        assert_debug_snapshot!(SchedulerJobMetadata::try_from([2].as_ref()), @r###"
         Err(
             SerdeDeCustom,
         )

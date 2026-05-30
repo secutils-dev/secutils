@@ -5,12 +5,20 @@ use serde_derive::{Deserialize, Serialize};
 pub struct SchedulerJobsConfig {
     /// The schedule to use for the `NotificationsSend` job.
     pub notifications_send: String,
+    /// The schedule to use for the `WebhooksKvSweep` job (expired responder KV cleanup).
+    #[serde(default = "default_webhooks_kv_sweep")]
+    pub webhooks_kv_sweep: String,
+}
+
+fn default_webhooks_kv_sweep() -> String {
+    "0 */5 * * * *".to_string()
 }
 
 impl Default for SchedulerJobsConfig {
     fn default() -> Self {
         Self {
             notifications_send: "0/30 * * * * *".to_string(),
+            webhooks_kv_sweep: default_webhooks_kv_sweep(),
         }
     }
 }
@@ -22,11 +30,26 @@ mod tests {
 
     #[test]
     fn serialization_and_default() {
-        assert_toml_snapshot!(SchedulerJobsConfig::default(), @"notifications_send = '0/30 * * * * *'");
+        assert_toml_snapshot!(SchedulerJobsConfig::default(), @r###"
+        notifications_send = '0/30 * * * * *'
+        webhooks_kv_sweep = '0 */5 * * * *'
+        "###);
     }
 
     #[test]
     fn deserialization() {
+        let config: SchedulerJobsConfig = toml::from_str(
+            r#"
+        notifications_send = '0/30 * * * * *'
+        webhooks_kv_sweep = '0 */5 * * * *'
+    "#,
+        )
+        .unwrap();
+        assert_eq!(config, SchedulerJobsConfig::default());
+    }
+
+    #[test]
+    fn deserialization_defaults_webhooks_kv_sweep() {
         let config: SchedulerJobsConfig = toml::from_str(
             r#"
         notifications_send = '0/30 * * * * *'

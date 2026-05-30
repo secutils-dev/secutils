@@ -1,7 +1,7 @@
 use crate::{
     config::Config,
     error::Error as SecutilsError,
-    js_runtime::{JsRuntime, JsRuntimeConfig, ProxyState},
+    js_runtime::{JsRuntime, JsRuntimeConfig, KvQuotas, KvState, ProxyState},
     server::app_state::AppState,
     utils::webhooks::{
         ResponderScriptContext, ResponderScriptResult, RespondersRequestCreateParams,
@@ -547,6 +547,26 @@ async fn execute_responder_script<R: for<'de> Deserialize<'de> + Send + 'static>
         responder.max_proxy_request_timeout,
     );
 
+    // Per-responder KV state, scoped to this responder. DB round-trips inside the KV ops are
+    // spawned back onto the current (request) runtime via this handle, since the script runs on a
+    // separate worker runtime.
+    let kv_state = KvState::new(
+        state.api.db.pool.clone(),
+        tokio::runtime::Handle::current(),
+        responder.id,
+        state.webhooks_kv_notifier.clone(),
+        KvQuotas {
+            max_key_bytes: subscription_config.responder_kv_max_key_bytes,
+            max_value_bytes: subscription_config.responder_kv_max_value_bytes,
+            max_entries: subscription_config.responder_kv_max_entries,
+            max_total_bytes: subscription_config.responder_kv_max_total_bytes,
+            max_ttl_sec: subscription_config.responder_kv_max_ttl_sec,
+            max_lifespan_sec: subscription_config.responder_kv_max_lifespan_sec,
+        },
+        subscription_config.responder_kv_ops_per_script,
+        subscription_config.js_runtime_script_execution_time,
+    );
+
     let js_script_context_json = match serde_json::to_string(js_script_context) {
         Ok(json) => json,
         Err(err) => {
@@ -567,11 +587,12 @@ async fn execute_responder_script<R: for<'de> Deserialize<'de> + Send + 'static>
         }
     };
 
-    match JsRuntime::execute_script::<R>(
+    match JsRuntime::execute_script_with_state::<R>(
         js_runtime_config,
         script.to_string(),
         Some(js_script_context_json),
         Some(proxy_state),
+        Some(kv_state),
     )
     .await
     {
@@ -695,6 +716,7 @@ pub fn parse_webhook_host<'s>(
 mod tests {
     use super::{parse_webhook_host, resolve_client_address, webhooks_responders};
     use crate::{
+        js_runtime::{JsRuntime, JsRuntimeConfig, KvQuotas, KvState},
         tests::{mock_app_state, mock_config, mock_user},
         users::SecretsAccess,
         utils::webhooks::{
@@ -707,7 +729,7 @@ mod tests {
     use insta::assert_debug_snapshot;
     use serde_json::json;
     use sqlx::PgPool;
-    use std::{borrow::Cow, default::Default};
+    use std::{borrow::Cow, default::Default, time::Duration};
 
     #[test]
     fn resolve_client_address_prefers_x_real_ip_over_peer_addr() {
@@ -2553,6 +2575,141 @@ mod tests {
         assert!(requests[0].response_status_code.is_none());
         assert!(requests[0].response_headers.is_none());
         assert!(requests[0].response_body.is_none());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn webhook_kv_ops_round_trip(pool: PgPool) -> anyhow::Result<()> {
+        let app_state = mock_app_state(pool).await?;
+        let user = mock_user()?;
+        app_state.api.db.upsert_user(&user).await?;
+
+        let responder = app_state
+            .api
+            .webhooks(&user)
+            .create_responder(RespondersCreateParams {
+                name: "kv_resp".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/webhook".to_string(),
+                    subdomain_prefix: None,
+                },
+                method: ResponderMethod::Any,
+                enabled: true,
+                settings: ResponderSettings {
+                    requests_to_track: 0,
+                    status_code: 200,
+                    body: None,
+                    headers: None,
+                    script: None,
+                    secrets: SecretsAccess::None,
+                },
+                tag_ids: vec![],
+            })
+            .await?;
+
+        let config = JsRuntimeConfig {
+            max_heap_size: 10 * 1024 * 1024,
+            max_user_script_execution_time: Duration::from_secs(5),
+        };
+        let quotas = KvQuotas {
+            max_key_bytes: 256,
+            max_value_bytes: 1024,
+            max_entries: 100,
+            max_total_bytes: 1024 * 1024,
+            max_ttl_sec: 3600,
+            max_lifespan_sec: 7 * 24 * 3600,
+        };
+        let make_state = || {
+            KvState::new(
+                app_state.api.db.pool.clone(),
+                tokio::runtime::Handle::current(),
+                responder.id,
+                app_state.webhooks_kv_notifier.clone(),
+                quotas,
+                1000,
+                Duration::from_secs(5),
+            )
+        };
+
+        // set/get/list/delete round trip ('aGVsbG8' is base64url for "hello").
+        let (result, _) = JsRuntime::execute_script_with_state::<serde_json::Value>(
+            config,
+            r#"(async () => {
+                await secutils.kv.set('req/a', 'aGVsbG8', { ttlSec: 60 });
+                const got = await secutils.kv.get('req/a');
+                const list = await secutils.kv.list({ prefix: 'req/' });
+                const del = await secutils.kv.delete('req/a');
+                const list2 = await secutils.kv.list({ prefix: 'req/' });
+                return {
+                    got,
+                    count: list.entries.length,
+                    key: list.entries[0].key,
+                    del,
+                    count2: list2.entries.length,
+                };
+            })();"#
+                .to_string(),
+            None,
+            None,
+            Some(make_state()),
+        )
+        .await?;
+        assert_eq!(result["got"], json!("aGVsbG8"));
+        assert_eq!(result["count"], json!(1));
+        assert_eq!(result["key"], json!("req/a"));
+        assert_eq!(result["del"], json!(true));
+        assert_eq!(result["count2"], json!(0));
+
+        // watch returns immediately when matching data already exists.
+        let (immediate, _) = JsRuntime::execute_script_with_state::<serde_json::Value>(
+            config,
+            r#"(async () => {
+                await secutils.kv.set('req/x', 'AQID', { ttlSec: 60 });
+                const r = await secutils.kv.watch({ prefix: 'req/', timeoutMs: 5000 });
+                return { n: r.entries.length, timedOut: !!r.timedOut, v: r.entries[0].value };
+            })();"#
+                .to_string(),
+            None,
+            None,
+            Some(make_state()),
+        )
+        .await?;
+        assert_eq!(immediate["n"], json!(1));
+        assert_eq!(immediate["timedOut"], json!(false));
+        assert_eq!(immediate["v"], json!("AQID"));
+
+        // watch times out gracefully when nothing matches before the deadline.
+        let (timed_out, _) = JsRuntime::execute_script_with_state::<serde_json::Value>(
+            config,
+            r#"(async () => {
+                const r = await secutils.kv.watch({ prefix: 'none/', timeoutMs: 200 });
+                return { n: r.entries.length, timedOut: !!r.timedOut };
+            })();"#
+                .to_string(),
+            None,
+            None,
+            Some(make_state()),
+        )
+        .await?;
+        assert_eq!(timed_out["n"], json!(0));
+        assert_eq!(timed_out["timedOut"], json!(true));
+
+        // The per-value byte quota is enforced.
+        let oversized = JsRuntime::execute_script_with_state::<serde_json::Value>(
+            config,
+            r#"(async () => {
+                await secutils.kv.set('big', 'A'.repeat(5000), { ttlSec: 60 });
+                return {};
+            })();"#
+                .to_string(),
+            None,
+            None,
+            Some(make_state()),
+        )
+        .await;
+        assert!(oversized.is_err());
 
         Ok(())
     }

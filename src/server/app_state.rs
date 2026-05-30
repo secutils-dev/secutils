@@ -1,6 +1,7 @@
 use crate::{
     api::Api,
     config::Config,
+    js_runtime::WebhooksKvNotifier,
     network::{DnsResolver, EmailTransport, TokioDnsResolver},
     server::{DatabaseStatus, Status, StatusLevel},
 };
@@ -19,6 +20,8 @@ pub struct AppState<
     pub api: Arc<Api<DR, ET>>,
     /// Per-responder concurrency semaphores, keyed by responder ID.
     pub responder_semaphores: DashMap<Uuid, Arc<Semaphore>>,
+    /// In-process pub/sub backing `secutils.kv.watch` long-polls.
+    pub webhooks_kv_notifier: WebhooksKvNotifier,
 }
 
 impl<DR: DnsResolver, ET: EmailTransport> AppState<DR, ET> {
@@ -32,6 +35,7 @@ impl<DR: DnsResolver, ET: EmailTransport> AppState<DR, ET> {
             }),
             api,
             responder_semaphores: DashMap::new(),
+            webhooks_kv_notifier: WebhooksKvNotifier::new(),
         }
     }
 }
