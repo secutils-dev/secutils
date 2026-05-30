@@ -18,7 +18,7 @@ use deno_core::{JsRuntimeForSnapshot, PollEventLoopOptions, RuntimeOptions, scop
 use serde::Deserialize;
 use std::{
     sync::{
-        Arc, OnceLock,
+        Arc, Once, OnceLock,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
@@ -73,14 +73,34 @@ globalThis.secutils = {
 /// which is exactly what we want.
 static STARTUP_SNAPSHOT: OnceLock<&'static [u8]> = OnceLock::new();
 
+/// Guards a single `deno_core::JsRuntime::init_platform` call for the whole process.
+static PLATFORM_INIT: Once = Once::new();
+
+/// Initialises the V8 platform exactly once, no matter which entry point gets there first.
+/// `JsRuntime::init_platform` (the server boot path) and the lazy snapshot build (the path tests
+/// and benches hit when they call `execute_script` without an explicit platform init) both funnel
+/// through here. The V8 platform must be installed *before* the first isolate is created, otherwise
+/// concurrent isolate creation across worker threads races on V8's implicit default-platform setup
+/// and trips a fatal `v8::HandleScope::CreateHandle` ("Cannot create a handle without a
+/// HandleScope") during GC.
+fn ensure_platform() {
+    PLATFORM_INIT.call_once(|| {
+        deno_core::JsRuntime::init_platform(None);
+    });
+}
+
 fn build_startup_snapshot() -> &'static [u8] {
-    // The snapshot intentionally does not bake in `secutils_ext` or any JS
-    // modules: baking ops into a snapshot requires the snapshotting runtime
-    // to register the exact same op layout at runtime (a minefield of subtle
-    // version/feature mismatches). What we capture here is the expensive
-    // part - the V8 context setup and builtin JS globals. `secutils_ext` is
-    // still registered at `JsRuntime::new` time per invocation, but on top
-    // of a warm, pre-initialised context.
+    // The V8 platform has to be live before we create the snapshotting isolate (the first isolate
+    // in the process on the lazy path). Doing it here means every consumer - server, benches, and
+    // the test binary - gets a properly initialised platform regardless of whether
+    // `JsRuntime::init_platform` was called explicitly.
+    ensure_platform();
+
+    // The snapshot intentionally does not bake in `secutils_ext` or any JS modules: baking ops into
+    // a snapshot requires the snapshotting runtime to register the exact same op layout at runtime
+    // (a minefield of subtle version/feature mismatches). What we capture here is the expensive
+    // part - the V8 context setup and builtin JS globals. `secutils_ext` is still registered at
+    // `JsRuntime::new` time per invocation, but on top of a warm, pre-initialised context.
     let runtime = JsRuntimeForSnapshot::new(RuntimeOptions::default());
     let snapshot = runtime.snapshot();
     Box::leak(snapshot) as &[u8]
@@ -198,7 +218,7 @@ impl JsRuntime {
     /// snapshot, and eagerly spins up the worker pool. Should be called exactly
     /// once, from the main thread, during server startup.
     pub fn init_platform() {
-        deno_core::JsRuntime::init_platform(None);
+        ensure_platform();
         // Build the snapshot on the main thread before any worker boots so the
         // first script execution on each worker does not pay for it. V8 requires
         // the snapshotting isolate to run on a single thread, which is why we
