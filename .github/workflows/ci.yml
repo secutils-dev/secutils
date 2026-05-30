@@ -110,10 +110,9 @@ jobs:
       - name: Commit bundle size history
         if: success() && github.ref == 'refs/heads/main'
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add components/secutils-webui/.bundlesize/history.jsonl
-          git diff --cached --quiet || git commit -m "chore: update bundle size history [skip ci]" && git push
+          ./dev/scripts/commit-ci-history.sh \
+            components/secutils-webui/.bundlesize/history.jsonl \
+            "chore: update bundle size history [skip ci]"
 
   ci-perf:
     name: JS Runtime Perf Harness (Linux)
@@ -178,10 +177,9 @@ jobs:
       - name: Commit perf history
         if: success() && github.ref == 'refs/heads/main'
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add .perf/history.jsonl
-          git diff --cached --quiet || git commit -m "chore: update JS runtime perf history [skip ci]" && git push
+          ./dev/scripts/commit-ci-history.sh \
+            .perf/history.jsonl \
+            "chore: update JS runtime perf history [skip ci]"
 
   ci-docs:
     name: Build Docs (Linux)
