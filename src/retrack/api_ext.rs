@@ -187,6 +187,48 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> RetrackApi<'a, DR, ET> {
         }
     }
 
+    /// Removes all Retrack trackers that match the specified tags via the Retrack bulk-remove
+    /// endpoint, returning the number of removed trackers. Tags are prepared exactly as in
+    /// [`Self::list_trackers`] (prefixed with the `secutils` application tag), so removal is always
+    /// scoped to Secutils trackers - it's the caller's responsibility to supply tags specific
+    /// enough to target only the intended trackers. Passing an empty tags list therefore removes
+    /// *all* Secutils trackers.
+    pub async fn remove_trackers<Tag: AsRef<str>>(&self, tags: &[Tag]) -> anyhow::Result<u64> {
+        // Construct tags query string.
+        let tags_query = prepare_tags(tags)
+            .iter()
+            .map(|tag| format!("tag={}", urlencoding::encode(tag)))
+            .collect::<Vec<_>>()
+            .join("&");
+        let endpoint = format!("{}api/trackers?{tags_query}", self.api.config.retrack.host);
+
+        let response = self
+            .api
+            .network
+            .http_client
+            .delete(&endpoint)
+            .send()
+            .await
+            .with_context(|| format!("Cannot remove trackers ({tags_query})."))?;
+
+        let status_code = response.status();
+        if status_code.is_informational() || status_code.is_success() {
+            return response.json().await.context(format!(
+                "Cannot deserialize the number of removed trackers ({tags_query})."
+            ));
+        }
+
+        let error_message = format!(
+            "Failed to remove trackers ({tags_query}): {}",
+            response.text().await?
+        );
+        if status_code.is_client_error() {
+            bail!(SecutilsError::client(error_message))
+        } else {
+            bail!(error_message)
+        }
+    }
+
     /// Retrieves the Retrack tracker revisions by the specified ID.
     pub async fn list_tracker_revisions<TValue: DeserializeOwned>(
         &self,

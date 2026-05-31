@@ -1,6 +1,7 @@
 use crate::{
     api::Api,
     network::{DnsResolver, EmailTransport, EmailTransportError},
+    retrack::tags::RETRACK_USER_TAG,
     security::{
         Operator,
         credentials::Credentials,
@@ -105,13 +106,38 @@ where
             .get_identity_by_email(user_email)
             .await
             .with_context(|| "Failed to retrieve user identity.")?;
-        let user_id = if let Some(identity) = identity {
-            self.delete_identity(identity.id).await?;
-            Some(UserId::from(identity.id))
-        } else {
-            warn!("User with email `{user_email}` doesn't exist.");
-            None
+
+        // Resolve the user ID from the Kratos identity, falling back to the database record so that
+        // associated resources can still be cleaned up even if the identity is already gone.
+        let user_id = match identity.as_ref() {
+            Some(identity) => Some(UserId::from(identity.id)),
+            None => {
+                warn!("User with email `{user_email}` doesn't have a Kratos identity.");
+                self.api
+                    .db
+                    .get_user_by_email(user_email)
+                    .await?
+                    .map(|user| user.id)
+            }
         };
+
+        // Remove any Retrack trackers associated with the user *before* the user record is deleted.
+        // Otherwise the trackers outlive the user and keep firing webhooks that can no longer be
+        // resolved, resulting in 404s and a stream of failed Retrack tasks (and failure emails).
+        if let Some(user_id) = user_id {
+            self.api
+                .retrack()
+                .remove_trackers(&[format!("{RETRACK_USER_TAG}:{user_id}")])
+                .await
+                .with_context(|| {
+                    format!("Failed to remove Retrack trackers for user ({user_id}).")
+                })?;
+        }
+
+        // Remove the Kratos identity, if any.
+        if let Some(identity) = identity {
+            self.delete_identity(identity.id).await?;
+        }
 
         // Remove user and their data from the database.
         Ok(self
@@ -877,14 +903,107 @@ mod tests {
             then.status(204);
         });
 
+        // Termination bulk-removes the user's Retrack trackers, point at a mock that has none.
+        let retrack_server = MockServer::start();
+        retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::DELETE).path("/api/trackers");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!(0));
+        });
+
         let mut config = mock_config()?;
         config.components.kratos_admin_url = Url::parse(&server.base_url())?;
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
         let api = mock_api_with_config(pool, config).await?;
         api.db.insert_user(&mock_user).await?;
 
         let terminated_id = api.security().terminate(&mock_user.email).await?.unwrap();
         assert_eq!(terminated_id, mock_user.id);
         assert!(api.users().get(mock_user.id).await?.is_none());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn terminate_removes_user_retrack_trackers(pool: PgPool) -> anyhow::Result<()> {
+        let mock_user = mock_user()?;
+        let user_id_str = mock_user.id.to_string();
+        let user_email = mock_user.email.clone();
+
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/admin/identities");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!([mock_identity_json(&user_id_str, &user_email)]));
+        });
+        server.mock(|when, then| {
+            when.method(httpmock::Method::DELETE)
+                .path(format!("/admin/identities/{user_id_str}"));
+            then.status(204);
+        });
+
+        // Retrack removes the user's trackers in a single bulk call scoped by the user tag, and
+        // reports the number of removed trackers.
+        let retrack_server = MockServer::start();
+        let delete_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::DELETE)
+                .path("/api/trackers")
+                .query_param("tag", format!("secutils:user:{user_id_str}"));
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!(2));
+        });
+
+        let mut config = mock_config()?;
+        config.components.kratos_admin_url = Url::parse(&server.base_url())?;
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
+        let api = mock_api_with_config(pool, config).await?;
+        api.db.insert_user(&mock_user).await?;
+
+        let terminated_id = api.security().terminate(&mock_user.email).await?.unwrap();
+        assert_eq!(terminated_id, mock_user.id);
+        assert!(api.users().get(mock_user.id).await?.is_none());
+
+        // The user's trackers must have been bulk-removed by the user tag in a single call.
+        delete_mock.assert();
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn terminate_fails_when_retrack_cleanup_fails(pool: PgPool) -> anyhow::Result<()> {
+        let mock_user = mock_user()?;
+        let user_id_str = mock_user.id.to_string();
+        let user_email = mock_user.email.clone();
+
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/admin/identities");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!([mock_identity_json(&user_id_str, &user_email)]));
+        });
+
+        // Retrack fails to remove trackers, so termination must abort and leave the user in place
+        // (Retrack cleanup happens before the identity/database records are removed).
+        let retrack_server = MockServer::start();
+        retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::DELETE).path("/api/trackers");
+            then.status(500).body("boom");
+        });
+
+        let mut config = mock_config()?;
+        config.components.kratos_admin_url = Url::parse(&server.base_url())?;
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
+        let api = mock_api_with_config(pool, config).await?;
+        api.db.insert_user(&mock_user).await?;
+
+        let result = api.security().terminate(&mock_user.email).await;
+        assert!(result.is_err());
+        // The user must still exist because the cleanup failed before any deletion happened.
+        assert!(api.users().get(mock_user.id).await?.is_some());
 
         Ok(())
     }

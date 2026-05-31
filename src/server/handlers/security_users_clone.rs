@@ -655,6 +655,14 @@ mod tests {
                 .header("Content-Type", "application/json")
                 .json_body(json!([identity_json(destination_id, destination_email)]));
         });
+        // Rollback's `terminate` bulk-removes the user's Retrack trackers, the destination clone
+        // has none, so a zero count lets the rollback proceed to the identity/DB delete.
+        server.mock(|when, then| {
+            when.method(httpmock::Method::DELETE).path("/api/trackers");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!(0));
+        });
         let delete_identity_mock = server.mock(|when, then| {
             when.method(httpmock::Method::DELETE)
                 .path(format!("/admin/identities/{destination_id}"));
@@ -705,6 +713,13 @@ mod tests {
             then.status(200)
                 .header("Content-Type", "application/json")
                 .json_body(json!([]));
+        });
+        // Rollback's `terminate` bulk-removes the user's Retrack trackers (none here).
+        server.mock(|when, then| {
+            when.method(httpmock::Method::DELETE).path("/api/trackers");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!(0));
         });
         let recovery_mock = server.mock(|when, then| {
             when.method(httpmock::Method::POST)
