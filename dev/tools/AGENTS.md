@@ -2400,6 +2400,78 @@ exception still releases the lock. The Parse-button restoration in the
 `finally` is separate (`els.parseBtn.disabled = !pdfFile`) because their
 disabled state mirrors file-loaded state, not the snapshot.
 
+## Live updates / polling (visibility-aware)
+
+Any tool that polls or long-polls a backend (repeated `fetch`, `EventSource`, or a
+long-poll loop like the webhook inspector's `secutils.kv.watch`) **MUST**:
+
+- **Abort the in-flight request and stop scheduling new ones when the tab is hidden**
+  (`visibilitychange` -> `document.hidden`) and on `pagehide` (navigation / close / bfcache).
+- **Re-establish from the last cursor when the tab becomes visible again.**
+
+Rationale: a backgrounded or closed tab that keeps polling wastes server work for output
+nobody is looking at. For a long-poll it is worse - each open request parks a **server-side
+V8 isolate (+ worker thread)** for the whole window, and with the safe actix default
+(`h1_allow_half_closed = true`) the server **cannot** detect the client disconnect on its own
+(it only notices on its next socket write, which a parked long-poll never does). So the client
+is the only party that can promptly close the connection - it must do so itself.
+
+Model the loop as two pieces of state: **intent** (the user toggled it on; drives the toggle
+pill) and **running** (a request loop is actually open). Pausing for visibility clears
+*running* but preserves *intent*, so it resumes transparently.
+
+Canonical shape (reference implementation: [`dev/tools/webhook.html`](webhook.html)):
+
+```js
+let abort = null;       // AbortController for the in-flight request
+let running = false;    // a request loop is actually open
+let enabled = false;    // user intent (drives the toggle UI)
+
+// Record intent + reflect it in the UI, but only open a connection while visible.
+function start() {
+    enabled = true;
+    // ...reflect enabled in the toggle UI here...
+    if (!document.hidden) runLoop();
+}
+function runLoop() {
+    if (running) return;            // idempotent
+    running = true;
+    abort = new AbortController();
+    (async () => {
+        while (running /* && still-current */) {
+            try {
+                const res = await fetch(url, { signal: abort.signal });
+                /* ...handle response, advance cursor... */
+            } catch (e) {
+                if (e.name === 'AbortError') break;
+                await sleep(2000);
+            }
+        }
+    })();
+}
+// Pause WITHOUT clearing intent, so visibility can resume it from the last cursor.
+function pauseLoop() {
+    running = false;
+    if (abort) { try { abort.abort(); } catch {} abort = null; }
+}
+// Explicit user-off: clears intent + UI, then pauses.
+function stop() {
+    enabled = false;
+    // ...reflect disabled in the toggle UI here...
+    pauseLoop();
+}
+
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { if (running) pauseLoop(); }
+    else if (enabled && !running) runLoop();
+});
+window.addEventListener('pagehide', () => { if (running) pauseLoop(); });
+```
+
+**Agent instruction:** when building a new tool, or adding any polling / long-polling to an
+existing one, implement this pattern and **explicitly confirm with the developer** that the
+visibility-abort + resume wiring is in place before considering the tool done.
+
 ## Pre-deploy verification
 
 After editing any tool, run these checks before `make deploy-tools`. They take seconds,

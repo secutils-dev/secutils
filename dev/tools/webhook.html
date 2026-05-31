@@ -63,7 +63,10 @@
   // *is* enabled it only clamps the deadline shorter; it can never extend it.
   const LIFESPAN_FALLBACK_SEC = 604800; // 7 days.
   const PAGE_LIMIT = 200;
-  const WATCH_TIMEOUT_MS = 25000;
+  // Long-poll window. Kept short so a watch that ever outlives its client (e.g. an abrupt
+  // kill the client can't intercept) parks a server-side V8 isolate for at most this long
+  // before the worker is reclaimed. The client also aborts proactively on hide/close.
+  const WATCH_TIMEOUT_MS = 15000;
   // Remaining seconds until the webhook's absolute deadline (`exp`, unix seconds),
   // so dependent writes never outlive the key. Floors at 1s so a near-deadline
   // write still lands rather than being rejected as a zero/negative TTL.
@@ -1151,7 +1154,9 @@ function renderLifetime() {
 }
 
 async function activateSession(session, { register }) {
-    stopLive();
+    // Pause (not stop) so the user's live intent carries over and resumes for the new
+    // session via the `if (liveEnabled) startLive()` below.
+    pauseLoop();
     current = session;
     setActive(session.t);
     upsertSession(session);
@@ -1334,11 +1339,24 @@ async function refresh() {
 }
 
 // ---- live watch (long-poll loop) ----
+// Three-state model: `liveEnabled` is the user's intent (pill state), `liveRunning` is
+// whether a fetch loop is actually open. We keep these separate so the loop can be paused
+// (e.g. while the tab is hidden) without losing the user's intent, and transparently
+// resumed when the tab becomes visible again.
+
+// startLive() records intent and reflects it in the pill, but only opens a connection when
+// the tab is visible - a backgrounded tab would otherwise park a server-side V8 isolate
+// (one per long-poll) for nothing.
 function startLive() {
-    if (liveRunning || !current) return;
-    liveRunning = true;
+    if (!current) return;
     liveEnabled = true;
     els.liveToggle.setAttribute('aria-checked', 'true');
+    if (!document.hidden) runLiveLoop();
+}
+// The actual long-poll loop. Idempotent: a no-op if already running.
+function runLiveLoop() {
+    if (liveRunning || !current) return;
+    liveRunning = true;
     watchAbort = new AbortController();
     (async () => {
         const token = current.t;
@@ -1357,11 +1375,35 @@ function startLive() {
         }
     })();
 }
-function stopLive() {
+// Pause the loop and FIN the in-flight connection WITHOUT clearing user intent, so it can
+// be resumed (e.g. on visibility change) from the last `cursor`.
+function pauseLoop() {
     liveRunning = false;
-    els.liveToggle.setAttribute('aria-checked', 'false');
     if (watchAbort) { try { watchAbort.abort(); } catch {} watchAbort = null; }
 }
+// Explicit user-off: clears intent, unchecks the pill, and pauses the loop.
+function stopLive() {
+    liveEnabled = false;
+    els.liveToggle.setAttribute('aria-checked', 'false');
+    pauseLoop();
+}
+
+// Don't hold a server-side long-poll open for a tab nobody is looking at: pause when hidden,
+// resume from the last cursor when visible. User intent (`liveEnabled` + pill) is preserved
+// across hide/show. With the safe actix default the server can't detect the disconnect on
+// its own, so the client must close the connection itself.
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        if (liveRunning) pauseLoop();
+    } else if (liveEnabled && !liveRunning) {
+        runLiveLoop();
+    }
+});
+// On navigation / close / bfcache, drop the in-flight watch so the connection FINs promptly
+// instead of lingering server-side until the watch window elapses.
+window.addEventListener('pagehide', () => {
+    if (liveRunning) pauseLoop();
+});
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---- mock response editor ----
@@ -1565,7 +1607,7 @@ els.copyUrl.addEventListener('click', async () => {
 });
 els.refreshBtn.addEventListener('click', () => refresh());
 els.liveToggle.addEventListener('click', () => {
-    if (liveRunning) { liveEnabled = false; stopLive(); }
+    if (liveEnabled) stopLive();
     else startLive();
 });
 els.clearBtn.addEventListener('click', async () => {
@@ -1617,7 +1659,6 @@ els.deleteBtn.addEventListener('click', async () => {
         confirmLabel: 'Delete webhook',
     });
     if (!ok) return;
-    liveEnabled = false;
     stopLive();
     els.deleteBtn.disabled = true;
     const token = current.t;
