@@ -24,6 +24,36 @@
 // KV + crypto primitives come from the sandbox-injected `globalThis.secutils`
 // (see src/js_runtime/op_responder_kv.rs and op_crypto_seal.rs). Binary values
 // cross the boundary as base64url strings.
+//
+// -----------------------------------------------------------------------------
+// TESTING THE EXPIRED TAKE-OVER (handy reference)
+// -----------------------------------------------------------------------------
+// The inspector loads its session entirely from the URL `#fragment`, which is
+// `uint32-LE(jsonByteLen) | rawDEFLATE(JSON)` then base64url (unpadded). The
+// bootstrap only needs truthy `t`, `k`, `p` plus an `exp` (unix seconds) in the
+// PAST to immediately render the "This webhook has expired" card - it returns
+// before any crypto/network, so placeholder `k`/`p` are fine. Note: opening such
+// a link writes the demo entry into localStorage (`webhook.sessions`); the
+// "Remove from list" button on the expired card evicts it again.
+//
+// Re-generate (the 4-byte length prefix is written but ignored on decode):
+//   python3 - <<'PY'
+//   import json, zlib, struct, base64, time
+//   exp = int(time.time()) - 86400  # 24h in the past -> always expired
+//   s = {"t":"ExpiredDemo01","k":{"kty":"EC","crv":"P-256","d":"demo","x":"demo",
+//        "y":"demo","key_ops":["deriveBits"],"ext":True},
+//        "p":"BDemoPublicKeyPlaceholderxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+//        "l":"Expired webhook demo","d":"Demo of the expired-webhook take-over screen.",
+//        "createdAt":(exp-7*86400)*1000,"exp":exp,
+//        "m":{"s":200,"h":[["Content-Type","application/json; charset=utf-8"]],"b":"{\"ok\":true}"}}
+//   raw = json.dumps(s, separators=(",",":")).encode()
+//   co = zlib.compressobj(9, zlib.DEFLATED, -zlib.MAX_WBITS)
+//   out = struct.pack("<I", len(raw)) + co.compress(raw) + co.flush()
+//   print("https://tools.secutils.dev/webhook#" + base64.urlsafe_b64encode(out).decode().rstrip("="))
+//   PY
+//
+// Example link (static `exp` in the past, so it renders expired forever):
+//   https://tools.secutils.dev/webhook#pgEAAJ1Qy07DMBD8FWvPCTgV5IU40MKJSw7c2grlsVWC09hyNiFRlH9nDUW916fZ3fHOzC5AkMLbZBqL1SuetQzAAwXpAopmN9pxXdqRYeZvHkOuKsYVUxlOVzhfocL5U5se0j13bDPitqEejh7gxGpkB1w9MMzfOsVsKNqmfMc5a_MSa93yn-nGx-LtNY_4xqLWWomLL2fcKQp9ElSjwD-a_0-jXKGvR7SiLy1id_cbHXPC6oWNB1GUPCRhnERSShfGuF4sAxmESeTB2V2NU2_ctOb0e9jpjrAj_2M2yMtyYzhqTo3u7r963T2Jss5tj_Q80MmP4cg3KtjkcgCtDpdTwbr-AA
 // =============================================================================
 (() => {
   // The webhook's default absolute lifetime. The key is written with this TTL, so its
@@ -486,6 +516,9 @@ pre.body-pre { background: var(--surface); border: 1px solid var(--border); bord
 .expired-title { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
 .expired-sub { font-size: 13px; color: var(--text-muted); max-width: 540px; margin: 0 auto 8px; line-height: 1.5; }
 .expired-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin: 16px 0; }
+/* Secondary, utility action (local-only "Remove from list") sits below the lead-magnet
+   copy, separated by a hairline so it reads as a lesser action than clone / sign-up. */
+.expired-actions-secondary { margin: 16px 0 0; padding-top: 14px; border-top: 1px solid var(--border); }
 
 .spinner { width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin .7s linear infinite; flex-shrink: 0; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -603,6 +636,9 @@ pre.body-pre { background: var(--surface); border: 1px solid var(--border); bord
                 <a class="btn" href="https://secutils.dev/signup" target="_blank" rel="noopener noreferrer">Create a free account &rarr;</a>
             </div>
             <p class="expired-sub">A free Secutils.dev account gives you <strong>permanent</strong> webhooks that never expire, plus scheduled checks, notifications, and more.</p>
+            <div class="expired-actions expired-actions-secondary">
+                <button id="expiredDeleteBtn" type="button" class="btn btn-danger">Remove from list</button>
+            </div>
         </section>
 
         <details class="card resp-card" id="respCard">
@@ -743,6 +779,7 @@ const els = Object.freeze({
     lifeChip: $('lifeChip'),
     expiredState: $('expiredState'),
     expiredCloneBtn: $('expiredCloneBtn'),
+    expiredDeleteBtn: $('expiredDeleteBtn'),
     requestsCard: $('requestsCard'),
     ephemeralWhen: $('ephemeralWhen'),
     webhookUrl: $('webhookUrl'),
@@ -787,6 +824,66 @@ function normalizeMock(m) {
     if (b.length > 64 * 1024) b = b.slice(0, 64 * 1024);
     return { s, h, b };
 }
+
+// Curated response-header suggestions surfaced via native <datalist> dropdowns
+// (mirrors echo.html). Names shown verbatim; values looked up case-insensitively
+// (key = lowercased name). Names without an entry in HEADER_PRESETS still
+// autocomplete the name, but offer no value suggestions - same for any custom
+// (non-listed) header typed by the user.
+const HEADER_NAMES = [
+    'Access-Control-Allow-Credentials', 'Access-Control-Allow-Headers',
+    'Access-Control-Allow-Methods', 'Access-Control-Allow-Origin',
+    'Cache-Control', 'Content-Disposition', 'Content-Encoding', 'Content-Length',
+    'Content-Security-Policy', 'Content-Type', 'Date', 'ETag', 'Last-Modified',
+    'Location', 'Server', 'Set-Cookie', 'Strict-Transport-Security', 'Vary',
+    'WWW-Authenticate', 'X-Content-Type-Options', 'X-Frame-Options',
+];
+const HEADER_PRESETS = Object.freeze({
+    'content-type': ['application/json; charset=utf-8', 'text/html; charset=utf-8', 'text/plain', 'application/xml', 'text/css', 'application/javascript', 'image/png', 'image/jpeg', 'application/octet-stream'],
+    'cache-control': ['no-cache', 'no-store', 'max-age=0', 'max-age=3600', 'public, max-age=86400', 'private', 'must-revalidate'],
+    'content-encoding': ['gzip', 'br', 'deflate', 'identity'],
+    'server': ['nginx', 'Apache', 'cloudflare', 'Microsoft-IIS/10.0'],
+    'access-control-allow-origin': ['*', 'https://example.com', 'null'],
+    'access-control-allow-methods': ['GET, POST, PUT, DELETE, OPTIONS', 'GET, HEAD, OPTIONS'],
+    'access-control-allow-headers': ['Content-Type, Authorization', '*'],
+    'access-control-allow-credentials': ['true', 'false'],
+    'vary': ['Accept-Encoding', 'Origin', 'Accept, Accept-Encoding', 'User-Agent'],
+    'content-disposition': ['inline', 'attachment', 'attachment; filename="file.pdf"'],
+    'strict-transport-security': ['max-age=31536000', 'max-age=31536000; includeSubDomains', 'max-age=63072000; includeSubDomains; preload'],
+    'x-frame-options': ['DENY', 'SAMEORIGIN'],
+    'x-content-type-options': ['nosniff'],
+    'www-authenticate': ['Bearer', 'Bearer realm="api"', 'Bearer error="invalid_token"', 'Basic realm="api"'],
+    'content-security-policy': [`default-src 'self'`, `default-src 'self'; script-src 'self' 'unsafe-inline'`, `frame-ancestors 'none'`],
+});
+
+// Shared <datalist> of response-header names - created once and reused across all
+// name inputs (every row links to the same `list="resp-hdr-names"` target).
+const respNamesDatalist = document.createElement('datalist');
+respNamesDatalist.id = 'resp-hdr-names';
+for (const name of HEADER_NAMES) {
+    const opt = document.createElement('option');
+    opt.value = name;
+    respNamesDatalist.appendChild(opt);
+}
+document.body.appendChild(respNamesDatalist);
+
+// Populate a per-row value <datalist> from HEADER_PRESETS keyed by the lowercased
+// header name, and toggle the value input's `list` attribute so rows without
+// presets don't render an empty dropdown indicator.
+const applyValuePresets = (valueInput, valueDatalist, headerName) => {
+    const presets = HEADER_PRESETS[headerName.trim().toLowerCase()];
+    valueDatalist.replaceChildren();
+    if (presets) {
+        for (const v of presets) {
+            const opt = document.createElement('option');
+            opt.value = v;
+            valueDatalist.appendChild(opt);
+        }
+        valueInput.setAttribute('list', valueDatalist.id);
+    } else {
+        valueInput.removeAttribute('list');
+    }
+};
 
 const MOUNT = location.pathname.replace(/\/$/, '') || '/webhook';
 const CATALOG_KEY = 'webhook.sessions';
@@ -1285,14 +1382,22 @@ function renderMockHeaders() {
         nameInput.className = 'input input-mono';
         nameInput.placeholder = 'Header name';
         nameInput.value = row[0];
+        nameInput.setAttribute('list', 'resp-hdr-names');
         const valueInput = document.createElement('input');
         valueInput.className = 'input input-mono';
         valueInput.placeholder = 'Header value';
         valueInput.value = row[1];
-        nameInput.addEventListener('input', (e) => { mockState.h[i][0] = e.target.value; markMockDirty(); });
+        const valueDatalist = document.createElement('datalist');
+        valueDatalist.id = 'resp-hdr-vals-' + i;
+        applyValuePresets(valueInput, valueDatalist, row[0]);
+        nameInput.addEventListener('input', (e) => {
+            mockState.h[i][0] = e.target.value;
+            applyValuePresets(valueInput, valueDatalist, e.target.value);
+            markMockDirty();
+        });
         valueInput.addEventListener('input', (e) => { mockState.h[i][1] = e.target.value; markMockDirty(); });
         const tdK = document.createElement('td'); tdK.appendChild(nameInput);
-        const tdV = document.createElement('td'); tdV.appendChild(valueInput);
+        const tdV = document.createElement('td'); tdV.append(valueInput, valueDatalist);
         const tdRm = document.createElement('td');
         const rm = document.createElement('button');
         rm.type = 'button'; rm.className = 'btn btn-icon'; rm.title = 'Remove header';
@@ -1490,6 +1595,20 @@ els.clearBtn.addEventListener('click', async () => {
         els.clearBtn.disabled = false;
     }
 });
+// Drop a session from the local catalog (no server call) and move to the next saved
+// webhook, or mint a fresh one when the list is now empty. Shared by the full delete
+// flow (after the server purge) and the expired take-over's local-only removal.
+async function forgetSessionLocally(token) {
+    const catalog = loadCatalog().filter((s) => s.t !== token);
+    saveCatalog(catalog);
+    broadcast('catalog');
+    if (catalog.length) {
+        await activateSession(catalog[0], { register: false });
+    } else {
+        await createNewSession();
+    }
+}
+
 els.deleteBtn.addEventListener('click', async () => {
     if (!current) return;
     const ok = await confirmAction({
@@ -1513,16 +1632,29 @@ els.deleteBtn.addEventListener('click', async () => {
         toast(`Server delete failed: ${e.message}`);
     }
     // Remove from local catalog regardless of server outcome.
-    const catalog = loadCatalog().filter((s) => s.t !== token);
-    saveCatalog(catalog);
-    broadcast('catalog');
+    await forgetSessionLocally(token);
     els.deleteBtn.disabled = false;
-    if (catalog.length) {
-        await activateSession(catalog[0], { register: false });
-    } else {
-        await createNewSession();
-    }
     toast('Webhook deleted');
+});
+
+// Expired webhooks no longer exist server-side (key, config, and requests were swept at
+// the deadline), so there is nothing to DELETE - just evict the stale entry from the
+// local catalog so it stops cluttering the dropdown.
+els.expiredDeleteBtn.addEventListener('click', async () => {
+    if (!current) return;
+    const ok = await confirmAction({
+        title: 'Remove webhook',
+        message: 'Remove this expired webhook from your list? It has already been deleted from the server and cannot be recovered.',
+        confirmLabel: 'Remove',
+    });
+    if (!ok) return;
+    els.expiredDeleteBtn.disabled = true;
+    try {
+        await forgetSessionLocally(current.t);
+        toast('Webhook removed');
+    } finally {
+        els.expiredDeleteBtn.disabled = false;
+    }
 });
 
 if (channel) {
