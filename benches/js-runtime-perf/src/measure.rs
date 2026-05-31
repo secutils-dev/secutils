@@ -93,6 +93,13 @@ pub fn now() -> Instant {
     Instant::now()
 }
 
+/// Current resident set size in KB (or 0 on unsupported platforms). Exposed so
+/// the `resident_isolates` scenario can sample a peak watermark while many
+/// isolates are held resident at once.
+pub fn rss_kb() -> i64 {
+    current_rss_kb()
+}
+
 /// Reads the process's *current* resident set size in kilobytes.
 ///
 /// We deliberately avoid `getrusage(RUSAGE_SELF).ru_maxrss` here: that field is

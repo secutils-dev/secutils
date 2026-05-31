@@ -1007,13 +1007,27 @@ Thresholds in `.perf/config.json` only control when warnings are emitted.
 All scenarios use `JsRuntimeConfig { max_heap_size: 10 MiB, max_user_script_execution_time:
 10s }` and a realistic payload size so the numbers track production behaviour.
 
-| Scenario                    | What it measures                                                                                                 |
-|-----------------------------|------------------------------------------------------------------------------------------------------------------|
-| `cold_start_trivial`        | Full per-call cost: `spawn_blocking` + fresh `CurrentThread` runtime + fresh V8 isolate + watchdog, trivial JS.  |
-| `steady_state_trivial`      | Serial executions of a trivial script. Exposes per-call overhead without startup amortisation.                   |
-| `responder_like`            | Wrapped responder script (`wrap_script_with_body_conversion`) with a realistic `{body, headers, method}` input.  |
-| `proxy_request`             | `op_proxy_request` against an in-process `httpmock` server on 127.0.0.1 - rebuilds `reqwest::Client` per call.   |
-| `concurrent_responders_8x`  | `tokio::spawn` burst of `N` trivial scripts; latency is per-task wall clock.                                     |
+| Scenario                   | What it measures                                                                                                                                                                                                                                                                           |
+|----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `cold_start_trivial`       | Full per-call cost: `spawn_blocking` + fresh `CurrentThread` runtime + fresh V8 isolate + watchdog, trivial JS.                                                                                                                                                                            |
+| `steady_state_trivial`     | Serial executions of a trivial script. Exposes per-call overhead without startup amortisation.                                                                                                                                                                                             |
+| `responder_like`           | Wrapped responder script (`wrap_script_with_body_conversion`) with a realistic `{body, headers, method}` input.                                                                                                                                                                            |
+| `proxy_request`            | `op_proxy_request` against an in-process `httpmock` server on 127.0.0.1 - rebuilds `reqwest::Client` per call.                                                                                                                                                                             |
+| `concurrent_responders_8x` | `tokio::spawn` burst of `N` trivial scripts; latency is per-task wall clock.                                                                                                                                                                                                               |
+| `resident_isolates`        | **On-demand** capacity probe: holds `--concurrency` scripts parked at once and reports peak RSS growth. Divide `peak_rss_delta_kb` by `concurrency` for the marginal cost of one concurrently-resident isolate. Excluded from the default `all` run (and from history); run it explicitly. |
+
+The `resident_isolates` scenario is **not** part of the default `all`/CI run - it is a manual
+capacity-planning probe, so it must be named explicitly and never appends to `.perf/history.jsonl`.
+It honours `--concurrency` as `N` and an optional `RESIDENT_PARK_MS` env (default 5000, clamped to
+55000) to widen the park window for large `N`:
+
+```bash
+# Marginal RSS per concurrently-resident isolate (combined thread + runtime + isolate cost).
+cargo run -p js-runtime-perf -- --scenarios resident_isolates --concurrency 1000
+# Pre-warm N baseline workers to isolate the per-isolate cost from thread spin-up:
+SECUTILS_JS_WORKERS=1000 SECUTILS_JS_MAX_WORKERS=1000 RESIDENT_PARK_MS=12000 \
+  cargo run --release -p js-runtime-perf -- --scenarios resident_isolates --concurrency 1000
+```
 
 ### Running locally
 
@@ -1120,8 +1134,11 @@ scripts/perf-report.html                         # Standalone HTML viewer for hi
 
 - To relax or tighten warnings, edit `.perf/config.json`. Values are percentages.
 - To add a scenario: create a module under `benches/js-runtime-perf/src/scenarios/`,
-  register it in `scenarios.rs` (both the `ALL` slice and the `run` dispatcher), and add
-  its name to `.perf/config.json`.
+  register it in `scenarios.rs` (the `run` dispatcher, plus the `ALL` slice for default/CI
+  scenarios), and add its name to `.perf/config.json`. For a manual probe that should be
+  excluded from the default run and from history, add it to the `ON_DEMAND` slice instead of
+  `ALL` (and leave it out of `.perf/config.json`); the driver only runs `ON_DEMAND` scenarios
+  when they are named explicitly via `--scenarios`.
 - Benchmark results are platform-sensitive. History entries include `env.os`, `env.arch`,
   and `env.cpuModel` for this reason; absolute numbers from a laptop are not directly
   comparable to those from a CI runner.

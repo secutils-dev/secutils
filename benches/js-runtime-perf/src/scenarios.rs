@@ -10,12 +10,14 @@ mod cold_start;
 mod common;
 mod concurrent_responders;
 mod proxy_request;
+mod resident_isolates;
 mod responder_like;
 mod steady_state;
 
 use crate::measure::ScenarioResult;
 
-/// Canonical ordering for scenarios, mirrored in `.perf/config.json`.
+/// Canonical ordering for scenarios run by default (and mirrored in
+/// `.perf/config.json`). The CI delta-tracking run iterates exactly this list.
 pub const ALL: &[&str] = &[
     "cold_start_trivial",
     "steady_state_trivial",
@@ -23,6 +25,12 @@ pub const ALL: &[&str] = &[
     "proxy_request",
     "concurrent_responders_8x",
 ];
+
+/// Scenarios that exist in the dispatcher but are deliberately excluded from
+/// `ALL` (and therefore from the default CI run + history). They are only
+/// executed when named explicitly via `--scenarios`, because their numbers are
+/// capacity-planning probes rather than steady regression metrics.
+pub const ON_DEMAND: &[&str] = &["resident_isolates"];
 
 pub async fn run(
     name: &str,
@@ -38,6 +46,7 @@ pub async fn run(
         "concurrent_responders_8x" => {
             concurrent_responders::run(iterations, warmup, concurrency).await
         }
+        "resident_isolates" => resident_isolates::run(iterations, warmup, concurrency).await,
         other => anyhow::bail!("unknown scenario `{other}`"),
     }
 }

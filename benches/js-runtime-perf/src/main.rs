@@ -88,11 +88,22 @@ async fn run(args: Args) -> anyhow::Result<()> {
     let selected = parse_scenarios(&args.scenarios);
     let mut report = Report::new();
 
-    for name in scenarios::ALL {
-        if !selected.iter().any(|s| s == "all" || s == name) {
-            continue;
-        }
+    // `ALL` scenarios run on `all`/explicit selection; `ON_DEMAND` scenarios are
+    // excluded from `all` and only run when named explicitly (they are
+    // capacity-planning probes, not steady regression metrics).
+    let to_run: Vec<&str> = scenarios::ALL
+        .iter()
+        .copied()
+        .filter(|name| selected.iter().any(|s| s == "all" || s == name))
+        .chain(
+            scenarios::ON_DEMAND
+                .iter()
+                .copied()
+                .filter(|name| selected.iter().any(|s| s == name)),
+        )
+        .collect();
 
+    for name in to_run {
         eprintln!("▶ {name}");
         let result = scenarios::run(name, args.iterations, args.warmup, args.concurrency)
             .await

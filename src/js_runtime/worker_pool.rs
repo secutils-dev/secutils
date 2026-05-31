@@ -21,10 +21,11 @@
 //! ## Elasticity
 //!
 //! A baseline of `min_workers` threads is pre-spawned and kept warm so the common case pays no
-//! thread-creation cost. When every worker is busy (for instance because several scripts are parked
-//! on a `secutils.kv.watch` long-poll that can idle for tens of seconds), additional workers are
-//! spawned on demand up to `max_workers`. Overflow workers above the baseline exit after
-//! `IDLE_TIMEOUT` of inactivity so a burst of long-polls does not leave threads lingering forever.
+//! thread-creation cost. When the queue holds more pending tasks than there are parked workers to
+//! take them (for instance because several scripts are parked on a `secutils.kv.watch` long-poll
+//! that can idle for 10s of seconds), additional workers are spawned on demand up to `max_workers`.
+//! Overflow workers above the baseline exit after `IDLE_TIMEOUT` of inactivity so a burst of
+//! long-polls does not leave threads lingering forever.
 //!
 //! Back-pressure for user-visible workloads is already applied upstream (e.g. the
 //! `max_concurrent_responder_requests` semaphore in the responder handler), so the task queue is
@@ -129,9 +130,15 @@ impl WorkerPool {
         let mut state = self.shared.lock.lock().expect("worker pool mutex poisoned");
         state.tasks.push_back(task);
 
-        // Grow the pool when there is no idle worker ready to take the task and we still have
-        // headroom. Otherwise wake a parked worker.
-        if state.idle == 0 && state.total < self.max_workers {
+        // Grow the pool when the queue has more pending tasks than there are parked workers able to
+        // take them right away, provided we still have headroom. Comparing against the queue depth
+        // (not just `idle == 0`) is essential under a burst: a `Condvar::notify_one` only wakes one
+        // parked worker and surplus notifications are dropped, so N near-simultaneous submits with
+        // only `baseline` workers parked would otherwise wake `baseline` workers, queue the rest,
+        // and serialize them `baseline` at a time instead of spawning up to `max_workers`. Each
+        // submit adds at most one worker, so a burst of N tasks spins up the workers it needs
+        // (capped at `max_workers`). Otherwise, wake a parked worker.
+        if state.tasks.len() > state.idle && state.total < self.max_workers {
             state.total += 1;
             spawn_worker(self.shared, self.min_workers);
         } else {
