@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 pub enum SchedulerJob {
     NotificationsSend,
     WebhooksKvSweep,
+    RespondersNotify,
 }
 
 impl SchedulerJob {
@@ -13,6 +14,7 @@ impl SchedulerJob {
         match self {
             Self::NotificationsSend => true,
             Self::WebhooksKvSweep => true,
+            Self::RespondersNotify => true,
         }
     }
 }
@@ -25,6 +27,7 @@ mod tests {
     fn properly_determines_unique_jobs() -> anyhow::Result<()> {
         assert!(SchedulerJob::NotificationsSend.is_unique());
         assert!(SchedulerJob::WebhooksKvSweep.is_unique());
+        assert!(SchedulerJob::RespondersNotify.is_unique());
 
         Ok(())
     }

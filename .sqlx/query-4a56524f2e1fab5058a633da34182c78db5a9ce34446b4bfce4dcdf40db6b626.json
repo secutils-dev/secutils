@@ -1,0 +1,80 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nSELECT r.id, r.user_id, r.name, r.location, r.method, r.enabled, r.settings, r.created_at, r.updated_at,\n       r.notifications_last_at,\n       COUNT(rh.id) FILTER (WHERE r.notifications_last_at IS NULL OR rh.created_at > r.notifications_last_at) AS \"new_request_count!\"\nFROM user_data_webhooks_responders AS r\nJOIN user_data_webhooks_responders_history AS rh ON r.id = rh.responder_id\nWHERE r.notifications_enabled = TRUE\nGROUP BY r.id\nHAVING COUNT(rh.id) FILTER (WHERE r.notifications_last_at IS NULL OR rh.created_at > r.notifications_last_at) > 0\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "location",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "method",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 5,
+        "name": "enabled",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 6,
+        "name": "settings",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 7,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 9,
+        "name": "notifications_last_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 10,
+        "name": "new_request_count!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      null
+    ]
+  },
+  "hash": "4a56524f2e1fab5058a633da34182c78db5a9ce34446b4bfce4dcdf40db6b626"
+}

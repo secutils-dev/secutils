@@ -1,6 +1,7 @@
 mod responder;
 mod responder_location;
 mod responder_method;
+mod responder_notification_settings;
 mod responder_path_type;
 mod responder_request;
 mod responder_script_context;
@@ -12,6 +13,7 @@ pub use self::{
     responder::Responder,
     responder_location::ResponderLocation,
     responder_method::ResponderMethod,
+    responder_notification_settings::ResponderNotificationSettings,
     responder_path_type::ResponderPathType,
     responder_request::{ResponderRequest, ResponderRequestHeaders},
     responder_script_context::ResponderScriptContext,

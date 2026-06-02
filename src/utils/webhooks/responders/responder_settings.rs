@@ -1,4 +1,4 @@
-use crate::users::SecretsAccess;
+use crate::{users::SecretsAccess, utils::webhooks::ResponderNotificationSettings};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -23,6 +23,10 @@ pub struct ResponderSettings {
     /// Controls which user secrets are available to this responder.
     #[serde(default, skip_serializing_if = "SecretsAccess::is_none")]
     pub secrets: SecretsAccess,
+    /// Controls whether and how the user is notified when the responder is hit. When `None`
+    /// (the default) notifications are disabled.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notifications: Option<ResponderNotificationSettings>,
 }
 
 #[cfg(test)]
@@ -39,6 +43,7 @@ mod tests {
             headers: Some(vec![("key".to_string(), "value".to_string())]),
             script: Some("return { body: `custom body` };".to_string()),
             secrets: SecretsAccess::None,
+            notifications: None,
         }, @r###"
         {
           "requestsToTrack": 10,
@@ -61,6 +66,7 @@ mod tests {
             headers: None,
             script: None,
             secrets: SecretsAccess::All,
+            notifications: None,
         }, @r###"
         {
           "requestsToTrack": 0,
@@ -78,6 +84,7 @@ mod tests {
             headers: None,
             script: None,
             secrets: SecretsAccess::Selected { secrets: vec!["KEY_A".into()] },
+            notifications: None,
         }, @r###"
         {
           "requestsToTrack": 0,
@@ -120,6 +127,7 @@ mod tests {
                 headers: Some(vec![("key".to_string(), "value".to_string())]),
                 script: Some("return { body: `custom body` };".to_string()),
                 secrets: SecretsAccess::None,
+                notifications: None,
             }
         );
 
@@ -138,6 +146,7 @@ mod tests {
                 headers: None,
                 script: None,
                 secrets: SecretsAccess::None,
+                notifications: None,
             }
         );
 
@@ -152,6 +161,7 @@ mod tests {
                 headers: None,
                 script: None,
                 secrets: SecretsAccess::All,
+                notifications: None,
             }
         );
 

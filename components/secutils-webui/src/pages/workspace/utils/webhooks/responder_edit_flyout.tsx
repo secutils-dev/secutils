@@ -42,6 +42,28 @@ const PATH_TYPES = [
   { value: '^', text: 'Prefix' },
 ];
 
+// Fallback notification throttle windows (seconds), used only if the subscription features don't
+// provide the allow-list. The server is the source of truth via
+// `SubscriptionWebhooksConfig.notification_throttle_presets`.
+const FALLBACK_NOTIFICATION_THROTTLE_PRESETS = [300, 900, 3600, 21600, 86400];
+const DEFAULT_NOTIFICATION_THROTTLE_SECONDS = 3600;
+
+// Humanizes a throttle window (in seconds) into a dropdown label, e.g. 3600 → "At most once every
+// hour", 300 → "At most once every 5 minutes". Falls back to seconds for non-round values.
+function formatThrottleLabel(seconds: number): string {
+  let quantity: string;
+  if (seconds >= 3600 && seconds % 3600 === 0) {
+    const hours = seconds / 3600;
+    quantity = hours === 1 ? 'hour' : `${hours} hours`;
+  } else if (seconds >= 60 && seconds % 60 === 0) {
+    const minutes = seconds / 60;
+    quantity = minutes === 1 ? 'minute' : `${minutes} minutes`;
+  } else {
+    quantity = seconds === 1 ? 'second' : `${seconds} seconds`;
+  }
+  return `At most once every ${quantity}`;
+}
+
 const SUBDOMAIN_PREFIX_REGEX = /^[a-z0-9-]+$/i;
 
 const isHeaderValid = (header: string) => {
@@ -413,8 +435,8 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
   const [isAdvancedMode, setIsAdvancedMode] = useState(
     !newResponder &&
       (responder?.method !== 'ANY' ||
-        responder?.enabled === false ||
         !!responder?.settings?.script ||
+        !!responder?.settings?.notifications ||
         (!!responder?.settings?.secrets && responder.settings.secrets.type !== 'none')),
   );
 
@@ -443,6 +465,24 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
   const [requestsToTrack, setRequestsToTrack] = useState<number>(
     responder?.settings?.requestsToTrack ??
       Math.min(uiState.subscription?.features?.webhooks.responderRequests ?? 0, 10),
+  );
+
+  const throttlePresets = useMemo(() => {
+    const presets = uiState.subscription?.features?.webhooks.notificationThrottlePresets;
+    return presets && presets.length > 0 ? presets : FALLBACK_NOTIFICATION_THROTTLE_PRESETS;
+  }, [uiState.subscription?.features?.webhooks.notificationThrottlePresets]);
+  const throttleOptions = useMemo(
+    () => throttlePresets.map((value) => ({ value, text: formatThrottleLabel(value) })),
+    [throttlePresets],
+  );
+  const defaultThrottleSeconds = throttlePresets.includes(DEFAULT_NOTIFICATION_THROTTLE_SECONDS)
+    ? DEFAULT_NOTIFICATION_THROTTLE_SECONDS
+    : throttlePresets[0];
+
+  const existingNotifications = responder?.settings?.notifications;
+  const [notifications, setNotifications] = useState<boolean>(!!existingNotifications);
+  const [throttleSeconds, setThrottleSeconds] = useState<number>(
+    existingNotifications?.throttleSeconds ?? defaultThrottleSeconds,
   );
 
   const [statusCode, setStatusCode] = useState<number>(responder?.settings?.statusCode ?? 200);
@@ -558,6 +598,8 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
     secretsMode,
     selectedSecretNames,
     selectedTagIds,
+    notifications,
+    throttleSeconds,
   });
   const hasChanges = isDuplicate || hasFormChanges;
 
@@ -608,6 +650,7 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
             : secretsMode === 'all'
               ? { type: 'all' as const }
               : { type: 'selected' as const, secrets: selectedSecretNames.map((s) => s.label) },
+        notifications: notifications && requestsToTrack > 0 ? { throttleSeconds } : undefined,
       },
       tagIds: selectedTagIds,
     };
@@ -672,6 +715,8 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
     secretsMode,
     selectedSecretNames,
     selectedTagIds,
+    notifications,
+    throttleSeconds,
     responder,
     updatingStatus,
     newResponder,
@@ -728,27 +773,52 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
             onChange={setSelectedTagIds}
             onTagCreated={(tag) => setAllTags((prev) => [...prev, tag])}
           />
-          {isAdvancedMode ? (
-            <EuiFormRow label="Tracking" helpText="Responder will track only specified number of incoming requests">
-              <EuiRange
-                min={0}
-                max={maxResponderRequests}
-                value={requestsToTrack}
-                fullWidth
-                onChange={(e) => setRequestsToTrack(+e.currentTarget.value)}
-                showRange
-                showTicks
-                tickInterval={tickInterval > 1 ? Math.ceil(tickInterval / 5) * 5 : tickInterval}
-                showValue={maxResponderRequests > maxTicks}
+          <EuiFormRow label="Tracking" helpText="Responder will track only specified number of incoming requests">
+            <EuiRange
+              min={0}
+              max={maxResponderRequests}
+              value={requestsToTrack}
+              fullWidth
+              onChange={(e) => setRequestsToTrack(+e.currentTarget.value)}
+              showRange
+              showTicks
+              tickInterval={tickInterval > 1 ? Math.ceil(tickInterval / 5) * 5 : tickInterval}
+              showValue={maxResponderRequests > maxTicks}
+            />
+          </EuiFormRow>
+          <EuiFormRow
+            label={'Enable'}
+            helpText={'Instructs the responder whether it should process incoming requests or not.'}
+          >
+            <EuiSwitch showLabel={false} label="Enable" checked={isEnabled} onChange={onIsEnabledChange} />
+          </EuiFormRow>
+          {isAdvancedMode && requestsToTrack > 0 ? (
+            <EuiFormRow
+              label={'Notifications'}
+              helpText={
+                'Send an email when this responder is hit. Hits are coalesced into a single email per the frequency below.'
+              }
+            >
+              <EuiSwitch
+                showLabel={false}
+                label="Notify me when this responder is hit"
+                checked={notifications}
+                onChange={(e) => setNotifications(e.target.checked)}
               />
             </EuiFormRow>
           ) : null}
-          {isAdvancedMode ? (
+          {isAdvancedMode && requestsToTrack > 0 && notifications ? (
             <EuiFormRow
-              label={'Enable'}
-              helpText={'Instructs the responder whether it should process incoming requests or not.'}
+              label={'Notification frequency'}
+              helpText={
+                'Maximum frequency of notification emails. Hits within the window are coalesced into one email.'
+              }
             >
-              <EuiSwitch showLabel={false} label="Enable" checked={isEnabled} onChange={onIsEnabledChange} />
+              <EuiSelect
+                options={throttleOptions}
+                value={throttleSeconds}
+                onChange={(e) => setThrottleSeconds(+e.target.value)}
+              />
             </EuiFormRow>
           ) : null}
         </EuiDescribedFormGroup>

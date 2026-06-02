@@ -227,7 +227,7 @@ pub async fn webhooks_responders(
     let responder_name = responder.name;
 
     // Configure subscription limits.
-    let subscription_config = user
+    let subscription_config = &user
         .subscription
         .get_features(&state.config)
         .config
@@ -339,7 +339,7 @@ pub async fn webhooks_responders(
             match execute_responder_script::<Option<ResponderScriptResult>>(
                 &state,
                 *user.id,
-                &subscription_config,
+                subscription_config,
                 script,
                 &js_script_context,
                 &responder_info,
@@ -812,6 +812,7 @@ mod tests {
                     headers: Some(vec![("key".to_string(), "value".to_string())]),
                     script: None,
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 },
                 tag_ids: vec![],
             })
@@ -883,6 +884,7 @@ mod tests {
                     headers: Some(vec![("key".to_string(), "value".to_string())]),
                     script: None,
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 },
                 tag_ids: vec![],
             })
@@ -954,6 +956,7 @@ mod tests {
                     headers: Some(vec![("key".to_string(), "value".to_string())]),
                     script: None,
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 },
                 tag_ids: vec![],
             })
@@ -977,6 +980,7 @@ mod tests {
                     headers: Some(vec![("key-2".to_string(), "value-2".to_string())]),
                     script: None,
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 },
                 tag_ids: vec![],
             })
@@ -1085,6 +1089,7 @@ mod tests {
                             "(() => { return { statusCode: 300, headers: { one: `two` }, body: Deno.core.encode(JSON.stringify(context)) }; })()".to_string(),
                         ),
                         secrets: SecretsAccess::None,
+                        notifications: None,
                     },
                     tag_ids: vec![],
                 },
@@ -1185,6 +1190,7 @@ mod tests {
                             .to_string(),
                     ),
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 },
                 tag_ids: vec![],
             })
@@ -1277,6 +1283,7 @@ mod tests {
                     headers: Some(vec![("key".to_string(), "value".to_string())]),
                     script: None,
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 },
                 tag_ids: vec![],
             })
@@ -1400,6 +1407,7 @@ mod tests {
                         "(() => { throw new Error('Script exceeded time limit'); })()".to_string(),
                     ),
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 },
                 tag_ids: vec![],
             })
@@ -1461,6 +1469,7 @@ mod tests {
                         "(() => { throw new Error('Upstream request timed out'); })()".to_string(),
                     ),
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 },
                 tag_ids: vec![],
             })
@@ -1515,6 +1524,7 @@ mod tests {
                             .to_string(),
                     ),
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 },
                 tag_ids: vec![],
             })
@@ -1573,6 +1583,7 @@ mod tests {
                             .to_string(),
                     ),
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 },
                 tag_ids: vec![],
             })
@@ -1625,6 +1636,7 @@ mod tests {
                         "(() => { throw new Error('Upstream request failed'); })()".to_string(),
                     ),
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 },
                 tag_ids: vec![],
             })
@@ -1677,6 +1689,7 @@ mod tests {
                         "(() => { throw new Error('Upstream response body too large: 20971520 bytes exceeds limit'); })()".to_string(),
                     ),
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 },
                 tag_ids: vec![],
             })
@@ -1740,6 +1753,7 @@ mod tests {
                             .to_string(),
                     ),
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 },
                 tag_ids: vec![],
             })
@@ -1803,6 +1817,7 @@ mod tests {
                     headers: None,
                     script: None,
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 },
                 tag_ids: vec![],
             })
@@ -1879,6 +1894,7 @@ mod tests {
                     headers: None,
                     script: None,
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 },
                 tag_ids: vec![],
             })
@@ -1930,6 +1946,7 @@ mod tests {
                     headers: Some(vec![("x-default".to_string(), "yes".to_string())]),
                     script: Some("(() => { return null; })()".to_string()),
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 },
                 tag_ids: vec![],
             })
@@ -1991,6 +2008,7 @@ mod tests {
                     headers: Some(vec![("x-default".to_string(), "yes".to_string())]),
                     script: Some("(() => { return { statusCode: 202 }; })()".to_string()),
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 },
                 tag_ids: vec![],
             })
@@ -2055,6 +2073,7 @@ mod tests {
                         "(() => { return { statusCode: 204, skipRequest: true }; })()".to_string(),
                     ),
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 },
                 tag_ids: vec![],
             })
@@ -2120,6 +2139,7 @@ mod tests {
                     headers: None,
                     script: Some("(() => { return { skipRequest: false }; })()".to_string()),
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 },
                 tag_ids: vec![],
             })
@@ -2176,6 +2196,7 @@ mod tests {
                     headers: None,
                     script: Some("(() => { return { statusCode: 200 }; })()".to_string()),
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 },
                 tag_ids: vec![],
             })
@@ -2234,6 +2255,7 @@ mod tests {
                         "(() => { throw new Error('Script exceeded time limit'); })()".to_string(),
                     ),
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 },
                 tag_ids: vec![],
             })
@@ -2296,6 +2318,7 @@ mod tests {
                             .to_string(),
                     ),
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 },
                 tag_ids: vec![],
             })
@@ -2362,6 +2385,7 @@ mod tests {
                     headers: None,
                     script: Some("(() => { return {}; })()".to_string()),
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 },
                 tag_ids: vec![],
             })
@@ -2427,6 +2451,7 @@ mod tests {
                             .to_string(),
                     ),
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 },
                 tag_ids: vec![],
             })
@@ -2483,6 +2508,7 @@ mod tests {
                     headers: None,
                     script: Some("(() => { throw new Error('something broke'); })()".to_string()),
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 },
                 tag_ids: vec![],
             })
@@ -2545,6 +2571,7 @@ mod tests {
                     headers: None,
                     script: None,
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 },
                 tag_ids: vec![],
             })
@@ -2604,6 +2631,7 @@ mod tests {
                     headers: None,
                     script: None,
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 },
                 tag_ids: vec![],
             })

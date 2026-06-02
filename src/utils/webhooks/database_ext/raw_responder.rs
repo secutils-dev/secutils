@@ -1,6 +1,8 @@
 use crate::{
     users::RawSecretsAccess,
-    utils::webhooks::{Responder, ResponderMethod, ResponderSettings},
+    utils::webhooks::{
+        Responder, ResponderMethod, ResponderNotificationSettings, ResponderSettings,
+    },
 };
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
@@ -24,6 +26,7 @@ impl RawResponder {
     }
 }
 
+/// Newest on-disk format for responder settings (adds the `notifications` field).
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 struct RawResponderSettings {
     requests_to_track: usize,
@@ -32,11 +35,48 @@ struct RawResponderSettings {
     headers: Option<Vec<(String, String)>>,
     script: Option<String>,
     secrets: RawSecretsAccess,
+    notifications: Option<RawResponderNotificationSettings>,
 }
 
-/// Legacy format without the `secrets` field, for backward-compatible deserialization.
+/// On-disk representation of `ResponderNotificationSettings`. Kept separate from the API type so
+/// the storage format can evolve independently of the public serialization.
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
+struct RawResponderNotificationSettings {
+    throttle_seconds: u32,
+}
+
+impl From<&ResponderNotificationSettings> for RawResponderNotificationSettings {
+    fn from(settings: &ResponderNotificationSettings) -> Self {
+        Self {
+            throttle_seconds: settings.throttle_seconds,
+        }
+    }
+}
+
+impl From<RawResponderNotificationSettings> for ResponderNotificationSettings {
+    fn from(raw: RawResponderNotificationSettings) -> Self {
+        Self {
+            throttle_seconds: raw.throttle_seconds,
+        }
+    }
+}
+
+/// Legacy format (V2) with the `secrets` field but without `notifications`, for backward-compatible
+/// deserialization of responders persisted before notifications support was added.
 #[derive(Deserialize)]
-struct RawResponderSettingsLegacy {
+struct RawResponderSettingsLegacyV2 {
+    requests_to_track: usize,
+    status_code: u16,
+    body: Option<String>,
+    headers: Option<Vec<(String, String)>>,
+    script: Option<String>,
+    secrets: RawSecretsAccess,
+}
+
+/// Legacy format (V1) without the `secrets` and `notifications` fields, for backward-compatible
+/// deserialization of the oldest persisted responders.
+#[derive(Deserialize)]
+struct RawResponderSettingsLegacyV1 {
     requests_to_track: usize,
     status_code: u16,
     body: Option<String>,
@@ -45,16 +85,33 @@ struct RawResponderSettingsLegacy {
 }
 
 fn deserialize_settings(bytes: &[u8]) -> anyhow::Result<RawResponderSettings> {
-    postcard::from_bytes::<RawResponderSettings>(bytes).or_else(|_| {
-        let legacy = postcard::from_bytes::<RawResponderSettingsLegacy>(bytes)?;
-        Ok(RawResponderSettings {
+    // Postcard is positional and not self-describing, so older (shorter) buffers fail to parse as
+    // the newest struct. Decode newest-first and fall back through each prior generation.
+    if let Ok(settings) = postcard::from_bytes::<RawResponderSettings>(bytes) {
+        return Ok(settings);
+    }
+
+    if let Ok(legacy) = postcard::from_bytes::<RawResponderSettingsLegacyV2>(bytes) {
+        return Ok(RawResponderSettings {
             requests_to_track: legacy.requests_to_track,
             status_code: legacy.status_code,
             body: legacy.body,
             headers: legacy.headers,
             script: legacy.script,
-            secrets: RawSecretsAccess::None,
-        })
+            secrets: legacy.secrets,
+            notifications: None,
+        });
+    }
+
+    let legacy = postcard::from_bytes::<RawResponderSettingsLegacyV1>(bytes)?;
+    Ok(RawResponderSettings {
+        requests_to_track: legacy.requests_to_track,
+        status_code: legacy.status_code,
+        body: legacy.body,
+        headers: legacy.headers,
+        script: legacy.script,
+        secrets: RawSecretsAccess::None,
+        notifications: None,
     })
 }
 
@@ -76,6 +133,9 @@ impl TryFrom<RawResponder> for Responder {
                 headers: raw_settings.headers,
                 script: raw_settings.script,
                 secrets: raw_settings.secrets.into(),
+                notifications: raw_settings
+                    .notifications
+                    .map(ResponderNotificationSettings::from),
             },
             created_at: raw.created_at,
             tags: vec![],
@@ -95,6 +155,11 @@ impl TryFrom<&Responder> for RawResponder {
             headers: item.settings.headers.clone(),
             script: item.settings.script.clone(),
             secrets: RawSecretsAccess::from(&item.settings.secrets),
+            notifications: item
+                .settings
+                .notifications
+                .as_ref()
+                .map(RawResponderNotificationSettings::from),
         };
 
         Ok(RawResponder {
@@ -115,8 +180,8 @@ mod tests {
     use crate::{
         users::SecretsAccess,
         utils::webhooks::{
-            Responder, ResponderLocation, ResponderMethod, ResponderPathType, ResponderSettings,
-            database_ext::raw_responder::RawResponder,
+            Responder, ResponderLocation, ResponderMethod, ResponderNotificationSettings,
+            ResponderPathType, ResponderSettings, database_ext::raw_responder::RawResponder,
         },
     };
     use time::OffsetDateTime;
@@ -142,6 +207,7 @@ mod tests {
                     headers: None,
                     script: None,
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 },
                 tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
@@ -153,7 +219,7 @@ mod tests {
                 location: ":=:/".to_string(),
                 method: vec![0],
                 enabled: true,
-                settings: vec![0, 200, 1, 0, 0, 0, 0],
+                settings: vec![0, 200, 1, 0, 0, 0, 0, 0],
                 // January 1, 2000 10:00:00
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 // January 1, 2000 10:00:10
@@ -196,6 +262,7 @@ mod tests {
                     headers: None,
                     script: None,
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 },
                 tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
@@ -288,6 +355,7 @@ mod tests {
                 secrets: SecretsAccess::Selected {
                     secrets: vec!["API_KEY".into(), "TOKEN".into()],
                 },
+                notifications: None,
             },
             tags: vec![],
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
@@ -297,6 +365,68 @@ mod tests {
         let raw = RawResponder::try_from(&original)?;
         let restored = Responder::try_from(raw)?;
         assert_eq!(restored.settings.secrets, original.settings.secrets);
+
+        Ok(())
+    }
+
+    #[test]
+    fn round_trip_with_notifications() -> anyhow::Result<()> {
+        let original = Responder {
+            id: uuid!("00000000-0000-0000-0000-000000000001"),
+            name: "with-notifications".to_string(),
+            location: ResponderLocation {
+                path_type: ResponderPathType::Exact,
+                path: "/api".to_string(),
+                subdomain_prefix: None,
+            },
+            method: ResponderMethod::Get,
+            enabled: true,
+            settings: ResponderSettings {
+                requests_to_track: 5,
+                status_code: 200,
+                body: None,
+                headers: None,
+                script: None,
+                secrets: SecretsAccess::None,
+                notifications: Some(ResponderNotificationSettings {
+                    throttle_seconds: 3600,
+                }),
+            },
+            tags: vec![],
+            created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
+        };
+
+        let raw = RawResponder::try_from(&original)?;
+        let restored = Responder::try_from(raw)?;
+        assert_eq!(
+            restored.settings.notifications,
+            original.settings.notifications
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn bwc_deserializes_legacy_v2_settings_with_secrets_without_notifications() -> anyhow::Result<()>
+    {
+        // V2 format: [requests_to_track=0, status_code=200, body=None, headers=None, script=None,
+        // secrets=None] — has the secrets field but no notifications field.
+        let legacy_settings_bytes = vec![0, 200, 1, 0, 0, 0, 0];
+        let responder = Responder::try_from(RawResponder {
+            id: uuid!("00000000-0000-0000-0000-000000000001"),
+            name: "legacy-v2".to_string(),
+            location: ":=:/".to_string(),
+            method: vec![0],
+            enabled: true,
+            settings: legacy_settings_bytes,
+            created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
+        })?;
+
+        assert_eq!(responder.settings.secrets, SecretsAccess::None);
+        assert_eq!(responder.settings.status_code, 200);
+        assert!(responder.settings.notifications.is_none());
 
         Ok(())
     }

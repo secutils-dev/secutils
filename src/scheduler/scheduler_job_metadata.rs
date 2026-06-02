@@ -59,6 +59,10 @@ mod tests {
             Vec::try_from(SchedulerJobMetadata::new(SchedulerJob::WebhooksKvSweep))?,
             vec![1]
         );
+        assert_eq!(
+            Vec::try_from(SchedulerJobMetadata::new(SchedulerJob::RespondersNotify))?,
+            vec![2]
+        );
 
         Ok(())
     }
@@ -73,8 +77,13 @@ mod tests {
             SchedulerJobMetadata::try_from([1].as_ref())?,
             SchedulerJobMetadata::new(SchedulerJob::WebhooksKvSweep)
         );
+        assert_eq!(
+            SchedulerJobMetadata::try_from([2].as_ref())?,
+            SchedulerJobMetadata::new(SchedulerJob::RespondersNotify)
+        );
 
-        assert_debug_snapshot!(SchedulerJobMetadata::try_from([2].as_ref()), @r###"
+        // Unknown job type discriminant should fail to deserialize.
+        assert_debug_snapshot!(SchedulerJobMetadata::try_from([3].as_ref()), @r###"
         Err(
             SerdeDeCustom,
         )

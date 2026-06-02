@@ -42,7 +42,14 @@ mod tests {
           "features": {
             "certificates": {},
             "webhooks": {
-              "responderRequests": 30
+              "responderRequests": 30,
+              "notificationThrottlePresets": [
+                300,
+                900,
+                3600,
+                21600,
+                86400
+              ]
             },
             "webScraping": {
               "trackerRevisions": 30

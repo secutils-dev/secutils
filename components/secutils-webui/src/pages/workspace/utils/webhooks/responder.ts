@@ -5,6 +5,10 @@ export interface SecretsAccess {
   secrets?: string[];
 }
 
+export interface ResponderNotificationSettings {
+  throttleSeconds: number;
+}
+
 export interface Responder {
   id: string;
   name: string;
@@ -22,6 +26,7 @@ export interface Responder {
     body?: string;
     script?: string;
     secrets?: SecretsAccess;
+    notifications?: ResponderNotificationSettings;
   };
   tags?: EntityTag[];
   createdAt: number;

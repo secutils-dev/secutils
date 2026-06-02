@@ -15,7 +15,22 @@ use raw_responder::RawResponder;
 use raw_responder_request::RawResponderRequest;
 use sqlx::{Acquire, Pool, Postgres, query, query_as};
 use std::collections::HashMap;
+use time::OffsetDateTime;
 use uuid::Uuid;
+
+/// A responder that has notifications enabled and at least one tracked request that the user has
+/// not been notified about yet. Returned by [`WebhooksDatabaseExt::get_responders_pending_notification`].
+#[derive(Debug, Clone)]
+pub struct PendingResponderNotification {
+    /// The responder (including its notification settings) that has pending notifications.
+    pub responder: Responder,
+    /// The ID of the user who owns the responder.
+    pub user_id: UserId,
+    /// The time the user was last notified about this responder, if ever.
+    pub last_notified_at: Option<OffsetDateTime>,
+    /// The number of tracked requests received since `last_notified_at`.
+    pub new_request_count: usize,
+}
 
 /// A database extension for the webhooks utility-related operations.
 pub struct WebhooksDatabaseExt<'pool> {
@@ -183,16 +198,20 @@ ORDER BY updated_at
         let raw_responder = RawResponder::try_from(responder)?;
         let id = *user_id;
         let raw_any_method = RawResponder::get_raw_method(ResponderMethod::Any)?;
+        let notifications_enabled = responder.settings.notifications.is_some();
+        // When notifications are enabled on creation, baseline the "last notified" timestamp to the
+        // creation time so the scheduler only considers requests received afterwards.
+        let notifications_last_at = notifications_enabled.then_some(raw_responder.created_at);
 
         // Construct a query that inserts a new responder only if there is no other existing
         // responder that already covers the same location and method.
         let mut tx = self.pool.begin().await?;
         let result = query!(
                 r#"
-        WITH new_responder(user_id, id, name, location, method, enabled, settings, created_at, updated_at) AS (
-            VALUES ( $1::uuid, $2::uuid, $3, $4, $5::bytea, $6::bool, $7::bytea, $8::timestamptz, $9::timestamptz )
+        WITH new_responder(user_id, id, name, location, method, enabled, settings, notifications_enabled, notifications_last_at, created_at, updated_at) AS (
+            VALUES ( $1::uuid, $2::uuid, $3, $4, $5::bytea, $6::bool, $7::bytea, $11::bool, $12::timestamptz, $8::timestamptz, $9::timestamptz )
         )
-        INSERT INTO user_data_webhooks_responders (user_id, id, name, location, method, enabled, settings, created_at, updated_at)
+        INSERT INTO user_data_webhooks_responders (user_id, id, name, location, method, enabled, settings, notifications_enabled, notifications_last_at, created_at, updated_at)
         SELECT * FROM new_responder
         WHERE NOT EXISTS(
             SELECT id FROM user_data_webhooks_responders
@@ -208,7 +227,9 @@ ORDER BY updated_at
                 raw_responder.settings,
                 raw_responder.created_at,
                 raw_responder.updated_at,
-                raw_any_method
+                raw_any_method,
+                notifications_enabled,
+                notifications_last_at
             )
             .execute(&mut *tx)
             .await;
@@ -267,14 +288,25 @@ ORDER BY updated_at
     ) -> anyhow::Result<Option<Vec<EntityTag>>> {
         let raw_responder = RawResponder::try_from(responder)?;
         let raw_any_method = RawResponder::get_raw_method(ResponderMethod::Any)?;
+        let notifications_enabled = responder.settings.notifications.is_some();
 
         // Construct a query that updates a new responder only if there is no other existing
-        // responder that already covers the same location and method.
+        // responder that already covers the same location and method. `notifications_last_at` is
+        // re-baselined to the update time only when notifications transition from disabled to
+        // enabled (so newly-enabled responders don't notify about historical requests), cleared
+        // when notifications are disabled, and left untouched otherwise (so an unrelated edit does
+        // not reset the throttle window).
         let mut tx = self.pool.begin().await?;
         let result = query!(
             r#"
     UPDATE user_data_webhooks_responders
-    SET name = $3, location = $4, method = $5, enabled = $6, settings = $7, updated_at = $8
+    SET name = $3, location = $4, method = $5, enabled = $6, settings = $7, updated_at = $8,
+        notifications_enabled = $10,
+        notifications_last_at = CASE
+            WHEN $10 = FALSE THEN NULL
+            WHEN notifications_enabled = FALSE THEN $8
+            ELSE notifications_last_at
+        END
     WHERE user_id = $1 AND id = $2 AND NOT EXISTS(
         SELECT id FROM user_data_webhooks_responders
         WHERE user_id = $1 AND id != $2 AND location = $4 AND (method = $9 OR method = $5 OR $5 = $9)
@@ -288,7 +320,8 @@ ORDER BY updated_at
             raw_responder.enabled,
             raw_responder.settings,
             raw_responder.updated_at,
-            raw_any_method
+            raw_any_method,
+            notifications_enabled
         )
             .execute(&mut *tx)
             .await;
@@ -331,6 +364,73 @@ ORDER BY updated_at
 
         tx.commit().await?;
         Ok(updated_tags)
+    }
+
+    /// Retrieves responders that have notifications enabled and at least one tracked request
+    /// received since the user was last notified. The throttle window stored in the responder's
+    /// settings is intentionally not evaluated here (it lives in the postcard `settings` blob) and
+    /// must be applied by the caller.
+    pub async fn get_responders_pending_notification(
+        &self,
+    ) -> anyhow::Result<Vec<PendingResponderNotification>> {
+        let records = query!(
+            r#"
+SELECT r.id, r.user_id, r.name, r.location, r.method, r.enabled, r.settings, r.created_at, r.updated_at,
+       r.notifications_last_at,
+       COUNT(rh.id) FILTER (WHERE r.notifications_last_at IS NULL OR rh.created_at > r.notifications_last_at) AS "new_request_count!"
+FROM user_data_webhooks_responders AS r
+JOIN user_data_webhooks_responders_history AS rh ON r.id = rh.responder_id
+WHERE r.notifications_enabled = TRUE
+GROUP BY r.id
+HAVING COUNT(rh.id) FILTER (WHERE r.notifications_last_at IS NULL OR rh.created_at > r.notifications_last_at) > 0
+            "#
+        )
+        .fetch_all(self.pool)
+        .await?;
+
+        let mut pending = Vec::with_capacity(records.len());
+        for record in records {
+            let responder = Responder::try_from(RawResponder {
+                id: record.id,
+                name: record.name,
+                location: record.location,
+                method: record.method,
+                enabled: record.enabled,
+                settings: record.settings,
+                created_at: record.created_at,
+                updated_at: record.updated_at,
+            })?;
+
+            pending.push(PendingResponderNotification {
+                responder,
+                user_id: UserId::from(record.user_id),
+                last_notified_at: record.notifications_last_at,
+                new_request_count: record.new_request_count as usize,
+            });
+        }
+
+        Ok(pending)
+    }
+
+    /// Updates the "last notified" timestamp for the specified responder.
+    pub async fn update_responder_notified_at(
+        &self,
+        responder_id: Uuid,
+        notified_at: OffsetDateTime,
+    ) -> anyhow::Result<()> {
+        query!(
+            r#"
+UPDATE user_data_webhooks_responders
+SET notifications_last_at = $2
+WHERE id = $1
+            "#,
+            responder_id,
+            notified_at
+        )
+        .execute(self.pool)
+        .await?;
+
+        Ok(())
     }
 
     /// Removes responder for the specified user with the specified ID.

@@ -119,7 +119,7 @@ In this guide, you'll create a responder that returns an HTML page with custom <
     },
     {
         img: '../img/docs/guides/webhooks/tracking_step2_form.png',
-        caption: <>Enable <b>Advanced mode</b>, set <b>Tracking</b> to 5, and fill in the rest of the form. Click <b>Save</b>.<br/><br/>
+        caption: <>Set <b>Tracking</b> to 5, and fill in the rest of the form. Click <b>Save</b>.<br/><br/>
             <SampleFields
                 sample={honeypotResponderSample}
                 entity="responders"
@@ -145,6 +145,41 @@ In this guide, you'll create a responder that returns an HTML page with custom <
     },
 ]} />
 
+## Get notified when a responder is hit
+
+If you'd rather not poll the request history manually, you can ask Secutils.dev to email you when a responder receives requests. Because a responder is a public endpoint that can be hit at any rate, notifications are **coalesced**: instead of one email per request, you receive a single summary email per throttle window (for example, _at most once every hour_), telling you how many requests arrived since the last notification.
+
+:::info NOTE
+
+Notifications live under **Advanced mode**. They require **request tracking** to be enabled (`Tracking`, available in the standard settings, greater than zero), because the number of received requests is derived from the tracked request history - the toggle is hidden until tracking is enabled. Notifications are delivered to the email address associated with your account and carry an unsubscribe link, just like other Secutils.dev product notifications.
+
+:::
+
+<Steps steps={[
+    {
+        img: '../img/docs/guides/webhooks/notifications_step1_empty.png',
+        caption: <>Navigate to <a href="https://secutils.dev/ws/webhooks__responders"><b>Webhooks → Responders</b></a> and click <strong>Create responder</strong>.</>,
+        alt: 'Navigate to Webhooks → Responders and click Create responder.',
+    },
+    {
+        img: '../img/docs/guides/webhooks/notifications_step2_form.png',
+        caption: <>Make sure <b>Tracking</b> is greater than zero, enable <b>Advanced mode</b>, then turn on <b>Notifications</b> and pick how often you want to be emailed via <b>Notification frequency</b>. Click <b>Save</b>.<br/><br/>
+            <table className="su-table">
+                <tbody>
+                    <tr><td><b>Tracking</b></td><td><CodeBlock>10</CodeBlock></td></tr>
+                    <tr><td><b>Notifications</b></td><td><CodeBlock>Enabled</CodeBlock></td></tr>
+                    <tr><td><b>Notification frequency</b></td><td><CodeBlock>At most once every hour</CodeBlock></td></tr>
+                </tbody>
+            </table></>,
+        alt: 'Enable Advanced mode, then enable notifications and choose a notification frequency for the responder.',
+    },
+    {
+        img: '../img/docs/guides/webhooks/notifications_step3_created.png',
+        caption: <>The responder appears in the grid with a <b>bell</b> icon indicating that email notifications are enabled.</>,
+        alt: 'The responder row shows a bell icon when notifications are enabled.',
+    },
+]} />
+
 ## Generate a dynamic response
 
 In this guide, you'll build a responder that uses a custom JavaScript script to generate a dynamic response based on the request's query string parameter:
@@ -163,7 +198,7 @@ The script should be provided in the form of an [Immediately Invoked Function Ex
     },
     {
         img: '../img/docs/guides/webhooks/dynamic_step2_form.png',
-        caption: <>Enable <b>Advanced mode</b>, set <b>Tracking</b> to 5, and fill in the form with a custom script.<br/><br/>
+        caption: <>Set <b>Tracking</b> to 5, enable <b>Advanced mode</b> to access the <b>Script</b> field, and fill in the form with a custom script.<br/><br/>
             <SampleFields
                 sample={dynamicResponderSample}
                 entity="responders"

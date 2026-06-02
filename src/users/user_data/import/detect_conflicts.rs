@@ -153,6 +153,7 @@ mod tests {
                 headers: None,
                 script: None,
                 secrets: crate::users::SecretsAccess::None,
+                notifications: None,
             },
             tags: vec![],
             created_at: datetime!(2020-01-01 00:00:00 UTC),

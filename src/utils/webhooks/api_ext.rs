@@ -10,7 +10,8 @@ pub use self::{
 use crate::{
     api::Api,
     error::Error as SecutilsError,
-    network::{DnsResolver, EmailTransport},
+    network::{DnsResolver, EmailTransport, EmailTransportError},
+    notifications::{NotificationContent, NotificationContentTemplate, NotificationDestination},
     security::USER_HANDLE_LENGTH_BYTES,
     users::{EntityTag, User},
     utils::{
@@ -22,7 +23,7 @@ use crate::{
 };
 use anyhow::bail;
 use std::collections::HashMap;
-use time::OffsetDateTime;
+use time::{Duration, OffsetDateTime};
 use url::Url;
 use uuid::Uuid;
 
@@ -380,6 +381,28 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, 'u, DR, ET>
             bail!(SecutilsError::client("Responder script cannot be empty."));
         }
 
+        if let Some(ref notifications) = responder.settings.notifications {
+            // Notifications rely on tracked request history to detect new hits, so they cannot be
+            // enabled unless the responder tracks at least one request.
+            if responder.settings.requests_to_track == 0 {
+                bail!(SecutilsError::client(
+                    "Responder notifications require request tracking to be enabled."
+                ));
+            }
+
+            if !features
+                .config
+                .webhooks
+                .notification_throttle_presets
+                .contains(&notifications.throttle_seconds)
+            {
+                bail!(SecutilsError::client(format!(
+                    "Responder notification throttle ('{}' seconds) is not supported.",
+                    notifications.throttle_seconds
+                )));
+            }
+        }
+
         Ok(())
     }
 
@@ -459,6 +482,66 @@ impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
     }
 }
 
+impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET>
+where
+    ET::Error: EmailTransportError,
+{
+    /// Scans responders that opted into hit notifications and, for those whose throttle window has
+    /// elapsed and have received new tracked requests, schedules a single coalesced notification
+    /// and stamps the "last notified" timestamp. This is a global maintenance operation (not
+    /// user-scoped) that backs the periodic `RespondersNotifyJob`. Returns the number of
+    /// notifications scheduled.
+    pub async fn notify_pending_responders(&self) -> anyhow::Result<usize> {
+        let now = OffsetDateTime::now_utc();
+        let pending = self
+            .db
+            .webhooks()
+            .get_responders_pending_notification()
+            .await?;
+
+        let mut scheduled = 0;
+        for entry in pending {
+            let Some(notifications) = entry.responder.settings.notifications.as_ref() else {
+                continue;
+            };
+
+            // The throttle window is baselined off the last notification (or, defensively, the
+            // responder's creation time). Skip responders whose window has not elapsed yet so
+            // subsequent requests keep coalescing into the next notification.
+            let since = entry.last_notified_at.unwrap_or(entry.responder.created_at);
+            if let Some(last_notified_at) = entry.last_notified_at {
+                let throttle = Duration::seconds(i64::from(notifications.throttle_seconds));
+                if now - last_notified_at < throttle {
+                    continue;
+                }
+            }
+
+            self.notifications()
+                .schedule_notification(
+                    NotificationDestination::User(entry.user_id),
+                    NotificationContent::Template(
+                        NotificationContentTemplate::ResponderRequestsReceived {
+                            responder_id: entry.responder.id,
+                            responder_name: entry.responder.name.clone(),
+                            request_count: entry.new_request_count,
+                            since,
+                        },
+                    ),
+                    now,
+                )
+                .await?;
+
+            self.db
+                .webhooks()
+                .update_responder_notified_at(entry.responder.id, now)
+                .await?;
+            scheduled += 1;
+        }
+
+        Ok(scheduled)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
@@ -466,8 +549,8 @@ mod tests {
         tests::{mock_api, mock_user},
         users::SecretsAccess,
         utils::webhooks::{
-            Responder, ResponderLocation, ResponderMethod, ResponderPathType, ResponderSettings,
-            ResponderStats, RespondersRequestCreateParams,
+            Responder, ResponderLocation, ResponderMethod, ResponderNotificationSettings,
+            ResponderPathType, ResponderSettings, ResponderStats, RespondersRequestCreateParams,
             api_ext::{RespondersCreateParams, RespondersUpdateParams},
         },
     };
@@ -514,6 +597,7 @@ mod tests {
                     headers: Some(vec![("key".to_string(), "value".to_string())]),
                     script: Some("return { body: `custom body` };".to_string()),
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 },
                 tag_ids: vec![],
             })
@@ -541,6 +625,7 @@ mod tests {
             headers: None,
             script: Some("return { body: `custom body` };".to_string()),
             secrets: SecretsAccess::None,
+            notifications: None,
         };
 
         let create_and_fail = |result: anyhow::Result<_>| -> SecutilsError {
@@ -797,6 +882,48 @@ mod tests {
             @r###""Responder script cannot be empty.""###
         );
 
+        // Notifications enabled without request tracking.
+        assert_debug_snapshot!(
+            create_and_fail(webhooks.create_responder(RespondersCreateParams {
+                name: "some-name".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/path".to_string(),
+                    subdomain_prefix: None
+                },
+                method: ResponderMethod::Get,
+                enabled: true,
+                settings: ResponderSettings {
+                    requests_to_track: 0,
+                    notifications: Some(ResponderNotificationSettings { throttle_seconds: 3600 }),
+                    ..settings.clone()
+                },
+                tag_ids: vec![],
+            }).await),
+            @r###""Responder notifications require request tracking to be enabled.""###
+        );
+
+        // Notifications with an unsupported throttle window.
+        assert_debug_snapshot!(
+            create_and_fail(webhooks.create_responder(RespondersCreateParams {
+                name: "some-name".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/path".to_string(),
+                    subdomain_prefix: None
+                },
+                method: ResponderMethod::Get,
+                enabled: true,
+                settings: ResponderSettings {
+                    requests_to_track: 3,
+                    notifications: Some(ResponderNotificationSettings { throttle_seconds: 42 }),
+                    ..settings.clone()
+                },
+                tag_ids: vec![],
+            }).await),
+            @r###""Responder notification throttle ('42' seconds) is not supported.""###
+        );
+
         Ok(())
     }
 
@@ -824,6 +951,7 @@ mod tests {
                     headers: None,
                     script: None,
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 },
                 tag_ids: vec![],
             })
@@ -998,6 +1126,7 @@ mod tests {
                         headers: Some(vec![("new-key".to_string(), "value".to_string())]),
                         script: Some("return { body: `custom body` };".to_string()),
                         secrets: SecretsAccess::None,
+                        notifications: None,
                     }),
                     tag_ids: None,
                 },
@@ -1019,6 +1148,7 @@ mod tests {
                 headers: Some(vec![("new-key".to_string(), "value".to_string())]),
                 script: Some("return { body: `custom body` };".to_string()),
                 secrets: SecretsAccess::None,
+                notifications: None,
             },
             updated_at: updated_responder.updated_at,
             ..responder.clone()
@@ -1046,6 +1176,7 @@ mod tests {
             headers: None,
             script: None,
             secrets: SecretsAccess::None,
+            notifications: None,
         };
         let responder = webhooks
             .create_responder(RespondersCreateParams {
@@ -1337,6 +1468,40 @@ mod tests {
             @r###""Responder script cannot be empty.""###
         );
 
+        // Notifications enabled without request tracking.
+        assert_debug_snapshot!(
+            update_and_fail(webhooks.update_responder(responder.id, RespondersUpdateParams {
+                name: None,
+                location: None,
+                method: None,
+                enabled: None,
+                settings: Some(ResponderSettings {
+                    requests_to_track: 0,
+                    notifications: Some(ResponderNotificationSettings { throttle_seconds: 3600 }),
+                    ..settings.clone()
+                }),
+                tag_ids: None,
+            }).await),
+            @r###""Responder notifications require request tracking to be enabled.""###
+        );
+
+        // Notifications with an unsupported throttle window.
+        assert_debug_snapshot!(
+            update_and_fail(webhooks.update_responder(responder.id, RespondersUpdateParams {
+                name: None,
+                location: None,
+                method: None,
+                enabled: None,
+                settings: Some(ResponderSettings {
+                    requests_to_track: 3,
+                    notifications: Some(ResponderNotificationSettings { throttle_seconds: 42 }),
+                    ..settings.clone()
+                }),
+                tag_ids: None,
+            }).await),
+            @r###""Responder notification throttle ('42' seconds) is not supported.""###
+        );
+
         Ok(())
     }
 
@@ -1354,6 +1519,7 @@ mod tests {
             headers: None,
             script: None,
             secrets: SecretsAccess::None,
+            notifications: None,
         };
 
         let responders = [
@@ -1439,6 +1605,7 @@ mod tests {
             headers: None,
             script: None,
             secrets: SecretsAccess::None,
+            notifications: None,
         };
         let responder_one = webhooks
             .create_responder(RespondersCreateParams {
@@ -1502,6 +1669,7 @@ mod tests {
             headers: None,
             script: None,
             secrets: SecretsAccess::None,
+            notifications: None,
         };
         let responder_one = webhooks
             .create_responder(RespondersCreateParams {
@@ -1560,6 +1728,7 @@ mod tests {
             headers: None,
             script: None,
             secrets: SecretsAccess::None,
+            notifications: None,
         };
         let responder_one = webhooks
             .create_responder(RespondersCreateParams {
@@ -1645,6 +1814,7 @@ mod tests {
             headers: None,
             script: None,
             secrets: SecretsAccess::None,
+            notifications: None,
         };
         let responder_one = webhooks
             .create_responder(RespondersCreateParams {
@@ -1729,6 +1899,7 @@ mod tests {
             headers: None,
             script: None,
             secrets: SecretsAccess::None,
+            notifications: None,
         };
         let responder = webhooks
             .create_responder(RespondersCreateParams {
@@ -1798,6 +1969,7 @@ mod tests {
             headers: None,
             script: None,
             secrets: SecretsAccess::None,
+            notifications: None,
         };
         let responder_one = webhooks
             .create_responder(RespondersCreateParams {
@@ -1898,6 +2070,7 @@ mod tests {
             headers: None,
             script: None,
             secrets: SecretsAccess::None,
+            notifications: None,
         };
         let responder_one = webhooks
             .create_responder(RespondersCreateParams {
@@ -1959,6 +2132,184 @@ mod tests {
         let responder_two_requests = webhooks.get_responder_requests(responder_two.id).await?;
         assert!(responder_one_requests.is_empty());
         assert!(responder_two_requests.is_empty());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn properly_schedules_pending_responder_notifications(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        use crate::notifications::{
+            NotificationContent, NotificationContentTemplate, NotificationDestination,
+        };
+        use futures::StreamExt;
+        use time::{Duration, OffsetDateTime};
+
+        let api = mock_api(pool).await?;
+        let mock_user = mock_user()?;
+        api.db.insert_user(&mock_user).await?;
+        let webhooks = api.webhooks(&mock_user);
+
+        // Collects every scheduled notification (destination + content), regardless of schedule time.
+        async fn scheduled(
+            api: &crate::api::Api<
+                impl crate::network::DnsResolver,
+                impl crate::network::EmailTransport,
+            >,
+        ) -> anyhow::Result<Vec<(NotificationDestination, NotificationContent)>> {
+            let ids = api
+                .db
+                .get_notification_ids(OffsetDateTime::now_utc() + Duration::days(1), 100)
+                .collect::<Vec<_>>()
+                .await;
+            let mut notifications = Vec::with_capacity(ids.len());
+            for id in ids {
+                let notification = api.db.get_notification(id?).await?.unwrap();
+                notifications.push((notification.destination, notification.content));
+            }
+            Ok(notifications)
+        }
+
+        // Responder that opted into notifications, with request tracking enabled.
+        let responder = webhooks
+            .create_responder(RespondersCreateParams {
+                name: "notified".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/".to_string(),
+                    subdomain_prefix: None,
+                },
+                method: ResponderMethod::Any,
+                enabled: true,
+                settings: ResponderSettings {
+                    requests_to_track: 5,
+                    status_code: 200,
+                    body: None,
+                    headers: None,
+                    script: None,
+                    secrets: SecretsAccess::None,
+                    notifications: Some(ResponderNotificationSettings {
+                        throttle_seconds: 3600,
+                    }),
+                },
+                tag_ids: vec![],
+            })
+            .await?;
+
+        // Responder with request tracking but notifications disabled - must never be scheduled.
+        let silent_responder = webhooks
+            .create_responder(RespondersCreateParams {
+                name: "silent".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/silent".to_string(),
+                    subdomain_prefix: None,
+                },
+                method: ResponderMethod::Any,
+                enabled: true,
+                settings: ResponderSettings {
+                    requests_to_track: 5,
+                    status_code: 200,
+                    body: None,
+                    headers: None,
+                    script: None,
+                    secrets: SecretsAccess::None,
+                    notifications: None,
+                },
+                tag_ids: vec![],
+            })
+            .await?;
+
+        // Nothing has been hit yet, so there's nothing to notify about.
+        assert_eq!(api.notify_pending_responders().await?, 0);
+        assert!(scheduled(&api).await?.is_empty());
+
+        // Track two requests for the notified responder and one for the silent one.
+        webhooks
+            .create_responder_request(responder.id, get_request_create_params("/?query=value"))
+            .await?;
+        webhooks
+            .create_responder_request(responder.id, get_request_create_params("/"))
+            .await?;
+        webhooks
+            .create_responder_request(silent_responder.id, get_request_create_params("/silent"))
+            .await?;
+
+        // The throttle window (baselined off the responder's creation time) has not elapsed yet, so
+        // the hits keep coalescing and nothing is scheduled.
+        assert_eq!(api.notify_pending_responders().await?, 0);
+        assert!(scheduled(&api).await?.is_empty());
+
+        // Simulate the throttle window elapsing by back-dating the last-notified baseline.
+        api.db
+            .webhooks()
+            .update_responder_notified_at(
+                responder.id,
+                OffsetDateTime::now_utc() - Duration::hours(2),
+            )
+            .await?;
+
+        // Exactly one coalesced notification is scheduled (only for the notified responder; the
+        // silent one is skipped because it never opted into notifications).
+        assert_eq!(api.notify_pending_responders().await?, 1);
+        let notifications = scheduled(&api).await?;
+        assert_eq!(notifications.len(), 1);
+        assert_eq!(
+            notifications[0].0,
+            NotificationDestination::User(mock_user.id)
+        );
+        match &notifications[0].1 {
+            NotificationContent::Template(
+                NotificationContentTemplate::ResponderRequestsReceived {
+                    responder_id,
+                    responder_name,
+                    request_count,
+                    ..
+                },
+            ) => {
+                assert_eq!(*responder_id, responder.id);
+                assert_eq!(responder_name, "notified");
+                assert_eq!(*request_count, 2);
+            }
+            content => panic!("unexpected notification content: {content:?}"),
+        }
+
+        // Running again immediately is a no-op: the throttle window was just reset by the previous
+        // notification, even though there are no new hits.
+        assert_eq!(api.notify_pending_responders().await?, 0);
+        assert_eq!(scheduled(&api).await?.len(), 1);
+
+        // Back-date the baseline again and record a fresh hit.
+        api.db
+            .webhooks()
+            .update_responder_notified_at(
+                responder.id,
+                OffsetDateTime::now_utc() - Duration::hours(2),
+            )
+            .await?;
+        webhooks
+            .create_responder_request(responder.id, get_request_create_params("/?query=fresh"))
+            .await?;
+
+        // A second coalesced notification is scheduled now that the window elapsed again. All three
+        // tracked requests fall after the (back-dated) last-notified baseline.
+        assert_eq!(api.notify_pending_responders().await?, 1);
+        let notifications = scheduled(&api).await?;
+        assert_eq!(notifications.len(), 2);
+        match &notifications[1].1 {
+            NotificationContent::Template(
+                NotificationContentTemplate::ResponderRequestsReceived {
+                    responder_id,
+                    request_count,
+                    ..
+                },
+            ) => {
+                assert_eq!(*responder_id, responder.id);
+                assert_eq!(*request_count, 3);
+            }
+            content => panic!("unexpected notification content: {content:?}"),
+        }
 
         Ok(())
     }

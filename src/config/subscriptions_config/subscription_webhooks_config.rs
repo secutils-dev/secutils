@@ -3,7 +3,7 @@ use serde_with::{DurationMilliSeconds, serde_as};
 use std::time::Duration;
 
 #[serde_as]
-#[derive(Deserialize, Serialize, Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
 pub struct SubscriptionWebhooksConfig {
     /// The number of responders available to a particular subscription.
     pub responders: usize,
@@ -56,6 +56,12 @@ pub struct SubscriptionWebhooksConfig {
     /// Defaults to 200.
     #[serde(default = "default_responder_kv_ops_per_script")]
     pub responder_kv_ops_per_script: usize,
+    /// Allowed throttle windows (in seconds) a user may pick for responder hit notifications.
+    /// Requests received within a single window are coalesced into one notification email. The
+    /// Web UI renders these as a dropdown, and the server validates the chosen value against this
+    /// list. Defaults to 5 minutes, 15 minutes, 1 hour, 6 hours, and 24 hours.
+    #[serde(default = "default_notification_throttle_presets")]
+    pub notification_throttle_presets: Vec<u32>,
 }
 
 fn default_responder_kv_max_key_bytes() -> usize {
@@ -84,6 +90,10 @@ fn default_responder_kv_max_lifespan_sec() -> u64 {
 
 fn default_responder_kv_ops_per_script() -> usize {
     200
+}
+
+fn default_notification_throttle_presets() -> Vec<u32> {
+    vec![300, 900, 3600, 21600, 86400]
 }
 
 fn default_restrict_to_public_urls() -> bool {
@@ -125,6 +135,7 @@ impl Default for SubscriptionWebhooksConfig {
             responder_kv_max_ttl_sec: default_responder_kv_max_ttl_sec(),
             responder_kv_max_lifespan_sec: default_responder_kv_max_lifespan_sec(),
             responder_kv_ops_per_script: default_responder_kv_ops_per_script(),
+            notification_throttle_presets: default_notification_throttle_presets(),
         }
     }
 }
@@ -154,6 +165,13 @@ mod tests {
         responder_kv_max_ttl_sec = 2592000
         responder_kv_max_lifespan_sec = 0
         responder_kv_ops_per_script = 200
+        notification_throttle_presets = [
+            300,
+            900,
+            3600,
+            21600,
+            86400,
+        ]
         "###);
     }
 

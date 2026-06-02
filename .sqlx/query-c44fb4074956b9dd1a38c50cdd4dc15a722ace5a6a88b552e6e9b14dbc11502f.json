@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n    UPDATE user_data_webhooks_responders\n    SET name = $3, location = $4, method = $5, enabled = $6, settings = $7, updated_at = $8,\n        notifications_enabled = $10,\n        notifications_last_at = CASE\n            WHEN $10 = FALSE THEN NULL\n            WHEN notifications_enabled = FALSE THEN $8\n            ELSE notifications_last_at\n        END\n    WHERE user_id = $1 AND id = $2 AND NOT EXISTS(\n        SELECT id FROM user_data_webhooks_responders\n        WHERE user_id = $1 AND id != $2 AND location = $4 AND (method = $9 OR method = $5 OR $5 = $9)\n    )\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Bytea",
+        "Bool",
+        "Bytea",
+        "Timestamptz",
+        "Bytea",
+        "Bool"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c44fb4074956b9dd1a38c50cdd4dc15a722ace5a6a88b552e6e9b14dbc11502f"
+}

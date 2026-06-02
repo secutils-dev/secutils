@@ -83,6 +83,13 @@ mod tests {
         responder_kv_max_ttl_sec = 2592000
         responder_kv_max_lifespan_sec = 0
         responder_kv_ops_per_script = 200
+        notification_throttle_presets = [
+            300,
+            900,
+            3600,
+            21600,
+            86400,
+        ]
         [basic.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -115,6 +122,13 @@ mod tests {
         responder_kv_max_ttl_sec = 2592000
         responder_kv_max_lifespan_sec = 0
         responder_kv_ops_per_script = 200
+        notification_throttle_presets = [
+            300,
+            900,
+            3600,
+            21600,
+            86400,
+        ]
         [standard.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -147,6 +161,13 @@ mod tests {
         responder_kv_max_ttl_sec = 2592000
         responder_kv_max_lifespan_sec = 0
         responder_kv_ops_per_script = 200
+        notification_throttle_presets = [
+            300,
+            900,
+            3600,
+            21600,
+            86400,
+        ]
         [professional.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -179,6 +200,13 @@ mod tests {
         responder_kv_max_ttl_sec = 2592000
         responder_kv_max_lifespan_sec = 0
         responder_kv_ops_per_script = 200
+        notification_throttle_presets = [
+            300,
+            900,
+            3600,
+            21600,
+            86400,
+        ]
         [ultimate.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -224,6 +252,13 @@ mod tests {
         responder_kv_max_ttl_sec = 2592000
         responder_kv_max_lifespan_sec = 0
         responder_kv_ops_per_script = 200
+        notification_throttle_presets = [
+            300,
+            900,
+            3600,
+            21600,
+            86400,
+        ]
         [basic.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -256,6 +291,13 @@ mod tests {
         responder_kv_max_ttl_sec = 2592000
         responder_kv_max_lifespan_sec = 0
         responder_kv_ops_per_script = 200
+        notification_throttle_presets = [
+            300,
+            900,
+            3600,
+            21600,
+            86400,
+        ]
         [standard.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -288,6 +330,13 @@ mod tests {
         responder_kv_max_ttl_sec = 2592000
         responder_kv_max_lifespan_sec = 0
         responder_kv_ops_per_script = 200
+        notification_throttle_presets = [
+            300,
+            900,
+            3600,
+            21600,
+            86400,
+        ]
         [professional.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -320,6 +369,13 @@ mod tests {
         responder_kv_max_ttl_sec = 2592000
         responder_kv_max_lifespan_sec = 0
         responder_kv_ops_per_script = 200
+        notification_throttle_presets = [
+            300,
+            900,
+            3600,
+            21600,
+            86400,
+        ]
         [ultimate.web_scraping]
         trackers = 100
         tracker_revisions = 30

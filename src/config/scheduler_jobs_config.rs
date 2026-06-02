@@ -8,10 +8,17 @@ pub struct SchedulerJobsConfig {
     /// The schedule to use for the `WebhooksKvSweep` job (expired responder KV cleanup).
     #[serde(default = "default_webhooks_kv_sweep")]
     pub webhooks_kv_sweep: String,
+    /// The schedule to use for the `RespondersNotify` job (responder hit notifications).
+    #[serde(default = "default_responders_notify")]
+    pub responders_notify: String,
 }
 
 fn default_webhooks_kv_sweep() -> String {
     "0 */5 * * * *".to_string()
+}
+
+fn default_responders_notify() -> String {
+    "0 * * * * *".to_string()
 }
 
 impl Default for SchedulerJobsConfig {
@@ -19,6 +26,7 @@ impl Default for SchedulerJobsConfig {
         Self {
             notifications_send: "0/30 * * * * *".to_string(),
             webhooks_kv_sweep: default_webhooks_kv_sweep(),
+            responders_notify: default_responders_notify(),
         }
     }
 }
@@ -33,6 +41,7 @@ mod tests {
         assert_toml_snapshot!(SchedulerJobsConfig::default(), @r###"
         notifications_send = '0/30 * * * * *'
         webhooks_kv_sweep = '0 */5 * * * *'
+        responders_notify = '0 * * * * *'
         "###);
     }
 
@@ -42,6 +51,7 @@ mod tests {
             r#"
         notifications_send = '0/30 * * * * *'
         webhooks_kv_sweep = '0 */5 * * * *'
+        responders_notify = '0 * * * * *'
     "#,
         )
         .unwrap();

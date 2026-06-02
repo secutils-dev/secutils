@@ -1038,6 +1038,7 @@ mod tests {
                     headers: None,
                     script: None,
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 },
                 tag_ids: vec![],
             })
@@ -1085,6 +1086,7 @@ mod tests {
                     headers: None,
                     script: None,
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 },
                 tag_ids: vec![],
             })
@@ -1106,6 +1108,7 @@ mod tests {
                     headers: None,
                     script: None,
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 },
                 tag_ids: vec![],
             })
@@ -1154,6 +1157,7 @@ mod tests {
                     headers: None,
                     script: None,
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 },
                 tag_ids: vec![],
             })

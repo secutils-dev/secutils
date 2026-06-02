@@ -117,6 +117,7 @@ mod tests {
         [scheduler]
         notifications_send = '0/30 * * * * *'
         webhooks_kv_sweep = '0 */5 * * * *'
+        responders_notify = '0 * * * * *'
 
         [subscriptions]
         feature_overview_url = 'http://localhost:7272/'
@@ -137,6 +138,13 @@ mod tests {
         responder_kv_max_ttl_sec = 2592000
         responder_kv_max_lifespan_sec = 0
         responder_kv_ops_per_script = 200
+        notification_throttle_presets = [
+            300,
+            900,
+            3600,
+            21600,
+            86400,
+        ]
         [subscriptions.basic.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -169,6 +177,13 @@ mod tests {
         responder_kv_max_ttl_sec = 2592000
         responder_kv_max_lifespan_sec = 0
         responder_kv_ops_per_script = 200
+        notification_throttle_presets = [
+            300,
+            900,
+            3600,
+            21600,
+            86400,
+        ]
         [subscriptions.standard.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -201,6 +216,13 @@ mod tests {
         responder_kv_max_ttl_sec = 2592000
         responder_kv_max_lifespan_sec = 0
         responder_kv_ops_per_script = 200
+        notification_throttle_presets = [
+            300,
+            900,
+            3600,
+            21600,
+            86400,
+        ]
         [subscriptions.professional.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -233,6 +255,13 @@ mod tests {
         responder_kv_max_ttl_sec = 2592000
         responder_kv_max_lifespan_sec = 0
         responder_kv_ops_per_script = 200
+        notification_throttle_presets = [
+            300,
+            900,
+            3600,
+            21600,
+            86400,
+        ]
         [subscriptions.ultimate.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -482,6 +511,7 @@ mod tests {
             scheduler: SchedulerJobsConfig {
                 notifications_send: "0/30 * * * * * *",
                 webhooks_kv_sweep: "0 */5 * * * *",
+                responders_notify: "0 * * * * *",
             },
             subscriptions: SubscriptionsConfig {
                 manage_url: None,
@@ -522,6 +552,13 @@ mod tests {
                         responder_kv_max_ttl_sec: 2592000,
                         responder_kv_max_lifespan_sec: 0,
                         responder_kv_ops_per_script: 200,
+                        notification_throttle_presets: [
+                            300,
+                            900,
+                            3600,
+                            21600,
+                            86400,
+                        ],
                     },
                     web_scraping: SubscriptionWebScrapingConfig {
                         trackers: 1,
@@ -568,6 +605,13 @@ mod tests {
                         responder_kv_max_ttl_sec: 2592000,
                         responder_kv_max_lifespan_sec: 0,
                         responder_kv_ops_per_script: 200,
+                        notification_throttle_presets: [
+                            300,
+                            900,
+                            3600,
+                            21600,
+                            86400,
+                        ],
                     },
                     web_scraping: SubscriptionWebScrapingConfig {
                         trackers: 2,
@@ -614,6 +658,13 @@ mod tests {
                         responder_kv_max_ttl_sec: 2592000,
                         responder_kv_max_lifespan_sec: 0,
                         responder_kv_ops_per_script: 200,
+                        notification_throttle_presets: [
+                            300,
+                            900,
+                            3600,
+                            21600,
+                            86400,
+                        ],
                     },
                     web_scraping: SubscriptionWebScrapingConfig {
                         trackers: 3,
@@ -660,6 +711,13 @@ mod tests {
                         responder_kv_max_ttl_sec: 2592000,
                         responder_kv_max_lifespan_sec: 0,
                         responder_kv_ops_per_script: 200,
+                        notification_throttle_presets: [
+                            300,
+                            900,
+                            3600,
+                            21600,
+                            86400,
+                        ],
                     },
                     web_scraping: SubscriptionWebScrapingConfig {
                         trackers: 4,

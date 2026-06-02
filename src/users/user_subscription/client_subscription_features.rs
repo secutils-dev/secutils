@@ -12,9 +12,11 @@ struct ClientSubscriptionCertificatesConfig<'sf> {
 
 #[derive(Serialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
-struct ClientSubscriptionWebhooksConfig {
+struct ClientSubscriptionWebhooksConfig<'sf> {
     /// The number of responders requests per responder that retained for a particular subscription.
     responder_requests: usize,
+    /// Allowed throttle windows (in seconds) a user may pick for responder hit notifications.
+    notification_throttle_presets: &'sf [u32],
 }
 
 #[derive(Serialize, Clone, PartialEq)]
@@ -43,7 +45,7 @@ pub struct ClientSubscriptionFeatures<'sf> {
     /// The config managing the certificates utilities for a particular subscription.
     certificates: ClientSubscriptionCertificatesConfig<'sf>,
     /// The config managing the webhooks utilities for a particular subscription.
-    webhooks: ClientSubscriptionWebhooksConfig,
+    webhooks: ClientSubscriptionWebhooksConfig<'sf>,
     /// The config managing the web scraping utilities for a particular subscription.
     web_scraping: ClientSubscriptionWebScrapingConfig<'sf>,
     /// The config managing the web security utilities for a particular subscription.
@@ -58,6 +60,7 @@ impl<'sf> From<SubscriptionFeatures<'sf>> for ClientSubscriptionFeatures<'sf> {
             },
             webhooks: ClientSubscriptionWebhooksConfig {
                 responder_requests: value.config.webhooks.responder_requests,
+                notification_throttle_presets: &value.config.webhooks.notification_throttle_presets,
             },
             web_scraping: ClientSubscriptionWebScrapingConfig {
                 tracker_revisions: value.config.web_scraping.tracker_revisions,
@@ -152,7 +155,14 @@ mod test {
         {
           "certificates": {},
           "webhooks": {
-            "responderRequests": 30
+            "responderRequests": 30,
+            "notificationThrottlePresets": [
+              300,
+              900,
+              3600,
+              21600,
+              86400
+            ]
           },
           "webScraping": {
             "trackerRevisions": 30
@@ -181,7 +191,14 @@ mod test {
             ]
           },
           "webhooks": {
-            "responderRequests": 11
+            "responderRequests": 11,
+            "notificationThrottlePresets": [
+              300,
+              900,
+              3600,
+              21600,
+              86400
+            ]
           },
           "webScraping": {
             "trackerRevisions": 11,
@@ -210,7 +227,14 @@ mod test {
         {
           "certificates": {},
           "webhooks": {
-            "responderRequests": 30
+            "responderRequests": 30,
+            "notificationThrottlePresets": [
+              300,
+              900,
+              3600,
+              21600,
+              86400
+            ]
           },
           "webScraping": {
             "trackerRevisions": 30

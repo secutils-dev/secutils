@@ -3,6 +3,7 @@ mod account_recovery;
 mod api_tracker_changes;
 mod notification_destination_verification;
 mod page_tracker_changes;
+mod responder_requests_received;
 
 use crate::{
     api::Api,
@@ -11,6 +12,7 @@ use crate::{
     users::NotificationChannelKind,
 };
 use serde::{Deserialize, Serialize};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 pub const SECUTILS_LOGO_BYTES: &[u8] =
@@ -45,6 +47,14 @@ pub enum NotificationContentTemplate {
         tracker_name: String,
         content: Result<String, String>,
         diff: Option<String>,
+    },
+    /// A coalesced summary of requests received by a responder since the user was last notified.
+    ResponderRequestsReceived {
+        responder_id: Uuid,
+        responder_name: String,
+        request_count: usize,
+        #[serde(with = "time::serde::timestamp")]
+        since: OffsetDateTime,
     },
     /// Verification challenge for an opt-in notification destination (e.g. a custom notification
     /// email). Body carries the 6-digit code only. Routed via `NotificationDestination::Email`,
@@ -104,6 +114,22 @@ impl NotificationContentTemplate {
                     tracker_name,
                     content,
                     diff.as_deref(),
+                    unsubscribe_url,
+                )
+                .await
+            }
+            NotificationContentTemplate::ResponderRequestsReceived {
+                responder_id,
+                responder_name,
+                request_count,
+                since,
+            } => {
+                responder_requests_received::compile_to_email(
+                    api,
+                    *responder_id,
+                    responder_name,
+                    *request_count,
+                    *since,
                     unsubscribe_url,
                 )
                 .await
@@ -708,8 +734,82 @@ mod tests {
         Ok(())
     }
 
-    /// Tests covering the unsubscribe footer rendering contract — the muted body block
-    /// only appears for product-mail templates (page/API tracker changes) when an
+    #[sqlx::test]
+    async fn can_compile_responder_requests_received_template_to_email(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
+
+        let template = NotificationContentTemplate::ResponderRequestsReceived {
+            responder_id: uuid!("00000000-0000-0000-0000-000000000001"),
+            responder_name: "my-responder".to_string(),
+            request_count: 5,
+            since: time::OffsetDateTime::from_unix_timestamp(1740000000)?,
+        }
+        .compile_to_email(&api, None)
+        .await?;
+
+        assert_eq!(
+            template.subject,
+            "[Secutils.dev] Responder was hit: \"my-responder\""
+        );
+        assert!(
+            template
+                .text
+                .contains("received 5 requests since February 19, 2025 at 21:20 UTC"),
+            "plain text should summarize the coalesced request count and since timestamp: {}",
+            template.text
+        );
+        assert!(
+            template
+                .text
+                .contains("ws/webhooks__responders?q=00000000-0000-0000-0000-000000000001"),
+            "plain text should link back to the responder"
+        );
+
+        let html = template.html.as_deref().unwrap();
+        assert!(
+            html.contains("<title>\"my-responder\" responder was hit</title>"),
+            "HTML should set the responder title"
+        );
+        assert!(
+            html.contains("received <b>5 requests</b> since February 19, 2025 at 21:20 UTC"),
+            "HTML should summarize the coalesced request count (in bold) and since timestamp"
+        );
+        assert!(
+            html.contains(r#"<img src="cid:secutils-logo""#),
+            "HTML should reference the inline secutils-logo attachment"
+        );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_compile_responder_requests_received_singular_template_to_email(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
+
+        let template = NotificationContentTemplate::ResponderRequestsReceived {
+            responder_id: uuid!("00000000-0000-0000-0000-000000000001"),
+            responder_name: "my-responder".to_string(),
+            request_count: 1,
+            since: time::OffsetDateTime::from_unix_timestamp(1740000000)?,
+        }
+        .compile_to_email(&api, None)
+        .await?;
+
+        assert!(
+            template.text.contains("received 1 request since"),
+            "plain text should use the singular request label: {}",
+            template.text
+        );
+
+        Ok(())
+    }
+
+    /// Tests covering the unsubscribe footer rendering contract - the muted body block
+    /// only appears for product-mail templates (page/API tracker changes, responder hits) when an
     /// unsubscribe URL is threaded through, and is absent for transactional templates
     /// (account activation/recovery, destination verification) regardless.
     mod unsubscribe_footer {
@@ -875,6 +975,42 @@ mod tests {
             .await?;
 
             assert_footer_present(template.html.as_deref().unwrap(), &template.text);
+            Ok(())
+        }
+
+        #[sqlx::test]
+        async fn responder_requests_received_renders_footer_when_url_present(
+            pool: PgPool,
+        ) -> anyhow::Result<()> {
+            let api = mock_api(pool).await?;
+            let template = NotificationContentTemplate::ResponderRequestsReceived {
+                responder_id: uuid!("00000000-0000-0000-0000-000000000001"),
+                responder_name: "my-responder".to_string(),
+                request_count: 3,
+                since: time::OffsetDateTime::from_unix_timestamp(1740000000)?,
+            }
+            .compile_to_email(&api, Some(UNSUBSCRIBE_URL))
+            .await?;
+
+            assert_footer_present(template.html.as_deref().unwrap(), &template.text);
+            Ok(())
+        }
+
+        #[sqlx::test]
+        async fn responder_requests_received_omits_footer_when_url_absent(
+            pool: PgPool,
+        ) -> anyhow::Result<()> {
+            let api = mock_api(pool).await?;
+            let template = NotificationContentTemplate::ResponderRequestsReceived {
+                responder_id: uuid!("00000000-0000-0000-0000-000000000001"),
+                responder_name: "my-responder".to_string(),
+                request_count: 3,
+                since: time::OffsetDateTime::from_unix_timestamp(1740000000)?,
+            }
+            .compile_to_email(&api, None)
+            .await?;
+
+            assert_footer_absent(template.html.as_deref().unwrap(), &template.text);
             Ok(())
         }
 

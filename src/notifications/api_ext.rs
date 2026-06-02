@@ -1109,7 +1109,7 @@ mod tests {
         api.db.upsert_user(&mock_user).await?;
         setup_verified_email(&api.db, mock_user.id, "alerts@example.com", "tok-paired").await?;
 
-        // Use a real template — the visible-footer contract only kicks in for product-mail
+        // Use a real template - the visible-footer contract only kicks in for product-mail
         // templates, so a `Template`-backed notification is the right vehicle to assert the
         // wire output (the previous routing tests use literal `Email` content which has no
         // footer concept).

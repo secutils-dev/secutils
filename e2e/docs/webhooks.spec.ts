@@ -212,6 +212,54 @@ test.describe('Webhooks guide screenshots', () => {
     await page.screenshot({ path: join(IMG_DIR, 'tracking_step4_request.png') });
   });
 
+  test('Get notified when a responder is hit', async ({ page }) => {
+    // Step 1: Navigate to responders and show the empty state.
+    await goto(page, '/ws/webhooks__responders');
+    const createButton = page.getByRole('button', { name: 'Create responder' });
+    await expect(createButton).toBeVisible({ timeout: 15000 });
+    await highlightOn(createButton);
+    await page.screenshot({ path: join(IMG_DIR, 'notifications_step1_empty.png') });
+
+    // Create the responder via API with request tracking and notifications enabled.
+    const createResponse = await page.request.post('/api/webhooks/responders', {
+      data: {
+        name: 'Notified Responder',
+        location: { pathType: '=', path: '/notified-responder' },
+        method: 'ANY',
+        enabled: true,
+        settings: {
+          requestsToTrack: 10,
+          statusCode: 200,
+          headers: [['Content-Type', 'text/html; charset=utf-8']],
+          body: 'Hello World',
+          notifications: { throttleSeconds: 3600 },
+        },
+      },
+    });
+    expect(createResponse.ok()).toBeTruthy();
+
+    // Step 2: Reload to see the responder, open Edit, and screenshot the notifications controls.
+    await goto(page, '/ws/webhooks__responders');
+    const responderRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'Notified Responder' }) });
+    await expect(responderRow).toBeVisible({ timeout: 15000 });
+
+    await responderRow.getByRole('button', { name: 'Edit' }).click();
+    const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Edit responder' }) });
+    await expect(flyout).toBeVisible();
+
+    const notificationsSwitch = flyout.getByRole('switch', { name: 'Notify me when this responder is hit' });
+    await notificationsSwitch.scrollIntoViewIfNeeded();
+    await highlightOn(notificationsSwitch);
+    await page.screenshot({ path: join(IMG_DIR, 'notifications_step2_form.png') });
+
+    await flyout.getByRole('button', { name: 'Close' }).click();
+    await expect(flyout).not.toBeVisible({ timeout: 10000 });
+
+    // Step 3: Show the responder in the grid with the notifications (bell) icon.
+    await highlightOn(responderRow);
+    await page.screenshot({ path: join(IMG_DIR, 'notifications_step3_created.png') });
+  });
+
   test('Generate a dynamic response', async ({ page }) => {
     const scriptBody = [
       '(async () => {',

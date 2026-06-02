@@ -83,6 +83,7 @@ mod tests {
                     ]),
                     script: Some("return { body: `custom body` };".to_string()),
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 }),
                 tag_ids: Some(vec![uuid!("00000000-0000-0000-0000-000000000001")]),
             }
@@ -128,6 +129,7 @@ mod tests {
                     ]),
                     script: Some("return { body: `custom body` };".to_string()),
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 }),
                 tag_ids: None,
             }
@@ -171,6 +173,7 @@ mod tests {
                     ]),
                     script: Some("return { body: `custom body` };".to_string()),
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 }),
                 tag_ids: None,
             }
@@ -206,6 +209,7 @@ mod tests {
                     ]),
                     script: Some("return { body: `custom body` };".to_string()),
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 }),
                 tag_ids: None,
             }
@@ -240,6 +244,7 @@ mod tests {
                     ]),
                     script: Some("return { body: `custom body` };".to_string()),
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 }),
                 tag_ids: None,
             }
@@ -267,6 +272,7 @@ mod tests {
                     headers: None,
                     script: None,
                     secrets: SecretsAccess::None,
+                    notifications: None,
                 }),
                 tag_ids: None,
             }

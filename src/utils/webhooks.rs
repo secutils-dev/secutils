@@ -5,9 +5,9 @@ mod responders;
 pub use self::{
     api_ext::{RespondersCreateParams, RespondersRequestCreateParams, RespondersUpdateParams},
     responders::{
-        Responder, ResponderLocation, ResponderMethod, ResponderPathType, ResponderRequest,
-        ResponderRequestHeaders, ResponderScriptContext, ResponderScriptResult, ResponderSettings,
-        ResponderStats,
+        Responder, ResponderLocation, ResponderMethod, ResponderNotificationSettings,
+        ResponderPathType, ResponderRequest, ResponderRequestHeaders, ResponderScriptContext,
+        ResponderScriptResult, ResponderSettings, ResponderStats,
     },
 };
 
@@ -47,6 +47,7 @@ pub mod tests {
                         headers: None,
                         script: None,
                         secrets: SecretsAccess::None,
+                        notifications: None,
                     },
                     tags: vec![],
                     created_at: OffsetDateTime::from_unix_timestamp(946720800)?,

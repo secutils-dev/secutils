@@ -748,6 +748,7 @@ mod tests {
                 secrets: SecretsAccess::Selected {
                     secrets: vec!["KEY_A".to_string(), "KEY_B".to_string()],
                 },
+                notifications: None,
             },
             tags: vec![],
             created_at: now,
@@ -811,6 +812,7 @@ mod tests {
                 secrets: SecretsAccess::Selected {
                     secrets: vec!["ONLY_KEY".to_string()],
                 },
+                notifications: None,
             },
             tags: vec![],
             created_at: now,
@@ -866,6 +868,7 @@ mod tests {
                 headers: None,
                 script: None,
                 secrets: SecretsAccess::All,
+                notifications: None,
             },
             tags: vec![],
             created_at: now,
