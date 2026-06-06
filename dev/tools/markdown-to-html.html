@@ -186,6 +186,15 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; overf
 .preview-article li > ul, .preview-article li > ol { margin-bottom: 0; }
 .preview-article hr { border: none; height: 2px; background: var(--border); margin: 24px 0; }
 .preview-article li input[type="checkbox"] { margin-right: 6px; }
+/* Mermaid diagrams render to a static SVG inside a light "figure card" so they
+   stay legible in both light and dark page themes (and in PDF) - like an image. */
+.preview-article .su-mermaid { margin: 0 0 14px; padding: 16px; background: #fff; border: 1px solid var(--border); border-radius: 8px; text-align: center; overflow-x: auto; }
+.preview-article .su-mermaid svg { max-width: 100%; height: auto; }
+.preview-article .su-mermaid-error { margin: 0 0 14px; padding: 12px 16px; background: var(--bq-bg); border: 1px solid var(--bq-border); border-left-width: 4px; border-radius: 0 8px 8px 0; }
+.preview-article .su-mermaid-error-title { margin: 0 0 8px; font-weight: 600; color: var(--text); }
+.preview-article .su-mermaid-error pre { margin: 8px 0 0; padding: 8px 10px; }
+.preview-article .su-mermaid-error-msg { color: #cf222e; }
+[data-theme="dark"] .preview-article .su-mermaid-error-msg { color: #ff7b72; }
 
 /* Empty state inside preview */
 .empty-state { height: 100%; min-height: 240px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text-muted); opacity: 0.65; padding: 40px; text-align: center; }
@@ -468,6 +477,7 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; overf
                 <li><a href="https://github.com/highlightjs/highlight.js" target="_blank" rel="noopener noreferrer"><strong>highlight.js</strong></a> - syntax highlighter, used to colourise fenced code blocks in the preview and exported HTML.</li>
                 <li><a href="https://github.com/codemirror/dev" target="_blank" rel="noopener noreferrer"><strong>CodeMirror</strong></a> - extensible code editor, powers the Markdown source pane with syntax highlighting and line numbers.</li>
                 <li><a href="https://github.com/pagedjs/pagedjs" target="_blank" rel="noopener noreferrer"><strong>Paged.js</strong></a> - CSS Paged Media polyfill, used to paginate the rendered HTML into a vector PDF on Export.</li>
+                <li><a href="https://github.com/mermaid-js/mermaid" target="_blank" rel="noopener noreferrer"><strong>Mermaid</strong></a> - diagram renderer, used to turn <code>```mermaid</code> code blocks into inline SVG diagrams.</li>
             </ul>
             <p class="su-dialog-fineprint">All trademarks are property of their respective owners.</p>
         </div>
@@ -593,6 +603,7 @@ const EXAMPLE_MD = [
     '- Self-contained HTML export (single file, no external assets)',
     '- Print-ready PDF via the browser print dialog',
     '- Optional table of contents and embedded Markdown source',
+    '- Mermaid diagrams rendered to inline SVG (works in HTML and PDF export)',
     '- Dark/light theme toggle that persists across loads',
     '- Shareable URL state (the entire document fits in the URL fragment)',
     '',
@@ -605,12 +616,25 @@ const EXAMPLE_MD = [
     'console.log(greet("world"));',
     '```',
     '',
+    '## Diagrams',
+    '',
+    'Fenced `mermaid` blocks are rendered to inline SVG, just like on GitHub.',
+    '',
+    '```mermaid',
+    'flowchart LR',
+    '    A[Write Markdown] --> B[Add a mermaid block]',
+    '    B --> C{Export}',
+    '    C -->|HTML| D[Self-contained page]',
+    '    C -->|PDF| E[Print-ready document]',
+    '```',
+    '',
     '## Tables',
     '',
     '| Feature                | Status |',
     '|------------------------|--------|',
     '| GFM (GitHub-flavoured) | yes    |',
     '| Syntax highlighting    | yes    |',
+    '| Diagrams (Mermaid)     | yes    |',
     '| Math (KaTeX / MathJax) | no     |',
     '',
     '## Quotes',
@@ -714,12 +738,110 @@ const yieldToMain = () => 'scheduler' in window && typeof scheduler.yield === 'f
     ? scheduler.yield()
     : new Promise((r) => setTimeout(r, 0));
 
+// Mermaid is lazy-loaded as an ESM bundle the first time a ```mermaid block is
+// encountered (mirrors the CodeMirror / Paged.js CDN-lazy-load pattern). Each
+// diagram is pre-rendered to a static, self-contained <svg> at render() time -
+// exactly like highlight.js output is pre-computed - so the HTML export and the
+// Paged.js PDF stay self-contained with no runtime Mermaid dependency.
+// Use >= 11.15 for the CSS-injection security patch.
+const MERMAID_URL = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+let _mermaidPromise;
+function ensureMermaid() {
+    if (!_mermaidPromise) {
+        _mermaidPromise = import(MERMAID_URL).then((m) => {
+            const mermaid = m.default;
+            // securityLevel:'strict' sanitises label HTML (DOMPurify) and disables
+            // click callbacks. A fixed light theme keeps the baked-in SVG colours
+            // legible inside the light "figure card" in both page themes and in PDF.
+            mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'default' });
+            return mermaid;
+        }).catch((err) => { _mermaidPromise = undefined; throw err; });
+    }
+    return _mermaidPromise;
+}
+
+// Best-effort sanitiser for the most common Mermaid parser failure: a node label
+// in square brackets that contains parentheses (e.g. `A[After eating (3x/day)]`),
+// which Mermaid misreads as a shape delimiter. Wrap such labels in double quotes.
+// Heuristic only; genuinely malformed diagrams still fall through to the caller.
+function autoQuoteMermaidLabels(src) {
+    return src.replace(/(\[)([^\[\]\n]*?[()][^\[\]\n]*?)(\])/g, (m, open, label, close) => {
+        const t = label.trim();
+        if (/^".*"$/.test(t) || /^'.*'$/.test(t)) return m; // already quoted
+        return `${open}"${t.replace(/"/g, '&quot;')}"${close}`;
+    });
+}
+
+// Validate `src`; on failure retry once with auto-quoted labels. Returns the
+// source string that parses, or throws the original parser error.
+async function sanitizeMermaid(mermaid, src) {
+    try {
+        await mermaid.parse(src);
+        return src;
+    } catch (firstErr) {
+        const fixed = autoQuoteMermaidLabels(src);
+        if (fixed !== src) {
+            try { await mermaid.parse(fixed); return fixed; } catch { /* fall through */ }
+        }
+        throw firstErr;
+    }
+}
+
+const _mermaidCache = new Map();
+let _mermaidId = 0;
+async function renderMermaid(src) {
+    if (_mermaidCache.has(src)) return _mermaidCache.get(src);
+    let mermaid;
+    try {
+        mermaid = await ensureMermaid();
+    } catch {
+        const e = new Error('Mermaid failed to load');
+        e.__suMermaidUnavailable = true;
+        throw e;
+    }
+    const cleaned = await sanitizeMermaid(mermaid, src);
+    const { svg } = await mermaid.render('su-mermaid-' + _mermaidId++, cleaned);
+    _mermaidCache.set(src, svg);
+    return svg;
+}
+
+// Replace a ```mermaid <pre><code> block with a rendered diagram, an error box,
+// or - when Mermaid can't load at all - the original highlighted code block.
+async function replaceMermaidBlock(codeEl) {
+    const pre = codeEl.parentElement;
+    const src = codeEl.textContent;
+    try {
+        const svg = await renderMermaid(src);
+        const fig = document.createElement('figure');
+        fig.className = 'su-mermaid';
+        fig.innerHTML = svg;
+        pre.replaceWith(fig);
+    } catch (err) {
+        if (err && err.__suMermaidUnavailable) {
+            try { hljs.highlightElement(codeEl); } catch {}
+            pre.setAttribute('data-lang', 'mermaid');
+            return;
+        }
+        const box = document.createElement('div');
+        box.className = 'su-mermaid-error';
+        const msg = (err && err.message) ? err.message : String(err);
+        box.innerHTML = `<p class="su-mermaid-error-title">Unable to render Mermaid diagram</p>`
+            + `<pre class="su-mermaid-error-msg">${escHTML(msg)}</pre>`
+            + `<pre class="su-mermaid-error-src">${escHTML(src)}</pre>`;
+        pre.replaceWith(box);
+    }
+}
+
 async function render(md) {
     const el = document.createElement('div');
     el.innerHTML = marked.parse(md);
     let deadline = performance.now() + 50;
     for (const block of el.querySelectorAll('pre code')) {
         const langCls = [...block.classList].find((c) => c.startsWith('language-'));
+        if (langCls === 'language-mermaid') {
+            await replaceMermaidBlock(block);
+            continue;
+        }
         try { hljs.highlightElement(block); } catch {}
         if (langCls) block.parentElement.setAttribute('data-lang', langCls.replace('language-', ''));
         if (performance.now() >= deadline) {
@@ -1326,6 +1448,14 @@ article li { margin: 4px 0; }
 article li > ul, article li > ol { margin-bottom: 0; }
 article hr { border: none; height: 2px; background: var(--border); margin: 32px 0; }
 article li input[type="checkbox"] { margin-right: 6px; accent-color: var(--link); }
+
+article .su-mermaid { margin: 0 0 16px; padding: 18px; background: #fff; border: 1px solid var(--border); border-radius: 8px; text-align: center; overflow-x: auto; }
+article .su-mermaid svg { max-width: 100%; height: auto; }
+article .su-mermaid-error { margin: 0 0 16px; padding: 14px 20px; background: var(--bq-bg); border: 1px solid var(--bq-border); border-left-width: 4px; border-radius: 0 8px 8px 0; }
+article .su-mermaid-error-title { margin: 0 0 8px; font-weight: 600; color: var(--text); }
+article .su-mermaid-error pre { margin: 8px 0 0; }
+article .su-mermaid-error-msg { color: #cf222e; }
+[data-theme="dark"] article .su-mermaid-error-msg { color: #ff7b72; }
 
 .su-watermark { text-align: center; padding: 32px 24px 24px; margin-top: 48px; border-top: 1px solid var(--border); }
 .su-watermark a { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; color: var(--text-muted); font-size: 12px; font-family: "Inter", -apple-system, sans-serif; opacity: 0.6; transition: opacity .2s; }

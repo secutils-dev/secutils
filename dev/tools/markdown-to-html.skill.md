@@ -24,6 +24,11 @@ Markdown syntax highlighting, and three export paths:
 3. **↓ PDF** - opens the browser print dialog against a Paged.js-rendered
    document with proper page numbers, running titles, and break-avoid rules.
 
+Fenced ```` ```mermaid ```` code blocks are rendered to inline SVG diagrams
+(GitHub-style). The SVG is pre-rendered and inlined at conversion time, so it
+shows up identically in the live preview, the self-contained HTML download, and
+the PDF - no Mermaid runtime ships in the exported files.
+
 YAML frontmatter (`title`, `author`, …) is honoured; the `title` field
 becomes the downloaded file's `<title>` and filename.
 
@@ -115,3 +120,14 @@ takes it from there in the browser. No follow-up encoding required.
 - The CodeMirror editor lazy-loads from `esm.sh` on first paint. If the
   CDN is unreachable, the page falls back to a plain `<textarea>` - all
   core functionality (live preview, share, export) still works.
+- Mermaid is lazy-loaded from a CDN the first time a ```` ```mermaid ````
+  block is rendered. If it can't load, the block degrades to a plain
+  highlighted code block. Diagrams use a fixed light theme (rendered inside a
+  light "figure card") so they read well in both light and dark page themes.
+- Mermaid's parser rejects some unquoted node labels - most commonly labels
+  in square brackets that contain parentheses, e.g.
+  `A[After eating (3x/day)]`. The tool makes a best-effort attempt to fix this
+  by auto-quoting such labels (`A["After eating (3x/day)"]`) and re-parsing.
+  If a diagram still fails to parse, it renders as an inline error box (with
+  the parser message and the original source) instead of breaking the rest of
+  the page - so prefer quoting labels that contain special characters yourself.
