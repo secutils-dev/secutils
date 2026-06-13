@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use super::raw_certificate_attributes::RawCertificateAttributes;
 
-#[derive(Debug, Eq, PartialEq, Clone)]
+#[derive(Debug, Eq, PartialEq, Clone, sqlx::FromRow)]
 pub(super) struct RawCertificateTemplate {
     pub id: Uuid,
     pub name: String,

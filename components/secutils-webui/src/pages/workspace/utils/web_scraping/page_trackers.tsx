@@ -1,5 +1,5 @@
-import type { Criteria, Pagination, PropertySort } from '@elastic/eui';
 import {
+  EuiBasicTable,
   EuiButton,
   EuiButtonEmpty,
   EuiButtonIcon,
@@ -8,7 +8,6 @@ import {
   EuiFlexGroup,
   EuiFlexItem,
   EuiIcon,
-  EuiInMemoryTable,
   EuiScreenReaderOnly,
   EuiSpacer,
   EuiToolTip,
@@ -26,12 +25,13 @@ import { TrackerRevisions } from './tracker_revisions';
 import { useTrackerHealth } from './use_tracker_health';
 import { PageErrorState, PageLoadingState } from '../../../../components';
 import { useUserTags } from '../../../../hooks';
-import { apiFetch, type AsyncData, getCopyName, getErrorMessage, ResponseError } from '../../../../model';
+import type { Page, PaginationRequest } from '../../../../model';
+import { apiFetch, buildPaginationQuery, getCopyName, ResponseError } from '../../../../model';
 import {
   FilteredEmptyState,
   ItemsTableFilter,
   TagsFilter,
-  useItemsTableFilter,
+  useServerPaginatedItems,
 } from '../../components/items_table_filter';
 import { TimestampTableCell } from '../../components/timestamp_table_cell';
 import { useWorkspaceContext } from '../../hooks';
@@ -40,9 +40,9 @@ import { getWorkspaceEntityAbsoluteLink, getWorkspaceEntityLink } from '../works
 const PageTrackerEditFlyout = lazy(() => import('./page_tracker_edit_flyout'));
 
 export default function PageTrackers() {
-  const { uiState, setTitleActions } = useWorkspaceContext();
+  const { setTitleActions } = useWorkspaceContext();
 
-  const [trackers, setTrackers] = useState<AsyncData<PageTracker[]>>({ status: 'pending' });
+  const [initialized, setInitialized] = useState(false);
 
   const [trackerToRemove, setTrackerToRemove] = useState<PageTracker | null>(null);
   const [trackerToEdit, setTrackerToEdit] = useState<Partial<PageTracker> | null | undefined>(null);
@@ -73,27 +73,53 @@ export default function PageTrackers() {
     </EuiButtonEmpty>
   );
 
-  const loadTrackers = useCallback(() => {
-    apiFetch('/api/web_scraping/page_trackers')
-      .then(async (res) => {
-        if (!res.ok) {
-          throw await ResponseError.fromResponse(res);
-        }
+  const fetcher = useCallback(async (request: PaginationRequest): Promise<Page<PageTracker>> => {
+    const res = await apiFetch(`/api/web_scraping/page_trackers${buildPaginationQuery(request)}`);
+    if (!res.ok) {
+      throw await ResponseError.fromResponse(res);
+    }
+    return (await res.json()) as Page<PageTracker>;
+  }, []);
 
-        const trackers = (await res.json()) as PageTracker[];
-        setTrackers({ status: 'succeeded', data: trackers });
-        setTitleActions(trackers.length === 0 ? null : createButton);
-      })
-      .catch((err: Error) => setTrackers({ status: 'failed', error: getErrorMessage(err) }));
-  }, [createButton, setTitleActions]);
+  const {
+    items: trackers,
+    total,
+    loading,
+    error,
+    pagination,
+    sorting,
+    onTableChange,
+    query,
+    setQuery,
+    selectedTagIds,
+    setSelectedTagIds,
+    hasPageFilters,
+    hasActiveFilters,
+    clearPageFilters,
+    refresh,
+  } = useServerPaginatedItems<PageTracker>({
+    fetcher,
+    allTags,
+    defaultSortField: 'updatedAt',
+    defaultSortDirection: 'desc',
+  });
 
   useEffect(() => {
-    if (!uiState.synced) {
-      return;
+    if (!loading) {
+      setInitialized(true);
     }
+  }, [loading]);
 
-    loadTrackers();
-  }, [uiState, loadTrackers]);
+  const isEmpty = initialized && total === 0 && !hasActiveFilters;
+
+  useEffect(() => {
+    setTitleActions(isEmpty ? null : createButton);
+  }, [isEmpty, createButton, setTitleActions]);
+
+  const { data: healthData, refetch: refetchHealth } = useTrackerHealth(
+    'page',
+    trackers.map((t) => t.id),
+  );
 
   const editFlyout =
     trackerToEdit !== null ? (
@@ -101,7 +127,8 @@ export default function PageTrackers() {
         <PageTrackerEditFlyout
           onClose={(success) => {
             if (success) {
-              loadTrackers();
+              refresh();
+              refetchHealth();
             }
             setTrackerToEdit(null);
           }}
@@ -109,32 +136,6 @@ export default function PageTrackers() {
         />
       </Suspense>
     ) : null;
-
-  // Filter configuration: search by name and ID
-  const getSearchFields = useCallback((tracker: PageTracker) => [tracker.name, tracker.id], []);
-  const getItemTags = useCallback((tracker: PageTracker) => tracker.tags, []);
-
-  // Use the filter hook with URL sync
-  const {
-    filteredItems,
-    query,
-    setQuery,
-    selectedTagIds,
-    setSelectedTagIds,
-    totalItems,
-    hasPageFilters,
-    clearPageFilters,
-  } = useItemsTableFilter({
-    items: trackers.status === 'succeeded' ? trackers.data : [],
-    allTags,
-    getSearchFields,
-    getItemTags,
-  });
-
-  const { data: healthData, refetch: refetchHealth } = useTrackerHealth(
-    'page',
-    trackers.status === 'succeeded' ? trackers.data.map((t) => t.id) : undefined,
-  );
 
   const [itemIdToExpandedRowMap, setItemIdToExpandedRowMap] = useState<Record<string, ReactNode>>({});
 
@@ -151,10 +152,11 @@ export default function PageTrackers() {
               throw await ResponseError.fromResponse(res);
             }
 
-            loadTrackers();
+            refresh();
+            refetchHealth();
           })
           .catch((err: Error) => {
-            console.error(`Failed to remove the page tracker: ${getErrorMessage(err)}`);
+            console.error(`Failed to remove the page tracker: ${err.message}`);
           });
       }}
       cancelButtonText="Cancel"
@@ -165,28 +167,6 @@ export default function PageTrackers() {
       you sure you want to proceed?
     </EuiConfirmModal>
   ) : null;
-
-  const [pagination, setPagination] = useState<Pagination>({
-    pageIndex: 0,
-    pageSize: 15,
-    pageSizeOptions: [10, 15, 25, 50, 100],
-    totalItemCount: 0,
-  });
-  const [sorting, setSorting] = useState<{ sort: PropertySort }>({ sort: { field: 'updatedAt', direction: 'desc' } });
-  const onTableChange = useCallback(
-    ({ page, sort }: Criteria<PageTracker>) => {
-      setPagination({
-        ...pagination,
-        pageIndex: page?.index ?? 0,
-        pageSize: page?.size ?? 15,
-      });
-
-      if (sort?.field) {
-        setSorting({ sort });
-      }
-    },
-    [pagination],
-  );
 
   const toggleItemDetails = (tracker: PageTracker) => {
     const itemIdToExpandedRowMapValues = { ...itemIdToExpandedRowMap };
@@ -208,28 +188,16 @@ export default function PageTrackers() {
     setItemIdToExpandedRowMap(itemIdToExpandedRowMapValues);
   };
 
-  if (trackers.status === 'pending') {
+  if (!initialized && loading) {
     return <PageLoadingState />;
   }
 
-  if (trackers.status === 'failed') {
-    return (
-      <PageErrorState
-        title="Cannot load page trackers"
-        content={
-          <p>
-            Cannot load page trackers
-            <br />
-            <br />
-            <strong>{trackers.error}</strong>.
-          </p>
-        }
-      />
-    );
+  if (error && trackers.length === 0) {
+    return <PageErrorState title="Cannot load page trackers" content={<p>{error}</p>} />;
   }
 
   let content;
-  if (trackers.data.length === 0) {
+  if (isEmpty) {
     content = (
       <EuiFlexGroup
         direction={'column'}
@@ -263,7 +231,7 @@ export default function PageTrackers() {
           query={query}
           onQueryChange={setQuery}
           onRefresh={() => {
-            loadTrackers();
+            refresh();
             refetchHealth();
           }}
           placeholder="Search by name or ID..."
@@ -271,19 +239,15 @@ export default function PageTrackers() {
           <TagsFilter tags={allTags} selectedTagIds={selectedTagIds} onSelectedTagIdsChange={setSelectedTagIds} />
         </ItemsTableFilter>
         <EuiSpacer size="m" />
-        <EuiInMemoryTable
+        <EuiBasicTable
+          loading={loading}
           pagination={pagination}
-          allowNeutralSort={false}
           noItemsMessage={
-            <FilteredEmptyState
-              totalItems={totalItems}
-              hasPageFilters={hasPageFilters}
-              onClearFilters={clearPageFilters}
-            />
+            <FilteredEmptyState totalItems={total} hasPageFilters={hasPageFilters} onClearFilters={clearPageFilters} />
           }
           sorting={sorting}
-          onTableChange={onTableChange}
-          items={filteredItems}
+          onChange={onTableChange}
+          items={trackers}
           itemId={(item) => item.id}
           itemIdToExpandedRowMap={itemIdToExpandedRowMap}
           tableLayout={'auto'}
@@ -324,7 +288,6 @@ export default function PageTrackers() {
             {
               name: 'Next run',
               field: 'retrack.scheduledAt',
-              sortable: (tracker) => tracker.retrack.scheduledAt ?? null,
               render: (_, tracker: PageTracker) => (
                 <TimestampTableCell
                   timestamp={tracker.retrack.scheduledAt}
@@ -335,7 +298,6 @@ export default function PageTrackers() {
             {
               name: 'Last ran',
               field: 'retrack.lastRanAt',
-              sortable: (tracker) => tracker.retrack.lastRanAt ?? null,
               render: (_, tracker: PageTracker) => (
                 <TimestampTableCell
                   timestamp={tracker.retrack.lastRanAt}
@@ -346,7 +308,7 @@ export default function PageTrackers() {
             {
               name: 'Last updated',
               field: 'updatedAt',
-              sortable: (tracker) => tracker.updatedAt,
+              sortable: true,
               render: (_, tracker: PageTracker) => (
                 <TimestampTableCell timestamp={tracker.updatedAt} disabled={tracker.retrack.enabled === false} />
               ),
@@ -395,7 +357,10 @@ export default function PageTrackers() {
                   onClick: ({ id, createdAt, updatedAt, name, ...rest }: PageTracker) =>
                     setTrackerToEdit({
                       ...rest,
-                      name: getCopyName(name, trackers.status === 'succeeded' ? trackers.data.map((t) => t.name) : []),
+                      name: getCopyName(
+                        name,
+                        trackers.map((t) => t.name),
+                      ),
                     }),
                 },
                 {

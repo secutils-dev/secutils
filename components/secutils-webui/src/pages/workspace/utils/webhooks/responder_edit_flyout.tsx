@@ -23,7 +23,7 @@ import type { ChangeEvent } from 'react';
 import type { Responder } from './responder';
 import { useFormChanges, useRangeTicks, useUserTags } from '../../../../hooks';
 import type { AsyncData } from '../../../../model';
-import { apiFetch, getErrorMessage, isClientError, ResponseError } from '../../../../model';
+import { apiFetch, getErrorMessage, getUserSecrets, isClientError, ResponseError } from '../../../../model';
 import { EditorFlyout } from '../../components/editor_flyout';
 import { ScriptEditor } from '../../components/script_editor';
 import type { ImportAction, ScriptSnippet } from '../../components/script_editor';
@@ -546,12 +546,9 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
     if (secretsMode !== 'selected' || secretsLoaded) {
       return;
     }
-    apiFetch('/api/user/secrets')
-      .then(async (res) => {
-        if (res.ok) {
-          const data: Array<{ name: string }> = await res.json();
-          setAvailableSecrets(data.map((s) => ({ label: s.name })));
-        }
+    getUserSecrets()
+      .then((secrets) => {
+        setAvailableSecrets(secrets.map((s) => ({ label: s.name })));
       })
       .catch(() => {})
       .finally(() => setSecretsLoaded(true));

@@ -1,6 +1,9 @@
 use crate::{
     error::Error,
-    server::app_state::AppState,
+    server::{
+        app_state::AppState,
+        pagination::{Page, PaginationParams},
+    },
     users::{SecretCreateParams, SecretUpdateParams, User, UserSecret},
 };
 use actix_web::{HttpResponse, delete, get, post, put, web};
@@ -13,11 +16,12 @@ pub struct SecretIdPath {
     pub secret_id: Uuid,
 }
 
-/// Lists all secrets for the authenticated user (metadata only, no values).
+/// Lists a page of secrets for the authenticated user (metadata only, no values).
 #[utoipa::path(
     tags = ["secrets"],
+    params(PaginationParams),
     responses(
-        (status = 200, description = "List of user secrets.", body = [UserSecret]),
+        (status = 200, description = "Paginated list of user secrets.", body = Page<UserSecret>),
         (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
@@ -25,8 +29,13 @@ pub struct SecretIdPath {
 pub async fn user_secrets_list(
     state: web::Data<AppState>,
     user: User,
+    query: web::Query<PaginationParams>,
 ) -> Result<HttpResponse, Error> {
-    let secrets = state.api.secrets(&user).list_secrets().await?;
+    let secrets = state
+        .api
+        .secrets(&user)
+        .list_secrets_page(&query.into_inner())
+        .await?;
     Ok(HttpResponse::Ok().json(secrets))
 }
 

@@ -2,6 +2,7 @@ use crate::{
     api::Api,
     error::Error,
     network::{DnsResolver, EmailTransport},
+    server::{Page, PaginationParams},
     users::{
         EntityTag, User,
         scripts::{ScriptContext, UserScript, UserScriptType},
@@ -11,6 +12,24 @@ use serde::Deserialize;
 use time::OffsetDateTime;
 use utoipa::ToSchema;
 use uuid::Uuid;
+
+/// Allowlist of client sort keys mapped to script SQL columns.
+const SCRIPTS_SORT_COLUMNS: &[(&str, &str)] = &[
+    ("name", "name"),
+    ("createdAt", "created_at"),
+    ("updatedAt", "updated_at"),
+    ("scriptType", "type"),
+];
+
+/// Maps a script context to the static SQL `type` filter that scopes a paginated query to the
+/// compatible script types (mirrors `UserScriptType::is_compatible_with`).
+fn context_type_filter(context: ScriptContext) -> &'static str {
+    match context {
+        ScriptContext::Responder => "type IN ('responder', 'universal')",
+        ScriptContext::ApiTracker => "type IN ('api_configurator', 'api_extractor', 'universal')",
+        ScriptContext::PageTracker => "type IN ('page_extractor', 'universal')",
+    }
+}
 
 #[derive(Deserialize, Debug, Clone, ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -66,6 +85,28 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> ScriptsApiExt<'a, 'u, DR, ET> 
                 .collect(),
             None => scripts,
         })
+    }
+
+    /// Returns a single page of scripts for the user, optionally scoped to a context, honoring
+    /// search, tag, sort, and pagination parameters.
+    pub async fn list_scripts_page(
+        &self,
+        context: Option<ScriptContext>,
+        params: &PaginationParams,
+    ) -> anyhow::Result<Page<UserScript>> {
+        let scripts_db = self.api.db.scripts();
+        let sort_col = params.sort_column(SCRIPTS_SORT_COLUMNS, "name");
+        let list_params = params.resolve();
+        let type_filter = context.map(context_type_filter);
+        let (mut scripts, total) = scripts_db
+            .get_user_scripts_page(self.user.id, &list_params, sort_col, type_filter)
+            .await?;
+        let ids: Vec<Uuid> = scripts.iter().map(|s| s.id).collect();
+        let mut tags_map = scripts_db.get_script_tags(&ids).await?;
+        for script in &mut scripts {
+            script.tags = tags_map.remove(&script.id).unwrap_or_default();
+        }
+        Ok(Page::new(scripts, total))
     }
 
     /// Returns scripts with the specified IDs.
@@ -377,6 +418,125 @@ mod tests {
 
         let all_scripts = scripts_api.list_scripts(None).await?;
         assert_eq!(all_scripts.len(), 5);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn list_scripts_page_applies_context_search_and_total(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        use crate::{server::PaginationParams, users::scripts::ScriptContext};
+
+        let api = mock_api_with_config(pool, mock_config()?).await?;
+        let mock_user = mock_user()?;
+        api.db.upsert_user(&mock_user).await?;
+
+        let scripts_api = api.scripts(&mock_user);
+        for (name, script_type) in [
+            ("resp_alpha", "responder"),
+            ("resp_beta", "responder"),
+            ("uni_alpha", "universal"),
+            ("page_x", "page_extractor"),
+        ] {
+            scripts_api
+                .create_script(ScriptCreateParams {
+                    name: name.into(),
+                    script_type: script_type.into(),
+                    content: "content".into(),
+                    tag_ids: vec![],
+                })
+                .await?;
+        }
+
+        // Responder context => responder + universal scripts (3 total).
+        let page = scripts_api
+            .list_scripts_page(
+                Some(ScriptContext::Responder),
+                &PaginationParams {
+                    sort: Some("name".into()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        assert_eq!(page.total, 3);
+        assert_eq!(page.items.len(), 3);
+        assert!(page.items.iter().all(|s| s.name != "page_x"));
+
+        // Search within a context matches across pages (resp_alpha + uni_alpha).
+        let page = scripts_api
+            .list_scripts_page(
+                Some(ScriptContext::Responder),
+                &PaginationParams {
+                    page_size: Some(1),
+                    sort: Some("name".into()),
+                    q: Some("alpha".into()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        assert_eq!(page.total, 2);
+        assert_eq!(page.items.len(), 1);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn list_scripts_page_sorts_by_type(pool: PgPool) -> anyhow::Result<()> {
+        use crate::server::{PaginationParams, SortOrder};
+
+        let api = mock_api_with_config(pool, mock_config()?).await?;
+        let mock_user = mock_user()?;
+        api.db.upsert_user(&mock_user).await?;
+
+        // Names encode the expected ascending-by-type order: the `type` column stores the script
+        // type string, so it sorts lexically as page_extractor < responder < universal.
+        let scripts_api = api.scripts(&mock_user);
+        for (name, script_type) in [
+            ("b_responder", "responder"),
+            ("c_universal", "universal"),
+            ("a_page", "page_extractor"),
+        ] {
+            scripts_api
+                .create_script(ScriptCreateParams {
+                    name: name.into(),
+                    script_type: script_type.into(),
+                    content: "content".into(),
+                    tag_ids: vec![],
+                })
+                .await?;
+        }
+
+        let names = |page: &crate::server::Page<crate::users::scripts::UserScript>| {
+            page.items
+                .iter()
+                .map(|s| s.name.clone())
+                .collect::<Vec<_>>()
+        };
+
+        let asc = scripts_api
+            .list_scripts_page(
+                None,
+                &PaginationParams {
+                    sort: Some("scriptType".into()),
+                    order: Some(SortOrder::Asc),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        assert_eq!(names(&asc), vec!["a_page", "b_responder", "c_universal"]);
+
+        let desc = scripts_api
+            .list_scripts_page(
+                None,
+                &PaginationParams {
+                    sort: Some("scriptType".into()),
+                    order: Some(SortOrder::Desc),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        assert_eq!(names(&desc), vec!["c_universal", "b_responder", "a_page"]);
 
         Ok(())
     }

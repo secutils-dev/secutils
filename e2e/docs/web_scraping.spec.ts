@@ -12,6 +12,7 @@ import {
   goto,
   highlightOff,
   highlightOn,
+  listEndpointMatcher,
   PASSWORD,
   pinEntityTimestamps,
 } from '../helpers';
@@ -531,7 +532,7 @@ test.describe('Web scraping guide screenshots', () => {
 
     // Sort responders by name so the grid order is deterministic across runs.
     // Pinned timestamps make the default creation-time sort non-deterministic.
-    await page.route('**/api/webhooks/responders', async (route) => {
+    await page.route(listEndpointMatcher('**/api/webhooks/responders'), async (route) => {
       if (route.request().method() !== 'GET') {
         await route.fallback();
         return;
@@ -542,8 +543,10 @@ test.describe('Web scraping guide screenshots', () => {
         return;
       }
       const json = await response.json();
-      if (Array.isArray(json)) {
-        json.sort((a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name));
+      // List responses are paginated (`{ items, total }`); sort + pin the items in place.
+      const items = Array.isArray(json) ? json : Array.isArray(json?.items) ? json.items : null;
+      if (items) {
+        items.sort((a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name));
         pinEntityTimestamps(json);
       }
       await route.fulfill({ response, json });
@@ -1447,7 +1450,10 @@ test.describe('API tracker guide screenshots', () => {
     const trackerId = await page.request
       .get('/api/web_scraping/api_trackers')
       .then((r) => r.json())
-      .then((trackers: Array<{ id: string; name: string }>) => trackers.find((t) => t.name === 'API Logs Demo')?.id);
+      .then(
+        ({ items }: { items: Array<{ id: string; name: string }> }) =>
+          items.find((t) => t.name === 'API Logs Demo')?.id,
+      );
 
     const FIXED_TS = 1740000000;
     const mockLogs = [

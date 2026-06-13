@@ -1,6 +1,7 @@
 use crate::{
     database::Database,
     error::Error,
+    server::{ListParams, TagJunction, count_sql_with_filter, list_sql_with_filter},
     users::{EntityTag, RawEntityTag, UserId, group_entity_tags, scripts::UserScript},
 };
 use sqlx::{Acquire, Pool, Postgres, error::ErrorKind as SqlxErrorKind, query, query_as};
@@ -8,7 +9,13 @@ use std::collections::HashMap;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-#[derive(Debug)]
+/// Junction table linking scripts to tags.
+const SCRIPTS_TAG_JUNCTION: TagJunction = TagJunction {
+    table: "user_data_scripts_tags",
+    entity_col: "script_id",
+};
+
+#[derive(Debug, sqlx::FromRow)]
 pub(super) struct RawUserScript {
     id: Uuid,
     user_id: Uuid,
@@ -64,6 +71,58 @@ ORDER BY name ASC
         raw.into_iter()
             .map(|r| r.into_user_script())
             .collect::<Result<Vec<_>, _>>()
+    }
+
+    /// Returns a single page of scripts for a user, honoring search, tag, sort, and pagination
+    /// parameters, plus an optional static `type_filter` (used to scope results to a script
+    /// context), together with the total count.
+    ///
+    /// `sort_col` and `type_filter` MUST originate from a static allowlist.
+    pub async fn get_user_scripts_page(
+        &self,
+        user_id: UserId,
+        params: &ListParams,
+        sort_col: &str,
+        type_filter: Option<&str>,
+    ) -> anyhow::Result<(Vec<UserScript>, i64)> {
+        let list = list_sql_with_filter(
+            "user_data_scripts",
+            "id, user_id, name, type, content, created_at, updated_at",
+            "name",
+            &SCRIPTS_TAG_JUNCTION,
+            sort_col,
+            params.order,
+            type_filter,
+        );
+        let rows: Vec<RawUserScript> = sqlx::query_as(&list)
+            .bind(*user_id)
+            .bind(params.query.as_deref())
+            .bind(params.tags.as_slice())
+            .bind(params.global_tags.as_slice())
+            .bind(params.limit)
+            .bind(params.offset)
+            .fetch_all(self.pool)
+            .await?;
+
+        let count = count_sql_with_filter(
+            "user_data_scripts",
+            "name",
+            &SCRIPTS_TAG_JUNCTION,
+            type_filter,
+        );
+        let total: i64 = sqlx::query_scalar(&count)
+            .bind(*user_id)
+            .bind(params.query.as_deref())
+            .bind(params.tags.as_slice())
+            .bind(params.global_tags.as_slice())
+            .fetch_one(self.pool)
+            .await?;
+
+        let scripts = rows
+            .into_iter()
+            .map(|r| r.into_user_script())
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok((scripts, total))
     }
 
     /// Lists scripts for a user matching the specified IDs.

@@ -1,4 +1,6 @@
 import { ResponseError } from './errors';
+import { buildPaginationQuery, fetchAllItems } from './pagination';
+import type { Page, PaginationRequest } from './pagination';
 import { apiFetch } from './urls';
 
 export interface EntityTag {
@@ -25,12 +27,18 @@ export const TAG_COLOR_SWATCHES = [
   '#AA6556',
 ] as const;
 
-export async function getUserTags(): Promise<UserTag[]> {
-  const response = await apiFetch('/api/user/tags');
+/** Fetches a single page of tags honoring search, sort, and paging. */
+export async function getUserTagsPage(params: PaginationRequest = {}): Promise<Page<UserTag>> {
+  const response = await apiFetch(`/api/user/tags${buildPaginationQuery(params)}`);
   if (!response.ok) {
     throw await ResponseError.fromResponse(response, 'Failed to fetch tags.');
   }
   return response.json();
+}
+
+/** Fetches every tag across all pages (used by selectors, filters, and the workspace context). */
+export async function getUserTags(): Promise<UserTag[]> {
+  return fetchAllItems(getUserTagsPage);
 }
 
 export async function createUserTag(name: string, color: string): Promise<UserTag> {

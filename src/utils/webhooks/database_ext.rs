@@ -4,6 +4,7 @@ mod raw_responder_request;
 use crate::{
     database::Database,
     error::Error as SecutilsError,
+    server::{ListParams, TagJunction, count_sql, list_sql},
     users::{EntityTag, RawEntityTag, UserId, group_entity_tags},
     utils::webhooks::{
         Responder, ResponderLocation, ResponderMethod, ResponderPathType, ResponderRequest,
@@ -17,6 +18,12 @@ use sqlx::{Acquire, Pool, Postgres, query, query_as};
 use std::collections::HashMap;
 use time::OffsetDateTime;
 use uuid::Uuid;
+
+/// Junction table linking responders to tags.
+const RESPONDERS_TAG_JUNCTION: TagJunction = TagJunction {
+    table: "user_data_webhooks_responders_tags",
+    entity_col: "responder_id",
+};
 
 /// A responder that has notifications enabled and at least one tracked request that the user has
 /// not been notified about yet. Returned by [`WebhooksDatabaseExt::get_responders_pending_notification`].
@@ -61,6 +68,54 @@ ORDER BY updated_at
             .into_iter()
             .map(Responder::try_from)
             .collect::<anyhow::Result<Vec<_>>>()
+    }
+
+    /// Returns a single page of responders for a user, honoring search, tag, sort, and pagination
+    /// parameters, plus the total count.
+    ///
+    /// `sort_col` MUST originate from the caller's static allowlist.
+    pub async fn get_responders_page(
+        &self,
+        user_id: UserId,
+        params: &ListParams,
+        sort_col: &str,
+    ) -> anyhow::Result<(Vec<Responder>, i64)> {
+        let list = list_sql(
+            "user_data_webhooks_responders",
+            "id, name, location, method, enabled, settings, created_at, updated_at",
+            "name",
+            &RESPONDERS_TAG_JUNCTION,
+            sort_col,
+            params.order,
+        );
+        let rows: Vec<RawResponder> = sqlx::query_as(&list)
+            .bind(*user_id)
+            .bind(params.query.as_deref())
+            .bind(params.tags.as_slice())
+            .bind(params.global_tags.as_slice())
+            .bind(params.limit)
+            .bind(params.offset)
+            .fetch_all(self.pool)
+            .await?;
+
+        let count = count_sql(
+            "user_data_webhooks_responders",
+            "name",
+            &RESPONDERS_TAG_JUNCTION,
+        );
+        let total: i64 = sqlx::query_scalar(&count)
+            .bind(*user_id)
+            .bind(params.query.as_deref())
+            .bind(params.tags.as_slice())
+            .bind(params.global_tags.as_slice())
+            .fetch_one(self.pool)
+            .await?;
+
+        let responders = rows
+            .into_iter()
+            .map(Responder::try_from)
+            .collect::<anyhow::Result<Vec<_>>>()?;
+        Ok((responders, total))
     }
 
     /// Retrieves stats for all responders.
@@ -1524,6 +1579,90 @@ mod tests {
                     last_requested_at: Some(OffsetDateTime::from_unix_timestamp(946720800)?)
                 }
             ]
+        );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn get_responders_page_sorts_by_last_requested(pool: PgPool) -> anyhow::Result<()> {
+        use crate::{
+            server::{ListParams, SortOrder},
+            utils::webhooks::api_ext::RESPONDER_LAST_REQUESTED_AT_SQL,
+        };
+
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        // Three responders: `old` requested earliest, `new` requested latest, `never` not at all.
+        let old_id = uuid!("00000000-0000-0000-0000-000000000001");
+        let new_id = uuid!("00000000-0000-0000-0000-000000000002");
+        let never_id = uuid!("00000000-0000-0000-0000-000000000003");
+        let webhooks = db.webhooks();
+        for (id, name) in [(old_id, "old"), (new_id, "new"), (never_id, "never")] {
+            webhooks
+                .insert_responder(
+                    user.id,
+                    &MockResponderBuilder::create(id, name, &format!("/{name}"))?.build(),
+                )
+                .await?;
+        }
+
+        // `old` gets an earlier request, `new` a later one; `never` gets none.
+        webhooks
+            .insert_responder_request(
+                user.id,
+                &ResponderRequest {
+                    created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                    ..create_request(uuid!("00000000-0000-0000-0000-000000000011"), old_id)?
+                },
+            )
+            .await?;
+        webhooks
+            .insert_responder_request(
+                user.id,
+                &ResponderRequest {
+                    created_at: OffsetDateTime::from_unix_timestamp(946720900)?,
+                    ..create_request(uuid!("00000000-0000-0000-0000-000000000012"), new_id)?
+                },
+            )
+            .await?;
+
+        let page_params = |order| ListParams {
+            offset: 0,
+            limit: 10,
+            order,
+            query: None,
+            tags: vec![],
+            global_tags: vec![],
+        };
+
+        // Descending: most recently requested first, never-requested last (epoch sentinel).
+        let (desc, total) = webhooks
+            .get_responders_page(
+                user.id,
+                &page_params(SortOrder::Desc),
+                RESPONDER_LAST_REQUESTED_AT_SQL,
+            )
+            .await?;
+        assert_eq!(total, 3);
+        assert_eq!(
+            desc.iter().map(|r| r.name.as_str()).collect::<Vec<_>>(),
+            vec!["new", "old", "never"]
+        );
+
+        // Ascending: never-requested first, then oldest to newest.
+        let (asc, _) = webhooks
+            .get_responders_page(
+                user.id,
+                &page_params(SortOrder::Asc),
+                RESPONDER_LAST_REQUESTED_AT_SQL,
+            )
+            .await?;
+        assert_eq!(
+            asc.iter().map(|r| r.name.as_str()).collect::<Vec<_>>(),
+            vec!["never", "old", "new"]
         );
 
         Ok(())

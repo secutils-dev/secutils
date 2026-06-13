@@ -13,6 +13,7 @@ use crate::{
     network::{DnsResolver, EmailTransport, EmailTransportError},
     notifications::{NotificationContent, NotificationContentTemplate, NotificationDestination},
     security::USER_HANDLE_LENGTH_BYTES,
+    server::{Page, PaginationParams},
     users::{EntityTag, User},
     utils::{
         constants::MAX_ENTITY_NAME_LENGTH,
@@ -21,6 +22,24 @@ use crate::{
         },
     },
 };
+
+/// SQL `ORDER BY` expression for a responder's "last requested" time: the most recent request
+/// timestamp from its history, or the unix epoch when it has never been requested (so
+/// never-requested responders sort as the oldest, matching how the UI renders "—" for them). This
+/// mirrors `MAX(created_at)` used by [`WebhooksDatabaseExt::get_responders_stats`], so the sort
+/// order is consistent with the displayed value. It contains no user input and is only ever used
+/// via the allowlist below.
+pub(crate) const RESPONDER_LAST_REQUESTED_AT_SQL: &str = "COALESCE((SELECT MAX(rh.created_at) \
+     FROM user_data_webhooks_responders_history rh \
+     WHERE rh.responder_id = user_data_webhooks_responders.id), to_timestamp(0))";
+
+/// Allowlist of client sort keys mapped to responder SQL columns (or expressions).
+const RESPONDERS_SORT_COLUMNS: &[(&str, &str)] = &[
+    ("name", "name"),
+    ("createdAt", "created_at"),
+    ("updatedAt", "updated_at"),
+    ("lastRequestedAt", RESPONDER_LAST_REQUESTED_AT_SQL),
+];
 use anyhow::bail;
 use std::collections::HashMap;
 use time::{Duration, OffsetDateTime};
@@ -54,6 +73,27 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, 'u, DR, ET>
             responder.tags = tags_map.remove(&responder.id).unwrap_or_default();
         }
         Ok(responders)
+    }
+
+    /// Returns a single page of responders for the user, honoring search, tag, sort, and pagination
+    /// parameters.
+    pub async fn list_responders_page(
+        &self,
+        params: &PaginationParams,
+    ) -> anyhow::Result<Page<Responder>> {
+        let webhooks = self.api.db.webhooks();
+        let sort_col = params.sort_column(RESPONDERS_SORT_COLUMNS, "name");
+        let list_params = params.resolve();
+        let (mut responders, total) = webhooks
+            .get_responders_page(self.user.id, &list_params, sort_col)
+            .await?;
+        let mut tags_map = webhooks
+            .get_responder_tags(&responders.iter().map(|r| r.id).collect::<Vec<_>>())
+            .await?;
+        for responder in &mut responders {
+            responder.tags = tags_map.remove(&responder.id).unwrap_or_default();
+        }
+        Ok(Page::new(responders, total))
     }
 
     /// Retrieves stats for all responders that belong to the specified user.

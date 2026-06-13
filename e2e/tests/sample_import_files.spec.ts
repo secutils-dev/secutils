@@ -114,7 +114,7 @@ test.describe('Sample import files', () => {
 
         const listRes = await page.request.get(apiPath);
         if (!listRes.ok()) continue;
-        const existing = await listRes.json();
+        const { items: existing } = (await listRes.json()) as { items: Array<{ id: string }> };
         for (const item of existing) {
           await page.request.delete(`${apiPath}/${encodeURIComponent(item.id)}`);
         }

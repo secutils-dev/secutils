@@ -1,5 +1,5 @@
-import type { Criteria, Pagination, PropertySort } from '@elastic/eui';
 import {
+  EuiBasicTable,
   EuiButton,
   EuiButtonEmpty,
   EuiCallOut,
@@ -8,7 +8,6 @@ import {
   EuiFlexGroup,
   EuiFlexItem,
   EuiIcon,
-  EuiInMemoryTable,
   EuiLink,
   EuiSpacer,
   EuiText,
@@ -24,23 +23,23 @@ import { PrivateKeyEditFlyout } from './private_key_edit_flyout';
 import { PrivateKeyExportModal } from './private_key_export_modal';
 import { PageErrorState, PageLoadingState } from '../../../../components';
 import { useUserTags } from '../../../../hooks';
-import type { AsyncData } from '../../../../model';
-import { apiFetch, getCopyName, getErrorMessage, ResponseError } from '../../../../model';
+import type { Page, PaginationRequest } from '../../../../model';
+import { apiFetch, buildPaginationQuery, getCopyName, ResponseError } from '../../../../model';
 import { EntityName } from '../../components/entity_name';
 import {
   FilteredEmptyState,
   ItemsTableFilter,
   TagsFilter,
-  useItemsTableFilter,
+  useServerPaginatedItems,
 } from '../../components/items_table_filter';
 import { TimestampTableCell } from '../../components/timestamp_table_cell';
 import { useWorkspaceContext } from '../../hooks';
 import { getWorkspaceEntityAbsoluteLink, getWorkspaceEntityLink } from '../workspace_links';
 
 export default function CertificatesPrivateKeys() {
-  const { uiState, setTitleActions, setSettings, settings } = useWorkspaceContext();
+  const { setTitleActions, setSettings, settings } = useWorkspaceContext();
 
-  const [privateKeys, setPrivateKeys] = useState<AsyncData<PrivateKey[]>>({ status: 'pending' });
+  const [initialized, setInitialized] = useState(false);
 
   const [privateKeyToRemove, setPrivateKeyToRemove] = useState<PrivateKey | null>(null);
   const [privateKeyToExport, setPrivateKeyToExport] = useState<PrivateKey | null>(null);
@@ -72,34 +71,55 @@ export default function CertificatesPrivateKeys() {
     </EuiButtonEmpty>
   );
 
-  const loadPrivateKeys = useCallback(() => {
-    apiFetch('/api/certificates/private_keys')
-      .then(async (res) => {
-        if (!res.ok) {
-          throw await ResponseError.fromResponse(res);
-        }
+  const fetcher = useCallback(async (request: PaginationRequest): Promise<Page<PrivateKey>> => {
+    const res = await apiFetch(`/api/certificates/private_keys${buildPaginationQuery(request)}`);
+    if (!res.ok) {
+      throw await ResponseError.fromResponse(res);
+    }
+    return (await res.json()) as Page<PrivateKey>;
+  }, []);
 
-        const privateKeys = (await res.json()) as PrivateKey[];
-        setPrivateKeys({ status: 'succeeded', data: privateKeys });
-        setTitleActions(privateKeys.length === 0 ? null : createButton);
-      })
-      .catch((err: Error) => setPrivateKeys({ status: 'failed', error: getErrorMessage(err) }));
-  }, [setTitleActions, createButton]);
+  const {
+    items: privateKeys,
+    total,
+    loading,
+    error,
+    pagination,
+    sorting,
+    onTableChange,
+    query,
+    setQuery,
+    selectedTagIds,
+    setSelectedTagIds,
+    hasPageFilters,
+    hasActiveFilters,
+    clearPageFilters,
+    refresh,
+  } = useServerPaginatedItems<PrivateKey>({
+    fetcher,
+    allTags,
+    defaultSortField: 'updatedAt',
+    defaultSortDirection: 'desc',
+  });
 
   useEffect(() => {
-    if (!uiState.synced) {
-      return;
+    if (!loading) {
+      setInitialized(true);
     }
+  }, [loading]);
 
-    loadPrivateKeys();
-  }, [uiState, loadPrivateKeys]);
+  const isEmpty = initialized && total === 0 && !hasActiveFilters;
+
+  useEffect(() => {
+    setTitleActions(isEmpty ? null : createButton);
+  }, [isEmpty, createButton, setTitleActions]);
 
   const editFlyout =
     privateKeyToEdit !== null ? (
       <PrivateKeyEditFlyout
         onClose={(success) => {
           if (success) {
-            loadPrivateKeys();
+            refresh();
           }
           setPrivateKeyToEdit(null);
         }}
@@ -123,10 +143,10 @@ export default function CertificatesPrivateKeys() {
             if (!res.ok) {
               throw await ResponseError.fromResponse(res);
             }
-            loadPrivateKeys();
+            refresh();
           })
           .catch((err: Error) => {
-            console.error(`Failed to remove private key: ${getErrorMessage(err)}`);
+            console.error(`Failed to remove private key: ${err.message}`);
           });
       }}
       cancelButtonText="Cancel"
@@ -137,69 +157,16 @@ export default function CertificatesPrivateKeys() {
     </EuiConfirmModal>
   ) : null;
 
-  // Filter configuration: search by name and ID
-  const getSearchFields = useCallback((privateKey: PrivateKey) => [privateKey.name, privateKey.id], []);
-  const getItemTags = useCallback((privateKey: PrivateKey) => privateKey.tags, []);
-  const {
-    filteredItems,
-    query,
-    setQuery,
-    selectedTagIds,
-    setSelectedTagIds,
-    totalItems,
-    hasPageFilters,
-    clearPageFilters,
-  } = useItemsTableFilter({
-    items: privateKeys.status === 'succeeded' ? privateKeys.data : [],
-    allTags,
-    getSearchFields,
-    getItemTags,
-  });
-
-  const [pagination, setPagination] = useState<Pagination>({
-    pageIndex: 0,
-    pageSize: 15,
-    pageSizeOptions: [10, 15, 25, 50, 100],
-    totalItemCount: 0,
-  });
-  const [sorting, setSorting] = useState<{ sort: PropertySort }>({ sort: { field: 'updatedAt', direction: 'desc' } });
-  const onTableChange = useCallback(
-    ({ page, sort }: Criteria<PrivateKey>) => {
-      setPagination({
-        ...pagination,
-        pageIndex: page?.index ?? 0,
-        pageSize: page?.size ?? 15,
-      });
-
-      if (sort?.field) {
-        setSorting({ sort });
-      }
-    },
-    [pagination],
-  );
-
-  if (privateKeys.status === 'pending') {
+  if (!initialized && loading) {
     return <PageLoadingState />;
   }
 
-  if (privateKeys.status === 'failed') {
-    return (
-      <PageErrorState
-        title="Cannot load private keys"
-        content={
-          <p>
-            Cannot load private keys
-            <br />
-            <br />
-            <strong>{privateKeys.error}</strong>.
-          </p>
-        }
-      />
-    );
+  if (error && privateKeys.length === 0) {
+    return <PageErrorState title="Cannot load private keys" content={<p>{error}</p>} />;
   }
 
   let content;
-  if (privateKeys.data.length === 0) {
+  if (isEmpty) {
     content = (
       <EuiFlexGroup
         direction={'column'}
@@ -261,25 +228,21 @@ export default function CertificatesPrivateKeys() {
         <ItemsTableFilter
           query={query}
           onQueryChange={setQuery}
-          onRefresh={loadPrivateKeys}
+          onRefresh={refresh}
           placeholder="Search by name or ID..."
         >
           <TagsFilter tags={allTags} selectedTagIds={selectedTagIds} onSelectedTagIdsChange={setSelectedTagIds} />
         </ItemsTableFilter>
         <EuiSpacer size="m" />
-        <EuiInMemoryTable
+        <EuiBasicTable
+          loading={loading}
           pagination={pagination}
-          allowNeutralSort={false}
           noItemsMessage={
-            <FilteredEmptyState
-              totalItems={totalItems}
-              hasPageFilters={hasPageFilters}
-              onClearFilters={clearPageFilters}
-            />
+            <FilteredEmptyState totalItems={total} hasPageFilters={hasPageFilters} onClearFilters={clearPageFilters} />
           }
           sorting={sorting}
-          onTableChange={onTableChange}
-          items={filteredItems}
+          onChange={onTableChange}
+          items={privateKeys}
           itemId={(item) => item.id}
           tableLayout={'auto'}
           columns={[
@@ -311,7 +274,6 @@ export default function CertificatesPrivateKeys() {
               ),
               field: 'alg',
               textOnly: true,
-              sortable: true,
               width: '400px',
               mobileOptions: { width: 'unset' },
               render: (_, privateKey: PrivateKey) => privateKeyAlgString(privateKey.alg),
@@ -326,7 +288,6 @@ export default function CertificatesPrivateKeys() {
               ),
               field: 'encrypted',
               textOnly: true,
-              sortable: true,
               width: '110px',
               render: (_, privateKey: PrivateKey) => (
                 <EuiText size={'s'} color={privateKey.encrypted ? 'success' : 'danger'}>
@@ -339,7 +300,7 @@ export default function CertificatesPrivateKeys() {
               field: 'updatedAt',
               width: '160px',
               mobileOptions: { width: 'unset' },
-              sortable: (privateKey) => privateKey.updatedAt,
+              sortable: true,
               render: (_, privateKey: PrivateKey) => <TimestampTableCell timestamp={privateKey.updatedAt} />,
             },
             {
@@ -390,7 +351,7 @@ export default function CertificatesPrivateKeys() {
                       ...rest,
                       name: getCopyName(
                         name,
-                        privateKeys.status === 'succeeded' ? privateKeys.data.map((k) => k.name) : [],
+                        privateKeys.map((k) => k.name),
                       ),
                     }),
                 },

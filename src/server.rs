@@ -3,12 +3,22 @@ mod extractors;
 mod handlers;
 mod http_errors;
 mod middlewares;
+mod pagination;
 mod ui_state;
 
 #[cfg(test)]
 pub use self::app_state::tests;
-pub use self::ui_state::{
-    DatabaseStatus, Status, StatusLevel, SubscriptionState, UiPlatformState, UiState,
+// `SortOrder` is only ever named by `crate::server::…` in test code (the secrets/tags pagination
+// DB tests). Re-exporting it unconditionally would be an unused import in release builds and trip
+// `#[deny(warnings)]`, so gate it behind `cfg(test)`.
+#[cfg(test)]
+pub use self::pagination::SortOrder;
+pub use self::{
+    pagination::{
+        ListParams, Page, PaginationParams, TagJunction, count_sql, count_sql_with_filter,
+        list_sql, list_sql_with_filter,
+    },
+    ui_state::{DatabaseStatus, Status, StatusLevel, SubscriptionState, UiPlatformState, UiState},
 };
 
 use crate::{

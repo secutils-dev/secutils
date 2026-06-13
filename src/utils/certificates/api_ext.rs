@@ -19,6 +19,7 @@ use crate::{
     api::Api,
     error::Error as SecutilsError,
     network::{DnsResolver, EmailTransport},
+    server::{Page, PaginationParams},
     users::{EntityTag, SharedResource, User, UserShare},
     utils::{
         certificates::{
@@ -28,6 +29,13 @@ use crate::{
         constants::MAX_ENTITY_NAME_LENGTH,
     },
 };
+
+/// Allowlist of client sort keys mapped to SQL columns for list endpoints.
+const CERTIFICATES_SORT_COLUMNS: &[(&str, &str)] = &[
+    ("name", "name"),
+    ("createdAt", "created_at"),
+    ("updatedAt", "updated_at"),
+];
 use anyhow::{anyhow, bail};
 use openssl::{
     asn1::Asn1Time,
@@ -264,6 +272,27 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, 'u, DR,
         Ok(keys)
     }
 
+    /// Returns a single page of private keys (without pkcs8 data) for the user,
+    /// honoring search, tag, sort, and pagination parameters.
+    pub async fn list_private_keys_page(
+        &self,
+        params: &PaginationParams,
+    ) -> anyhow::Result<Page<PrivateKey>> {
+        let certificates_db = self.api.db.certificates();
+        let sort_col = params.sort_column(CERTIFICATES_SORT_COLUMNS, "name");
+        let list_params = params.resolve();
+        let (mut keys, total) = certificates_db
+            .get_private_keys_page(self.user.id, &list_params, sort_col)
+            .await?;
+        let mut tags_map = certificates_db
+            .get_private_key_tags(&keys.iter().map(|k| k.id).collect::<Vec<_>>())
+            .await?;
+        for key in &mut keys {
+            key.tags = tags_map.remove(&key.id).unwrap_or_default();
+        }
+        Ok(Page::new(keys, total))
+    }
+
     /// Retrieves private keys (with pkcs8 data) with the specified IDs.
     pub async fn bulk_get_private_keys_for_export(
         &self,
@@ -455,6 +484,27 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, 'u, DR,
             template.tags = tags_map.remove(&template.id).unwrap_or_default();
         }
         Ok(templates)
+    }
+
+    /// Returns a single page of certificate templates for the user, honoring
+    /// search, tag, sort, and pagination parameters.
+    pub async fn list_certificate_templates_page(
+        &self,
+        params: &PaginationParams,
+    ) -> anyhow::Result<Page<CertificateTemplate>> {
+        let certificates_db = self.api.db.certificates();
+        let sort_col = params.sort_column(CERTIFICATES_SORT_COLUMNS, "name");
+        let list_params = params.resolve();
+        let (mut templates, total) = certificates_db
+            .get_certificate_templates_page(self.user.id, &list_params, sort_col)
+            .await?;
+        let mut tags_map = certificates_db
+            .get_certificate_template_tags(&templates.iter().map(|t| t.id).collect::<Vec<_>>())
+            .await?;
+        for template in &mut templates {
+            template.tags = tags_map.remove(&template.id).unwrap_or_default();
+        }
+        Ok(Page::new(templates, total))
     }
 
     /// Retrieves certificate templates with the specified IDs.

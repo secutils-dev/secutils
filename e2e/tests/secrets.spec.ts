@@ -27,10 +27,11 @@ test.describe('User Secrets CRUD', () => {
     // Verify via API that the list includes the secret but not the value.
     const listResponse = await page.request.get('/api/user/secrets');
     expect(listResponse.ok()).toBeTruthy();
-    const secrets = await listResponse.json();
-    expect(secrets).toHaveLength(1);
-    expect(secrets[0].name).toBe('TEST_SECRET');
-    expect(secrets[0]).not.toHaveProperty('value');
+    const page1 = await listResponse.json();
+    expect(page1.total).toBe(1);
+    expect(page1.items).toHaveLength(1);
+    expect(page1.items[0].name).toBe('TEST_SECRET');
+    expect(page1.items[0]).not.toHaveProperty('value');
 
     // Update the secret.
     await page.getByRole('button', { name: 'Edit' }).click();
@@ -136,7 +137,7 @@ test.describe('Secrets access in tracker edit flyout', () => {
     // Verify via API that secrets were persisted.
     const listRes = await page.request.get('/api/web_scraping/page_trackers');
     expect(listRes.ok()).toBeTruthy();
-    const trackers = await listRes.json();
+    const { items: trackers } = await listRes.json();
     const tracker = trackers.find((t: { name: string }) => t.name === 'secrets-tracker');
     expect(tracker).toBeDefined();
     expect(tracker.secrets).toEqual({ type: 'all' });
@@ -180,7 +181,7 @@ test.describe('Secrets access in tracker edit flyout', () => {
     // Verify via API that secrets mode is now "none" (omitted from JSON when none).
     const listRes = await page.request.get('/api/web_scraping/page_trackers');
     expect(listRes.ok()).toBeTruthy();
-    const trackers = await listRes.json();
+    const { items: trackers } = await listRes.json();
     const tracker = trackers.find((t: { name: string }) => t.name === 'secrets-tracker');
     expect(tracker).toBeDefined();
     expect(tracker.secrets).toBeUndefined();
@@ -253,7 +254,7 @@ test.describe('Secrets access in tracker edit flyout', () => {
     // Verify via API.
     const listRes = await page.request.get('/api/web_scraping/page_trackers');
     expect(listRes.ok()).toBeTruthy();
-    const trackers = await listRes.json();
+    const { items: trackers } = await listRes.json();
     const tracker = trackers.find((t: { name: string }) => t.name === 'selected-secrets-tracker');
     expect(tracker).toBeDefined();
     expect(tracker.secrets).toEqual({ type: 'selected', secrets: ['TRACKER_KEY'] });
@@ -323,7 +324,7 @@ test.describe('Secrets access in responder edit flyout', () => {
     // Verify via API that secrets were persisted.
     const listRes = await page.request.get('/api/webhooks/responders');
     expect(listRes.ok()).toBeTruthy();
-    const responders = await listRes.json();
+    const { items: responders } = await listRes.json();
     const responder = responders.find((r: { name: string }) => r.name === 'secrets-responder');
     expect(responder).toBeDefined();
     expect(responder.settings.secrets).toEqual({ type: 'selected', secrets: ['RESPONDER_KEY'] });
@@ -370,7 +371,7 @@ test.describe('Secrets access in responder edit flyout', () => {
     // Verify via API that secrets mode is now "none".
     const listRes = await page.request.get('/api/webhooks/responders');
     expect(listRes.ok()).toBeTruthy();
-    const responders = await listRes.json();
+    const { items: responders } = await listRes.json();
     const responder = responders.find((r: { name: string }) => r.name === 'secrets-responder');
     expect(responder).toBeDefined();
     expect(responder.settings.secrets).toBeUndefined();

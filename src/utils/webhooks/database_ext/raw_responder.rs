@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-#[derive(Debug, Eq, PartialEq, Clone)]
+#[derive(Debug, Eq, PartialEq, Clone, sqlx::FromRow)]
 pub(super) struct RawResponder {
     pub id: Uuid,
     pub name: String,

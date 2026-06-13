@@ -1,6 +1,9 @@
 use crate::{
     error::Error,
-    server::app_state::AppState,
+    server::{
+        app_state::AppState,
+        pagination::{Page, PaginationParams},
+    },
     users::User,
     utils::webhooks::{Responder, ResponderStats, RespondersCreateParams, RespondersUpdateParams},
 };
@@ -13,11 +16,12 @@ pub struct ResponderIdPath {
     pub responder_id: Uuid,
 }
 
-/// Lists all responders for the authenticated user.
+/// Lists responders for the authenticated user (paginated).
 #[utoipa::path(
     tags = ["webhooks"],
+    params(PaginationParams),
     responses(
-        (status = 200, description = "List of responders.", body = [Responder]),
+        (status = 200, description = "Paginated list of responders.", body = Page<Responder>),
         (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
@@ -25,8 +29,13 @@ pub struct ResponderIdPath {
 pub async fn responders_list(
     state: web::Data<AppState>,
     user: User,
+    pagination: web::Query<PaginationParams>,
 ) -> Result<HttpResponse, Error> {
-    let responders = state.api.webhooks(&user).get_responders().await?;
+    let responders = state
+        .api
+        .webhooks(&user)
+        .list_responders_page(&pagination.into_inner())
+        .await?;
     Ok(HttpResponse::Ok().json(responders))
 }
 

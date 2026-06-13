@@ -2,7 +2,7 @@ use crate::{retrack::RetrackTracker, users::RawSecretsAccess, utils::web_scrapin
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-#[derive(Debug, Eq, PartialEq, Clone)]
+#[derive(Debug, Eq, PartialEq, Clone, sqlx::FromRow)]
 pub(super) struct RawPageTracker {
     pub id: Uuid,
     pub name: String,

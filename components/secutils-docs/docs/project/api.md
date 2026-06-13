@@ -29,6 +29,22 @@ Secutils.dev exposes a REST API for managing all resources programmatically. The
 | `data`          | `/api/user/data`                                                    | Export and import user data                                        |
 | `notifications` | `/api/notifications/unsubscribe`                                    | Public endpoints for managing notification delivery (RFC 8058)     |
 
+## List pagination
+
+All resource list endpoints (e.g. `GET /api/user/secrets`) are paginated and accept a common set of query parameters. Responses are wrapped as `{ "items": [...], "total": <number> }`, where `total` is the count of items matching the current filter across all pages.
+
+| Parameter    | Type     | Description                                                                              |
+|--------------|----------|------------------------------------------------------------------------------------------|
+| `page`       | integer  | Zero-based page index. Defaults to `0`.                                                  |
+| `pageSize`   | integer  | Items per page. Defaults to `15`, clamped to a maximum of `100`.                         |
+| `sort`       | string   | Field to sort by (resource-specific, e.g. `name`, `createdAt`, `updatedAt`).             |
+| `order`      | string   | Sort direction: `asc` (default) or `desc`.                                               |
+| `q`          | string   | Free-text query matched case-insensitively against the resource name.                    |
+| `tags`       | string   | Comma-separated tag IDs; returns items having **any** of these tags (OR).                |
+| `globalTags` | string   | Comma-separated tag IDs; returns only items having **all** of these tags (AND).          |
+
+For example, `GET /api/user/secrets?page=0&pageSize=25&sort=name&order=asc&q=token&tags=<id1>,<id2>` returns the first 25 secrets whose name contains "token" and that carry tag `id1` or `id2`, sorted by name.
+
 ## Authentication
 
 All API endpoints require authentication. The following methods are supported:

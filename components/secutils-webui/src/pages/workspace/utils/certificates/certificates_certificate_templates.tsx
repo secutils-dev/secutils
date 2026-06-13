@@ -1,5 +1,5 @@
-import type { Criteria, Pagination, PropertySort } from '@elastic/eui';
 import {
+  EuiBasicTable,
   EuiButton,
   EuiButtonEmpty,
   EuiCallOut,
@@ -8,7 +8,6 @@ import {
   EuiFlexGroup,
   EuiFlexItem,
   EuiIcon,
-  EuiInMemoryTable,
   EuiLink,
   EuiSpacer,
   EuiToolTip,
@@ -27,22 +26,22 @@ import { SELF_SIGNED_PROD_WARNING_USER_SETTINGS_KEY } from './consts';
 import { privateKeyAlgString } from './private_key_alg';
 import { PageErrorState, PageLoadingState } from '../../../../components';
 import { useUserTags } from '../../../../hooks';
-import type { AsyncData } from '../../../../model';
-import { apiFetch, getCopyName, getErrorMessage, ResponseError } from '../../../../model';
+import type { Page, PaginationRequest } from '../../../../model';
+import { apiFetch, buildPaginationQuery, getCopyName, ResponseError } from '../../../../model';
 import { EntityName } from '../../components/entity_name';
 import {
   FilteredEmptyState,
   ItemsTableFilter,
   TagsFilter,
-  useItemsTableFilter,
+  useServerPaginatedItems,
 } from '../../components/items_table_filter';
 import { useWorkspaceContext } from '../../hooks';
 import { getWorkspaceEntityAbsoluteLink, getWorkspaceEntityLink } from '../workspace_links';
 
 export default function CertificatesCertificateTemplates() {
-  const { uiState, settings, setSettings, setTitleActions } = useWorkspaceContext();
+  const { settings, setSettings, setTitleActions } = useWorkspaceContext();
 
-  const [templates, setTemplates] = useState<AsyncData<CertificateTemplate[]>>({ status: 'pending' });
+  const [initialized, setInitialized] = useState(false);
 
   const [templateToGenerate, setTemplateToGenerate] = useState<CertificateTemplate | null>(null);
   const [templateToShare, setTemplateToShare] = useState<CertificateTemplate | null>(null);
@@ -95,34 +94,55 @@ export default function CertificatesCertificateTemplates() {
     [importButton, createButton],
   );
 
-  const loadCertificateTemplates = useCallback(() => {
-    apiFetch('/api/certificates/templates')
-      .then(async (res) => {
-        if (!res.ok) {
-          throw await ResponseError.fromResponse(res);
-        }
+  const fetcher = useCallback(async (request: PaginationRequest): Promise<Page<CertificateTemplate>> => {
+    const res = await apiFetch(`/api/certificates/templates${buildPaginationQuery(request)}`);
+    if (!res.ok) {
+      throw await ResponseError.fromResponse(res);
+    }
+    return (await res.json()) as Page<CertificateTemplate>;
+  }, []);
 
-        const templates = (await res.json()) as CertificateTemplate[];
-        setTemplates({ status: 'succeeded', data: templates });
-        setTitleActions(templates.length === 0 ? null : titleActions);
-      })
-      .catch((err: Error) => setTemplates({ status: 'failed', error: getErrorMessage(err) }));
-  }, [setTitleActions, titleActions]);
+  const {
+    items: templates,
+    total,
+    loading,
+    error,
+    pagination,
+    sorting,
+    onTableChange,
+    query,
+    setQuery,
+    selectedTagIds,
+    setSelectedTagIds,
+    hasPageFilters,
+    hasActiveFilters,
+    clearPageFilters,
+    refresh,
+  } = useServerPaginatedItems<CertificateTemplate>({
+    fetcher,
+    allTags,
+    defaultSortField: 'updatedAt',
+    defaultSortDirection: 'desc',
+  });
 
   useEffect(() => {
-    if (!uiState.synced) {
-      return;
+    if (!loading) {
+      setInitialized(true);
     }
+  }, [loading]);
 
-    loadCertificateTemplates();
-  }, [uiState, loadCertificateTemplates]);
+  const isEmpty = initialized && total === 0 && !hasActiveFilters;
+
+  useEffect(() => {
+    setTitleActions(isEmpty ? null : titleActions);
+  }, [isEmpty, titleActions, setTitleActions]);
 
   const editFlyout =
     templateToEdit !== null ? (
       <CertificateTemplateEditFlyout
         onClose={(success) => {
           if (success) {
-            loadCertificateTemplates();
+            refresh();
           }
           setTemplateToEdit(null);
         }}
@@ -149,10 +169,10 @@ export default function CertificatesCertificateTemplates() {
             if (!res.ok) {
               throw await ResponseError.fromResponse(res);
             }
-            loadCertificateTemplates();
+            refresh();
           })
           .catch((err: Error) => {
-            console.error(`Failed to remove certificate template: ${getErrorMessage(err)}`);
+            console.error(`Failed to remove certificate template: ${err.message}`);
           });
       }}
       cancelButtonText="Cancel"
@@ -163,73 +183,16 @@ export default function CertificatesCertificateTemplates() {
     </EuiConfirmModal>
   ) : null;
 
-  // Filter configuration: search by name and ID
-  const getSearchFields = useCallback(
-    (template: CertificateTemplate) => [template.name, template.id, getDistinguishedNameString(template.attributes)],
-    [],
-  );
-  const getItemTags = useCallback((template: CertificateTemplate) => template.tags, []);
-
-  const {
-    filteredItems,
-    query,
-    setQuery,
-    selectedTagIds,
-    setSelectedTagIds,
-    totalItems,
-    hasPageFilters,
-    clearPageFilters,
-  } = useItemsTableFilter({
-    items: templates.status === 'succeeded' ? templates.data : [],
-    allTags,
-    getSearchFields,
-    getItemTags,
-  });
-
-  const [pagination, setPagination] = useState<Pagination>({
-    pageIndex: 0,
-    pageSize: 15,
-    pageSizeOptions: [10, 15, 25, 50, 100],
-    totalItemCount: 0,
-  });
-  const [sorting, setSorting] = useState<{ sort: PropertySort }>({ sort: { field: 'updatedAt', direction: 'desc' } });
-  const onTableChange = useCallback(
-    ({ page, sort }: Criteria<CertificateTemplate>) => {
-      setPagination({
-        ...pagination,
-        pageIndex: page?.index ?? 0,
-        pageSize: page?.size ?? 15,
-      });
-
-      if (sort?.field) {
-        setSorting({ sort });
-      }
-    },
-    [pagination],
-  );
-
-  if (templates.status === 'pending') {
+  if (!initialized && loading) {
     return <PageLoadingState />;
   }
 
-  if (templates.status === 'failed') {
-    return (
-      <PageErrorState
-        title="Cannot load certificate templates"
-        content={
-          <p>
-            Cannot load certificate templates.
-            <br />
-            <br />
-            <strong>{templates.error}</strong>.
-          </p>
-        }
-      />
-    );
+  if (error && templates.length === 0) {
+    return <PageErrorState title="Cannot load certificate templates" content={<p>{error}</p>} />;
   }
 
   let content;
-  if (templates.data.length === 0) {
+  if (isEmpty) {
     content = (
       <EuiFlexGroup
         direction={'column'}
@@ -293,25 +256,21 @@ export default function CertificatesCertificateTemplates() {
         <ItemsTableFilter
           query={query}
           onQueryChange={setQuery}
-          onRefresh={loadCertificateTemplates}
+          onRefresh={refresh}
           placeholder="Search by name or ID..."
         >
           <TagsFilter tags={allTags} selectedTagIds={selectedTagIds} onSelectedTagIdsChange={setSelectedTagIds} />
         </ItemsTableFilter>
         <EuiSpacer size="m" />
-        <EuiInMemoryTable
+        <EuiBasicTable
+          loading={loading}
           pagination={pagination}
-          allowNeutralSort={false}
           noItemsMessage={
-            <FilteredEmptyState
-              totalItems={totalItems}
-              hasPageFilters={hasPageFilters}
-              onClearFilters={clearPageFilters}
-            />
+            <FilteredEmptyState totalItems={total} hasPageFilters={hasPageFilters} onClearFilters={clearPageFilters} />
           }
           sorting={sorting}
-          onTableChange={onTableChange}
-          items={filteredItems}
+          onChange={onTableChange}
+          items={templates}
           itemId={(template) => template.id}
           tableLayout={'auto'}
           columns={[
@@ -343,7 +302,6 @@ export default function CertificatesCertificateTemplates() {
               ),
               field: 'isCa',
               textOnly: true,
-              sortable: true,
               render: (_, template) => certificateTypeString(template.attributes),
             },
             {
@@ -354,13 +312,11 @@ export default function CertificatesCertificateTemplates() {
             {
               name: 'Not valid before',
               field: 'notValidBefore',
-              sortable: true,
               render: (_, template) => unix(template.attributes.notValidBefore).format('ll HH:mm'),
             },
             {
               name: 'Not valid after',
               field: 'notValidAfter',
-              sortable: true,
               render: (_, template) => unix(template.attributes.notValidAfter).format('ll HH:mm'),
             },
             {
@@ -430,7 +386,7 @@ export default function CertificatesCertificateTemplates() {
                       ...rest,
                       name: getCopyName(
                         name,
-                        templates.status === 'succeeded' ? templates.data.map((t) => t.name) : [],
+                        templates.map((t) => t.name),
                       ),
                     }),
                 },
@@ -456,7 +412,7 @@ export default function CertificatesCertificateTemplates() {
       onClose={(success) => {
         setShowImportModal(false);
         if (success) {
-          loadCertificateTemplates();
+          refresh();
         }
       }}
     />

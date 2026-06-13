@@ -1,4 +1,5 @@
 import {
+  EuiBasicTable,
   EuiButton,
   EuiButtonEmpty,
   EuiConfirmModal,
@@ -6,7 +7,6 @@ import {
   EuiFlexGroup,
   EuiFlexItem,
   EuiIcon,
-  EuiInMemoryTable,
   EuiSpacer,
   EuiText,
 } from '@elastic/eui';
@@ -15,16 +15,16 @@ import { unix } from 'moment/moment';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { SecretEditFlyout } from './secret_edit_flyout';
-import { PageLoadingState } from '../../../../components';
+import { PageErrorState, PageLoadingState } from '../../../../components';
 import { useUserTags } from '../../../../hooks';
-import { deleteUserSecret, getUserSecrets } from '../../../../model';
+import { deleteUserSecret, getUserSecretsPage } from '../../../../model';
 import type { UserSecret } from '../../../../model';
 import { EntityName } from '../../components/entity_name';
 import {
   FilteredEmptyState,
   ItemsTableFilter,
   TagsFilter,
-  useItemsTableFilter,
+  useServerPaginatedItems,
 } from '../../components/items_table_filter';
 import { useWorkspaceContext } from '../../hooks';
 
@@ -36,14 +36,13 @@ interface DeleteConfirmation {
 export default function WorkspaceSecrets() {
   const { addToast, setTitleActions } = useWorkspaceContext();
 
-  const [secrets, setSecrets] = useState<UserSecret[]>([]);
-  const [loading, setLoading] = useState(true);
   const [secretToEdit, setSecretToEdit] = useState<null | {
     editingId?: string;
     editingName?: string;
     initialTagIds?: string[];
   }>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirmation | null>(null);
+  const [initialized, setInitialized] = useState(false);
   const { allTags } = useUserTags();
 
   const createButton = useMemo(
@@ -66,54 +65,55 @@ export default function WorkspaceSecrets() {
     </EuiButtonEmpty>
   );
 
-  const loadSecrets = useCallback(async () => {
-    setLoading(true);
-    try {
-      const loaded = await getUserSecrets();
-      setSecrets(loaded);
-      setTitleActions(loaded.length === 0 ? null : createButton);
-    } catch {
-      addToast({ id: 'load-secrets-error', color: 'danger', title: 'Failed to load secrets' });
-    } finally {
-      setLoading(false);
-    }
-  }, [addToast, createButton, setTitleActions]);
+  const {
+    items: secrets,
+    total,
+    loading,
+    error,
+    pagination,
+    sorting,
+    onTableChange,
+    query,
+    setQuery,
+    selectedTagIds,
+    setSelectedTagIds,
+    hasPageFilters,
+    hasActiveFilters,
+    clearPageFilters,
+    refresh,
+  } = useServerPaginatedItems<UserSecret>({
+    fetcher: getUserSecretsPage,
+    allTags,
+    defaultSortField: 'updatedAt',
+    defaultSortDirection: 'desc',
+    defaultPageSize: 10,
+  });
 
   useEffect(() => {
-    loadSecrets();
-  }, [loadSecrets]);
+    if (!loading) {
+      setInitialized(true);
+    }
+  }, [loading]);
+
+  const isEmpty = initialized && total === 0 && !hasActiveFilters;
+
+  useEffect(() => {
+    setTitleActions(isEmpty ? null : createButton);
+  }, [isEmpty, createButton, setTitleActions]);
 
   const handleDelete = useCallback(
     async (id: string, name: string) => {
       try {
         await deleteUserSecret(id);
         addToast({ id: 'delete-secret', color: 'success', title: `Secret "${name}" deleted` });
-        await loadSecrets();
+        refresh();
       } catch {
         addToast({ id: 'delete-secret-error', color: 'danger', title: `Failed to delete secret "${name}"` });
       }
       setDeleteConfirm(null);
     },
-    [loadSecrets, addToast],
+    [refresh, addToast],
   );
-
-  const getSearchFields = useCallback((secret: UserSecret) => [secret.name, secret.id], []);
-  const getItemTags = useCallback((secret: UserSecret) => secret.tags, []);
-  const {
-    filteredItems,
-    query,
-    setQuery,
-    selectedTagIds,
-    setSelectedTagIds,
-    totalItems,
-    hasPageFilters,
-    clearPageFilters,
-  } = useItemsTableFilter({
-    items: secrets,
-    allTags,
-    getSearchFields,
-    getItemTags,
-  });
 
   const columns: Array<EuiBasicTableColumn<UserSecret>> = [
     {
@@ -156,12 +156,16 @@ export default function WorkspaceSecrets() {
     },
   ];
 
-  if (loading && secrets.length === 0) {
+  if (!initialized && loading) {
     return <PageLoadingState />;
   }
 
+  if (error && secrets.length === 0) {
+    return <PageErrorState title="Cannot load secrets" content={<p>{error}</p>} />;
+  }
+
   let content;
-  if (secrets.length === 0) {
+  if (isEmpty) {
     content = (
       <EuiFlexGroup
         direction={'column'}
@@ -191,22 +195,19 @@ export default function WorkspaceSecrets() {
   } else {
     content = (
       <>
-        <ItemsTableFilter query={query} onQueryChange={setQuery} onRefresh={loadSecrets} placeholder="Search secrets…">
+        <ItemsTableFilter query={query} onQueryChange={setQuery} onRefresh={refresh} placeholder="Search secrets…">
           <TagsFilter tags={allTags} selectedTagIds={selectedTagIds} onSelectedTagIdsChange={setSelectedTagIds} />
         </ItemsTableFilter>
         <EuiSpacer size="m" />
-        <EuiInMemoryTable
-          items={filteredItems}
+        <EuiBasicTable
+          items={secrets}
           columns={columns}
           loading={loading}
-          sorting={{ sort: { field: 'updatedAt', direction: 'desc' } }}
-          pagination={{ pageSize: 10, showPerPageOptions: true }}
+          sorting={sorting}
+          pagination={pagination}
+          onChange={onTableChange}
           noItemsMessage={
-            <FilteredEmptyState
-              totalItems={totalItems}
-              hasPageFilters={hasPageFilters}
-              onClearFilters={clearPageFilters}
-            />
+            <FilteredEmptyState totalItems={total} hasPageFilters={hasPageFilters} onClearFilters={clearPageFilters} />
           }
         />
       </>
@@ -220,7 +221,7 @@ export default function WorkspaceSecrets() {
       initialTagIds={secretToEdit.initialTagIds}
       onClose={(success) => {
         if (success) {
-          loadSecrets();
+          refresh();
         }
         setSecretToEdit(null);
       }}

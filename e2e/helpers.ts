@@ -244,6 +244,13 @@ export const FIXED_ENTITY_TIMESTAMP = 1740000000;
  * value (object or array of objects).  Mutates in place.
  */
 export function pinEntityTimestamps(json: unknown): void {
+  // Transparently unwrap the paginated `{ items, total }` response shape so the
+  // same helper works for both plain-array and paginated list endpoints.
+  if (json && typeof json === 'object' && !Array.isArray(json) && Array.isArray((json as { items?: unknown }).items)) {
+    pinEntityTimestamps((json as { items: unknown }).items);
+    return;
+  }
+
   const items = Array.isArray(json) ? json : [json];
   for (const item of items) {
     if (item && typeof item === 'object') {
@@ -268,11 +275,29 @@ export function pinEntityTimestamps(json: unknown): void {
 }
 
 /**
+ * Build a route matcher for a paginated *list* endpoint.
+ *
+ * List endpoints are now server-paginated, so the UI requests them with a query
+ * string (`?page=0&pageSize=15&sort=updatedAt&order=desc`). A plain glob ending in
+ * the bare path (no trailing wildcard) stops matching once that query string is
+ * present, which silently broke timestamp pinning in screenshots. This returns a
+ * RegExp that matches the bare path *and* its `?…`-suffixed variant, but deliberately
+ * NOT sub-resources (`/{id}`, `/{id}/_history`, …) — preserving the old glob's scope
+ * so per-resource route handlers keep precedence.
+ */
+export function listEndpointMatcher(urlPattern: string): RegExp {
+  const path = urlPattern.replace(/^\*\*/, '');
+  const escaped = path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`${escaped}(\\?.*)?$`);
+}
+
+/**
  * Set up a route handler that pins `createdAt`/`updatedAt` in GET JSON responses
- * matching `urlPattern`.  Non-GET requests pass through unchanged.
+ * matching `urlPattern` (a list endpoint, with or without a pagination query
+ * string).  Non-GET requests pass through unchanged.
  */
 export async function fixEntityTimestamps(page: Page, urlPattern: string) {
-  await page.route(urlPattern, async (route) => {
+  await page.route(listEndpointMatcher(urlPattern), async (route) => {
     if (route.request().method() !== 'GET') {
       await route.continue();
       return;
@@ -326,17 +351,19 @@ export async function fixCertificateTemplateValidityDates(page: Page) {
       return;
     }
     const json = JSON.parse(body);
-    const isArray = Array.isArray(json);
-    const templates = isArray ? json : [json];
+    // Unwrap the paginated `{ items, total }` list shape; also support a plain array
+    // (legacy/bulk) and a single-object (single GET) response. `templates` references the
+    // same objects inside `json`, so mutating them mutates `json` in place.
+    const templates = Array.isArray(json) ? json : Array.isArray(json?.items) ? json.items : [json];
     for (const tpl of templates) {
-      if (tpl.attributes?.notValidBefore != null && tpl.attributes?.notValidAfter != null) {
+      if (tpl?.attributes?.notValidBefore != null && tpl.attributes?.notValidAfter != null) {
         const diff = tpl.attributes.notValidAfter - tpl.attributes.notValidBefore;
         tpl.attributes.notValidBefore = FIXED_NOT_VALID_BEFORE;
         tpl.attributes.notValidAfter = FIXED_NOT_VALID_BEFORE + diff;
       }
     }
-    pinEntityTimestamps(isArray ? templates : templates[0]);
-    await route.fulfill({ response, json: isArray ? templates : templates[0] });
+    pinEntityTimestamps(json);
+    await route.fulfill({ response, json });
   });
 }
 

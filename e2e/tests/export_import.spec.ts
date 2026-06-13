@@ -200,7 +200,7 @@ test.describe('Data Export and Import', () => {
 
     // Verify both scripts exist - original and renamed copy.
     const listResponse = await page.request.get('/api/user/scripts');
-    const scripts = await listResponse.json();
+    const { items: scripts } = await listResponse.json();
     expect(scripts.find((s: { name: string }) => s.name === 'rename_test')).toBeTruthy();
     expect(scripts.find((s: { name: string }) => s.name === 'rename_test (Copy 1)')).toBeTruthy();
 
@@ -259,7 +259,7 @@ test.describe('Data Export and Import', () => {
 
     // Verify only one script exists with the new content.
     const listResponse = await page.request.get('/api/user/scripts');
-    const scripts = await listResponse.json();
+    const { items: scripts } = await listResponse.json();
     const found = scripts.filter((s: { name: string }) => s.name === 'overwrite_test');
     expect(found).toHaveLength(1);
     expect(found[0].content).toBe('overwritten content');
@@ -343,7 +343,7 @@ test.describe('Data Export and Import', () => {
 
     // Verify delete_script is gone.
     const listResponse = await page.request.get('/api/user/scripts');
-    const scripts = await listResponse.json();
+    const { items: scripts } = await listResponse.json();
     expect(scripts.find((s: { name: string }) => s.name === 'delete_script')).toBeUndefined();
     expect(scripts.find((s: { name: string }) => s.name === 'keep_script')).toBeTruthy();
 
@@ -378,7 +378,7 @@ test.describe('Data Export and Import', () => {
 
     // Verify the script still exists (dry-run didn't delete it).
     const listResponse = await page.request.get('/api/user/scripts');
-    const scripts = await listResponse.json();
+    const { items: scripts } = await listResponse.json();
     expect(scripts.find((s: { name: string }) => s.name === 'dryrun_script')).toBeTruthy();
 
     // Clean up.
@@ -409,7 +409,7 @@ test.describe('Data Export and Import', () => {
 
     // Verify it's gone.
     const listResponse = await page.request.get('/api/user/scripts');
-    const scripts = await listResponse.json();
+    const { items: scripts } = await listResponse.json();
     expect(scripts.find((s: { name: string }) => s.name === 'roundtrip_script')).toBeUndefined();
 
     // Import.
@@ -441,7 +441,7 @@ test.describe('Data Export and Import', () => {
 
     // Verify the script exists again.
     const listAfter = await page.request.get('/api/user/scripts');
-    const scriptsAfter = await listAfter.json();
+    const { items: scriptsAfter } = await listAfter.json();
     expect(scriptsAfter.find((s: { name: string }) => s.name === 'roundtrip_script')).toBeTruthy();
   });
 
@@ -796,7 +796,7 @@ test.describe('Data Export and Import', () => {
     // ── Step 7-tags: Validate imported tags ────────────────────────────
     const tagsRes = await page.request.get('/api/user/tags');
     expect(tagsRes.ok()).toBeTruthy();
-    const tags = await tagsRes.json();
+    const { items: tags } = await tagsRes.json();
     const importedTag1 = tags.find((t: { name: string }) => t.name === 'import-tag-prod');
     const importedTag2 = tags.find((t: { name: string }) => t.name === 'import-tag-staging');
     expect(importedTag1).toBeDefined();
@@ -821,7 +821,7 @@ test.describe('Data Export and Import', () => {
 
     // ── Step 7a: Validate script ───────────────────────────────────────
     const scriptsRes = await page.request.get('/api/user/scripts');
-    const scripts = await scriptsRes.json();
+    const { items: scripts } = await scriptsRes.json();
     const importedScript = scripts.find((s: { name: string }) => s.name === 'import-test-script');
     expect(importedScript).toBeDefined();
     expect(importedScript.scriptType).toBe('responder');
@@ -832,12 +832,12 @@ test.describe('Data Export and Import', () => {
 
     // ── Step 7b: Validate secret ───────────────────────────────────────
     const secretsRes = await page.request.get('/api/user/secrets');
-    const secrets = await secretsRes.json();
+    const secrets = (await secretsRes.json()).items;
     expect(secrets.find((s: { name: string }) => s.name === SECRET_NAME)).toBeDefined();
 
     // ── Step 7c: Validate CSP ──────────────────────────────────────────
     const cspRes = await page.request.get('/api/web_security/csp');
-    const csps = await cspRes.json();
+    const { items: csps } = await cspRes.json();
     const importedCsp = csps.find((c: { name: string }) => c.name === 'import-test-csp');
     expect(importedCsp).toBeDefined();
     expect(importedCsp.directives).toHaveLength(2);
@@ -850,7 +850,7 @@ test.describe('Data Export and Import', () => {
 
     // ── Step 7d: Validate certificate template ─────────────────────────
     const templatesRes = await page.request.get('/api/certificates/templates');
-    const templates = await templatesRes.json();
+    const { items: templates } = await templatesRes.json();
     const importedTemplate = templates.find((t: { name: string }) => t.name === 'import-test-cert-template');
     expect(importedTemplate).toBeDefined();
     expect(importedTemplate.attributes.commonName).toBe('Import Test CA');
@@ -864,7 +864,7 @@ test.describe('Data Export and Import', () => {
 
     // ── Step 7e: Validate private key + passphrase export ──────────────
     const keysRes = await page.request.get('/api/certificates/private_keys');
-    const keys = await keysRes.json();
+    const { items: keys } = await keysRes.json();
     const importedKey = keys.find((k: { name: string }) => k.name === 'import-test-private-key');
     expect(importedKey).toBeDefined();
     expect(importedKey.alg).toEqual({ keyType: 'ed25519' });
@@ -879,7 +879,7 @@ test.describe('Data Export and Import', () => {
 
     // ── Step 7f: Validate responder config ─────────────────────────────
     const respondersRes = await page.request.get('/api/webhooks/responders');
-    const responders = await respondersRes.json();
+    const { items: responders } = await respondersRes.json();
     const importedResponder = responders.find((r: { name: string }) => r.name === 'import-test-responder');
     expect(importedResponder).toBeDefined();
     expect(importedResponder.location).toEqual({ pathType: '=', path: '/import-resp-test' });
@@ -947,7 +947,7 @@ test.describe('Data Export and Import', () => {
 
     // ── Step 7i: Validate page tracker config + imported revision ───────
     const pageTrackersRes = await page.request.get('/api/web_scraping/page_trackers');
-    const pageTrackers = await pageTrackersRes.json();
+    const { items: pageTrackers } = await pageTrackersRes.json();
     const importedPageTracker = pageTrackers.find((t: { name: string }) => t.name === 'import-test-page-tracker');
     expect(importedPageTracker).toBeDefined();
     expect(importedPageTracker.secrets).toEqual({ type: 'all' });
@@ -983,7 +983,7 @@ test.describe('Data Export and Import', () => {
 
     // ── Step 7k: Validate API tracker config + imported revisions ───────
     const apiTrackersRes = await page.request.get('/api/web_scraping/api_trackers');
-    const apiTrackers = await apiTrackersRes.json();
+    const { items: apiTrackers } = await apiTrackersRes.json();
     const importedApiTracker = apiTrackers.find((t: { name: string }) => t.name === 'import-test-api-tracker');
     expect(importedApiTracker).toBeDefined();
     expect(importedApiTracker.secrets).toEqual({ type: 'all' });
@@ -1097,7 +1097,7 @@ test.describe('Data Export and Import', () => {
     await page.request.delete(`/api/user/tags/${encodeURIComponent(tag2.id)}`);
 
     // Verify everything is gone.
-    const tagsAfterDelete = await (await page.request.get('/api/user/tags')).json();
+    const { items: tagsAfterDelete } = await (await page.request.get('/api/user/tags')).json();
     expect(tagsAfterDelete.filter((t: { name: string }) => t.name.startsWith('e2e-'))).toHaveLength(0);
 
     // ── Step 5: Import ─────────────────────────────────────────────────
@@ -1124,17 +1124,17 @@ test.describe('Data Export and Import', () => {
     expect(importResult.results.contentSecurityPolicies.imported).toBe(1);
 
     // ── Step 6: Verify tags restored ───────────────────────────────────
-    const restoredTags = await (await page.request.get('/api/user/tags')).json();
+    const { items: restoredTags } = await (await page.request.get('/api/user/tags')).json();
     const e2eTags = restoredTags.filter((t: { name: string }) => t.name.startsWith('e2e-'));
     expect(e2eTags).toHaveLength(2);
 
     // ── Step 7: Verify entity-tag associations ─────────────────────────
-    const restoredScripts = await (await page.request.get('/api/user/scripts')).json();
+    const { items: restoredScripts } = await (await page.request.get('/api/user/scripts')).json();
     const restoredScript = restoredScripts.find((s: { name: string }) => s.name === 'tagged_script');
     expect(restoredScript).toBeDefined();
     expect(restoredScript.tags).toHaveLength(2);
 
-    const restoredCsps = await (await page.request.get('/api/web_security/csp')).json();
+    const { items: restoredCsps } = await (await page.request.get('/api/web_security/csp')).json();
     const restoredCsp = restoredCsps.find((c: { name: string }) => c.name === 'tagged_csp');
     expect(restoredCsp).toBeDefined();
     // Note: CSP list/bulk API does not populate tags (known limitation).
@@ -1201,7 +1201,7 @@ test.describe('Data Export and Import', () => {
     expect(result.results.tags.deleted).toBe(1);
 
     // ── Step 5: Verify only keep tag remains ───────────────────────────
-    const tagsAfter = await (await page.request.get('/api/user/tags')).json();
+    const { items: tagsAfter } = await (await page.request.get('/api/user/tags')).json();
     expect(tagsAfter.find((t: { name: string }) => t.name === 'apply-keep')).toBeTruthy();
     expect(tagsAfter.find((t: { name: string }) => t.name === 'apply-delete')).toBeUndefined();
   });
@@ -1484,14 +1484,14 @@ test.describe('Data Export and Import', () => {
     // ── Step 6: Verify imported entities ────────────────────────────────
     // Only tag alpha should exist.
     const tagsRes = await page.request.get('/api/user/tags');
-    const tags = await tagsRes.json();
+    const { items: tags } = await tagsRes.json();
     const importedTags = tags.filter((t: { name: string }) => ['alpha', 'beta', 'gamma'].includes(t.name));
     expect(importedTags).toHaveLength(1);
     expect(importedTags[0].name).toBe('alpha');
 
     // Script should have only tag alpha (beta was skipped, gamma wasn't in export).
     const scriptsRes = await page.request.get('/api/user/scripts');
-    const scripts = await scriptsRes.json();
+    const { items: scripts } = await scriptsRes.json();
     const importedScript = scripts.find((s: { name: string }) => s.name === 'tagged-script');
     expect(importedScript).toBeDefined();
     expect(importedScript.tags).toHaveLength(1);
@@ -1565,14 +1565,14 @@ test.describe('Data Export and Import', () => {
 
     // ── Step 5: Verify both tags exist ─────────────────────────────────
     const tagsRes = await page.request.get('/api/user/tags');
-    const tags = await tagsRes.json();
+    const { items: tags } = await tagsRes.json();
     const conflictTags = tags.filter((t: { name: string }) => t.name.startsWith('conflict-tag'));
     expect(conflictTags).toHaveLength(2);
     expect(conflictTags.map((t: { name: string }) => t.name).sort()).toEqual(['conflict-tag', 'conflict-tag (copy 1)']);
 
     // The imported script should reference the renamed tag.
     const scriptsRes = await page.request.get('/api/user/scripts');
-    const scripts = await scriptsRes.json();
+    const { items: scripts } = await scriptsRes.json();
     const renamedScript = scripts.find((s: { name: string }) => s.name === 'rename-test-script (Copy 1)');
     expect(renamedScript).toBeDefined();
     expect(renamedScript.tags).toHaveLength(1);

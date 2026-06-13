@@ -3,6 +3,7 @@ mod raw_content_security_policy;
 use crate::{
     database::Database,
     error::Error as SecutilsError,
+    server::{ListParams, TagJunction, count_sql, list_sql},
     users::{EntityTag, RawEntityTag, UserId, group_entity_tags},
     utils::web_security::{
         ContentSecurityPolicy, database_ext::raw_content_security_policy::RawContentSecurityPolicy,
@@ -12,6 +13,12 @@ use anyhow::{anyhow, bail};
 use sqlx::{Acquire, Pool, Postgres, error::ErrorKind as SqlxErrorKind, query, query_as};
 use std::collections::HashMap;
 use uuid::Uuid;
+
+/// Junction table linking content security policies to tags.
+const CSP_TAG_JUNCTION: TagJunction = TagJunction {
+    table: "user_data_web_security_csp_tags",
+    entity_col: "csp_id",
+};
 
 /// A database extension for the web security utility-related operations.
 pub struct WebSecurityDatabaseExt<'pool> {
@@ -236,6 +243,50 @@ WHERE user_id = $1 AND id = $2
         }
 
         Ok(policies)
+    }
+
+    /// Returns a single page of content security policies for a user, honoring search, tag, sort,
+    /// and pagination parameters, plus the total count.
+    ///
+    /// `sort_col` MUST originate from the caller's static allowlist.
+    pub async fn get_content_security_policies_page(
+        &self,
+        user_id: UserId,
+        params: &ListParams,
+        sort_col: &str,
+    ) -> anyhow::Result<(Vec<ContentSecurityPolicy>, i64)> {
+        let list = list_sql(
+            "user_data_web_security_csp",
+            "id, name, directives, created_at, updated_at",
+            "name",
+            &CSP_TAG_JUNCTION,
+            sort_col,
+            params.order,
+        );
+        let rows: Vec<RawContentSecurityPolicy> = sqlx::query_as(&list)
+            .bind(*user_id)
+            .bind(params.query.as_deref())
+            .bind(params.tags.as_slice())
+            .bind(params.global_tags.as_slice())
+            .bind(params.limit)
+            .bind(params.offset)
+            .fetch_all(self.pool)
+            .await?;
+
+        let count = count_sql("user_data_web_security_csp", "name", &CSP_TAG_JUNCTION);
+        let total: i64 = sqlx::query_scalar(&count)
+            .bind(*user_id)
+            .bind(params.query.as_deref())
+            .bind(params.tags.as_slice())
+            .bind(params.global_tags.as_slice())
+            .fetch_one(self.pool)
+            .await?;
+
+        let mut policies = vec![];
+        for raw_policy in rows {
+            policies.push(ContentSecurityPolicy::try_from(raw_policy)?);
+        }
+        Ok((policies, total))
     }
 
     /// Fetches tags for a batch of content security policies.

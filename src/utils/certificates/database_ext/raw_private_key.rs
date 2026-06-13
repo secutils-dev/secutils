@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use super::raw_private_key_algorithm::RawPrivateKeyAlgorithm;
 
-#[derive(Debug, Eq, PartialEq, Clone)]
+#[derive(Debug, Eq, PartialEq, Clone, sqlx::FromRow)]
 pub(super) struct RawPrivateKey {
     pub id: Uuid,
     pub name: String,

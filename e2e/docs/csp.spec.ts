@@ -12,6 +12,7 @@ import {
   goto,
   highlightOff,
   highlightOn,
+  listEndpointMatcher,
   PASSWORD,
   pinEntityTimestamps,
 } from '../helpers';
@@ -88,7 +89,7 @@ test.describe('CSP guide screenshots', () => {
 
   test('import policy from URL', async ({ page }) => {
     // Replace nonce values and pin timestamps in API responses so screenshots are stable.
-    await page.route('**/api/web_security/csp', async (route) => {
+    await page.route(listEndpointMatcher('**/api/web_security/csp'), async (route) => {
       if (route.request().method() === 'GET') {
         const response = await route.fetch();
         let body = await response.text();
@@ -330,7 +331,7 @@ test.describe('CSP guide screenshots', () => {
     ].join('\n');
 
     const respondersResponse = await page.request.get('/api/webhooks/responders');
-    const responders = await respondersResponse.json();
+    const { items: responders } = await respondersResponse.json();
     const cspTestResponder = responders.find((r: { name: string }) => r.name === 'CSP Test');
     const updateResponse = await page.request.put(`/api/webhooks/responders/${cspTestResponder.id}`, {
       data: {

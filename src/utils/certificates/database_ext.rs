@@ -7,6 +7,7 @@ use self::raw_private_key::RawPrivateKey;
 use crate::{
     database::Database,
     error::Error as SecutilsError,
+    server::{ListParams, TagJunction, count_sql, list_sql},
     users::{EntityTag, RawEntityTag, UserId, group_entity_tags},
     utils::certificates::{
         CertificateTemplate, PrivateKey,
@@ -17,6 +18,18 @@ use anyhow::{anyhow, bail};
 use sqlx::{Acquire, Pool, Postgres, error::ErrorKind as SqlxErrorKind, query, query_as};
 use std::collections::HashMap;
 use uuid::Uuid;
+
+/// Junction table linking private keys to tags.
+const PRIVATE_KEYS_TAG_JUNCTION: TagJunction = TagJunction {
+    table: "user_data_certificates_private_keys_tags",
+    entity_col: "key_id",
+};
+
+/// Junction table linking certificate templates to tags.
+const CERTIFICATE_TEMPLATES_TAG_JUNCTION: TagJunction = TagJunction {
+    table: "user_data_certificates_certificate_templates_tags",
+    entity_col: "template_id",
+};
 
 /// A database extension for the certificate utility-related operations.
 pub struct CertificatesDatabaseExt<'pool> {
@@ -210,6 +223,54 @@ ORDER BY updated_at
         }
 
         Ok(private_keys)
+    }
+
+    /// Returns a single page of private keys (without pkcs8 data) for a user, honoring search, tag,
+    /// sort, and pagination parameters, plus the total count.
+    ///
+    /// `sort_col` MUST originate from the caller's static allowlist.
+    pub async fn get_private_keys_page(
+        &self,
+        user_id: UserId,
+        params: &ListParams,
+        sort_col: &str,
+    ) -> anyhow::Result<(Vec<PrivateKey>, i64)> {
+        let list = list_sql(
+            "user_data_certificates_private_keys",
+            "id, name, alg, ''::bytea AS pkcs8, encrypted, created_at, updated_at",
+            "name",
+            &PRIVATE_KEYS_TAG_JUNCTION,
+            sort_col,
+            params.order,
+        );
+        let rows: Vec<RawPrivateKey> = sqlx::query_as(&list)
+            .bind(*user_id)
+            .bind(params.query.as_deref())
+            .bind(params.tags.as_slice())
+            .bind(params.global_tags.as_slice())
+            .bind(params.limit)
+            .bind(params.offset)
+            .fetch_all(self.pool)
+            .await?;
+
+        let count = count_sql(
+            "user_data_certificates_private_keys",
+            "name",
+            &PRIVATE_KEYS_TAG_JUNCTION,
+        );
+        let total: i64 = sqlx::query_scalar(&count)
+            .bind(*user_id)
+            .bind(params.query.as_deref())
+            .bind(params.tags.as_slice())
+            .bind(params.global_tags.as_slice())
+            .fetch_one(self.pool)
+            .await?;
+
+        let mut private_keys = vec![];
+        for raw in rows {
+            private_keys.push(PrivateKey::try_from(raw)?);
+        }
+        Ok((private_keys, total))
     }
 
     /// Retrieves all private keys for the specified user with full pkcs8 data (for export).
@@ -485,6 +546,54 @@ ORDER BY updated_at
         }
 
         Ok(certificate_templates)
+    }
+
+    /// Returns a single page of certificate templates for a user, honoring
+    /// search, tag, sort, and pagination parameters, plus the total count.
+    ///
+    /// `sort_col` MUST originate from the caller's static allowlist.
+    pub async fn get_certificate_templates_page(
+        &self,
+        user_id: UserId,
+        params: &ListParams,
+        sort_col: &str,
+    ) -> anyhow::Result<(Vec<CertificateTemplate>, i64)> {
+        let list = list_sql(
+            "user_data_certificates_certificate_templates",
+            "id, name, attributes, created_at, updated_at",
+            "name",
+            &CERTIFICATE_TEMPLATES_TAG_JUNCTION,
+            sort_col,
+            params.order,
+        );
+        let rows: Vec<RawCertificateTemplate> = sqlx::query_as(&list)
+            .bind(*user_id)
+            .bind(params.query.as_deref())
+            .bind(params.tags.as_slice())
+            .bind(params.global_tags.as_slice())
+            .bind(params.limit)
+            .bind(params.offset)
+            .fetch_all(self.pool)
+            .await?;
+
+        let count = count_sql(
+            "user_data_certificates_certificate_templates",
+            "name",
+            &CERTIFICATE_TEMPLATES_TAG_JUNCTION,
+        );
+        let total: i64 = sqlx::query_scalar(&count)
+            .bind(*user_id)
+            .bind(params.query.as_deref())
+            .bind(params.tags.as_slice())
+            .bind(params.global_tags.as_slice())
+            .fetch_one(self.pool)
+            .await?;
+
+        let mut templates = vec![];
+        for raw in rows {
+            templates.push(CertificateTemplate::try_from(raw)?);
+        }
+        Ok((templates, total))
     }
 
     /// Fetches tags for a batch of private keys.

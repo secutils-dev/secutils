@@ -1,6 +1,7 @@
 use crate::{
     database::Database,
     error::Error,
+    server::ListParams,
     users::{UserId, tags::UserTag},
 };
 use sqlx::{Row, error::ErrorKind as SqlxErrorKind};
@@ -32,6 +33,48 @@ impl Database {
         .await?;
 
         Ok(rows.iter().map(row_to_user_tag).collect())
+    }
+
+    /// Returns a single page of tags for a user, honoring search, sort, and pagination parameters,
+    /// plus the total count. Tags have no sub-tags, so no tag filtering is applied.
+    ///
+    /// `sort_col` MUST originate from the caller's static allowlist.
+    pub async fn get_user_tags_page(
+        &self,
+        user_id: UserId,
+        params: &ListParams,
+        sort_col: &str,
+    ) -> anyhow::Result<(Vec<UserTag>, i64)> {
+        let ord = params.order.as_sql();
+        // The query matches the tag name (case-insensitively) or an exact id, mirroring the shared
+        // pagination filter so "filter to a single entity by id" links work uniformly.
+        // `user_tags.name` uses a nondeterministic (case-insensitive) collation, which Postgres
+        // rejects for `ILIKE`, force a deterministic collation for the match.
+        let list = format!(
+            "SELECT id, user_id, name, color, created_at, updated_at FROM user_tags \
+             WHERE user_id = $1 \
+             AND ($2::text IS NULL OR name COLLATE \"C\" ILIKE ('%' || $2 || '%') ESCAPE '\\' OR id::text = $2) \
+             ORDER BY {sort_col} {ord}, id {ord} LIMIT $3 OFFSET $4"
+        );
+        let rows = sqlx::query(&list)
+            .bind(*user_id)
+            .bind(params.query.as_deref())
+            .bind(params.limit)
+            .bind(params.offset)
+            .fetch_all(&self.pool)
+            .await?;
+
+        let total: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM user_tags \
+             WHERE user_id = $1 \
+             AND ($2::text IS NULL OR name COLLATE \"C\" ILIKE ('%' || $2 || '%') ESCAPE '\\' OR id::text = $2)",
+        )
+        .bind(*user_id)
+        .bind(params.query.as_deref())
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok((rows.iter().map(row_to_user_tag).collect(), total))
     }
 
     /// Fetches tags for a user filtered by a list of IDs.

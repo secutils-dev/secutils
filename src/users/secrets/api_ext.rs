@@ -2,12 +2,20 @@ use crate::{
     api::Api,
     error::Error,
     network::{DnsResolver, EmailTransport},
+    server::{Page, PaginationParams},
     users::{
         EntityTag, User,
         secrets::{SecretsAccess, SecretsEncryption, UserSecret},
     },
     utils::webhooks::{ResponderSettings, RespondersUpdateParams},
 };
+
+/// Allowlist mapping client-facing sort keys to secret SQL columns.
+const SECRETS_SORT_COLUMNS: &[(&str, &str)] = &[
+    ("name", "name"),
+    ("createdAt", "created_at"),
+    ("updatedAt", "updated_at"),
+];
 use serde::Deserialize;
 use std::collections::HashMap;
 use time::OffsetDateTime;
@@ -58,6 +66,26 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> SecretsApiExt<'a, 'u, DR, ET> 
             secret.tags = tags_map.remove(&secret.id).unwrap_or_default();
         }
         Ok(secrets)
+    }
+
+    /// Returns a single page of secrets (metadata only, no values), applying the
+    /// search, tag, sort, and pagination parameters server-side.
+    pub async fn list_secrets_page(
+        &self,
+        params: &PaginationParams,
+    ) -> anyhow::Result<Page<UserSecret>> {
+        let secrets_db = self.api.db.secrets();
+        let sort_col = params.sort_column(SECRETS_SORT_COLUMNS, "name");
+        let list_params = params.resolve();
+        let (mut secrets, total) = secrets_db
+            .get_user_secrets_page(self.user.id, &list_params, sort_col)
+            .await?;
+        let ids: Vec<Uuid> = secrets.iter().map(|s| s.id).collect();
+        let mut tags_map = secrets_db.get_secret_tags(&ids).await?;
+        for secret in &mut secrets {
+            secret.tags = tags_map.remove(&secret.id).unwrap_or_default();
+        }
+        Ok(Page::new(secrets, total))
     }
 
     /// Returns secrets with the specified IDs.
@@ -597,6 +625,55 @@ mod tests {
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].name, "MY_TOKEN");
         assert!(list[0].encrypted_value.is_none());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn list_secrets_page_applies_search_sort_and_total(pool: PgPool) -> anyhow::Result<()> {
+        use crate::server::{PaginationParams, SortOrder};
+        let mut config = mock_config()?;
+        config.security.secrets_encryption_key = Some(TEST_ENCRYPTION_KEY.to_string());
+        let api = mock_api_with_config(pool, config).await?;
+        let mock_user = mock_user()?;
+        api.db.upsert_user(&mock_user).await?;
+
+        let secrets_api = api.secrets(&mock_user);
+        for name in ["ALPHA", "BETA", "GAMMA", "ALPINE"] {
+            secrets_api
+                .create_secret(SecretCreateParams {
+                    name: name.into(),
+                    value: "val".into(),
+                    tag_ids: vec![],
+                })
+                .await?;
+        }
+
+        // Search "alp" matches ALPHA and ALPINE; page size 1 returns first with full total.
+        let page = secrets_api
+            .list_secrets_page(&PaginationParams {
+                page: Some(0),
+                page_size: Some(1),
+                sort: Some("name".into()),
+                order: Some(SortOrder::Asc),
+                q: Some("alp".into()),
+                ..Default::default()
+            })
+            .await?;
+        assert_eq!(page.total, 2);
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0].name, "ALPHA");
+        assert!(page.items[0].encrypted_value.is_none());
+
+        // Unknown sort field falls back to default (name) without error.
+        let page = secrets_api
+            .list_secrets_page(&PaginationParams {
+                sort: Some("definitely-not-a-column".into()),
+                ..Default::default()
+            })
+            .await?;
+        assert_eq!(page.total, 4);
+        assert_eq!(page.items[0].name, "ALPHA");
 
         Ok(())
     }

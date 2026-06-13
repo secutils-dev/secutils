@@ -4,6 +4,7 @@ mod raw_page_tracker;
 use crate::{
     database::Database,
     error::Error as SecutilsError,
+    server::{ListParams, TagJunction, count_sql, list_sql},
     users::{EntityTag, RawEntityTag, UserId, group_entity_tags},
     utils::web_scraping::{ApiTracker, PageTracker},
 };
@@ -13,6 +14,18 @@ use raw_page_tracker::RawPageTracker;
 use sqlx::{Acquire, Pool, Postgres, error::ErrorKind as SqlxErrorKind, query, query_as};
 use std::collections::HashMap;
 use uuid::Uuid;
+
+/// Junction table linking page trackers to tags.
+const PAGE_TRACKERS_TAG_JUNCTION: TagJunction = TagJunction {
+    table: "user_data_web_scraping_page_trackers_tags",
+    entity_col: "tracker_id",
+};
+
+/// Junction table linking API trackers to tags.
+const API_TRACKERS_TAG_JUNCTION: TagJunction = TagJunction {
+    table: "user_data_web_scraping_api_trackers_tags",
+    entity_col: "tracker_id",
+};
 
 /// A database extension for the web scraping utility-related operations.
 pub struct WebScrapingDatabaseExt<'pool> {
@@ -46,6 +59,53 @@ ORDER BY updated_at
         }
 
         Ok(trackers)
+    }
+
+    /// Returns a single page of page trackers (Secutils rows only; Retrack data is merged by the
+    /// API layer), honoring search, tag, sort, and pagination parameters, plus the total count.
+    ///
+    /// `sort_col` MUST be from a static allowlist.
+    pub async fn get_page_trackers_page(
+        &self,
+        params: &ListParams,
+        sort_col: &str,
+    ) -> anyhow::Result<(Vec<PageTracker>, i64)> {
+        let list = list_sql(
+            "user_data_web_scraping_page_trackers",
+            "id, name, retrack_id, user_id, secrets, created_at, updated_at",
+            "name",
+            &PAGE_TRACKERS_TAG_JUNCTION,
+            sort_col,
+            params.order,
+        );
+        let rows: Vec<RawPageTracker> = sqlx::query_as(&list)
+            .bind(*self.user_id)
+            .bind(params.query.as_deref())
+            .bind(params.tags.as_slice())
+            .bind(params.global_tags.as_slice())
+            .bind(params.limit)
+            .bind(params.offset)
+            .fetch_all(self.pool)
+            .await?;
+
+        let count = count_sql(
+            "user_data_web_scraping_page_trackers",
+            "name",
+            &PAGE_TRACKERS_TAG_JUNCTION,
+        );
+        let total: i64 = sqlx::query_scalar(&count)
+            .bind(*self.user_id)
+            .bind(params.query.as_deref())
+            .bind(params.tags.as_slice())
+            .bind(params.global_tags.as_slice())
+            .fetch_one(self.pool)
+            .await?;
+
+        let mut trackers = vec![];
+        for raw in rows {
+            trackers.push(PageTracker::try_from(raw)?);
+        }
+        Ok((trackers, total))
     }
 
     /// Retrieves page trackers matching the given IDs.
@@ -244,6 +304,53 @@ ORDER BY updated_at
         }
 
         Ok(trackers)
+    }
+
+    /// Returns a single page of API trackers (Secutils rows only; Retrack data is merged by the API
+    /// layer), honoring search, tag, sort, and pagination parameters, plus the total count.
+    ///
+    /// `sort_col` MUST be from a static allowlist.
+    pub async fn get_api_trackers_page(
+        &self,
+        params: &ListParams,
+        sort_col: &str,
+    ) -> anyhow::Result<(Vec<ApiTracker>, i64)> {
+        let list = list_sql(
+            "user_data_web_scraping_api_trackers",
+            "id, name, user_id, retrack_id, secrets, created_at, updated_at",
+            "name",
+            &API_TRACKERS_TAG_JUNCTION,
+            sort_col,
+            params.order,
+        );
+        let rows: Vec<RawApiTracker> = sqlx::query_as(&list)
+            .bind(*self.user_id)
+            .bind(params.query.as_deref())
+            .bind(params.tags.as_slice())
+            .bind(params.global_tags.as_slice())
+            .bind(params.limit)
+            .bind(params.offset)
+            .fetch_all(self.pool)
+            .await?;
+
+        let count = count_sql(
+            "user_data_web_scraping_api_trackers",
+            "name",
+            &API_TRACKERS_TAG_JUNCTION,
+        );
+        let total: i64 = sqlx::query_scalar(&count)
+            .bind(*self.user_id)
+            .bind(params.query.as_deref())
+            .bind(params.tags.as_slice())
+            .bind(params.global_tags.as_slice())
+            .fetch_one(self.pool)
+            .await?;
+
+        let mut trackers = vec![];
+        for raw in rows {
+            trackers.push(ApiTracker::try_from(raw)?);
+        }
+        Ok((trackers, total))
     }
 
     /// Retrieves API trackers matching the given IDs.

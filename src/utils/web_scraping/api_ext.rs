@@ -31,6 +31,7 @@ use crate::{
         },
     },
     scheduler::CronExt,
+    server::{Page, PaginationParams},
     users::{EntityTag, SecretsAccess, User},
     utils::{
         constants::MAX_ENTITY_NAME_LENGTH,
@@ -60,6 +61,14 @@ use std::{
 use time::OffsetDateTime;
 use tracing::error;
 use uuid::Uuid;
+
+/// Allowlist of client sort keys mapped to tracker SQL columns. Only Secutils
+/// columns are sortable server-side; Retrack-derived fields are not.
+const TRACKERS_SORT_COLUMNS: &[(&str, &str)] = &[
+    ("name", "name"),
+    ("createdAt", "created_at"),
+    ("updatedAt", "updated_at"),
+];
 
 const MAX_TRACKER_RETRY_ATTEMPTS: u32 = 10;
 const MIN_TRACKER_RETRY_INTERVAL: Duration = Duration::from_secs(60);
@@ -155,6 +164,57 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
         }
 
         Ok(trackers)
+    }
+
+    /// Returns a single page of page trackers, honoring search, tag, sort, and
+    /// pagination parameters. Pagination/search/sort/tags operate on the Secutils
+    /// rows; the page's Retrack data is then merged via `bulk_get_trackers`.
+    pub async fn list_page_trackers_page(
+        &self,
+        params: &PaginationParams,
+    ) -> anyhow::Result<Page<PageTracker>> {
+        let web_scraping = self.api.db.web_scraping(self.user.id);
+        let sort_col = params.sort_column(TRACKERS_SORT_COLUMNS, "name");
+        let list_params = params.resolve();
+        let (mut trackers, total) = web_scraping
+            .get_page_trackers_page(&list_params, sort_col)
+            .await?;
+
+        // Enrich the page's trackers with Retrack data (scoped to the page ids).
+        let retrack_ids = trackers.iter().map(|t| t.retrack.id()).collect::<Vec<_>>();
+        let mut retrack_trackers_map = self
+            .api
+            .retrack()
+            .bulk_get_trackers(&retrack_ids)
+            .await?
+            .into_iter()
+            .map(|t| (t.id, t))
+            .collect::<HashMap<_, _>>();
+        let (resource, resource_group) = TrackerKind::Page.into();
+        for tracker in trackers.iter_mut() {
+            if let Some(retrack_tracker) = retrack_trackers_map.remove(&tracker.retrack.id()) {
+                tracker.retrack = RetrackTracker::from_value(retrack_tracker);
+            } else {
+                error!(
+                    user.id = %self.user.id,
+                    util.resource_id = %tracker.id,
+                    util.resource_name = tracker.name,
+                    util.resource = resource,
+                    util.resource_group = resource_group,
+                    retrack.id = %tracker.retrack.id(),
+                    "Page tracker is not found in Retrack."
+                );
+            }
+        }
+
+        let mut tags_map = web_scraping
+            .get_page_tracker_tags(&trackers.iter().map(|t| t.id).collect::<Vec<_>>())
+            .await?;
+        for tracker in &mut trackers {
+            tracker.tags = tags_map.remove(&tracker.id).unwrap_or_default();
+        }
+
+        Ok(Page::new(trackers, total))
     }
 
     /// Returns page trackers with the specified IDs, enriched with Retrack data.
@@ -841,6 +901,56 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
         }
 
         Ok(trackers)
+    }
+
+    /// Returns a single page of API trackers, honoring search, tag, sort, and
+    /// pagination parameters. Pagination/search/sort/tags operate on the Secutils
+    /// rows; the page's Retrack data is then merged via `bulk_get_trackers`.
+    pub async fn list_api_trackers_page(
+        &self,
+        params: &PaginationParams,
+    ) -> anyhow::Result<Page<ApiTracker>> {
+        let web_scraping = self.api.db.web_scraping(self.user.id);
+        let sort_col = params.sort_column(TRACKERS_SORT_COLUMNS, "name");
+        let list_params = params.resolve();
+        let (mut trackers, total) = web_scraping
+            .get_api_trackers_page(&list_params, sort_col)
+            .await?;
+
+        let retrack_ids = trackers.iter().map(|t| t.retrack.id()).collect::<Vec<_>>();
+        let mut retrack_trackers_map = self
+            .api
+            .retrack()
+            .bulk_get_trackers(&retrack_ids)
+            .await?
+            .into_iter()
+            .map(|t| (t.id, t))
+            .collect::<HashMap<_, _>>();
+        let (resource, resource_group) = TrackerKind::Api.into();
+        for tracker in trackers.iter_mut() {
+            if let Some(retrack_tracker) = retrack_trackers_map.remove(&tracker.retrack.id()) {
+                tracker.retrack = RetrackTracker::from_value(retrack_tracker);
+            } else {
+                error!(
+                    user.id = %self.user.id,
+                    util.resource_id = %tracker.id,
+                    util.resource_name = tracker.name,
+                    util.resource = resource,
+                    util.resource_group = resource_group,
+                    retrack.id = %tracker.retrack.id(),
+                    "API tracker is not found in Retrack."
+                );
+            }
+        }
+
+        let mut tags_map = web_scraping
+            .get_api_tracker_tags(&trackers.iter().map(|t| t.id).collect::<Vec<_>>())
+            .await?;
+        for tracker in &mut trackers {
+            tracker.tags = tags_map.remove(&tracker.id).unwrap_or_default();
+        }
+
+        Ok(Page::new(trackers, total))
     }
 
     /// Returns API trackers with the specified IDs, enriched with Retrack data.

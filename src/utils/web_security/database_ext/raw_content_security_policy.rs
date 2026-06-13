@@ -3,7 +3,7 @@ use content_security_policy::{Policy, PolicyDisposition, PolicySource};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-#[derive(Debug, Eq, PartialEq, Clone)]
+#[derive(Debug, Eq, PartialEq, Clone, sqlx::FromRow)]
 pub(super) struct RawContentSecurityPolicy {
     pub id: Uuid,
     pub name: String,

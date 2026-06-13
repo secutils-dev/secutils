@@ -1,5 +1,6 @@
 import {
   EuiBadge,
+  EuiBasicTable,
   EuiButton,
   EuiButtonEmpty,
   EuiConfirmModal,
@@ -7,7 +8,6 @@ import {
   EuiFlexGroup,
   EuiFlexItem,
   EuiIcon,
-  EuiInMemoryTable,
   EuiSpacer,
   EuiText,
 } from '@elastic/eui';
@@ -16,9 +16,10 @@ import { unix } from 'moment/moment';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { TagEditFlyout } from './tag_edit_flyout';
-import { PageLoadingState } from '../../../../components';
+import { PageErrorState, PageLoadingState } from '../../../../components';
 import type { UserTag } from '../../../../model';
-import { deleteUserTag, getUserTags } from '../../../../model';
+import { deleteUserTag, getUserTagsPage } from '../../../../model';
+import { FilteredEmptyState, ItemsTableFilter, useServerPaginatedItems } from '../../components/items_table_filter';
 import { useWorkspaceContext } from '../../hooks';
 
 interface DeleteConfirmation {
@@ -29,8 +30,7 @@ interface DeleteConfirmation {
 export default function WorkspaceTags() {
   const { addToast, setTitleActions } = useWorkspaceContext();
 
-  const [tags, setTags] = useState<UserTag[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [initialized, setInitialized] = useState(false);
   const [tagToEdit, setTagToEdit] = useState<Partial<UserTag> | null | undefined>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirmation | null>(null);
 
@@ -54,35 +54,51 @@ export default function WorkspaceTags() {
     </EuiButtonEmpty>
   );
 
-  const loadTags = useCallback(async () => {
-    setLoading(true);
-    try {
-      const loaded = await getUserTags();
-      setTags(loaded);
-      setTitleActions(loaded.length === 0 ? null : createButton);
-    } catch {
-      addToast({ id: 'load-tags-error', color: 'danger', title: 'Failed to load tags' });
-    } finally {
-      setLoading(false);
-    }
-  }, [addToast, createButton, setTitleActions]);
+  const {
+    items: tags,
+    total,
+    loading,
+    error,
+    pagination,
+    sorting,
+    onTableChange,
+    query,
+    setQuery,
+    hasPageFilters,
+    hasActiveFilters,
+    clearPageFilters,
+    refresh,
+  } = useServerPaginatedItems<UserTag>({
+    fetcher: getUserTagsPage,
+    defaultSortField: 'name',
+    defaultSortDirection: 'asc',
+    defaultPageSize: 10,
+  });
 
   useEffect(() => {
-    loadTags();
-  }, [loadTags]);
+    if (!loading) {
+      setInitialized(true);
+    }
+  }, [loading]);
+
+  const isEmpty = initialized && total === 0 && !hasActiveFilters;
+
+  useEffect(() => {
+    setTitleActions(isEmpty ? null : createButton);
+  }, [isEmpty, createButton, setTitleActions]);
 
   const handleDelete = useCallback(
     async (id: string, name: string) => {
       try {
         await deleteUserTag(id);
         addToast({ id: 'delete-tag', color: 'success', title: `Tag "${name}" deleted` });
-        await loadTags();
+        refresh();
       } catch {
         addToast({ id: 'delete-tag-error', color: 'danger', title: `Failed to delete tag "${name}"` });
       }
       setDeleteConfirm(null);
     },
-    [loadTags, addToast],
+    [refresh, addToast],
   );
 
   const columns: Array<EuiBasicTableColumn<UserTag>> = [
@@ -139,12 +155,16 @@ export default function WorkspaceTags() {
     },
   ];
 
-  if (loading && tags.length === 0) {
+  if (!initialized && loading) {
     return <PageLoadingState />;
   }
 
+  if (error && tags.length === 0) {
+    return <PageErrorState title="Cannot load tags" content={<p>{error}</p>} />;
+  }
+
   let content;
-  if (tags.length === 0) {
+  if (isEmpty) {
     content = (
       <EuiFlexGroup
         direction={'column'}
@@ -173,14 +193,21 @@ export default function WorkspaceTags() {
     );
   } else {
     content = (
-      <EuiInMemoryTable
-        items={tags}
-        columns={columns}
-        loading={loading}
-        sorting={{ sort: { field: 'name', direction: 'asc' } }}
-        pagination={{ pageSize: 10, showPerPageOptions: true }}
-        search={{ box: { placeholder: 'Search tags…', incremental: true } }}
-      />
+      <>
+        <ItemsTableFilter query={query} onQueryChange={setQuery} onRefresh={refresh} placeholder="Search tags…" />
+        <EuiSpacer size="m" />
+        <EuiBasicTable
+          items={tags}
+          columns={columns}
+          loading={loading}
+          sorting={sorting}
+          pagination={pagination}
+          onChange={onTableChange}
+          noItemsMessage={
+            <FilteredEmptyState totalItems={total} hasPageFilters={hasPageFilters} onClearFilters={clearPageFilters} />
+          }
+        />
+      </>
     );
   }
 
@@ -190,7 +217,7 @@ export default function WorkspaceTags() {
         tag={tagToEdit}
         onClose={(success) => {
           if (success) {
-            loadTags();
+            refresh();
           }
           setTagToEdit(null);
         }}

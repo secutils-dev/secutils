@@ -374,11 +374,23 @@ pub(super) struct SecutilsOpenApi;
 #[cfg(test)]
 mod tests {
     use super::SecutilsOpenApi;
-    use insta::assert_json_snapshot;
+    use insta::{assert_json_snapshot, assert_snapshot};
     use utoipa::OpenApi;
 
     fn spec() -> serde_json::Value {
         serde_json::from_str(&SecutilsOpenApi::openapi().to_json().unwrap()).unwrap()
+    }
+
+    /// Renders a spec fragment as pretty JSON via `serde_json`. The workspace enables
+    /// `serde_json/arbitrary_precision` (for precise round-tripping of user-supplied JSON
+    /// numbers), under which `serde_json::Value`'s numbers carry an internal sentinel. Generic
+    /// serializers (like insta's `assert_json_snapshot!`) leak it as
+    /// `{"$serde_json::private::Number": "0"}`, whereas `serde_json`'s own serializer collapses it
+    /// back to a bare number — exactly as the server serves the spec. Snapshot fragments that
+    /// contain numbers (e.g. paginated paths with a `minimum: 0` constraint) via this helper so the
+    /// snapshot matches the served bytes.
+    fn spec_json(value: &serde_json::Value) -> String {
+        serde_json::to_string_pretty(value).unwrap()
     }
 
     #[test]
@@ -560,6 +572,15 @@ mod tests {
           "PageTrackerGetHistoryParams",
           "PageTrackerTarget",
           "PageTrackerUpdateParams",
+          "Page_ApiTracker",
+          "Page_CertificateTemplate",
+          "Page_ContentSecurityPolicy",
+          "Page_PageTracker",
+          "Page_PrivateKey",
+          "Page_Responder",
+          "Page_UserScript",
+          "Page_UserSecret",
+          "Page_UserTag",
           "PrivateKey",
           "PrivateKeyAlgorithm",
           "PrivateKeyEllipticCurve",
@@ -635,24 +656,90 @@ mod tests {
     fn openapi_spec_tags_operations() {
         let spec = spec();
         let tags_path = &spec["paths"]["/api/user/tags"];
-        assert_json_snapshot!(tags_path, @r###"
+        assert_snapshot!(spec_json(tags_path), @r###"
         {
           "get": {
             "tags": [
               "tags"
             ],
-            "summary": "Lists all tags for the authenticated user.",
+            "summary": "Lists tags for the authenticated user (paginated).",
             "operationId": "user_tags_list",
+            "parameters": [
+              {
+                "name": "page",
+                "in": "query",
+                "description": "Zero-based page index. Defaults to `0`.",
+                "required": false,
+                "schema": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              },
+              {
+                "name": "pageSize",
+                "in": "query",
+                "description": "Number of items per page. Defaults to 15, clamped to a maximum of 100.",
+                "required": false,
+                "schema": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              },
+              {
+                "name": "sort",
+                "in": "query",
+                "description": "Field to sort by. Entity-specific; falls back to the entity default when not in the\nallowlist.",
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              {
+                "name": "order",
+                "in": "query",
+                "description": "Sort direction (`asc` or `desc`).",
+                "required": false,
+                "schema": {
+                  "$ref": "#/components/schemas/SortOrder"
+                }
+              },
+              {
+                "name": "q",
+                "in": "query",
+                "description": "Free-text query matched (case-insensitively) against the entity name, or matched verbatim\nagainst the entity id (used by \"filter to a single entity\" workspace links that navigate to\n`?q=<entity-id>`).",
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              {
+                "name": "tags",
+                "in": "query",
+                "description": "Page-level tag filter (OR): a comma-separated list of tag IDs, items having ANY of these\ntags are returned.",
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              {
+                "name": "globalTags",
+                "in": "query",
+                "description": "Global-scope tag filter (AND): a comma-separated list of tag IDs, only items having ALL of\nthese tags are returned.",
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            ],
             "responses": {
               "200": {
-                "description": "List of user tags.",
+                "description": "Paginated list of user tags.",
                 "content": {
                   "application/json": {
                     "schema": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/UserTag"
-                      }
+                      "$ref": "#/components/schemas/Page_UserTag"
                     }
                   }
                 }
@@ -858,24 +945,90 @@ mod tests {
     fn openapi_spec_certificate_templates_crud_operations() {
         let spec = spec();
         let path = &spec["paths"]["/api/certificates/templates"];
-        assert_json_snapshot!(path, @r###"
+        assert_snapshot!(spec_json(path), @r###"
         {
           "get": {
             "tags": [
               "certificates"
             ],
-            "summary": "Lists all certificate templates for the authenticated user.",
+            "summary": "Lists certificate templates for the authenticated user (paginated).",
             "operationId": "certificate_templates_list",
+            "parameters": [
+              {
+                "name": "page",
+                "in": "query",
+                "description": "Zero-based page index. Defaults to `0`.",
+                "required": false,
+                "schema": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              },
+              {
+                "name": "pageSize",
+                "in": "query",
+                "description": "Number of items per page. Defaults to 15, clamped to a maximum of 100.",
+                "required": false,
+                "schema": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              },
+              {
+                "name": "sort",
+                "in": "query",
+                "description": "Field to sort by. Entity-specific; falls back to the entity default when not in the\nallowlist.",
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              {
+                "name": "order",
+                "in": "query",
+                "description": "Sort direction (`asc` or `desc`).",
+                "required": false,
+                "schema": {
+                  "$ref": "#/components/schemas/SortOrder"
+                }
+              },
+              {
+                "name": "q",
+                "in": "query",
+                "description": "Free-text query matched (case-insensitively) against the entity name, or matched verbatim\nagainst the entity id (used by \"filter to a single entity\" workspace links that navigate to\n`?q=<entity-id>`).",
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              {
+                "name": "tags",
+                "in": "query",
+                "description": "Page-level tag filter (OR): a comma-separated list of tag IDs, items having ANY of these\ntags are returned.",
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              {
+                "name": "globalTags",
+                "in": "query",
+                "description": "Global-scope tag filter (AND): a comma-separated list of tag IDs, only items having ALL of\nthese tags are returned.",
+                "required": false,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            ],
             "responses": {
               "200": {
-                "description": "List of certificate templates.",
+                "description": "Paginated list of certificate templates.",
                 "content": {
                   "application/json": {
                     "schema": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/CertificateTemplate"
-                      }
+                      "$ref": "#/components/schemas/Page_CertificateTemplate"
                     }
                   }
                 }

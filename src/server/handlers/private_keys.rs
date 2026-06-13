@@ -1,6 +1,9 @@
 use crate::{
     error::Error,
-    server::app_state::AppState,
+    server::{
+        app_state::AppState,
+        pagination::{Page, PaginationParams},
+    },
     users::User,
     utils::certificates::{
         PrivateKey, PrivateKeysCreateParams, PrivateKeysExportParams, PrivateKeysUpdateParams,
@@ -15,11 +18,12 @@ pub struct KeyIdPath {
     pub key_id: Uuid,
 }
 
-/// Lists all private keys for the authenticated user.
+/// Lists private keys for the authenticated user (paginated).
 #[utoipa::path(
     tags = ["certificates"],
+    params(PaginationParams),
     responses(
-        (status = 200, description = "List of private keys.", body = [PrivateKey]),
+        (status = 200, description = "Paginated list of private keys.", body = Page<PrivateKey>),
         (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
@@ -27,8 +31,13 @@ pub struct KeyIdPath {
 pub async fn private_keys_list(
     state: web::Data<AppState>,
     user: User,
+    pagination: web::Query<PaginationParams>,
 ) -> Result<HttpResponse, Error> {
-    let keys = state.api.certificates(&user).get_private_keys().await?;
+    let keys = state
+        .api
+        .certificates(&user)
+        .list_private_keys_page(&pagination.into_inner())
+        .await?;
     Ok(HttpResponse::Ok().json(keys))
 }
 

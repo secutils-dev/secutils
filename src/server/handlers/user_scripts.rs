@@ -1,6 +1,9 @@
 use crate::{
     error::Error,
-    server::app_state::AppState,
+    server::{
+        app_state::AppState,
+        pagination::{Page, PaginationParams},
+    },
     users::{ScriptContext, ScriptCreateParams, ScriptUpdateParams, User, UserScript},
 };
 use actix_web::{HttpResponse, delete, get, post, put, web};
@@ -19,12 +22,12 @@ pub struct ListScriptsQuery {
     pub context: Option<ScriptContext>,
 }
 
-/// Lists all scripts for the authenticated user, optionally filtered by context.
+/// Lists scripts for the authenticated user (paginated), optionally filtered by context.
 #[utoipa::path(
     tags = ["scripts"],
-    params(ListScriptsQuery),
+    params(ListScriptsQuery, PaginationParams),
     responses(
-        (status = 200, description = "List of user scripts.", body = [UserScript]),
+        (status = 200, description = "Paginated list of user scripts.", body = Page<UserScript>),
         (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
@@ -33,8 +36,13 @@ pub async fn user_scripts_list(
     state: web::Data<AppState>,
     user: User,
     query: web::Query<ListScriptsQuery>,
+    pagination: web::Query<PaginationParams>,
 ) -> Result<HttpResponse, Error> {
-    let scripts = state.api.scripts(&user).list_scripts(query.context).await?;
+    let scripts = state
+        .api
+        .scripts(&user)
+        .list_scripts_page(query.context, &pagination.into_inner())
+        .await?;
     Ok(HttpResponse::Ok().json(scripts))
 }
 

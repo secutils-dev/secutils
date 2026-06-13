@@ -1,6 +1,9 @@
 use crate::{
     error::Error,
-    server::app_state::AppState,
+    server::{
+        app_state::AppState,
+        pagination::{Page, PaginationParams},
+    },
     users::{TagCreateParams, TagUpdateParams, User, UserTag},
 };
 use actix_web::{HttpResponse, delete, get, post, put, web};
@@ -13,17 +16,26 @@ pub struct TagIdPath {
     pub tag_id: Uuid,
 }
 
-/// Lists all tags for the authenticated user.
+/// Lists tags for the authenticated user (paginated).
 #[utoipa::path(
     tags = ["tags"],
+    params(PaginationParams),
     responses(
-        (status = 200, description = "List of user tags.", body = [UserTag]),
+        (status = 200, description = "Paginated list of user tags.", body = Page<UserTag>),
         (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[get("/api/user/tags")]
-pub async fn user_tags_list(state: web::Data<AppState>, user: User) -> Result<HttpResponse, Error> {
-    let tags = state.api.tags(&user).list_tags().await?;
+pub async fn user_tags_list(
+    state: web::Data<AppState>,
+    user: User,
+    pagination: web::Query<PaginationParams>,
+) -> Result<HttpResponse, Error> {
+    let tags = state
+        .api
+        .tags(&user)
+        .list_tags_page(&pagination.into_inner())
+        .await?;
     Ok(HttpResponse::Ok().json(tags))
 }
 

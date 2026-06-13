@@ -1,7 +1,10 @@
 use super::resolve_shared_user;
 use crate::{
     error::Error,
-    server::app_state::AppState,
+    server::{
+        app_state::AppState,
+        pagination::{Page, PaginationParams},
+    },
     users::{ClientUserShare, SharedResource, User, UserShare},
     utils::certificates::{
         CertificateTemplate, TemplatesCreateParams, TemplatesFetchCertificatesParams,
@@ -27,11 +30,12 @@ pub struct CertificateTemplateGetResponse {
     pub user_share: Option<ClientUserShare>,
 }
 
-/// Lists all certificate templates for the authenticated user.
+/// Lists certificate templates for the authenticated user (paginated).
 #[utoipa::path(
     tags = ["certificates"],
+    params(PaginationParams),
     responses(
-        (status = 200, description = "List of certificate templates.", body = [CertificateTemplate]),
+        (status = 200, description = "Paginated list of certificate templates.", body = Page<CertificateTemplate>),
         (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
@@ -39,11 +43,12 @@ pub struct CertificateTemplateGetResponse {
 pub async fn certificate_templates_list(
     state: web::Data<AppState>,
     user: User,
+    pagination: web::Query<PaginationParams>,
 ) -> Result<HttpResponse, Error> {
     let templates = state
         .api
         .certificates(&user)
-        .get_certificate_templates()
+        .list_certificate_templates_page(&pagination.into_inner())
         .await?;
     Ok(HttpResponse::Ok().json(templates))
 }

@@ -2,9 +2,22 @@ import { join } from 'path';
 
 import { expect, test } from '@playwright/test';
 
-import { DOCS_IMG_DIR, EMAIL, ensureUserAndLogin, goto, highlightOn, PASSWORD } from '../helpers';
+import {
+  DOCS_IMG_DIR,
+  EMAIL,
+  ensureUserAndLogin,
+  FIXED_ENTITY_TIMESTAMP,
+  goto,
+  highlightOn,
+  PASSWORD,
+} from '../helpers';
 
 const IMG_DIR = join(DOCS_IMG_DIR, 'api_keys');
+
+// Stable stand-in for the per-run-unique generated API key token so the token-reveal screenshot
+// is deterministic. Mirrors the real token shape (`su_ak_` prefix + 32 bytes hex = 64 hex chars)
+// so the EuiCode block wraps identically to a real token.
+const FIXED_API_KEY_TOKEN = 'su_ak_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 
 test.describe('API Keys guide screenshots', () => {
   test.beforeEach(async ({ page, request }) => {
@@ -18,6 +31,38 @@ test.describe('API Keys guide screenshots', () => {
         await page.request.delete(`/api/user/api_keys/${key.id}`);
       }
     }
+
+    // Stabilize the API keys endpoint for the whole test (registered before any key exists so it
+    // also covers the very first token reveal):
+    //   - POST (create): the generated token is unique per run, so pin it to a fixed value -
+    //     otherwise the token-reveal screenshot is never byte-stable.
+    //   - GET (list): pin createdAt/updatedAt so the "Last updated" column renders a stable
+    //     absolute date instead of a relative "a few seconds ago" (which also leaks into the
+    //     list shown behind the token-reveal flyout).
+    await page.route('**/api/user/api_keys', async (route) => {
+      const method = route.request().method();
+      if (method !== 'GET' && method !== 'POST') {
+        await route.fallback();
+        return;
+      }
+      const response = await route.fetch();
+      if (!response.ok()) {
+        await route.fulfill({ response });
+        return;
+      }
+      const json = await response.json();
+      if (method === 'POST') {
+        if (json && typeof json === 'object' && 'token' in json) {
+          json.token = FIXED_API_KEY_TOKEN;
+        }
+      } else {
+        for (const key of Array.isArray(json) ? json : []) {
+          key.createdAt = FIXED_ENTITY_TIMESTAMP;
+          key.updatedAt = FIXED_ENTITY_TIMESTAMP;
+        }
+      }
+      await route.fulfill({ response, json });
+    });
   });
 
   test('manage API keys', async ({ page }) => {
@@ -71,27 +116,7 @@ test.describe('API Keys guide screenshots', () => {
     await expect(modal.getByText('API key created')).toBeVisible({ timeout: 15000 });
     await modal.getByRole('button', { name: 'Dismiss' }).click();
 
-    // Intercept the API keys list response to pin timestamps for stable screenshots.
-    await page.route('**/api/user/api_keys', async (route) => {
-      if (route.request().method() !== 'GET') {
-        await route.continue();
-        return;
-      }
-      const response = await route.fetch();
-      if (!response.ok()) {
-        await route.fulfill({ response });
-        return;
-      }
-      const json = await response.json();
-      const FIXED_TS = 1740000000;
-      for (const key of json) {
-        key.createdAt = FIXED_TS;
-        key.updatedAt = FIXED_TS;
-      }
-      await route.fulfill({ response, json });
-    });
-
-    // Reload the modal to pick up intercepted timestamps.
+    // Reload the modal so the list re-fetches with the pinned timestamps from the beforeEach route.
     await modal.getByRole('button', { name: 'Close', exact: true }).click();
     await expect(modal).not.toBeVisible();
     await page.getByRole('button', { name: 'Manage API keys' }).click();

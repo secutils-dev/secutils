@@ -1,4 +1,6 @@
 import { ResponseError } from './errors';
+import { buildPaginationQuery } from './pagination';
+import type { Page } from './pagination';
 import { apiFetch } from './urls';
 
 export type ExportSelection = { type: 'all' } | { type: 'selected'; ids: string[] };
@@ -146,12 +148,24 @@ export interface NamedEntity {
   name: string;
 }
 
+// List endpoints are paginated (`{ items, total }`); the export selectors need the
+// full set, so walk every page (capped at 100 per request) and concatenate.
 async function fetchEntities(path: string): Promise<NamedEntity[]> {
-  const response = await apiFetch(path);
-  if (!response.ok) {
-    throw await ResponseError.fromResponse(response, `Failed to fetch ${path}`);
+  const items: NamedEntity[] = [];
+  let page = 0;
+  for (;;) {
+    const response = await apiFetch(`${path}${buildPaginationQuery({ page, pageSize: 100 })}`);
+    if (!response.ok) {
+      throw await ResponseError.fromResponse(response, `Failed to fetch ${path}`);
+    }
+    const result = (await response.json()) as Page<NamedEntity>;
+    items.push(...result.items);
+    if (result.items.length === 0 || items.length >= result.total) {
+      break;
+    }
+    page += 1;
   }
-  return response.json();
+  return items;
 }
 
 export function getTags(): Promise<NamedEntity[]> {

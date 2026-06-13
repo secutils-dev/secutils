@@ -1,4 +1,6 @@
 import { ResponseError } from './errors';
+import { buildPaginationQuery, fetchAllItems } from './pagination';
+import type { Page, PaginationRequest } from './pagination';
 import { apiFetch } from './urls';
 import type { EntityTag } from './user_tags';
 
@@ -10,12 +12,18 @@ export interface UserSecret {
   updatedAt: number;
 }
 
-export async function getUserSecrets(): Promise<UserSecret[]> {
-  const response = await apiFetch('/api/user/secrets');
+/** Fetches a single page of secrets honoring search, tag, sort, and paging. */
+export async function getUserSecretsPage(params: PaginationRequest = {}): Promise<Page<UserSecret>> {
+  const response = await apiFetch(`/api/user/secrets${buildPaginationQuery(params)}`);
   if (!response.ok) {
     throw await ResponseError.fromResponse(response, 'Failed to fetch secrets.');
   }
   return response.json();
+}
+
+/** Fetches every secret across all pages (used by export and other bulk flows). */
+export async function getUserSecrets(): Promise<UserSecret[]> {
+  return fetchAllItems(getUserSecretsPage);
 }
 
 export async function createUserSecret(name: string, value: string, tagIds?: string[]): Promise<UserSecret> {

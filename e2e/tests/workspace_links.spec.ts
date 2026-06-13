@@ -65,7 +65,9 @@ test.describe('Workspace links', () => {
 
     const respondersResponse = await page.request.get('/api/webhooks/responders');
     expect(respondersResponse.ok()).toBeTruthy();
-    const responders = (await respondersResponse.json()) as { id: string; name: string }[];
+    const { items: responders } = (await respondersResponse.json()) as {
+      items: { id: string; name: string }[];
+    };
     const primaryResponder = responders.find((responder) => responder.name === primaryName);
     const secondaryResponder = responders.find((responder) => responder.name === secondaryName);
     expect(primaryResponder).toBeDefined();

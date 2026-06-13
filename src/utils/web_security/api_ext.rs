@@ -15,6 +15,7 @@ use crate::{
     config::SECUTILS_USER_AGENT,
     error::Error as SecutilsError,
     network::{DnsResolver, EmailTransport},
+    server::{Page, PaginationParams},
     users::{EntityTag, SharedResource, User, UserShare},
     utils::{
         constants::MAX_ENTITY_NAME_LENGTH,
@@ -24,6 +25,13 @@ use crate::{
         },
     },
 };
+
+/// Allowlist of client sort keys mapped to CSP SQL columns.
+const CSP_SORT_COLUMNS: &[(&str, &str)] = &[
+    ("name", "name"),
+    ("createdAt", "created_at"),
+    ("updatedAt", "updated_at"),
+];
 use anyhow::{anyhow, bail};
 use content_security_policy::{Policy, PolicyDisposition, PolicySource};
 use reqwest::redirect::Policy as RedirectPolicy;
@@ -70,6 +78,27 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebSecurityApiExt<'a, 'u, DR, 
             policy.tags = tags_map.remove(&policy.id).unwrap_or_default();
         }
         Ok(policies)
+    }
+
+    /// Returns a single page of content security policies for the user, honoring
+    /// search, tag, sort, and pagination parameters.
+    pub async fn list_content_security_policies_page(
+        &self,
+        params: &PaginationParams,
+    ) -> anyhow::Result<Page<ContentSecurityPolicy>> {
+        let web_security = self.api.db.web_security();
+        let sort_col = params.sort_column(CSP_SORT_COLUMNS, "name");
+        let list_params = params.resolve();
+        let (mut policies, total) = web_security
+            .get_content_security_policies_page(self.user.id, &list_params, sort_col)
+            .await?;
+        let mut tags_map = web_security
+            .get_csp_tags(&policies.iter().map(|p| p.id).collect::<Vec<_>>())
+            .await?;
+        for policy in &mut policies {
+            policy.tags = tags_map.remove(&policy.id).unwrap_or_default();
+        }
+        Ok(Page::new(policies, total))
     }
 
     /// Retrieves content security policies with the specified IDs.

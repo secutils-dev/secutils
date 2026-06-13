@@ -1,8 +1,12 @@
 import { ResponseError } from './errors';
+import { buildPaginationQuery, fetchAllItems } from './pagination';
+import type { Page, PaginationRequest } from './pagination';
 import { apiFetch } from './urls';
 import type { EntityTag } from './user_tags';
 
 export type UserScriptType = 'responder' | 'api_configurator' | 'api_extractor' | 'page_extractor' | 'universal';
+
+export type ScriptContext = 'responder' | 'api_tracker' | 'page_tracker';
 
 export interface UserScript {
   id: string;
@@ -17,13 +21,25 @@ export interface UserScriptWithContent extends UserScript {
   content: string;
 }
 
-export async function getUserScripts(context?: 'responder' | 'api_tracker' | 'page_tracker'): Promise<UserScript[]> {
-  const path = context ? `/api/user/scripts?context=${context}` : '/api/user/scripts';
+/** Fetches a single page of scripts honoring context, search, tag, sort, and paging. */
+export async function getUserScriptsPage(
+  context?: ScriptContext,
+  params: PaginationRequest = {},
+): Promise<Page<UserScript>> {
+  const query = buildPaginationQuery(params);
+  const path = context
+    ? `/api/user/scripts?context=${context}${query ? `&${query.slice(1)}` : ''}`
+    : `/api/user/scripts${query}`;
   const response = await apiFetch(path);
   if (!response.ok) {
     throw await ResponseError.fromResponse(response, 'Failed to fetch scripts.');
   }
   return response.json();
+}
+
+/** Fetches every script across all pages (used by script selectors in editors). */
+export async function getUserScripts(context?: ScriptContext): Promise<UserScript[]> {
+  return fetchAllItems((request) => getUserScriptsPage(context, request));
 }
 
 export async function getUserScript(id: string): Promise<UserScriptWithContent> {

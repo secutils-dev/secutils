@@ -41,7 +41,7 @@ test.describe.serial('Page tracker schedule presets', () => {
 
     const listRes = await page.request.get('/api/web_scraping/page_trackers');
     expect(listRes.ok()).toBeTruthy();
-    const trackers = await listRes.json();
+    const { items: trackers } = await listRes.json();
     const tracker = trackers.find((t: { name: string }) => t.name === 'Hourly Schedule Test');
     expect(tracker).toBeDefined();
     expect(tracker.retrack.config.job.schedule).toBe('0 15 * * * *');
@@ -96,7 +96,7 @@ test.describe.serial('Page tracker schedule presets', () => {
 
     const listRes = await page.request.get('/api/web_scraping/page_trackers');
     expect(listRes.ok()).toBeTruthy();
-    const trackers = await listRes.json();
+    const { items: trackers } = await listRes.json();
     const tracker = trackers.find((t: { name: string }) => t.name === 'Daily Schedule Test');
     expect(tracker).toBeDefined();
     expect(tracker.retrack.config.job.schedule).toBe('0 30 9 * * *');
@@ -152,7 +152,7 @@ test.describe.serial('Page tracker schedule presets', () => {
 
     const listRes = await page.request.get('/api/web_scraping/page_trackers');
     expect(listRes.ok()).toBeTruthy();
-    const trackers = await listRes.json();
+    const { items: trackers } = await listRes.json();
     const tracker = trackers.find((t: { name: string }) => t.name === 'Weekly Schedule Test');
     expect(tracker).toBeDefined();
     expect(tracker.retrack.config.job.schedule).toBe('0 45 14 * * 3');
@@ -209,7 +209,7 @@ test.describe.serial('Page tracker schedule presets', () => {
 
     const listRes = await page.request.get('/api/web_scraping/page_trackers');
     expect(listRes.ok()).toBeTruthy();
-    const trackers = await listRes.json();
+    const { items: trackers } = await listRes.json();
     const tracker = trackers.find((t: { name: string }) => t.name === 'Monthly Schedule Test');
     expect(tracker).toBeDefined();
     expect(tracker.retrack.config.job.schedule).toBe('0 0 8 15 * *');
@@ -272,7 +272,7 @@ test.describe.serial('API tracker schedule presets', () => {
 
     const listRes = await page.request.get('/api/web_scraping/api_trackers');
     expect(listRes.ok()).toBeTruthy();
-    const trackers = await listRes.json();
+    const { items: trackers } = await listRes.json();
     const tracker = trackers.find((t: { name: string }) => t.name === 'Weekly API Schedule Test');
     expect(tracker).toBeDefined();
     expect(tracker.retrack.config.job.schedule).toBe('0 30 18 * * 5');

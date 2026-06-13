@@ -1,7 +1,10 @@
 use super::resolve_shared_user;
 use crate::{
     error::Error,
-    server::app_state::AppState,
+    server::{
+        app_state::AppState,
+        pagination::{Page, PaginationParams},
+    },
     users::{ClientUserShare, SharedResource, User, UserShare},
     utils::web_security::{
         ContentSecurityPoliciesCreateParams, ContentSecurityPoliciesSerializeParams,
@@ -27,20 +30,25 @@ pub struct ContentSecurityPolicyGetResponse {
     pub user_share: Option<ClientUserShare>,
 }
 
-/// Lists all content security policies for the authenticated user.
+/// Lists content security policies for the authenticated user (paginated).
 #[utoipa::path(
     tags = ["web_security"],
+    params(PaginationParams),
     responses(
-        (status = 200, description = "List of content security policies.", body = [ContentSecurityPolicy]),
+        (status = 200, description = "Paginated list of content security policies.", body = Page<ContentSecurityPolicy>),
         (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[get("/api/web_security/csp")]
-pub async fn csp_list(state: web::Data<AppState>, user: User) -> Result<HttpResponse, Error> {
+pub async fn csp_list(
+    state: web::Data<AppState>,
+    user: User,
+    pagination: web::Query<PaginationParams>,
+) -> Result<HttpResponse, Error> {
     let policies = state
         .api
         .web_security(&user)
-        .get_content_security_policies()
+        .list_content_security_policies_page(&pagination.into_inner())
         .await?;
     Ok(HttpResponse::Ok().json(policies))
 }

@@ -1,6 +1,9 @@
 use crate::{
     error::Error,
-    server::app_state::AppState,
+    server::{
+        app_state::AppState,
+        pagination::{Page, PaginationParams},
+    },
     users::User,
     utils::web_scraping::{
         ApiTracker, ApiTrackerCreateParams, ApiTrackerDebugParams, ApiTrackerGetHistoryParams,
@@ -16,11 +19,12 @@ pub struct TrackerIdPath {
     pub tracker_id: Uuid,
 }
 
-/// Lists all API trackers for the authenticated user.
+/// Lists API trackers for the authenticated user (paginated).
 #[utoipa::path(
     tags = ["web_scraping"],
+    params(PaginationParams),
     responses(
-        (status = 200, description = "List of API trackers.", body = [ApiTracker]),
+        (status = 200, description = "Paginated list of API trackers.", body = Page<ApiTracker>),
         (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
@@ -28,8 +32,13 @@ pub struct TrackerIdPath {
 pub async fn api_trackers_list(
     state: web::Data<AppState>,
     user: User,
+    pagination: web::Query<PaginationParams>,
 ) -> Result<HttpResponse, Error> {
-    let trackers = state.api.web_scraping(&user).get_api_trackers().await?;
+    let trackers = state
+        .api
+        .web_scraping(&user)
+        .list_api_trackers_page(&pagination.into_inner())
+        .await?;
     Ok(HttpResponse::Ok().json(trackers))
 }
 

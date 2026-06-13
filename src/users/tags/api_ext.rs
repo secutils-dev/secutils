@@ -2,6 +2,7 @@ use crate::{
     api::Api,
     error::Error,
     network::{DnsResolver, EmailTransport},
+    server::{Page, PaginationParams},
     users::{
         User,
         tags::{
@@ -16,6 +17,13 @@ use crate::{
 use serde::Deserialize;
 use utoipa::ToSchema;
 use uuid::Uuid;
+
+/// Allowlist of client sort keys mapped to tag SQL columns.
+const TAGS_SORT_COLUMNS: &[(&str, &str)] = &[
+    ("name", "name"),
+    ("createdAt", "created_at"),
+    ("updatedAt", "updated_at"),
+];
 
 #[derive(Deserialize, Debug, Clone, ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -51,6 +59,19 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> TagsApiExt<'a, 'u, DR, ET> {
     /// Lists all tags for the user.
     pub async fn list_tags(&self) -> anyhow::Result<Vec<UserTag>> {
         self.api.db.get_user_tags(self.user.id).await
+    }
+
+    /// Returns a single page of tags for the user, honoring search, sort, and
+    /// pagination parameters.
+    pub async fn list_tags_page(&self, params: &PaginationParams) -> anyhow::Result<Page<UserTag>> {
+        let sort_col = params.sort_column(TAGS_SORT_COLUMNS, "name");
+        let list_params = params.resolve();
+        let (tags, total) = self
+            .api
+            .db
+            .get_user_tags_page(self.user.id, &list_params, sort_col)
+            .await?;
+        Ok(Page::new(tags, total))
     }
 
     /// Fetches tags by a list of IDs.
@@ -171,6 +192,53 @@ mod tests {
 
         let tags = api.tags(&mock_user).list_tags().await?;
         assert!(tags.is_empty());
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn list_tags_page_applies_search_sort_and_total(pool: PgPool) -> anyhow::Result<()> {
+        use crate::server::{PaginationParams, SortOrder};
+
+        let api = mock_api(pool).await?;
+        let mock_user = mock_user()?;
+        api.db.upsert_user(&mock_user).await?;
+
+        let tags_api = api.tags(&mock_user);
+        for name in ["alpha", "beta", "alpine", "gamma"] {
+            tags_api
+                .create_tag(TagCreateParams {
+                    name: name.into(),
+                    color: "default".into(),
+                })
+                .await?;
+        }
+
+        // Search "alp" matches alpha and alpine; page size 1 returns first with full total.
+        let page = tags_api
+            .list_tags_page(&PaginationParams {
+                page: Some(0),
+                page_size: Some(1),
+                sort: Some("name".into()),
+                order: Some(SortOrder::Asc),
+                q: Some("alp".into()),
+                ..Default::default()
+            })
+            .await?;
+        assert_eq!(page.total, 2);
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0].name, "alpha");
+
+        // Descending sort returns the last tag first.
+        let page = tags_api
+            .list_tags_page(&PaginationParams {
+                sort: Some("name".into()),
+                order: Some(SortOrder::Desc),
+                ..Default::default()
+            })
+            .await?;
+        assert_eq!(page.total, 4);
+        assert_eq!(page.items[0].name, "gamma");
+
         Ok(())
     }
 

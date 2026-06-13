@@ -1,5 +1,5 @@
-import type { Criteria, Pagination, PropertySort } from '@elastic/eui';
 import {
+  EuiBasicTable,
   EuiButton,
   EuiButtonEmpty,
   EuiConfirmModal,
@@ -7,7 +7,6 @@ import {
   EuiFlexGroup,
   EuiFlexItem,
   EuiIcon,
-  EuiInMemoryTable,
   EuiSpacer,
   EuiToolTip,
 } from '@elastic/eui';
@@ -22,29 +21,29 @@ import { ContentSecurityPolicyImportModal } from './content_security_policy_impo
 import { ContentSecurityPolicyShareModal } from './content_security_policy_share_modal';
 import { PageErrorState, PageLoadingState } from '../../../../../components';
 import { useUserTags } from '../../../../../hooks';
-import type { AsyncData } from '../../../../../model';
-import { apiFetch, getCopyName, getErrorMessage, ResponseError } from '../../../../../model';
+import type { Page, PaginationRequest } from '../../../../../model';
+import { apiFetch, buildPaginationQuery, getCopyName, ResponseError } from '../../../../../model';
 import { EntityName } from '../../../components/entity_name';
 import {
   FilteredEmptyState,
   ItemsTableFilter,
   TagsFilter,
-  useItemsTableFilter,
+  useServerPaginatedItems,
 } from '../../../components/items_table_filter';
 import { TimestampTableCell } from '../../../components/timestamp_table_cell';
 import { useWorkspaceContext } from '../../../hooks';
 import { getWorkspaceEntityAbsoluteLink, getWorkspaceEntityLink } from '../../workspace_links';
 
 export default function WebSecurityContentSecurityPolicies() {
-  const { uiState, setTitleActions } = useWorkspaceContext();
+  const { setTitleActions } = useWorkspaceContext();
 
+  const [initialized, setInitialized] = useState(false);
   const [policyToCopy, setPolicyToCopy] = useState<ContentSecurityPolicy | null>(null);
   const [policyToShare, setPolicyToShare] = useState<ContentSecurityPolicy | null>(null);
   const [policyToRemove, setPolicyToRemove] = useState<ContentSecurityPolicy | null>(null);
   const [policyToEdit, setPolicyToEdit] = useState<Partial<ContentSecurityPolicy> | null | undefined>(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
 
-  const [policies, setPolicies] = useState<AsyncData<ContentSecurityPolicy[]>>({ status: 'pending' });
   const { allTags } = useUserTags();
 
   const createButton = useMemo(
@@ -85,40 +84,62 @@ export default function WebSecurityContentSecurityPolicies() {
     </EuiButtonEmpty>
   );
 
-  const loadPolicies = useCallback(() => {
-    apiFetch('/api/web_security/csp')
-      .then(async (res) => {
-        if (!res.ok) {
-          throw await ResponseError.fromResponse(res);
-        }
+  const fetcher = useCallback(async (request: PaginationRequest): Promise<Page<ContentSecurityPolicy>> => {
+    const res = await apiFetch(`/api/web_security/csp${buildPaginationQuery(request)}`);
+    if (!res.ok) {
+      throw await ResponseError.fromResponse(res);
+    }
+    const page = (await res.json()) as Page<ContentSecurityPolicy<SerializedContentSecurityPolicyDirectives>>;
+    return {
+      total: page.total,
+      items: page.items.map((policy) => ({
+        ...policy,
+        directives: deserializeContentSecurityPolicyDirectives(policy.directives),
+      })),
+    };
+  }, []);
 
-        const policies = (await res.json()) as ContentSecurityPolicy<SerializedContentSecurityPolicyDirectives>[];
-        setPolicies({
-          status: 'succeeded',
-          data: policies.map((policy) => ({
-            ...policy,
-            directives: deserializeContentSecurityPolicyDirectives(policy.directives),
-          })),
-        });
-        setTitleActions(policies.length === 0 ? null : createButton);
-      })
-      .catch((err) => setPolicies({ status: 'failed', error: getErrorMessage(err) }));
-  }, [createButton, setTitleActions]);
+  const {
+    items: policies,
+    total,
+    loading,
+    error,
+    pagination,
+    sorting,
+    onTableChange,
+    query,
+    setQuery,
+    selectedTagIds,
+    setSelectedTagIds,
+    hasPageFilters,
+    hasActiveFilters,
+    clearPageFilters,
+    refresh,
+  } = useServerPaginatedItems<ContentSecurityPolicy>({
+    fetcher,
+    allTags,
+    defaultSortField: 'updatedAt',
+    defaultSortDirection: 'desc',
+  });
 
   useEffect(() => {
-    if (!uiState.synced) {
-      return;
+    if (!loading) {
+      setInitialized(true);
     }
+  }, [loading]);
 
-    loadPolicies();
-  }, [uiState, loadPolicies]);
+  const isEmpty = initialized && total === 0 && !hasActiveFilters;
+
+  useEffect(() => {
+    setTitleActions(isEmpty ? null : createButton);
+  }, [isEmpty, createButton, setTitleActions]);
 
   const editFlyout =
     policyToEdit !== null ? (
       <ContentSecurityPolicyEditFlyout
         onClose={(success) => {
           if (success) {
-            loadPolicies();
+            refresh();
           }
           setPolicyToEdit(null);
         }}
@@ -139,7 +160,7 @@ export default function WebSecurityContentSecurityPolicies() {
       onClose={(success) => {
         setIsImportModalOpen(false);
         if (success) {
-          loadPolicies();
+          refresh();
         }
       }}
     />
@@ -158,9 +179,9 @@ export default function WebSecurityContentSecurityPolicies() {
               throw await ResponseError.fromResponse(res);
             }
 
-            loadPolicies();
+            refresh();
           })
-          .catch((err: Error) => console.error(`Failed to remove content security policy: ${getErrorMessage(err)}`));
+          .catch((err: Error) => console.error(`Failed to remove content security policy: ${err.message}`));
       }}
       cancelButtonText="Cancel"
       confirmButtonText="Remove"
@@ -170,72 +191,16 @@ export default function WebSecurityContentSecurityPolicies() {
     </EuiConfirmModal>
   ) : null;
 
-  // Filter configuration: search by name, ID, and policy content
-  const getSearchFields = useCallback(
-    (policy: ContentSecurityPolicy) => [policy.name, policy.id, getContentSecurityPolicyString(policy)],
-    [],
-  );
-  const getItemTags = useCallback((policy: ContentSecurityPolicy) => policy.tags, []);
-  const {
-    filteredItems,
-    query,
-    setQuery,
-    selectedTagIds,
-    setSelectedTagIds,
-    totalItems,
-    hasPageFilters,
-    clearPageFilters,
-  } = useItemsTableFilter({
-    items: policies.status === 'succeeded' ? policies.data : [],
-    allTags,
-    getSearchFields,
-    getItemTags,
-  });
-
-  const [pagination, setPagination] = useState<Pagination>({
-    pageIndex: 0,
-    pageSize: 15,
-    pageSizeOptions: [10, 15, 25, 50, 100],
-    totalItemCount: 0,
-  });
-  const [sorting, setSorting] = useState<{ sort: PropertySort }>({ sort: { field: 'updatedAt', direction: 'desc' } });
-  const onTableChange = useCallback(
-    ({ page, sort }: Criteria<ContentSecurityPolicy>) => {
-      setPagination({
-        ...pagination,
-        pageIndex: page?.index ?? 0,
-        pageSize: page?.size ?? 15,
-      });
-
-      if (sort?.field) {
-        setSorting({ sort });
-      }
-    },
-    [pagination],
-  );
-
-  if (policies.status === 'pending') {
+  if (!initialized && loading) {
     return <PageLoadingState />;
   }
 
-  if (policies.status === 'failed') {
-    return (
-      <PageErrorState
-        title="Cannot load content security policies"
-        content={
-          <p>
-            Cannot load content security policies.
-            <br />
-            <br />
-            <strong>{policies.error}</strong>.
-          </p>
-        }
-      />
-    );
+  if (error && policies.length === 0) {
+    return <PageErrorState title="Cannot load content security policies" content={<p>{error}</p>} />;
   }
 
   let content;
-  if (policies.data.length === 0) {
+  if (isEmpty) {
     content = (
       <EuiFlexGroup
         direction={'column'}
@@ -268,25 +233,21 @@ export default function WebSecurityContentSecurityPolicies() {
         <ItemsTableFilter
           query={query}
           onQueryChange={setQuery}
-          onRefresh={loadPolicies}
+          onRefresh={refresh}
           placeholder="Search by name, ID, or policy content..."
         >
           <TagsFilter tags={allTags} selectedTagIds={selectedTagIds} onSelectedTagIdsChange={setSelectedTagIds} />
         </ItemsTableFilter>
         <EuiSpacer size="m" />
-        <EuiInMemoryTable
+        <EuiBasicTable
+          loading={loading}
           pagination={pagination}
-          allowNeutralSort={false}
           noItemsMessage={
-            <FilteredEmptyState
-              totalItems={totalItems}
-              hasPageFilters={hasPageFilters}
-              onClearFilters={clearPageFilters}
-            />
+            <FilteredEmptyState totalItems={total} hasPageFilters={hasPageFilters} onClearFilters={clearPageFilters} />
           }
           sorting={sorting}
-          onTableChange={onTableChange}
-          items={filteredItems}
+          onChange={onTableChange}
+          items={policies}
           itemId={(item) => item.id}
           tableLayout={'auto'}
           columns={[
@@ -324,7 +285,7 @@ export default function WebSecurityContentSecurityPolicies() {
               field: 'updatedAt',
               width: '160px',
               mobileOptions: { width: 'unset' },
-              sortable: (policy) => policy.updatedAt,
+              sortable: true,
               render: (_, policy: ContentSecurityPolicy) => <TimestampTableCell timestamp={policy.updatedAt} />,
             },
             {
@@ -378,7 +339,10 @@ export default function WebSecurityContentSecurityPolicies() {
                   onClick: ({ id, createdAt, updatedAt, name, ...rest }: ContentSecurityPolicy) =>
                     setPolicyToEdit({
                       ...rest,
-                      name: getCopyName(name, policies.status === 'succeeded' ? policies.data.map((p) => p.name) : []),
+                      name: getCopyName(
+                        name,
+                        policies.map((p) => p.name),
+                      ),
                     }),
                 },
                 {

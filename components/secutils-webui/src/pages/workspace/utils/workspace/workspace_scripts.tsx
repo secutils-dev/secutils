@@ -1,5 +1,6 @@
 import {
   EuiBadge,
+  EuiBasicTable,
   EuiButton,
   EuiButtonEmpty,
   EuiConfirmModal,
@@ -7,7 +8,6 @@ import {
   EuiFlexGroup,
   EuiFlexItem,
   EuiIcon,
-  EuiInMemoryTable,
   EuiSpacer,
   EuiText,
 } from '@elastic/eui';
@@ -16,16 +16,16 @@ import { unix } from 'moment/moment';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 
 const ScriptEditFlyout = lazy(() => import('./script_edit_flyout'));
-import { PageLoadingState } from '../../../../components';
+import { PageErrorState, PageLoadingState } from '../../../../components';
 import { useUserTags } from '../../../../hooks';
-import { deleteUserScript, getCopyName, getUserScripts, USER_SCRIPT_TYPE_LABELS } from '../../../../model';
-import type { UserScript, UserScriptType } from '../../../../model';
+import { deleteUserScript, getCopyName, getUserScriptsPage, USER_SCRIPT_TYPE_LABELS } from '../../../../model';
+import type { PaginationRequest, UserScript, UserScriptType } from '../../../../model';
 import { EntityName } from '../../components/entity_name';
 import {
   FilteredEmptyState,
   ItemsTableFilter,
   TagsFilter,
-  useItemsTableFilter,
+  useServerPaginatedItems,
 } from '../../components/items_table_filter';
 import { useWorkspaceContext } from '../../hooks';
 
@@ -45,8 +45,7 @@ const TYPE_COLOR: Record<UserScriptType, string> = {
 export default function WorkspaceScripts() {
   const { addToast, setTitleActions } = useWorkspaceContext();
 
-  const [scripts, setScripts] = useState<UserScript[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [initialized, setInitialized] = useState(false);
   const [scriptToEdit, setScriptToEdit] = useState<{
     editingId?: string;
     editingName?: string;
@@ -77,57 +76,56 @@ export default function WorkspaceScripts() {
     </EuiButtonEmpty>
   );
 
-  const loadScripts = useCallback(async () => {
-    setLoading(true);
-    try {
-      const loaded = await getUserScripts();
-      setScripts(loaded);
-      setTitleActions(loaded.length === 0 ? null : createButton);
-    } catch {
-      addToast({ id: 'load-scripts-error', color: 'danger', title: 'Failed to load scripts' });
-    } finally {
-      setLoading(false);
-    }
-  }, [addToast, createButton, setTitleActions]);
+  const fetcher = useCallback((request: PaginationRequest) => getUserScriptsPage(undefined, request), []);
+  const {
+    items: scripts,
+    total,
+    loading,
+    error,
+    pagination,
+    sorting,
+    onTableChange,
+    query,
+    setQuery,
+    selectedTagIds,
+    setSelectedTagIds,
+    hasPageFilters,
+    hasActiveFilters,
+    clearPageFilters,
+    refresh,
+  } = useServerPaginatedItems<UserScript>({
+    fetcher,
+    allTags,
+    defaultSortField: 'updatedAt',
+    defaultSortDirection: 'desc',
+    defaultPageSize: 10,
+  });
 
   useEffect(() => {
-    loadScripts();
-  }, [loadScripts]);
+    if (!loading) {
+      setInitialized(true);
+    }
+  }, [loading]);
+
+  const isEmpty = initialized && total === 0 && !hasActiveFilters;
+
+  useEffect(() => {
+    setTitleActions(isEmpty ? null : createButton);
+  }, [isEmpty, createButton, setTitleActions]);
 
   const handleDelete = useCallback(
     async (id: string, name: string) => {
       try {
         await deleteUserScript(id);
         addToast({ id: 'delete-script', color: 'success', title: `Script "${name}" deleted` });
-        await loadScripts();
+        refresh();
       } catch {
         addToast({ id: 'delete-script-error', color: 'danger', title: `Failed to delete script "${name}"` });
       }
       setDeleteConfirm(null);
     },
-    [loadScripts, addToast],
+    [refresh, addToast],
   );
-
-  const getSearchFields = useCallback(
-    (script: UserScript) => [script.name, script.id, USER_SCRIPT_TYPE_LABELS[script.scriptType]],
-    [],
-  );
-  const getItemTags = useCallback((script: UserScript) => script.tags, []);
-  const {
-    filteredItems,
-    query,
-    setQuery,
-    selectedTagIds,
-    setSelectedTagIds,
-    totalItems,
-    hasPageFilters,
-    clearPageFilters,
-  } = useItemsTableFilter({
-    items: scripts,
-    allTags,
-    getSearchFields,
-    getItemTags,
-  });
 
   const columns: Array<EuiBasicTableColumn<UserScript>> = [
     {
@@ -191,12 +189,16 @@ export default function WorkspaceScripts() {
     },
   ];
 
-  if (loading && scripts.length === 0) {
+  if (!initialized && loading) {
     return <PageLoadingState />;
   }
 
+  if (error && scripts.length === 0) {
+    return <PageErrorState title="Cannot load scripts" content={<p>{error}</p>} />;
+  }
+
   let content;
-  if (scripts.length === 0) {
+  if (isEmpty) {
     content = (
       <EuiFlexGroup
         direction={'column'}
@@ -226,22 +228,19 @@ export default function WorkspaceScripts() {
   } else {
     content = (
       <>
-        <ItemsTableFilter query={query} onQueryChange={setQuery} onRefresh={loadScripts} placeholder="Search scripts…">
+        <ItemsTableFilter query={query} onQueryChange={setQuery} onRefresh={refresh} placeholder="Search scripts…">
           <TagsFilter tags={allTags} selectedTagIds={selectedTagIds} onSelectedTagIdsChange={setSelectedTagIds} />
         </ItemsTableFilter>
         <EuiSpacer size="m" />
-        <EuiInMemoryTable
-          items={filteredItems}
+        <EuiBasicTable
+          items={scripts}
           columns={columns}
           loading={loading}
-          sorting={{ sort: { field: 'updatedAt', direction: 'desc' } }}
-          pagination={{ pageSize: 10, showPerPageOptions: true }}
+          sorting={sorting}
+          pagination={pagination}
+          onChange={onTableChange}
           noItemsMessage={
-            <FilteredEmptyState
-              totalItems={totalItems}
-              hasPageFilters={hasPageFilters}
-              onClearFilters={clearPageFilters}
-            />
+            <FilteredEmptyState totalItems={total} hasPageFilters={hasPageFilters} onClearFilters={clearPageFilters} />
           }
         />
       </>
@@ -258,7 +257,7 @@ export default function WorkspaceScripts() {
         duplicateSourceName={scriptToEdit.duplicateSourceName}
         onClose={(success) => {
           if (success) {
-            loadScripts();
+            refresh();
           }
           setScriptToEdit(null);
         }}

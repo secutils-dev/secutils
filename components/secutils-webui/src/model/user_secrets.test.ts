@@ -1,7 +1,13 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createUserSecret, deleteUserSecret, getUserSecrets, updateUserSecret } from './user_secrets';
+import {
+  createUserSecret,
+  deleteUserSecret,
+  getUserSecrets,
+  getUserSecretsPage,
+  updateUserSecret,
+} from './user_secrets';
 
 let mockFetch: ReturnType<typeof vi.fn>;
 
@@ -21,16 +27,55 @@ const SECRET: { id: string; name: string; createdAt: number; updatedAt: number }
   updatedAt: 1700000001,
 };
 
-describe('getUserSecrets', () => {
-  it('returns the list of secrets', async () => {
-    mockFetch.mockResolvedValueOnce(new Response(JSON.stringify([SECRET]), { status: 200 }));
+describe('getUserSecretsPage', () => {
+  it('returns a page and requests the default endpoint without params', async () => {
+    mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({ items: [SECRET], total: 1 }), { status: 200 }));
 
-    const secrets = await getUserSecrets();
-    expect(secrets).toEqual([SECRET]);
+    const page = await getUserSecretsPage();
+    expect(page).toEqual({ items: [SECRET], total: 1 });
     expect(mockFetch).toHaveBeenCalledWith('/api/user/secrets', expect.objectContaining({ method: 'GET' }));
   });
 
+  it('serializes pagination, sort, search, and tag filters into the query string', async () => {
+    mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({ items: [], total: 0 }), { status: 200 }));
+
+    await getUserSecretsPage({
+      page: 2,
+      pageSize: 25,
+      sort: 'updatedAt',
+      order: 'desc',
+      q: 'token',
+      tags: ['t1', 't2'],
+      globalTags: ['g1'],
+    });
+
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toBe(
+      '/api/user/secrets?page=2&pageSize=25&sort=updatedAt&order=desc&q=token&tags=t1%2Ct2&globalTags=g1',
+    );
+  });
+
   it('throws when response is not ok', async () => {
+    mockFetch.mockResolvedValueOnce(new Response(null, { status: 500 }));
+    await expect(getUserSecretsPage()).rejects.toThrow('Failed to fetch secrets.');
+  });
+});
+
+describe('getUserSecrets', () => {
+  it('aggregates every page into a flat list', async () => {
+    const second = { ...SECRET, id: '00000000-0000-0000-0000-000000000002', name: 'other' };
+    mockFetch
+      .mockResolvedValueOnce(new Response(JSON.stringify({ items: [SECRET], total: 2 }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ items: [second], total: 2 }), { status: 200 }));
+
+    const secrets = await getUserSecrets();
+    expect(secrets).toEqual([SECRET, second]);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(mockFetch.mock.calls[0][0]).toBe('/api/user/secrets?page=0&pageSize=100');
+    expect(mockFetch.mock.calls[1][0]).toBe('/api/user/secrets?page=1&pageSize=100');
+  });
+
+  it('throws when a page response is not ok', async () => {
     mockFetch.mockResolvedValueOnce(new Response(null, { status: 500 }));
     await expect(getUserSecrets()).rejects.toThrow('Failed to fetch secrets.');
   });

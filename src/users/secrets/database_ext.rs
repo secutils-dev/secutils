@@ -1,6 +1,7 @@
 use crate::{
     database::Database,
     error::Error,
+    server::{ListParams, TagJunction, count_sql, list_sql},
     users::{EntityTag, RawEntityTag, UserId, group_entity_tags, secrets::UserSecret},
 };
 use sqlx::{Acquire, Pool, Postgres, error::ErrorKind as SqlxErrorKind, query, query_as};
@@ -8,7 +9,13 @@ use std::collections::HashMap;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-#[derive(Debug)]
+/// Junction table linking secrets to tags.
+const SECRETS_TAG_JUNCTION: TagJunction = TagJunction {
+    table: "user_data_secrets_tags",
+    entity_col: "secret_id",
+};
+
+#[derive(Debug, sqlx::FromRow)]
 pub(super) struct RawUserSecret {
     id: Uuid,
     user_id: Uuid,
@@ -70,6 +77,51 @@ ORDER BY name ASC
             .into_iter()
             .map(|r| r.into_user_secret(include_values))
             .collect())
+    }
+
+    /// Returns a single page of secrets for a user (metadata only, no values), honoring search,
+    /// tag, sort, and pagination parameters, together with the total number of matching secrets.
+    ///
+    /// `sort_col` must originate from the caller's static allowlist.
+    pub async fn get_user_secrets_page(
+        &self,
+        user_id: UserId,
+        params: &ListParams,
+        sort_col: &str,
+    ) -> anyhow::Result<(Vec<UserSecret>, i64)> {
+        let list = list_sql(
+            "user_data_secrets",
+            "id, user_id, name, ''::bytea AS value, created_at, updated_at",
+            "name",
+            &SECRETS_TAG_JUNCTION,
+            sort_col,
+            params.order,
+        );
+        let rows: Vec<RawUserSecret> = sqlx::query_as(&list)
+            .bind(*user_id)
+            .bind(params.query.as_deref())
+            .bind(params.tags.as_slice())
+            .bind(params.global_tags.as_slice())
+            .bind(params.limit)
+            .bind(params.offset)
+            .fetch_all(self.pool)
+            .await?;
+
+        let count = count_sql("user_data_secrets", "name", &SECRETS_TAG_JUNCTION);
+        let total: i64 = sqlx::query_scalar(&count)
+            .bind(*user_id)
+            .bind(params.query.as_deref())
+            .bind(params.tags.as_slice())
+            .bind(params.global_tags.as_slice())
+            .fetch_one(self.pool)
+            .await?;
+
+        Ok((
+            rows.into_iter()
+                .map(|r| r.into_user_secret(false))
+                .collect(),
+            total,
+        ))
     }
 
     /// Lists secrets for a user matching the specified IDs (metadata only, no values).
@@ -355,6 +407,172 @@ mod tests {
         assert!(secrets[0].encrypted_value.is_none());
         assert_eq!(secrets[1].name, "DB_PASSWORD");
         assert_eq!(secrets_db.count_user_secrets(user.id).await?, 2);
+
+        Ok(())
+    }
+
+    fn page_params(
+        page: u32,
+        size: u32,
+        order: crate::server::SortOrder,
+        q: Option<&str>,
+    ) -> crate::server::ListParams {
+        crate::server::PaginationParams {
+            page: Some(page),
+            page_size: Some(size),
+            order: Some(order),
+            q: q.map(str::to_string),
+            ..Default::default()
+        }
+        .resolve()
+    }
+
+    #[sqlx::test]
+    async fn paginates_secrets_by_name(pool: PgPool) -> anyhow::Result<()> {
+        use crate::server::SortOrder;
+        let db = Database::create(pool).await?;
+        let user = mock_user()?;
+        db.upsert_user(&user).await?;
+
+        let secrets_db = db.secrets();
+        for i in 0..25 {
+            secrets_db
+                .insert_user_secret(
+                    user.id,
+                    &mock_secret(Uuid::now_v7(), &format!("SECRET_{i:02}")),
+                )
+                .await?;
+        }
+
+        // First page.
+        let (items, total) = secrets_db
+            .get_user_secrets_page(user.id, &page_params(0, 10, SortOrder::Asc, None), "name")
+            .await?;
+        assert_eq!(total, 25);
+        assert_eq!(items.len(), 10);
+        assert_eq!(items[0].name, "SECRET_00");
+        assert_eq!(items[9].name, "SECRET_09");
+
+        // Last (partial) page.
+        let (items, total) = secrets_db
+            .get_user_secrets_page(user.id, &page_params(2, 10, SortOrder::Asc, None), "name")
+            .await?;
+        assert_eq!(total, 25);
+        assert_eq!(items.len(), 5);
+        assert_eq!(items[0].name, "SECRET_20");
+
+        // Descending order.
+        let (items, _) = secrets_db
+            .get_user_secrets_page(user.id, &page_params(0, 3, SortOrder::Desc, None), "name")
+            .await?;
+        assert_eq!(items[0].name, "SECRET_24");
+        assert!(items[0].encrypted_value.is_none());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn paginated_secrets_filter_by_search(pool: PgPool) -> anyhow::Result<()> {
+        use crate::server::SortOrder;
+        let db = Database::create(pool).await?;
+        let user = mock_user()?;
+        db.upsert_user(&user).await?;
+
+        let secrets_db = db.secrets();
+        for name in ["ALPHA_KEY", "ALPHA_TOKEN", "BETA_KEY"] {
+            secrets_db
+                .insert_user_secret(user.id, &mock_secret(Uuid::now_v7(), name))
+                .await?;
+        }
+
+        let (items, total) = secrets_db
+            .get_user_secrets_page(
+                user.id,
+                &page_params(0, 10, SortOrder::Asc, Some("alpha")),
+                "name",
+            )
+            .await?;
+        assert_eq!(total, 2);
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].name, "ALPHA_KEY");
+        assert_eq!(items[1].name, "ALPHA_TOKEN");
+
+        // Wildcard characters in the query are matched literally (no injection).
+        let (_, total) = secrets_db
+            .get_user_secrets_page(
+                user.id,
+                &page_params(0, 10, SortOrder::Asc, Some("%")),
+                "name",
+            )
+            .await?;
+        assert_eq!(total, 0);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn paginated_secrets_filter_by_tags(pool: PgPool) -> anyhow::Result<()> {
+        use crate::server::{ListParams, SortOrder};
+        let db = Database::create(pool).await?;
+        let user = mock_user()?;
+        db.upsert_user(&user).await?;
+
+        let tag_a = create_tag(&db, user.id, "alpha").await;
+        let tag_b = create_tag(&db, user.id, "beta").await;
+
+        let secrets_db = db.secrets();
+        secrets_db
+            .insert_user_secret(
+                user.id,
+                &mock_secret_with_tags(Uuid::now_v7(), "ONLY_A", &[tag_a]),
+            )
+            .await?;
+        secrets_db
+            .insert_user_secret(
+                user.id,
+                &mock_secret_with_tags(Uuid::now_v7(), "ONLY_B", &[tag_b]),
+            )
+            .await?;
+        secrets_db
+            .insert_user_secret(
+                user.id,
+                &mock_secret_with_tags(Uuid::now_v7(), "BOTH_AB", &[tag_a, tag_b]),
+            )
+            .await?;
+        secrets_db
+            .insert_user_secret(user.id, &mock_secret(Uuid::now_v7(), "NO_TAGS"))
+            .await?;
+
+        let base = |tags: Vec<Uuid>, global: Vec<Uuid>| ListParams {
+            offset: 0,
+            limit: 50,
+            order: SortOrder::Asc,
+            query: None,
+            tags,
+            global_tags: global,
+        };
+
+        // Page-level OR: ANY of [a, b].
+        let (items, total) = secrets_db
+            .get_user_secrets_page(user.id, &base(vec![tag_a, tag_b], vec![]), "name")
+            .await?;
+        assert_eq!(total, 3);
+        let names: Vec<_> = items.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, vec!["BOTH_AB", "ONLY_A", "ONLY_B"]);
+
+        // Global AND: must have BOTH a and b.
+        let (items, total) = secrets_db
+            .get_user_secrets_page(user.id, &base(vec![], vec![tag_a, tag_b]), "name")
+            .await?;
+        assert_eq!(total, 1);
+        assert_eq!(items[0].name, "BOTH_AB");
+
+        // Combined OR + AND.
+        let (items, total) = secrets_db
+            .get_user_secrets_page(user.id, &base(vec![tag_a], vec![tag_b]), "name")
+            .await?;
+        assert_eq!(total, 1);
+        assert_eq!(items[0].name, "BOTH_AB");
 
         Ok(())
     }

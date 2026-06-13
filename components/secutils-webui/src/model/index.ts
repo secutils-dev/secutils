@@ -26,8 +26,16 @@ export type {
   SerializedPublicKeyCredentialRequestOptions,
 } from './webauthn';
 export { getCopyName, formatBytes } from './strings';
+export type { Page, PaginationRequest, SortDirection } from './pagination';
+export { buildPaginationQuery, fetchAllItems, MAX_PAGE_SIZE } from './pagination';
 export type { UserSecret } from './user_secrets';
-export { getUserSecrets, createUserSecret, updateUserSecret, deleteUserSecret } from './user_secrets';
+export {
+  getUserSecrets,
+  getUserSecretsPage,
+  createUserSecret,
+  updateUserSecret,
+  deleteUserSecret,
+} from './user_secrets';
 export type { UserApiKey, ApiKeyCreateResponse } from './user_api_keys';
 export {
   getUserApiKeys,
@@ -37,8 +45,15 @@ export {
   regenerateUserApiKey,
 } from './user_api_keys';
 export type { EntityTag, UserTag } from './user_tags';
-export { TAG_COLOR_SWATCHES, getUserTags, createUserTag, updateUserTag, deleteUserTag } from './user_tags';
-export type { UserScript, UserScriptType, UserScriptWithContent } from './user_scripts';
+export {
+  TAG_COLOR_SWATCHES,
+  getUserTags,
+  getUserTagsPage,
+  createUserTag,
+  updateUserTag,
+  deleteUserTag,
+} from './user_tags';
+export type { UserScript, UserScriptType, UserScriptWithContent, ScriptContext } from './user_scripts';
 export type { UserNotificationDestination } from './notification_email';
 export {
   getNotificationEmail,
@@ -52,6 +67,7 @@ export {
 } from './notification_email';
 export {
   getUserScripts,
+  getUserScriptsPage,
   getUserScript,
   createUserScript,
   updateUserScript,

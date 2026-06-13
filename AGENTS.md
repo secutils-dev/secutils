@@ -988,6 +988,186 @@ dev/api/                                         # .http dev files
 
 ---
 
+## Paginating a list endpoint
+
+All entity list/grid endpoints use a **uniform, offset-based server-side
+pagination contract** with server-side search, sorting, and tag filtering. When
+you add a new list endpoint (or a new entity grid), follow this recipe instead of
+returning a bare `Vec<T>`. The pilot implementation is **Secrets** - copy it.
+
+### The contract (already built — reuse, don't reinvent)
+
+Defined once in [`src/server/pagination.rs`](src/server/pagination.rs):
+
+- **`PaginationParams`** — the shared `web::Query<…>` struct (`IntoParams`):
+  `page` (0-based), `pageSize` (clamped to 1..=`MAX_PAGE_SIZE` = 100, default 15),
+  `sort`, `order` (`asc`/`desc`), `q` (free text), `tags` (comma-separated tag
+  IDs, page-level **OR**), `globalTags` (comma-separated tag IDs, global **AND**).
+  `q` matches the entity **name** (case-insensitive `ILIKE`) **or** an exact entity
+  **id** — the latter backs the "click an entity name to open a grid filtered to that
+  single entity" workspace links (`getWorkspaceEntityLink` → `?q=<entity-id>`). A uuid
+  survives `ILIKE`-escaping unchanged, so `id::text = $2` only ever matches a real id.
+- **`Page<T>`** — the response wrapper `{ items: Vec<T>, total: i64 }`. It derives
+  `ToSchema`; utoipa 5 **auto-collects** the concrete instantiation from the
+  handler's `responses(... body = Page<MyEntity>)` declaration (named
+  `Page_MyEntity` in the spec). **Do not** add `Page<…>` to `components(schemas(…))`
+  and **do not** use a `#[schema(as = …)]`/aliases — utoipa 5 removed aliases.
+- **`ListParams`** — `PaginationParams::resolve()` yields this normalized struct
+  (computed `offset`/`limit`, `ILIKE`-escaped `query`, parsed `tags`/`global_tags`).
+- **`PaginationParams::sort_column(allowed, default)`** — maps the client `sort`
+  key to a SQL column from a **static allowlist**, falling back to `default`.
+- **`list_sql(table, columns, name_col, &TagJunction, sort_col, order)`** and
+  **`count_sql(table, name_col, &TagJunction)`** — compose the runtime SQL
+  (dynamic `ORDER BY`/filters require runtime SQL, **not** the `query_as!` macro).
+  Bind order is fixed: `$1` user_id, `$2` query (text, nullable), `$3` page-level
+  tags (`uuid[]`), `$4` global tags (`uuid[]`), `$5` limit, `$6` offset.
+
+### Backend steps
+
+1. **Database layer** (`src/.../database_ext.rs`): derive `#[derive(sqlx::FromRow)]`
+   on the entity's `Raw…` row struct, define a `const … : TagJunction { table,
+   entity_col }`, and add a `get_…_page(user_id, &ListParams, sort_col)` method that
+   runs `sqlx::query_as(&list_sql(...))` + `sqlx::query_scalar(&count_sql(...))` with
+   the fixed bind order, returning `(Vec<Entity>, i64)`. The `q` value is bound as
+   `Option<&str>`; tags as `params.tags.as_slice()`. Select a cheap placeholder for
+   large/unneeded columns (Secrets selects `''::bytea AS value`).
+   - **No `.sqlx/` regeneration needed** — these are runtime queries (like
+     `get_user_tags`), not `query_as!` macros, so the offline cache is untouched.
+   - For an entity **without** tags, write the SQL inline (no junction) — the
+     builders assume a junction. **Gotcha:** if the name column uses a
+     *nondeterministic* (case-insensitive) collation — as `user_tags.name` does —
+     Postgres rejects `ILIKE` on it (`nondeterministic collations are not supported
+     for ILIKE`). Force a deterministic collation in the match, and mirror the shared
+     filter's id branch so "filter to a single entity by id" links keep working:
+     `name COLLATE "C" ILIKE ('%' || $2 || '%') ESCAPE '\' OR id::text = $2`.
+2. **API layer** (`src/.../api_ext.rs`): define a `const …_SORT_COLUMNS:
+   &[(&str, &str)]` allowlist (client camelCase key → SQL column) and a
+   `list_…_page(&PaginationParams) -> anyhow::Result<Page<Entity>>` that resolves the
+   sort column + params, calls the DB method, hydrates tags for the page IDs
+   (`get_…_tags(&page_ids)` already scales to a page), and returns `Page::new(items,
+   total)`.
+3. **Handler** (`src/server/handlers/….rs`): accept `query: web::Query<PaginationParams>`,
+   annotate with `params(PaginationParams)` and `responses(... body = Page<Entity>)`.
+4. **OpenAPI snapshots**: `cargo insta accept` — only `openapi_spec_has_all_schemas`
+   changes (gains `Page_Entity`). **Gotcha:** if you add a snapshot of a *full path*
+   (not just an `["example"]`), it embeds the pagination params whose `minimum: 0`
+   constraint is a JSON number. Under `serde_json/arbitrary_precision` (enabled
+   workspace-wide), insta's generic serializer leaks numbers as
+   `{"$serde_json::private::Number": "0"}`. Snapshot such fragments via the
+   `spec_json(&value)` helper (`assert_snapshot!(spec_json(&path), …)`, a text snapshot
+   of `serde_json::to_string_pretty`) instead of `assert_json_snapshot!` — `serde_json`'s
+   own serializer collapses it back to a bare `0`, matching the served spec.
+5. **Tests**: add `#[sqlx::test]` DB tests (page slicing, total, sort asc/desc,
+   `q` incl. literal `%`/`_`, tag OR/AND/combined) and an api_ext test (search +
+   sort allowlist fallback + tag hydration). Build `ListParams` directly or via
+   `PaginationParams { … }.resolve()`.
+
+### Frontend steps
+
+- **Model** (`src/model/<entity>.ts`): add `get<Entity>Page(params: PaginationRequest):
+  Promise<Page<Entity>>` using `buildPaginationQuery(params)` from
+  [`src/model/pagination.ts`](components/secutils-webui/src/model/pagination.ts).
+  **Keep** the array-returning `get<Entity>()` for bulk consumers (export modal, tag
+  selectors) by delegating to `fetchAllItems(get<Entity>Page)` — those callers need
+  the *full* dataset and must not be broken by pagination.
+- **Grid**: replace `EuiInMemoryTable` with **`EuiBasicTable`** driven by the shared
+  [`useServerPaginatedItems`](components/secutils-webui/src/pages/workspace/components/items_table_filter/use_server_paginated_items.ts)
+  hook. Pass `fetcher: get<Entity>Page`, `allTags`, `defaultSortField`,
+  `defaultSortDirection`. Spread the hook's `pagination`, `sorting`, and
+  `onChange={onTableChange}`. The hook syncs `?q=`/`?tags=` to the URL (reusing
+  `FILTER_PARAM_QUERY`/`FILTER_PARAM_TAGS`), pulls global-scope tags from the
+  workspace context, debounced search comes from `ItemsTableFilter`, and any
+  change re-fetches the relevant page (stale responses are dropped via a request-id
+  ref). Use `hasActiveFilters` to distinguish the "truly empty" prompt from a
+  filtered-empty `FilteredEmptyState`.
+- **Vitest**: assert `get<Entity>Page` query-string serialization + `{items,total}`
+  parsing, and that `get<Entity>()` aggregates across pages.
+
+### Sortable columns must match the server allowlist
+
+With server-side pagination a column is only meaningfully sortable when the backend
+can `ORDER BY` it. Mark an `EuiBasicTable` column `sortable: true` **only** when its
+`field` is a client key in that entity's `…_SORT_COLUMNS` allowlist (every grid
+supports `name`, `createdAt`, `updatedAt`). A `sortable` flag on a column **not** in
+the allowlist is a **silent bug**: the header shows an active sort arrow, but
+`sort_column()` falls back to the default, so the rows are actually ordered by
+something else. This is the most common regression when porting a grid off
+`EuiInMemoryTable` (which sorts every column client-side over the fully-loaded list).
+Likewise, do **not** carry over the in-memory function form
+`sortable: (item) => item.field` — on `EuiBasicTable` use a plain `sortable: true`.
+
+**Watch for non-relational storage.** Several "columns" are not SQL-orderable even
+though they look like plain fields, because the value is encoded in an opaque blob or
+owned by another service. These can only be exposed as a real, deterministic sort via
+a schema change (denormalize into a column) — do **not** mark them `sortable`:
+- **`postcard`-encoded `bytea`** — e.g. responder `method` (orders by the postcard
+  byte = enum variant index, not the label) and the entire certificate-template
+  `attributes` struct (its `notValidBefore`/`notValidAfter`/`isCa`/… are inside one
+  blob and individually inaccessible to SQL).
+- **Retrack-owned fields** — page/API tracker `scheduledAt`/`lastRanAt`/`url`/`method`
+  live in the Retrack service, not the paginated Secutils table.
+- **Serialized/derived strings** — e.g. CSP `directives` (a rendered policy string).
+
+Plain relational columns (script `type`, private-key `alg`/`encrypted`, tag `color`)
+**are** orderable — just add the allowlist tuple. The caveat is only that sort order
+follows the stored value, which may differ from the human-facing label.
+
+A column's `field` is the sort key the hook forwards as `?sort=<field>`, so it must
+equal the allowlist's client key — **not** necessarily a real property of the item.
+The Responders "Last requested" column sets `field: 'lastRequestedAt'` even though
+`Responder` has no such property (the value is rendered from the `_stats` map).
+
+#### Sorting by a computed/joined value
+
+When the displayed value isn't a column on the entity table (e.g. a responder's
+last-requested time is `MAX(created_at)` over its request history), add an allowlist
+entry whose SQL value is an **`ORDER BY` expression** rather than a bare column. It is
+interpolated verbatim into the query, so it must contain **no user input**:
+
+```rust
+pub(crate) const RESPONDER_LAST_REQUESTED_AT_SQL: &str = "COALESCE((SELECT MAX(rh.created_at) \
+     FROM user_data_webhooks_responders_history rh \
+     WHERE rh.responder_id = user_data_webhooks_responders.id), to_timestamp(0))";
+
+const RESPONDERS_SORT_COLUMNS: &[(&str, &str)] = &[
+    ("name", "name"), ("createdAt", "created_at"), ("updatedAt", "updated_at"),
+    ("lastRequestedAt", RESPONDER_LAST_REQUESTED_AT_SQL),
+];
+```
+
+Wrap the correlated subquery in `COALESCE(…, to_timestamp(0))` so never-requested rows
+sort as the oldest (epoch) instead of `NULL` (which Postgres orders FIRST under `DESC`).
+Mirror **exactly** the aggregate used to compute the displayed value (here
+`get_responders_stats`' `MAX(created_at)`) so the sort order matches what the user sees.
+Cover it with a `#[sqlx::test]` that seeds distinct timestamps (including a row with
+none) and asserts both `asc` and `desc` orderings.
+
+### E2E
+
+Seed `> 1` page via the API, then drive the EUI controls: `Next page`, the
+`Search …` box (server-side, matches across pages), a column header for cross-page
+sort, and the `Tags` filter popover (`getByRole('option', { name })`). Note GET
+list responses are now `{ items, total }` — read `.items`. The
+`pinEntityTimestamps` helper already unwraps `{ items }`, so docs-screenshot
+timestamp pinning works unchanged.
+
+### Intentionally NOT paginated
+
+Bounded sub-lists stay client-side (already hard-capped server-side at ~3–30 rows):
+**tracker revisions** and **responder request history**. Their `DataGrid`s keep
+loading all rows at once; do not add a backend page contract there.
+
+### Trackers caveat (Secutils + Retrack merge)
+
+Page/API trackers merge Secutils rows with Retrack data. Paginate the **Secutils**
+query (`user_data_web_scraping_*_trackers`), then fetch Retrack data for only the
+page's `retrack_id`s via `bulk_get_trackers` (no Retrack service change). Sorting/
+search/tags operate on **Secutils** columns/tags only — Retrack-derived fields
+(`enabled`, `scheduledAt`) are not server-sortable. Scope the `_logs_summary`
+health fetch to the visible page IDs.
+
+---
+
 ## JS Runtime Performance Harness (`benches/js-runtime-perf/`)
 
 ### Overview

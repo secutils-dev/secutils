@@ -32,7 +32,7 @@ import { PageTrackerRetryStrategy } from './page_tracker_retry_strategy';
 import { TrackerDebugPanel } from './tracker_debug_panel';
 import { useFormChanges, useRangeTicks, useUserTags } from '../../../../hooks';
 import type { AsyncData } from '../../../../model';
-import { apiFetch, getApiUrl, getErrorMessage, isClientError, ResponseError } from '../../../../model';
+import { apiFetch, getApiUrl, getErrorMessage, getUserSecrets, isClientError, ResponseError } from '../../../../model';
 import { EditorFlyout } from '../../components/editor_flyout';
 import type { ImportAction, ScriptSnippet } from '../../components/script_editor';
 import { ScriptEditor } from '../../components/script_editor';
@@ -302,12 +302,9 @@ export default function ApiTrackerEditFlyout({ onClose, tracker }: Props) {
     if (secretsMode !== 'selected' || secretsLoaded) {
       return;
     }
-    apiFetch('/api/user/secrets')
-      .then(async (res) => {
-        if (res.ok) {
-          const data: Array<{ name: string }> = await res.json();
-          setAvailableSecrets(data.map((s) => ({ label: s.name })));
-        }
+    getUserSecrets()
+      .then((secrets) => {
+        setAvailableSecrets(secrets.map((s) => ({ label: s.name })));
       })
       .catch(() => {})
       .finally(() => setSecretsLoaded(true));

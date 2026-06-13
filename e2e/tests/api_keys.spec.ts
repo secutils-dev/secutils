@@ -271,7 +271,7 @@ test.describe('API Keys CRUD', () => {
     });
     expect(secretsRes.ok()).toBeTruthy();
     const secrets = await secretsRes.json();
-    expect(Array.isArray(secrets)).toBeTruthy();
+    expect(Array.isArray(secrets.items)).toBeTruthy();
 
     // Use the token to list user tags.
     const tagsRes = await request.get('/api/user/tags', {
@@ -279,7 +279,7 @@ test.describe('API Keys CRUD', () => {
     });
     expect(tagsRes.ok()).toBeTruthy();
     const tags = await tagsRes.json();
-    expect(Array.isArray(tags)).toBeTruthy();
+    expect(Array.isArray(tags.items)).toBeTruthy();
 
     // Verify the token CANNOT manage API keys (403).
     const selfKeysRes = await request.get('/api/user/api_keys', {

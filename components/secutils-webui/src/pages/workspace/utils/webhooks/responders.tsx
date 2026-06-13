@@ -1,5 +1,5 @@
-import type { Criteria, Pagination, PropertySort } from '@elastic/eui';
 import {
+  EuiBasicTable,
   EuiButton,
   EuiButtonEmpty,
   EuiButtonIcon,
@@ -8,7 +8,6 @@ import {
   EuiFlexGroup,
   EuiFlexItem,
   EuiIcon,
-  EuiInMemoryTable,
   EuiLink,
   EuiScreenReaderOnly,
   EuiSpacer,
@@ -26,13 +25,13 @@ import { ResponderRequestsTable } from './responder_requests_table';
 import type { ResponderStats } from './responder_stats';
 import { PageErrorState, PageLoadingState } from '../../../../components';
 import { useUserTags } from '../../../../hooks';
-import type { AsyncData } from '../../../../model';
-import { apiFetch, getCopyName, getErrorMessage, ResponseError } from '../../../../model';
+import type { Page, PaginationRequest } from '../../../../model';
+import { apiFetch, buildPaginationQuery, getCopyName, ResponseError } from '../../../../model';
 import {
   FilteredEmptyState,
   ItemsTableFilter,
   TagsFilter,
-  useItemsTableFilter,
+  useServerPaginatedItems,
 } from '../../components/items_table_filter';
 import { TimestampTableCell } from '../../components/timestamp_table_cell';
 import { useWorkspaceContext } from '../../hooks';
@@ -44,9 +43,8 @@ export default function Responders() {
   const theme = useEuiTheme();
   const { uiState, setTitleActions } = useWorkspaceContext();
 
-  const [responders, setResponders] = useState<
-    AsyncData<{ responders: Responder[]; stats: Map<string, ResponderStats> }>
-  >({ status: 'pending' });
+  const [initialized, setInitialized] = useState(false);
+  const [stats, setStats] = useState<Map<string, ResponderStats>>(new Map());
   const [responderToRemove, setResponderToRemove] = useState<Responder | null>(null);
   const [responderToEdit, setResponderToEdit] = useState<Partial<Responder> | null | undefined>(null);
   const { allTags } = useUserTags();
@@ -76,38 +74,59 @@ export default function Responders() {
     </EuiButtonEmpty>
   );
 
-  const loadResponders = useCallback(() => {
-    Promise.all([apiFetch('/api/webhooks/responders'), apiFetch('/api/webhooks/responders/_stats')])
-      .then(async ([respondersRes, respondersStatsRes]) => {
-        if (!respondersRes.ok) {
-          throw await ResponseError.fromResponse(respondersRes);
-        }
+  const fetcher = useCallback(async (request: PaginationRequest): Promise<Page<Responder>> => {
+    const [respondersRes, respondersStatsRes] = await Promise.all([
+      apiFetch(`/api/webhooks/responders${buildPaginationQuery(request)}`),
+      apiFetch('/api/webhooks/responders/_stats'),
+    ]);
 
-        if (!respondersStatsRes.ok) {
-          throw await ResponseError.fromResponse(respondersStatsRes);
-        }
-
-        const responders = (await respondersRes.json()) as Responder[];
-        const respondersStat = (await respondersStatsRes.json()) as ResponderStats[];
-        setResponders({
-          status: 'succeeded',
-          data: {
-            responders,
-            stats: new Map(respondersStat.map((stats) => [stats.responderId, stats])),
-          },
-        });
-        setTitleActions(responders.length === 0 ? null : createButton);
-      })
-      .catch((err) => setResponders({ status: 'failed', error: getErrorMessage(err) }));
-  }, [createButton, setTitleActions]);
-
-  useEffect(() => {
-    if (!uiState.synced) {
-      return;
+    if (!respondersRes.ok) {
+      throw await ResponseError.fromResponse(respondersRes);
+    }
+    if (!respondersStatsRes.ok) {
+      throw await ResponseError.fromResponse(respondersStatsRes);
     }
 
-    loadResponders();
-  }, [uiState, loadResponders]);
+    const page = (await respondersRes.json()) as Page<Responder>;
+    const respondersStat = (await respondersStatsRes.json()) as ResponderStats[];
+    setStats(new Map(respondersStat.map((stat) => [stat.responderId, stat])));
+    return page;
+  }, []);
+
+  const {
+    items: responders,
+    total,
+    loading,
+    error,
+    pagination,
+    sorting,
+    onTableChange,
+    query,
+    setQuery,
+    selectedTagIds,
+    setSelectedTagIds,
+    hasPageFilters,
+    hasActiveFilters,
+    clearPageFilters,
+    refresh,
+  } = useServerPaginatedItems<Responder>({
+    fetcher,
+    allTags,
+    defaultSortField: 'updatedAt',
+    defaultSortDirection: 'desc',
+  });
+
+  useEffect(() => {
+    if (!loading) {
+      setInitialized(true);
+    }
+  }, [loading]);
+
+  const isEmpty = initialized && total === 0 && !hasActiveFilters;
+
+  useEffect(() => {
+    setTitleActions(isEmpty ? null : createButton);
+  }, [isEmpty, createButton, setTitleActions]);
 
   const getResponderUrl = useCallback(
     (responder: Responder) => {
@@ -122,31 +141,6 @@ export default function Responders() {
     [uiState],
   );
 
-  // Filter configuration: search by name, path, and ID
-  const getSearchFields = useCallback(
-    (responder: Responder) => [responder.name, responder.id, responder.location.path],
-    [],
-  );
-
-  const getItemTags = useCallback((responder: Responder) => responder.tags, []);
-
-  // Use the filter hook with URL sync
-  const {
-    filteredItems,
-    query,
-    setQuery,
-    selectedTagIds,
-    setSelectedTagIds,
-    totalItems,
-    hasPageFilters,
-    clearPageFilters,
-  } = useItemsTableFilter({
-    items: responders.status === 'succeeded' ? responders.data.responders : [],
-    allTags,
-    getSearchFields,
-    getItemTags,
-  });
-
   const [itemIdToExpandedRowMap, setItemIdToExpandedRowMap] = useState<Record<string, ReactNode>>({});
   const editFlyout =
     responderToEdit !== null ? (
@@ -154,7 +148,7 @@ export default function Responders() {
         <ResponderEditFlyout
           onClose={(success) => {
             if (success) {
-              loadResponders();
+              refresh();
             }
             setResponderToEdit(null);
           }}
@@ -175,9 +169,9 @@ export default function Responders() {
             if (!res.ok) {
               throw await ResponseError.fromResponse(res);
             }
-            loadResponders();
+            refresh();
           })
-          .catch((err) => console.error(`Failed to remove responder: ${getErrorMessage(err)}`));
+          .catch((err: Error) => console.error(`Failed to remove responder: ${err.message}`));
       }}
       cancelButtonText="Cancel"
       confirmButtonText="Remove"
@@ -187,28 +181,6 @@ export default function Responders() {
       proceed?
     </EuiConfirmModal>
   ) : null;
-
-  const [pagination, setPagination] = useState<Pagination>({
-    pageIndex: 0,
-    pageSize: 15,
-    pageSizeOptions: [10, 15, 25, 50, 100],
-    totalItemCount: 0,
-  });
-  const [sorting, setSorting] = useState<{ sort: PropertySort }>({ sort: { field: 'updatedAt', direction: 'desc' } });
-  const onTableChange = useCallback(
-    ({ page, sort }: Criteria<Responder>) => {
-      setPagination({
-        ...pagination,
-        pageIndex: page?.index ?? 0,
-        pageSize: page?.size ?? 15,
-      });
-
-      if (sort?.field) {
-        setSorting({ sort });
-      }
-    },
-    [pagination],
-  );
 
   const toggleResponderRequests = (responder: Responder) => {
     const itemIdToExpandedRowMapValues = { ...itemIdToExpandedRowMap };
@@ -220,28 +192,16 @@ export default function Responders() {
     setItemIdToExpandedRowMap(itemIdToExpandedRowMapValues);
   };
 
-  if (responders.status === 'pending') {
+  if (!initialized && loading) {
     return <PageLoadingState />;
   }
 
-  if (responders.status === 'failed') {
-    return (
-      <PageErrorState
-        title="Cannot load responders"
-        content={
-          <p>
-            Cannot load responders
-            <br />
-            <br />
-            <strong>{responders.error}</strong>.
-          </p>
-        }
-      />
-    );
+  if (error && responders.length === 0) {
+    return <PageErrorState title="Cannot load responders" content={<p>{error}</p>} />;
   }
 
   let content;
-  if (responders.data.responders.length === 0) {
+  if (isEmpty) {
     content = (
       <EuiFlexGroup
         direction={'column'}
@@ -274,25 +234,21 @@ export default function Responders() {
         <ItemsTableFilter
           query={query}
           onQueryChange={setQuery}
-          onRefresh={loadResponders}
+          onRefresh={refresh}
           placeholder="Search by name, path, or ID..."
         >
           <TagsFilter tags={allTags} selectedTagIds={selectedTagIds} onSelectedTagIdsChange={setSelectedTagIds} />
         </ItemsTableFilter>
         <EuiSpacer size="m" />
-        <EuiInMemoryTable
+        <EuiBasicTable
+          loading={loading}
           pagination={pagination}
-          allowNeutralSort={false}
           noItemsMessage={
-            <FilteredEmptyState
-              totalItems={totalItems}
-              hasPageFilters={hasPageFilters}
-              onClearFilters={clearPageFilters}
-            />
+            <FilteredEmptyState totalItems={total} hasPageFilters={hasPageFilters} onClearFilters={clearPageFilters} />
           }
           sorting={sorting}
-          onTableChange={onTableChange}
-          items={filteredItems}
+          onChange={onTableChange}
+          items={responders}
           itemId={(responder) => responder.id}
           itemIdToExpandedRowMap={itemIdToExpandedRowMap}
           tableLayout={'auto'}
@@ -323,7 +279,6 @@ export default function Responders() {
                 </EuiToolTip>
               ),
               field: 'path',
-              sortable: (responder: Responder) => responder.location.path,
               render: (_, responder: Responder) => {
                 const url = getResponderUrl(responder);
                 return responder.enabled && url ? (
@@ -348,17 +303,16 @@ export default function Responders() {
                   <b>{method}</b>
                 </EuiText>
               ),
-              sortable: true,
             },
             {
               name: 'Last requested',
-              field: 'createdAt',
+              field: 'lastRequestedAt',
               width: '160px',
               mobileOptions: { width: 'unset' },
-              sortable: (responder) => responders.data.stats.get(responder.id)?.lastRequestedAt ?? 0,
+              sortable: true,
               render: (_, responder: Responder) => (
                 <TimestampTableCell
-                  timestamp={responders.data.stats.get(responder.id)?.lastRequestedAt}
+                  timestamp={stats.get(responder.id)?.lastRequestedAt}
                   highlightRecent
                   disabled={!responder.enabled}
                 />
@@ -369,7 +323,7 @@ export default function Responders() {
               field: 'updatedAt',
               width: '160px',
               mobileOptions: { width: 'unset' },
-              sortable: (responder) => responder.updatedAt,
+              sortable: true,
               render: (_, responder: Responder) => (
                 <TimestampTableCell timestamp={responder.updatedAt} disabled={!responder.enabled} />
               ),
@@ -415,7 +369,7 @@ export default function Responders() {
                       ...rest,
                       name: getCopyName(
                         name,
-                        responders.status === 'succeeded' ? responders.data.responders.map((r) => r.name) : [],
+                        responders.map((r) => r.name),
                       ),
                     }),
                 },
