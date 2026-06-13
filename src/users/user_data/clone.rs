@@ -142,7 +142,7 @@ mod tests {
         },
     };
     use httpmock::MockServer;
-    use serde_json::json;
+    use retrack_types::trackers::{Page, Tracker};
     use sqlx::PgPool;
     use uuid::uuid;
 
@@ -171,7 +171,7 @@ mod tests {
     ///
     /// The returned `MockServer` must be kept alive for the duration of the test; dropping
     /// it tears the listener down. We also pre-register a catch-all `GET /api/trackers`
-    /// handler that returns an empty array, which is what every clone test in this file
+    /// handler that returns an empty page, which is what every clone test in this file
     /// expects (none of them seed page/api trackers).
     fn clone_test_config() -> anyhow::Result<(crate::config::Config, MockServer)> {
         let mut config = mock_config()?;
@@ -183,7 +183,7 @@ mod tests {
             when.method(httpmock::Method::GET).path("/api/trackers");
             then.status(200)
                 .header("Content-Type", "application/json")
-                .json_body(json!([]));
+                .json_body_obj(&Page::new(Vec::<Tracker>::new(), 0));
         });
         config.retrack.host = url::Url::parse(&retrack_server.base_url())?;
 

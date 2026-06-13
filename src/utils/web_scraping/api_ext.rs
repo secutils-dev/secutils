@@ -1660,7 +1660,7 @@ mod tests {
     use retrack_types::{
         scheduler::{SchedulerJobConfig, SchedulerJobRetryStrategy},
         trackers::{
-            ApiTarget, ExtractorEngine, PageTarget, TargetRequest, Tracker, TrackerConfig,
+            ApiTarget, ExtractorEngine, Page, PageTarget, TargetRequest, Tracker, TrackerConfig,
             TrackerCreateParams, TrackerDataRevision, TrackerDataValue, TrackerTarget,
             TrackerUpdateParams,
         },
@@ -3110,7 +3110,10 @@ mod tests {
                 .query_param("tag", &tags[2]);
             then.status(200)
                 .header("Content-Type", "application/json")
-                .json_body_obj(&[retrack_tracker_one.clone(), retrack_tracker_two.clone()]);
+                .json_body_obj(&Page::new(
+                    vec![retrack_tracker_one.clone(), retrack_tracker_two.clone()],
+                    2,
+                ));
         });
         assert_eq!(
             web_scraping.get_page_trackers().await?,
@@ -3145,7 +3148,7 @@ mod tests {
                 .query_param("tag", &tags[2]);
             then.status(200)
                 .header("Content-Type", "application/json")
-                .json_body_obj(&[retrack_tracker_two.clone()]);
+                .json_body_obj(&Page::new(vec![retrack_tracker_two.clone()], 1));
         });
         web_scraping.remove_page_tracker(tracker_one.id).await?;
         assert_eq!(
@@ -3185,7 +3188,7 @@ mod tests {
                 .query_param("tag", &tags[2]);
             then.status(200)
                 .header("Content-Type", "application/json")
-                .json_body_obj(&Vec::<Tracker>::new());
+                .json_body_obj(&Page::new(Vec::<Tracker>::new(), 0));
         });
         web_scraping.remove_page_tracker(tracker_two.id).await?;
         assert!(web_scraping.get_page_trackers().await?.is_empty());
@@ -3343,7 +3346,10 @@ mod tests {
                 .query_param("tag", &tags[2]);
             then.status(200)
                 .header("Content-Type", "application/json")
-                .json_body_obj(&[retrack_tracker_one.clone(), retrack_tracker_two.clone()]);
+                .json_body_obj(&Page::new(
+                    vec![retrack_tracker_one.clone(), retrack_tracker_two.clone()],
+                    2,
+                ));
         });
         assert_eq!(
             web_scraping.get_page_trackers().await?,
@@ -5009,7 +5015,10 @@ mod tests {
                 .query_param("tag", &tags[2]);
             then.status(200)
                 .header("Content-Type", "application/json")
-                .json_body_obj(&[retrack_tracker_one.clone(), retrack_tracker_two.clone()]);
+                .json_body_obj(&Page::new(
+                    vec![retrack_tracker_one.clone(), retrack_tracker_two.clone()],
+                    2,
+                ));
         });
         assert_eq!(
             web_scraping.get_api_trackers().await?,
@@ -5044,7 +5053,7 @@ mod tests {
                 .query_param("tag", &tags[2]);
             then.status(200)
                 .header("Content-Type", "application/json")
-                .json_body_obj(&[retrack_tracker_two.clone()]);
+                .json_body_obj(&Page::new(vec![retrack_tracker_two.clone()], 1));
         });
         web_scraping.remove_api_tracker(tracker_one.id).await?;
         assert_eq!(
@@ -5084,7 +5093,7 @@ mod tests {
                 .query_param("tag", &tags[2]);
             then.status(200)
                 .header("Content-Type", "application/json")
-                .json_body_obj(&Vec::<Tracker>::new());
+                .json_body_obj(&Page::new(Vec::<Tracker>::new(), 0));
         });
         web_scraping.remove_api_tracker(tracker_two.id).await?;
         assert!(web_scraping.get_api_trackers().await?.is_empty());
@@ -5258,7 +5267,10 @@ mod tests {
                 .query_param("tag", &tags[2]);
             then.status(200)
                 .header("Content-Type", "application/json")
-                .json_body_obj(&[retrack_tracker_one.clone(), retrack_tracker_two.clone()]);
+                .json_body_obj(&Page::new(
+                    vec![retrack_tracker_one.clone(), retrack_tracker_two.clone()],
+                    2,
+                ));
         });
         assert_eq!(
             web_scraping.get_api_trackers().await?,

@@ -598,6 +598,7 @@ mod tests {
     use httpmock::MockServer;
     use insta::assert_debug_snapshot;
     use jsonwebtoken::{EncodingKey, Header, encode};
+    use retrack_types::trackers::{Page, Tracker};
     use serde_json::json;
     use sqlx::PgPool;
     use std::collections::HashSet;
@@ -1127,7 +1128,7 @@ mod tests {
             when.method(httpmock::Method::GET).path("/api/trackers");
             then.status(200)
                 .header("Content-Type", "application/json")
-                .json_body(json!([]));
+                .json_body_obj(&Page::new(Vec::<Tracker>::new(), 0));
         });
         config.retrack.host = Url::parse(&retrack_server.base_url())?;
         let api = mock_api_with_config(pool, config).await?;

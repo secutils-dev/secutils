@@ -6,7 +6,7 @@ use crate::{
 };
 use anyhow::{Context, bail};
 use retrack_types::trackers::{
-    Tracker, TrackerCreateParams, TrackerDataRevision, TrackerDataRevisionImportParams,
+    Page, Tracker, TrackerCreateParams, TrackerDataRevision, TrackerDataRevisionImportParams,
     TrackerDataRevisionImportResult, TrackerDebugParams, TrackerExecutionLog,
     TrackerListRevisionsParams, TrackerUpdateParams,
 };
@@ -21,6 +21,8 @@ pub struct RetrackApi<'a, DR: DnsResolver, ET: EmailTransport> {
 }
 
 impl<'a, DR: DnsResolver, ET: EmailTransport> RetrackApi<'a, DR, ET> {
+    const LIST_TRACKERS_PAGE_SIZE: usize = 100;
+
     /// Creates Retrack API.
     pub fn new(api: &'a Api<DR, ET>) -> Self {
         Self { api }
@@ -31,26 +33,46 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> RetrackApi<'a, DR, ET> {
         &self,
         tags: &[Tag],
     ) -> anyhow::Result<Vec<Tracker>> {
-        // Construct tags query string.
-        let tags_query = prepare_tags(tags)
+        let prepared_tags = prepare_tags(tags);
+        let tags_query = prepared_tags
             .iter()
             .map(|tag| format!("tag={}", urlencoding::encode(tag)))
             .collect::<Vec<_>>()
             .join("&");
-        let endpoint = format!("{}api/trackers?{tags_query}", self.api.config.retrack.host);
+        let mut trackers = vec![];
+        let mut page_index = 0;
 
-        let response = self
-            .api
-            .network
-            .http_client
-            .get(&endpoint)
-            .send()
-            .await
-            .with_context(|| format!("Cannot query trackers ({tags_query})."))?;
-        response
-            .json()
-            .await
-            .context(format!("Cannot deserialize trackers ({tags_query})."))
+        loop {
+            let page_query = format!(
+                "page={page_index}&pageSize={}{}{}",
+                Self::LIST_TRACKERS_PAGE_SIZE,
+                if tags_query.is_empty() { "" } else { "&" },
+                tags_query
+            );
+            let endpoint = format!("{}api/trackers?{page_query}", self.api.config.retrack.host);
+            let response = self
+                .api
+                .network
+                .http_client
+                .get(&endpoint)
+                .send()
+                .await
+                .with_context(|| format!("Cannot query trackers ({page_query})."))?;
+            let mut page = response
+                .json::<Page<Tracker>>()
+                .await
+                .context(format!("Cannot deserialize trackers ({page_query})."))?;
+
+            let total = page.total.max(0) as usize;
+            let is_last_page = page.items.is_empty() || trackers.len() + page.items.len() >= total;
+            trackers.append(&mut page.items);
+            if is_last_page {
+                break;
+            }
+            page_index += 1;
+        }
+
+        Ok(trackers)
     }
 
     /// Retrieves Retrack trackers with the specified IDs.

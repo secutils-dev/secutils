@@ -374,6 +374,7 @@ mod tests {
     };
     use actix_web::{body::MessageBody, http::StatusCode};
     use httpmock::MockServer;
+    use retrack_types::trackers::{Page, Tracker};
     use serde_json::{Value, json};
     use sqlx::PgPool;
     use std::{sync::Arc, time::Duration};
@@ -706,13 +707,13 @@ mod tests {
                 .json_body(identity_json(destination_id, destination_email));
         });
         // Retrack tracker-list call made by `clone_data` -> `generate_export`. Returning an
-        // empty array lets clone_data succeed, so the failure mode under test (recovery-link
+        // empty page lets clone_data succeed, so the failure mode under test (recovery-link
         // minting) is the one that actually trips the rollback.
         server.mock(|when, then| {
             when.method(httpmock::Method::GET).path("/api/trackers");
             then.status(200)
                 .header("Content-Type", "application/json")
-                .json_body(json!([]));
+                .json_body_obj(&Page::new(Vec::<Tracker>::new(), 0));
         });
         // Rollback's `terminate` bulk-removes the user's Retrack trackers (none here).
         server.mock(|when, then| {
@@ -782,12 +783,12 @@ mod tests {
                 .json_body(identity_json(destination_id, destination_email));
         });
         // Retrack tracker-list call made by `clone_data` -> `generate_export`. Source user
-        // has no trackers so an empty array is the correct response.
+        // has no trackers so an empty page is the correct response.
         server.mock(|when, then| {
             when.method(httpmock::Method::GET).path("/api/trackers");
             then.status(200)
                 .header("Content-Type", "application/json")
-                .json_body(json!([]));
+                .json_body_obj(&Page::new(Vec::<Tracker>::new(), 0));
         });
         let recovery_mock = server.mock(|when, then| {
             when.method(httpmock::Method::POST)

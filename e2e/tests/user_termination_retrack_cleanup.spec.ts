@@ -16,6 +16,11 @@ interface RetrackTracker {
   tags: string[];
 }
 
+interface RetrackTrackersPage {
+  items: RetrackTracker[];
+  total: number;
+}
+
 async function getRetrackTracker(page: Page, id: string): Promise<RetrackTracker | null> {
   const response = await page.request.get(`${RETRACK_URL}/api/trackers/${id}`);
   if (response.status() === 404) {
@@ -26,9 +31,11 @@ async function getRetrackTracker(page: Page, id: string): Promise<RetrackTracker
 }
 
 async function listRetrackTrackersByTag(page: Page, tag: string): Promise<RetrackTracker[]> {
-  const response = await page.request.get(`${RETRACK_URL}/api/trackers?tag=${encodeURIComponent(tag)}`);
+  const response = await page.request.get(`${RETRACK_URL}/api/trackers?tag=${encodeURIComponent(tag)}&pageSize=100`);
   expect(response.ok()).toBeTruthy();
-  return (await response.json()) as RetrackTracker[];
+  const trackersPage = (await response.json()) as RetrackTrackersPage;
+  expect(trackersPage.items.length).toBeLessThanOrEqual(trackersPage.total);
+  return trackersPage.items;
 }
 
 test.describe('User termination cleans up Retrack trackers', () => {

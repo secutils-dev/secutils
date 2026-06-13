@@ -326,6 +326,7 @@ mod tests {
     use httpmock::MockServer;
     use reqwest::Client;
     use reqwest_middleware::ClientBuilder;
+    use retrack_types::trackers::Page;
     use serde_json::json;
     use sqlx::PgPool;
     use std::borrow::Cow;
@@ -1427,7 +1428,7 @@ mod tests {
                 .query_param("tag", &tags[2]);
             then.status(200)
                 .header("Content-Type", "application/json")
-                .json_body_obj(&std::slice::from_ref(&retrack_tracker));
+                .json_body_obj(&Page::new(vec![retrack_tracker.clone()], 1));
         });
 
         // Mock POST /api/trackers/revisions - assert size equals subscription limit (3, not DEFAULT=10).
@@ -1544,7 +1545,7 @@ mod tests {
                 .query_param("tag", &tags[2]);
             then.status(200)
                 .header("Content-Type", "application/json")
-                .json_body_obj(&std::slice::from_ref(&retrack_tracker));
+                .json_body_obj(&Page::new(vec![retrack_tracker.clone()], 1));
         });
 
         // Mock POST /api/trackers/revisions - assert size equals subscription limit (3, not DEFAULT=10).
