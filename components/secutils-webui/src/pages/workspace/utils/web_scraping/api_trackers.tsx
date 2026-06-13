@@ -15,7 +15,7 @@ import {
   EuiToolTip,
   useEuiTheme,
 } from '@elastic/eui';
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import { UTIL_HANDLES } from '..';
@@ -116,7 +116,11 @@ export default function ApiTrackers() {
 
   const isEmpty = initialized && total === 0 && !hasActiveFilters;
 
-  useEffect(() => {
+  // Layout effect (not a passive effect) so the title-bar create button is
+  // added/removed in the same commit as the empty-state prompt that renders its
+  // own copy of the button. A passive effect lags one paint behind, briefly
+  // showing two identical "create" buttons (and tripping Playwright strict mode).
+  useLayoutEffect(() => {
     setTitleActions(isEmpty ? null : createButton);
   }, [isEmpty, createButton, setTitleActions]);
 
