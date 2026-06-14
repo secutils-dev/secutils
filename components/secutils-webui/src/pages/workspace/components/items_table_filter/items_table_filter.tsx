@@ -17,7 +17,7 @@ export interface ItemsTableFilterProps {
   children?: ReactNode;
 }
 
-const SEARCH_DEBOUNCE_MS = 150;
+const SEARCH_DEBOUNCE_MS = 300;
 
 export function ItemsTableFilter({
   query,
