@@ -339,13 +339,13 @@ test.describe('Tag filtering', () => {
       // 2. Type a search query.
       const searchInput = page.getByRole('searchbox', { name: 'Search' });
       await searchInput.fill(alphaName);
-      await page.waitForTimeout(200); // debounce
+      await page.waitForTimeout(400); // debounce (SEARCH_DEBOUNCE_MS is 300ms)
       expect(page.url()).toContain(`q=${encodeURIComponent(alphaName)}`);
 
       // 3. Apply both filters - then click "Clear filters" from filtered empty state.
       // First make the search hide everything by searching for a non-existent term.
       await searchInput.fill('zzz-no-match');
-      await page.waitForTimeout(200);
+      await page.waitForTimeout(400); // debounce (SEARCH_DEBOUNCE_MS is 300ms)
       expect(page.url()).toContain('q=zzz-no-match');
       expect(page.url()).toContain('tags=alpha');
 
