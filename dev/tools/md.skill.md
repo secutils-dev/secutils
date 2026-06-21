@@ -17,10 +17,8 @@ description: >-
 # Markdown Preview (Secutils.dev)
 
 A reading-first, in-browser Markdown reader. The rendered preview is the
-default central view; source editing and export are available on demand. It
-shares the rendering and export pipeline of the
-[Markdown to HTML](https://tools.secutils.dev/md-to-html) tool, with a
-richer reader feature set.
+default central view; source editing and self-contained HTML/PDF export are
+available on demand.
 
 ## What it renders
 

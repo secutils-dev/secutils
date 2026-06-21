@@ -1,6 +1,6 @@
 # Secutils.dev Single-Page Tool Apps - Style Guide
 
-All tools in `dev/tools/` are standalone single-HTML-file apps (embedded CSS + JS) styled to look consistent with the Secutils.dev web application. Use `markdown-to-html.html` as the canonical reference implementation.
+All tools in `dev/tools/` are standalone single-HTML-file apps (embedded CSS + JS) styled to look consistent with the Secutils.dev web application. Use `md.html` as the canonical reference implementation.
 
 ## Browser-support policy
 
@@ -587,9 +587,9 @@ Body rules (convention, not contract - but every consumer benefits):
   ≥ 18 and zero deps. Pass state as `argv[1]` so the shell quoting story
   stays simple. Always `console.log` the **full** URL, never just the
   fragment.
-- Tools without URL-state deep-linking (`markdown-to-html`, `mock-saml-idp`)
-  skip the wire format / encoder sections and use a "How to direct the user"
-  section instead - see `markdown-to-html.skill.md` for the template.
+- Tools without URL-state deep-linking (`mock-saml-idp`) skip the wire format
+  / encoder sections and use a "How to direct the user" section instead - see
+  `mock-saml-idp.skill.md` for the template.
 
 ### How the deploy pipeline handles skills
 
@@ -1175,7 +1175,7 @@ outlier is `mock-saml-idp.html`, whose regular `.btn` is already
 `--primary-hover` border for the framing.
 
 The mobile breakpoint that shrinks `.btn-sm` (e.g. to
-`padding: 5px 9px; font-size: 11px;` in `markdown-to-html` and
+`padding: 5px 9px; font-size: 11px;` in `md` and
 `pdf-extractor`) **must also pin `height: 23px`** to match the
 `.view-tab` mobile collapse to 22-23 px. Forgetting the mobile pin leaves
 the same primary-vs-regular drift visible at phone widths.
@@ -1190,7 +1190,7 @@ that lives in `.panel-bar`.
 
 Do **not** change one in isolation - touching any of the three requires
 checking the other two and the per-tool mobile override (`.btn-sm` shrinks
-to 23 px on mobile in `markdown-to-html` via `padding: 5px 9px; font-size:
+to 23 px on mobile in `md` via `padding: 5px 9px; font-size:
 11px;` - keep the vertical padding at 5 px so it still matches the
 `.view-tab` mobile override which collapses font to 11 px → 22 px outer).
 
@@ -1258,10 +1258,10 @@ real phone widths. Two queries, two responsibilities:
 Every "copy to clipboard" button in every tool uses the same 16-px clipboard
 SVG followed by a labelled span. The icon makes the affordance recognisable
 even when the label collapses on mobile, and it matches the visual weight of
-the `Export` icon in `markdown-to-html`. Either every Copy button has the
+the `Export` icon in `md`. Either every Copy button has the
 icon or none does - picking and choosing per tool produces the inconsistency
 that previously made `saml-decoder` / `jwt-debugger` / `echo` look unrelated
-to `markdown-to-html`.
+to `md`.
 
 ```html
 <button id="copy-button" class="btn btn-sm" title="Copy ... to your clipboard">
@@ -1330,7 +1330,7 @@ copyBtn.addEventListener('click', async () => {
 ## Two-pane layouts (`.panel-bar`)
 
 Tools that show a two-pane editor / output split (`certificate-decoder`,
-`saml-decoder`, `markdown-to-html`) align the tops of both panel bodies by
+`saml-decoder`) align the tops of both panel bodies by
 giving each header bar a **fixed** height, not `min-height` and not
 content-driven padding:
 
@@ -1369,9 +1369,9 @@ The bar's two halves are conventional:
 
 ### Tab pill (`.view-tabs`)
 
-Output panes that need to switch between rendered views (e.g. Markdown
-preview vs. HTML iframe in `markdown-to-html`, XML vs. Attributes in
-`saml-decoder`) use a segmented pill, not a border-bottom tab bar. The pill
+Output panes that need to switch between rendered views (e.g. XML vs.
+Attributes in `saml-decoder`) use a segmented pill, not a border-bottom tab
+bar. The pill
 lives **inside** the panel-bar (left half), keeping the bar height invariant
 and matching the `.btn-sm` visual weight on the right.
 
@@ -2057,7 +2057,7 @@ Behavioural notes:
 
 ### Reference implementations
 
-- [`dev/tools/markdown-to-html.html`](markdown-to-html.html) — Options gear
+- [`dev/tools/md.html`](md.html) — HTML options gear
   popover + Export dropdown menu (the canonical pair).
 - [`dev/tools/pdf-extractor.html`](pdf-extractor.html) — OCR settings popover
   (uses the `toggle` event for language-suggestions teardown) + Export menu
@@ -2187,7 +2187,7 @@ run. Applies to:
 | `forge`                   | `certificate-decoder.html` | Only used in PEM decode handlers — `defer` is safe.                                                                    |
 | `jsrsasign` + `pako`      | `mock-saml-idp.html`       | Used inside `DOMContentLoaded` setup and click handlers — `defer` is safe.                                             |
 | `highlight.js` + `pako`   | `saml-decoder.html`        | Used in `buildStaticXmlView` and inflate handlers — `defer` is safe.                                                   |
-| `marked` + `highlight.js` | `markdown-to-html.html`    | `fetchpriority="low"` **only** — `defer` cannot be added because the inline script calls `marked.use(…)` at top-level. |
+| `marked` + `highlight.js` | `md.html`                  | `fetchpriority="low"` **only** — `defer` cannot be added because the inline script calls `marked.use(…)` at top-level. |
 | Plausible loader          | every tool                 | Already `defer`; add `fetchpriority="low"` next to it.                                                                 |
 
 Canonical snippet:
@@ -2251,7 +2251,7 @@ keep the embedded `<script>` blocks compact and idiomatic.
 - Use private object short-hand (`{ foo, bar }`) and computed property names where they
   make code clearer.
 
-The reference implementation in `markdown-to-html.html` follows all of the above and is
+The reference implementation in `md.html` follows all of the above and is
 the canonical example. When modifying an existing tool that still uses legacy syntax,
 modernize the surrounding code in the same edit.
 
@@ -2288,7 +2288,7 @@ const yieldToMain = () => 'scheduler' in window && typeof scheduler.yield === 'f
 ```
 
 Pick the fallback to match what the loop needs (event-loop slice vs paint).
-The Markdown renderer in `markdown-to-html.html` uses the first form
+The Markdown renderer in `md.html` uses the first form
 (highlight blocks are cheap and don't need a paint between them); the PDF
 extractor's `renderShots` loop uses the second (each iteration appends an
 `<img>` whose paint the user sees as progress).
@@ -2333,7 +2333,7 @@ median height once and pin it.
 
 #### Reference implementations
 
-- [`dev/tools/markdown-to-html.html`](markdown-to-html.html) `render()` —
+- [`dev/tools/md.html`](md.html) `render()` —
   yields every 50 ms between hljs `highlightElement` calls. The 150 ms
   `updatePreview` debounce hides the async hop from the user.
 - [`dev/tools/pdf-extractor.html`](pdf-extractor.html) `renderShots()` and
@@ -2638,7 +2638,7 @@ that explains it in detail.
 
 Tools that produce printable artifacts (rendered articles, decoded certificates, JWT
 breakdowns, etc.) can offer a PDF export without breaking the single-page-HTML constraint.
-The pattern, demonstrated in `markdown-to-html.html`, is:
+The pattern, demonstrated in `md.html`, is:
 
 1. Add a `↓ PDF` action button next to the existing download / copy actions.
 2. Build a self-contained printable HTML document (same brand fonts and palette as the

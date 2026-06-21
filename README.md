@@ -39,7 +39,6 @@ A handful of focused, no-signup, browser-only tools is hosted at [tools.secutils
 | [JWT Debugger](https://tools.secutils.dev/jwt)               | Decode, verify, and sign HMAC JSON Web Tokens                             | [`/jwt.md`](https://tools.secutils.dev/jwt.md)               |
 | [SAML Decoder](https://tools.secutils.dev/saml)              | Inspect SAML responses, requests, and metadata                            | [`/saml.md`](https://tools.secutils.dev/saml.md)             |
 | [PEM Certificate Decoder](https://tools.secutils.dev/pem)    | Inspect PEM-encoded X.509 certificate chains                              | [`/pem.md`](https://tools.secutils.dev/pem.md)               |
-| [Markdown to HTML](https://tools.secutils.dev/md-to-html)    | Self-contained HTML and PDF export from Markdown                          | [`/md-to-html.md`](https://tools.secutils.dev/md-to-html.md) |
 | [Markdown Preview](https://tools.secutils.dev/md)            | Read-first Markdown preview (Mermaid, math, alerts), HTML/PDF export      | [`/md.md`](https://tools.secutils.dev/md.md)                 |
 | [PDF Extractor](https://tools.secutils.dev/pdf)              | Extract spatial text and structured JSON from PDFs, in-browser            | [`/pdf.md`](https://tools.secutils.dev/pdf.md)               |
 | [HTTP Echo / Mock Response](https://tools.secutils.dev/echo) | Build a customizable HTTP response, served as a shareable URL             | [`/echo.md`](https://tools.secutils.dev/echo.md)             |

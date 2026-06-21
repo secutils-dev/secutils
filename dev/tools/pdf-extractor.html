@@ -193,7 +193,7 @@ main { flex: 1; min-height: 0; padding: 24px 16px; display: flex; flex-direction
 .dropzone.from-shared-link .file-info-name { color: var(--text-muted); font-style: italic; font-weight: 400; }
 .dropzone-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
 
-/* OCR options popover (re-used styling from md-to-html) */
+/* OCR options popover (re-used styling from the Markdown Preview tool) */
 .options-anchor { position: relative; display: inline-flex; }
 /* Fixed width (not just min-width) so opening/closing the language-
    suggestions list inside the OCR popover doesn't reflow the popover
@@ -581,7 +581,7 @@ main { flex: 1; min-height: 0; padding: 24px 16px; display: flex; flex-direction
                                 <button id="exportOpenMd" class="export-menu-item" role="menuitem" type="button">
                                     <svg class="export-menu-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg>
                                     <span class="export-menu-body">
-                                        <span class="export-menu-title">Open in Markdown to HTML</span>
+                                        <span class="export-menu-title">Open in Markdown Preview</span>
                                         <span class="export-menu-desc" id="exportOpenMdDesc">Render the current text in the sibling tool</span>
                                     </span>
                                 </button>
@@ -903,7 +903,7 @@ const decodeState = async (str) => {
     } catch { return null; }
 };
 
-// Theme toggle + skill link wiring (copied from markdown-to-html.html).
+// Theme toggle + skill link wiring (copied from md.html).
 (() => {
     const root = document.documentElement;
     const setTheme = (t) => {
@@ -1466,7 +1466,7 @@ function syncExportMenuItems() {
     } else {
         els.exportDownloadDesc.textContent = 'Nothing to download from this tab';
     }
-    // md-to-html only makes sense for free-form text or Markdown (it
+    // Markdown Preview only makes sense for free-form text or Markdown (it
     // renders the latter natively; the spatial text is handed over verbatim).
     const canOpenMd = !!result && (activeTab === 'text' || (activeTab === 'md' && markdownCache != null));
     els.exportOpenMd.disabled = !canOpenMd;
@@ -2715,7 +2715,7 @@ els.tabJson.addEventListener('click', refreshShareAvailability);
 els.tabMd.addEventListener('click', refreshShareAvailability);
 els.tabOutline.addEventListener('click', refreshShareAvailability);
 
-// ----- Share / Copy / Download / Open-in-md-to-html ----------------------
+// ----- Share / Copy / Download / Open-in-Markdown-Preview ----------------
 
 // URL state shape (v3; v1 / v2 are read for backward-compat in the
 // hydrate block):
@@ -2779,7 +2779,7 @@ els.shareBtn.addEventListener('click', async () => {
 });
 
 // Per-tab payload + presentation metadata for the Copy / Download / Open-
-// in-md-to-html buttons. Returns null when the active tab has nothing
+// in-Markdown-Preview buttons. Returns null when the active tab has nothing
 // (yet) to export -- the Markdown tab during the lazy build, the Outline
 // tab before the bookmarks have been fetched, etc.
 function currentExportPayload() {
@@ -2828,8 +2828,8 @@ els.copyBtn.addEventListener('click', async () => {
 });
 
 // ----- Export dropdown ---------------------------------------------------
-// The Export button replaces the old standalone Download + Open-in-md-to-html
-// buttons. The same payload selector (currentExportPayload) feeds both menu
+// The Export button replaces the old standalone Download + Open-in-Markdown-
+// Preview buttons. The same payload selector (currentExportPayload) feeds both menu
 // items; syncExportMenuItems() is responsible for keeping their enabled
 // state + descriptions in sync with the active tab.
 
@@ -2879,25 +2879,25 @@ els.exportDownload.addEventListener('click', () => {
 });
 
 // Open the current text (spatial Text tab) or the heuristic Markdown
-// reconstruction in the Markdown to HTML tool. md-to-html's wire format
-// is the encodeState'd text directly (no JSON wrapper), shared with this
-// tool. The Markdown payload renders natively; the spatial text usually
-// looks better wrapped in a fenced code block on the other side, but we
-// hand off the raw string for symmetry with the existing Text behaviour.
+// reconstruction in the Markdown Preview tool. /md's wire format is the
+// encodeState'd text directly (no JSON wrapper), shared with this tool.
+// The Markdown payload renders natively; the spatial text usually looks
+// better wrapped in a fenced code block on the other side, but we hand off
+// the raw string for symmetry with the existing Text behaviour.
 els.exportOpenMd.addEventListener('click', async () => {
     if (!result || (activeTab !== 'text' && activeTab !== 'md')) return;
     const payload = activeTab === 'md' ? markdownCache : result.text;
     if (payload == null) return;
     closeExportMenu();
     try {
-        // Best-effort: if the payload is too big for md-to-html's fragment
-        // either, still open it (md-to-html will silently skip the fragment
-        // and start empty -- not great, but better than blocking the click).
+        // Best-effort: if the payload is too big for /md's fragment either,
+        // still open it (/md will silently skip the fragment and start empty
+        // -- not great, but better than blocking the click).
         const encoded = await encodeState(payload);
-        const url = `${location.origin}/md-to-html#${encoded}`;
+        const url = `${location.origin}/md#${encoded}`;
         window.open(url, '_blank', 'noopener');
     } catch (err) {
-        toast(`Open in md-to-html failed: ${err.message ?? err}`);
+        toast(`Open in Markdown Preview failed: ${err.message ?? err}`);
     }
 });
 

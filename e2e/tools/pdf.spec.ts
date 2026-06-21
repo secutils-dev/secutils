@@ -172,8 +172,8 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     await expect(page.locator('#exportBtn')).toBeEnabled();
 
     // The Export button now opens a contextual menu (replaces the old
-    // dedicated Download + Open-in-md-to-html buttons). Verify both
-    // entries are present and that the "Open in Markdown to HTML" item
+    // dedicated Download + Open-in-Markdown-Preview buttons). Verify both
+    // entries are present and that the "Open in Markdown Preview" item
     // is enabled on the Markdown tab (it's disabled on JSON/Outline).
     await page.locator('#exportBtn').click();
     await expect(page.locator('#exportMenu')).toBeVisible();

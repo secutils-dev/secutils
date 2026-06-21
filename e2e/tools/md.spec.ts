@@ -6,7 +6,7 @@ const tool = getTool('md');
 
 // Drives the imperative editor API the page exposes once the editor mounts
 // (CodeMirror from esm.sh, or a <textarea> fallback). This keeps tests
-// independent of the editor's internal DOM. See markdown-to-html.spec.ts.
+// independent of the editor's internal DOM.
 async function setMarkdown(page: import('@playwright/test').Page, md: string): Promise<void> {
   await page.waitForFunction(() => typeof (window as { __suEditorAPI?: unknown }).__suEditorAPI !== 'undefined');
   await page.evaluate((text) => {

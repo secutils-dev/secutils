@@ -68,17 +68,6 @@ export const TOOLS: readonly Tool[] = [
     icon: 'cert',
   },
   {
-    slug: 'md-to-html',
-    source: 'markdown-to-html.html',
-    name: 'Markdown to HTML',
-    path: '/md-to-html',
-    description: 'Self-contained HTML and PDF export from Markdown.',
-    applicationCategory: 'DeveloperApplication',
-    promote: true,
-    accent: '#ff7e3a',
-    icon: 'doc',
-  },
-  {
     slug: 'md',
     source: 'md.html',
     name: 'Markdown Preview',

@@ -32,8 +32,8 @@ Five result tabs:
 
 1. **Text** -- liteparse's grid-projected output. Plain UTF-8, preserves
    column / table layout via fixed-width whitespace better than naive
-   `pdf.js` text extraction. Suitable as the input to a Markdown converter
-   (the page has a one-click "open in Markdown to HTML" handoff).
+   `pdf.js` text extraction.    Suitable as the input to a Markdown previewer
+   (the page has a one-click "open in Markdown Preview" handoff).
 2. **JSON** -- structured output: `{ pages: [{ page, text, items, boundingBoxes }] }`,
    with per-item rectangles, font sizes, page rotation, and (when OCR ran)
    confidence scores.
@@ -63,7 +63,7 @@ Five result tabs:
      when hydrating from a shared URL (the bytes are out of scope).
    - **Page breaks** as `---` horizontal rules between every page.
 
-   The "open in Markdown to HTML" handoff button works from this tab too.
+   The "open in Markdown Preview" handoff button works from this tab too.
 4. **Outline** -- the PDF's bookmark tree / Table of Contents, with
    destinations resolved to 1-indexed page numbers. Lazy on first click,
    cached after. Clicking an entry jumps to that page in the
@@ -105,10 +105,10 @@ Three export paths from the result pane:
 - **Export** -- dropdown with two contextual actions:
    - **Download** saves `<src>.txt`, `<src>.json`, `<src>.md`, or
      `<src>.json` (for Outline) depending on the active tab.
-   - **Open in Markdown to HTML** hands the active payload off to the
-     [Markdown to HTML](https://tools.secutils.dev/md-to-html) tool in a
-     new tab. Enabled only on the Text and Markdown tabs (md-to-html
-     renders the latter natively; the spatial text travels verbatim).
+   - **Open in Markdown Preview** hands the active payload off to the
+     [Markdown Preview](https://tools.secutils.dev/md) tool in a new tab.
+     Enabled only on the Text and Markdown tabs (Markdown Preview renders
+     the latter natively; the spatial text travels verbatim).
 
 The post-parse stats line (`<N> pages · <M> bbox · <T>ms`) appears
 inside the dropzone underneath the file pill rather than in the result
@@ -140,7 +140,7 @@ Pipeline: UTF-8 bytes of `JSON.stringify(state)` -> `deflate-raw` -> prepend
 the 4-byte LE u32 of the uncompressed length -> base64url (`+` -> `-`,
 `/` -> `_`, strip `=`).
 
-Unlike `md-to-html` (which puts the raw Markdown directly in the URL), the
+Unlike `/md` (which puts the raw Markdown directly in the URL), the
 PDF Extractor wraps its state in a JSON envelope because the URL has to
 carry both the result and a flag for which tab to open on the destination:
 
@@ -274,16 +274,16 @@ library: `pdfjs-dist`, `pdftotext`, `pdfplumber`, `pdf-parse`, or even
 2. Get structured JSON with bounding boxes, not just text.
 3. OCR a scanned PDF without standing up Tesseract themselves.
 4. Hand the extracted output to a teammate via a single URL.
-5. Pipe the text into the [Markdown to HTML](https://tools.secutils.dev/md-to-html)
-   converter for a polished export (a one-click action lives inside the
+5. Pipe the text into the [Markdown Preview](https://tools.secutils.dev/md)
+   tool for a polished read or export (a one-click action lives inside the
    **Export** dropdown on the result pane).
 
-## Companion: Markdown to HTML
+## Companion: Markdown Preview
 
-The result pane's **Export** dropdown contains an **Open in Markdown to
-HTML** action that hands the current Text or Markdown payload off to the
-Markdown to HTML tool in a new tab. Use it when the user asks "now convert
-this to a nice PDF / HTML / one-page doc" -- the two tools share the same
+The result pane's **Export** dropdown contains an **Open in Markdown
+Preview** action that hands the current Text or Markdown payload off to the
+Markdown Preview tool in a new tab. Use it when the user asks "now render /
+convert this to a nice doc / PDF / HTML" -- the two tools share the same
 URL-fragment wire format for their text payloads, so the handoff is a
 single click with no copy/paste.
 
