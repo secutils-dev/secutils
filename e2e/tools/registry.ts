@@ -79,6 +79,17 @@ export const TOOLS: readonly Tool[] = [
     icon: 'doc',
   },
   {
+    slug: 'md',
+    source: 'md.html',
+    name: 'Markdown Preview',
+    path: '/md',
+    description: 'Reading-first Markdown preview with Mermaid, math, alerts, and HTML/PDF export.',
+    applicationCategory: 'DeveloperApplication',
+    promote: true,
+    accent: '#a371f7',
+    icon: 'doc',
+  },
+  {
     slug: 'pdf',
     source: 'pdf-extractor.html',
     name: 'PDF Extractor',
