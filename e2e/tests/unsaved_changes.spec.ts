@@ -163,7 +163,7 @@ test.describe('Unsaved changes confirmation', () => {
       await expect(row).toBeVisible({ timeout: 15000 });
 
       await row.getByRole('button', { name: 'All actions, row' }).click();
-      const duplicateButton = page.getByRole('button', { name: 'Duplicate', exact: true });
+      const duplicateButton = page.getByRole('menuitem', { name: 'Duplicate', exact: true });
       await expect(duplicateButton).toBeVisible();
       await duplicateButton.click();
 
@@ -332,7 +332,7 @@ test.describe('Unsaved changes confirmation', () => {
       await expect(row).toBeVisible({ timeout: 15000 });
 
       await row.getByRole('button', { name: 'All actions, row' }).click();
-      const duplicateButton = page.getByRole('button', { name: 'Duplicate', exact: true });
+      const duplicateButton = page.getByRole('menuitem', { name: 'Duplicate', exact: true });
       await expect(duplicateButton).toBeVisible();
       await duplicateButton.click();
 
@@ -547,7 +547,7 @@ test.describe('Unsaved changes confirmation', () => {
       await expect(row).toBeVisible({ timeout: 15000 });
 
       await row.getByRole('button', { name: 'All actions, row' }).click();
-      const duplicateButton = page.getByRole('button', { name: 'Duplicate', exact: true });
+      const duplicateButton = page.getByRole('menuitem', { name: 'Duplicate', exact: true });
       await expect(duplicateButton).toBeVisible();
       await duplicateButton.click();
 
@@ -831,7 +831,7 @@ test.describe('Unsaved changes confirmation', () => {
       await expect(row).toBeVisible({ timeout: 15000 });
 
       await row.getByRole('button', { name: 'All actions, row' }).click();
-      const duplicateButton = page.getByRole('button', { name: 'Duplicate', exact: true });
+      const duplicateButton = page.getByRole('menuitem', { name: 'Duplicate', exact: true });
       await expect(duplicateButton).toBeVisible();
       await duplicateButton.click();
 
@@ -964,7 +964,7 @@ test.describe('Unsaved changes confirmation', () => {
       await expect(row).toBeVisible({ timeout: 15000 });
 
       await row.getByRole('button', { name: 'All actions, row' }).click();
-      const duplicateButton = page.getByRole('button', { name: 'Duplicate', exact: true });
+      const duplicateButton = page.getByRole('menuitem', { name: 'Duplicate', exact: true });
       await expect(duplicateButton).toBeVisible();
       await duplicateButton.click();
 

@@ -79,7 +79,7 @@ test.describe('CSP guide screenshots', () => {
     // Open the actions menu and click "Copy".
     const grid = page.getByRole('table');
     await grid.getByRole('button', { name: 'All actions, row' }).click();
-    await page.getByRole('button', { name: 'Copy', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Copy', exact: true }).click();
     await grid
       .getByRole('dialog')
       .filter({ has: page.getByRole('heading', { name: 'Copy policy' }) })
@@ -285,7 +285,7 @@ test.describe('CSP guide screenshots', () => {
     // Step 3: Copy the policy as an HTML meta-tag.
     const grid = page.getByRole('table');
     await grid.getByRole('button', { name: 'All actions, row' }).click();
-    await page.getByRole('button', { name: 'Copy', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Copy', exact: true }).click();
 
     const copyModal = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Copy policy' }) });
     await expect(copyModal).toBeVisible({ timeout: 10000 });
@@ -449,7 +449,7 @@ test.describe('CSP guide screenshots', () => {
     // Step 3: Copy the policy as an HTTP header (enforcing).
     const policyGrid = page.getByRole('table');
     await policyGrid.getByRole('button', { name: 'All actions, row' }).click();
-    await page.getByRole('button', { name: 'Copy', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Copy', exact: true }).click();
 
     const copyModal = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Copy policy' }) });
     await expect(copyModal).toBeVisible({ timeout: 10000 });
@@ -596,7 +596,7 @@ test.describe('CSP guide screenshots', () => {
     const grid = page.getByRole('table');
     await grid.getByRole('button', { name: 'All actions, row' }).click();
 
-    const shareButton = page.getByRole('button', { name: 'Share', exact: true });
+    const shareButton = page.getByRole('menuitem', { name: 'Share', exact: true });
     await highlightOn(shareButton);
     await page.screenshot({ path: join(IMG_DIR, 'share_step1_share.png') });
 

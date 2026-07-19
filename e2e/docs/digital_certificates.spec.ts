@@ -65,7 +65,7 @@ test.describe('Private keys guide screenshots', () => {
     // Step 5: Open the Export modal with PEM format and no encryption.
     const grid = page.getByRole('table');
     await grid.getByRole('button', { name: 'All actions, row' }).click();
-    await page.getByRole('button', { name: 'Export', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Export', exact: true }).click();
 
     const exportModal = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Export' }) });
     await expect(exportModal).toBeVisible({ timeout: 10000 });
@@ -118,7 +118,7 @@ test.describe('Private keys guide screenshots', () => {
     // Step 5: Open the Export modal with PKCS#8 format and passphrase.
     const grid = page.getByRole('table');
     await grid.getByRole('button', { name: 'All actions, row' }).click();
-    await page.getByRole('button', { name: 'Export', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Export', exact: true }).click();
 
     const exportModal = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Export' }) });
     await expect(exportModal).toBeVisible({ timeout: 10000 });
@@ -202,7 +202,7 @@ test.describe('Certificate templates guide screenshots', () => {
     // Step 6: Open the Generate modal via the actions menu.
     const grid = page.getByRole('table');
     await grid.getByRole('button', { name: 'All actions, row' }).click();
-    await page.getByRole('button', { name: 'Generate', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Generate', exact: true }).click();
 
     const generateModal = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Generate' }) });
     await expect(generateModal).toBeVisible({ timeout: 10000 });
@@ -253,7 +253,7 @@ test.describe('Certificate templates guide screenshots', () => {
     // Step 4: Open the Generate modal, choose PKCS#8 format, and generate.
     const grid = page.getByRole('table');
     await grid.getByRole('button', { name: 'All actions, row' }).click();
-    await page.getByRole('button', { name: 'Generate', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Generate', exact: true }).click();
 
     const generateModal = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Generate' }) });
     await expect(generateModal).toBeVisible({ timeout: 10000 });
@@ -584,7 +584,7 @@ test.describe('Certificate templates guide screenshots', () => {
     const grid = page.getByRole('table');
     await grid.getByRole('button', { name: 'All actions, row' }).click();
 
-    const shareButton = page.getByRole('button', { name: 'Share', exact: true });
+    const shareButton = page.getByRole('menuitem', { name: 'Share', exact: true });
     await highlightOn(shareButton);
     await page.screenshot({ path: join(CERT_TEMPLATES_IMG_DIR, 'share_step1_share.png') });
 
