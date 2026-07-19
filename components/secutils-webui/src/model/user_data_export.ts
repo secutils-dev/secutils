@@ -6,8 +6,7 @@ import { apiFetch } from './urls';
 export type ExportSelection = { type: 'all' } | { type: 'selected'; ids: string[] };
 
 export type ExportTrackableSelection =
-  | { type: 'all'; includeHistory: boolean }
-  | { type: 'selected'; ids: string[]; includeHistory: boolean };
+  { type: 'all'; includeHistory: boolean } | { type: 'selected'; ids: string[]; includeHistory: boolean };
 
 export interface ExportParams {
   include: {

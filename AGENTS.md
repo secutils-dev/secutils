@@ -27,11 +27,11 @@ from being upgraded as a coupled pair.
 2. **Retrack `.nvmrc`** — bump the Node major; mirror in every `engines.node` and
    `@types/node` ^M.x inside the submodule.
 3. **Retrack NPM packages** — submodule root + `retrack-web-scraper`. **Pin the
-   `playwright-core` exact version here** — every other consumer (webui, e2e, the
-   `playwright-python` git ref baked into `Dockerfile.web-scraper-camoufox`) must be moved
-   to the same minor in their respective stages.
+ `playwright-core` exact version here** — every other consumer (webui, e2e, the
+ `playwright==<x.y.z>` pip pin in `Dockerfile.web-scraper-camoufox`) must be moved
+ to the same version in their respective stages.
 4. **Retrack Docker base images** — `Dockerfile`, `Dockerfile.web-scraper`,
-   `Dockerfile.web-scraper-camoufox`. UPX, Camoufox triple, `playwright-python` git ref.
+ `Dockerfile.web-scraper-camoufox`. UPX, Camoufox triple, `playwright==<x.y.z>` pip pin.
 5. **Kratos** — bump `oryd/kratos` server image in `dev/docker/docker-compose.yml` **and**
    `@ory/kratos-client-fetch` in `components/secutils-webui/package.json` together. Read
    the Ory release notes for any registration/login/recovery flow schema changes; verify
@@ -144,7 +144,18 @@ do not skip steps even when the previous stage was green.
   CDP protocol — a minor mismatch surfaces as "browser closed unexpectedly". After
   bumping, run `make e2e-standalone-test` first; the codegen smoke test detects breaking
   changes to Playwright's `--target` boilerplate before they corrupt the webui's script
-  transformer.
+  transformer. All four Playwright surfaces (webui/scraper `playwright-core`, e2e
+  `@playwright/test`, camoufox `playwright-python`) are currently unified at `1.61.0`.
+- **Do not pass a `logger` option to `connect`/`connectOverCDP`.** It is not a valid
+  `ConnectOptions`/`ConnectOverCDPOptions` field (only *launch* options accept one), so
+  `retrack-web-scraper`'s `connectToBrowserServer` must not forward one. For connect-time
+  browser diagnostics use `DEBUG=pw:*` or Playwright tracing instead.
+- **Camoufox uses the official `camoufox` PyPI package, not the `cloverlabs-camoufox`
+  fork.** The fork requires a Playwright driver internal (`lib/browserServerImpl.js`) that
+  current Playwright does not ship and crash-loops with `MODULE_NOT_FOUND`; the official
+  package resolves Playwright via the driver's public `index.js` + `firefox.launchServer()`.
+  Its `playwright<1.61` pin is overridden in `Dockerfile.web-scraper-camoufox`. See the
+  retrack submodule's `AGENTS.md` for the full Camoufox recipe.
 
 #### Docusaurus (stage 9)
 

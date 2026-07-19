@@ -821,7 +821,7 @@ export class Tlsh {
       buf.bucket_copy[i] = this.a_bucket[i];
     }
 
-    for (let l = 0, r = end; ; ) {
+    for (let l = 0, r = end; ;) {
       const ret = partition(buf, l, r);
       if (ret > p2) {
         r = ret - 1;

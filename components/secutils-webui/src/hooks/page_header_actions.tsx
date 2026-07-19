@@ -106,7 +106,6 @@ export function usePageHeaderActions() {
           anchorPosition="downLeft"
         >
           <EuiContextMenuPanel
-            size="m"
             title={uiState.user ? uiState.user.email : null}
             items={[
               <EuiContextMenuItem key="settings" icon="gear" onClick={onToggleSettings}>
