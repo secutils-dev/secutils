@@ -263,7 +263,7 @@ WHERE user_id = $1 AND id = $2
             sort_col,
             params.order,
         );
-        let rows: Vec<RawContentSecurityPolicy> = sqlx::query_as(&list)
+        let rows: Vec<RawContentSecurityPolicy> = sqlx::query_as(sqlx::AssertSqlSafe(list))
             .bind(*user_id)
             .bind(params.query.as_deref())
             .bind(params.tags.as_slice())
@@ -274,7 +274,7 @@ WHERE user_id = $1 AND id = $2
             .await?;
 
         let count = count_sql("user_data_web_security_csp", "name", &CSP_TAG_JUNCTION);
-        let total: i64 = sqlx::query_scalar(&count)
+        let total: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(count))
             .bind(*user_id)
             .bind(params.query.as_deref())
             .bind(params.tags.as_slice())

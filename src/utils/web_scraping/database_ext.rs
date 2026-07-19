@@ -78,7 +78,7 @@ ORDER BY updated_at
             sort_col,
             params.order,
         );
-        let rows: Vec<RawPageTracker> = sqlx::query_as(&list)
+        let rows: Vec<RawPageTracker> = sqlx::query_as(sqlx::AssertSqlSafe(list))
             .bind(*self.user_id)
             .bind(params.query.as_deref())
             .bind(params.tags.as_slice())
@@ -93,7 +93,7 @@ ORDER BY updated_at
             "name",
             &PAGE_TRACKERS_TAG_JUNCTION,
         );
-        let total: i64 = sqlx::query_scalar(&count)
+        let total: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(count))
             .bind(*self.user_id)
             .bind(params.query.as_deref())
             .bind(params.tags.as_slice())
@@ -323,7 +323,7 @@ ORDER BY updated_at
             sort_col,
             params.order,
         );
-        let rows: Vec<RawApiTracker> = sqlx::query_as(&list)
+        let rows: Vec<RawApiTracker> = sqlx::query_as(sqlx::AssertSqlSafe(list))
             .bind(*self.user_id)
             .bind(params.query.as_deref())
             .bind(params.tags.as_slice())
@@ -338,7 +338,7 @@ ORDER BY updated_at
             "name",
             &API_TRACKERS_TAG_JUNCTION,
         );
-        let total: i64 = sqlx::query_scalar(&count)
+        let total: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(count))
             .bind(*self.user_id)
             .bind(params.query.as_deref())
             .bind(params.tags.as_slice())

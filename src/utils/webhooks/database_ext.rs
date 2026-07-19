@@ -88,7 +88,7 @@ ORDER BY updated_at
             sort_col,
             params.order,
         );
-        let rows: Vec<RawResponder> = sqlx::query_as(&list)
+        let rows: Vec<RawResponder> = sqlx::query_as(sqlx::AssertSqlSafe(list))
             .bind(*user_id)
             .bind(params.query.as_deref())
             .bind(params.tags.as_slice())
@@ -103,7 +103,7 @@ ORDER BY updated_at
             "name",
             &RESPONDERS_TAG_JUNCTION,
         );
-        let total: i64 = sqlx::query_scalar(&count)
+        let total: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(count))
             .bind(*user_id)
             .bind(params.query.as_deref())
             .bind(params.tags.as_slice())
@@ -294,7 +294,7 @@ ORDER BY updated_at
             Ok(_) => {
                 bail!(SecutilsError::client(format!(
                     "Responder with such location ('{:?}') and method ('{:?}') conflicts with another responder.",
-                    &responder.location, responder.method
+                    responder.location, responder.method
                 )))
             }
             Err(err) => match err.as_database_error() {
@@ -302,7 +302,7 @@ ORDER BY updated_at
                     let error_message = if database_error.message().contains("_method_") {
                         format!(
                             "Responder with such location ('{:?}') and method ('{:?}') already exists.",
-                            &responder.location, responder.method
+                            responder.location, responder.method
                         )
                     } else {
                         format!(
@@ -386,7 +386,7 @@ ORDER BY updated_at
             Ok(_) => {
                 bail!(SecutilsError::client(format!(
                     "Responder with such location ('{:?}') and method ('{:?}') doesn't exist or conflicts with another responder.",
-                    &responder.location, responder.method
+                    responder.location, responder.method
                 )))
             }
             Err(err) => match err.as_database_error() {
@@ -394,7 +394,7 @@ ORDER BY updated_at
                     let error_message = if database_error.message().contains("_method_") {
                         format!(
                             "Responder with such location ('{:?}') and method ('{:?}') already exists.",
-                            &responder.location, responder.method
+                            responder.location, responder.method
                         )
                     } else {
                         format!(

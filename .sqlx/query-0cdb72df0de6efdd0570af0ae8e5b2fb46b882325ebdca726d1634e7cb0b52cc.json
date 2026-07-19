@@ -6,12 +6,24 @@
       {
         "ordinal": 0,
         "name": "value",
-        "type_info": "Bytea"
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "user_data_webhooks_responders_kv",
+            "name": "value"
+          }
+        }
       },
       {
         "ordinal": 1,
         "name": "expires_at",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "user_data_webhooks_responders_kv",
+            "name": "expires_at"
+          }
+        }
       }
     ],
     "parameters": {

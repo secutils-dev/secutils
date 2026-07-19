@@ -243,7 +243,7 @@ ORDER BY updated_at
             sort_col,
             params.order,
         );
-        let rows: Vec<RawPrivateKey> = sqlx::query_as(&list)
+        let rows: Vec<RawPrivateKey> = sqlx::query_as(sqlx::AssertSqlSafe(list))
             .bind(*user_id)
             .bind(params.query.as_deref())
             .bind(params.tags.as_slice())
@@ -258,7 +258,7 @@ ORDER BY updated_at
             "name",
             &PRIVATE_KEYS_TAG_JUNCTION,
         );
-        let total: i64 = sqlx::query_scalar(&count)
+        let total: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(count))
             .bind(*user_id)
             .bind(params.query.as_deref())
             .bind(params.tags.as_slice())
@@ -566,7 +566,7 @@ ORDER BY updated_at
             sort_col,
             params.order,
         );
-        let rows: Vec<RawCertificateTemplate> = sqlx::query_as(&list)
+        let rows: Vec<RawCertificateTemplate> = sqlx::query_as(sqlx::AssertSqlSafe(list))
             .bind(*user_id)
             .bind(params.query.as_deref())
             .bind(params.tags.as_slice())
@@ -581,7 +581,7 @@ ORDER BY updated_at
             "name",
             &CERTIFICATE_TEMPLATES_TAG_JUNCTION,
         );
-        let total: i64 = sqlx::query_scalar(&count)
+        let total: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(count))
             .bind(*user_id)
             .bind(params.query.as_deref())
             .bind(params.tags.as_slice())

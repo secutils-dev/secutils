@@ -6,72 +6,156 @@
       {
         "ordinal": 0,
         "name": "id",
-        "type_info": "Uuid"
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "user_notification_destinations",
+            "name": "id"
+          }
+        }
       },
       {
         "ordinal": 1,
         "name": "user_id",
-        "type_info": "Uuid"
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "user_notification_destinations",
+            "name": "user_id"
+          }
+        }
       },
       {
         "ordinal": 2,
         "name": "kind",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "user_notification_destinations",
+            "name": "kind"
+          }
+        }
       },
       {
         "ordinal": 3,
         "name": "address",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "user_notification_destinations",
+            "name": "address"
+          }
+        }
       },
       {
         "ordinal": 4,
         "name": "config",
-        "type_info": "Jsonb"
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "user_notification_destinations",
+            "name": "config"
+          }
+        }
       },
       {
         "ordinal": 5,
         "name": "verified_at",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "user_notification_destinations",
+            "name": "verified_at"
+          }
+        }
       },
       {
         "ordinal": 6,
         "name": "verification_code_hash",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "user_notification_destinations",
+            "name": "verification_code_hash"
+          }
+        }
       },
       {
         "ordinal": 7,
         "name": "verification_expires_at",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "user_notification_destinations",
+            "name": "verification_expires_at"
+          }
+        }
       },
       {
         "ordinal": 8,
         "name": "verification_sent_at",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "user_notification_destinations",
+            "name": "verification_sent_at"
+          }
+        }
       },
       {
         "ordinal": 9,
         "name": "verification_attempts",
-        "type_info": "Int4"
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "user_notification_destinations",
+            "name": "verification_attempts"
+          }
+        }
       },
       {
         "ordinal": 10,
         "name": "unsubscribe_token",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "user_notification_destinations",
+            "name": "unsubscribe_token"
+          }
+        }
       },
       {
         "ordinal": 11,
         "name": "unsubscribed_at",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "user_notification_destinations",
+            "name": "unsubscribed_at"
+          }
+        }
       },
       {
         "ordinal": 12,
         "name": "created_at",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "user_notification_destinations",
+            "name": "created_at"
+          }
+        }
       },
       {
         "ordinal": 13,
         "name": "updated_at",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "user_notification_destinations",
+            "name": "updated_at"
+          }
+        }
       }
     ],
     "parameters": {

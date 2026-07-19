@@ -56,7 +56,7 @@ impl Database {
              AND ($2::text IS NULL OR name COLLATE \"C\" ILIKE ('%' || $2 || '%') ESCAPE '\\' OR id::text = $2) \
              ORDER BY {sort_col} {ord}, id {ord} LIMIT $3 OFFSET $4"
         );
-        let rows = sqlx::query(&list)
+        let rows = sqlx::query(sqlx::AssertSqlSafe(list))
             .bind(*user_id)
             .bind(params.query.as_deref())
             .bind(params.limit)

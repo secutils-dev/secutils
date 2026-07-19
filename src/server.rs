@@ -299,12 +299,8 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
     let http_server_url = format!("0.0.0.0:{http_port}");
     let http_server = http_server
         .bind(&http_server_url)
-        .with_context(|| format!("Failed to bind to {}.", &http_server_url))?;
-
-    info!(
-        "Secutils.dev API server is available at http://{}",
-        http_server_url
-    );
+        .with_context(|| format!("Failed to bind to {http_server_url}."))?;
+    info!("Secutils.dev API server is available at http://{http_server_url}");
 
     http_server
         .run()

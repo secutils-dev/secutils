@@ -6,67 +6,145 @@
       {
         "ordinal": 0,
         "name": "id",
-        "type_info": "Uuid"
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "scheduler_jobs",
+            "name": "id"
+          }
+        }
       },
       {
         "ordinal": 1,
         "name": "last_updated",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "scheduler_jobs",
+            "name": "last_updated"
+          }
+        }
       },
       {
         "ordinal": 2,
         "name": "next_tick",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "scheduler_jobs",
+            "name": "next_tick"
+          }
+        }
       },
       {
         "ordinal": 3,
         "name": "last_tick",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "scheduler_jobs",
+            "name": "last_tick"
+          }
+        }
       },
       {
         "ordinal": 4,
         "name": "job_type",
-        "type_info": "Int4"
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "scheduler_jobs",
+            "name": "job_type"
+          }
+        }
       },
       {
         "ordinal": 5,
         "name": "count",
-        "type_info": "Int4"
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "scheduler_jobs",
+            "name": "count"
+          }
+        }
       },
       {
         "ordinal": 6,
         "name": "ran",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "scheduler_jobs",
+            "name": "ran"
+          }
+        }
       },
       {
         "ordinal": 7,
         "name": "stopped",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "scheduler_jobs",
+            "name": "stopped"
+          }
+        }
       },
       {
         "ordinal": 8,
         "name": "schedule",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "scheduler_jobs",
+            "name": "schedule"
+          }
+        }
       },
       {
         "ordinal": 9,
         "name": "repeating",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "scheduler_jobs",
+            "name": "repeating"
+          }
+        }
       },
       {
         "ordinal": 10,
         "name": "repeated_every",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "scheduler_jobs",
+            "name": "repeated_every"
+          }
+        }
       },
       {
         "ordinal": 11,
         "name": "time_offset_seconds",
-        "type_info": "Int4"
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "scheduler_jobs",
+            "name": "time_offset_seconds"
+          }
+        }
       },
       {
         "ordinal": 12,
         "name": "extra",
-        "type_info": "Bytea"
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "scheduler_jobs",
+            "name": "extra"
+          }
+        }
       }
     ],
     "parameters": {

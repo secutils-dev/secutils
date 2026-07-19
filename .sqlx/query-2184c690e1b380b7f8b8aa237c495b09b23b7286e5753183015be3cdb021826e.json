@@ -6,27 +6,57 @@
       {
         "ordinal": 0,
         "name": "id",
-        "type_info": "Int4"
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "utils",
+            "name": "id"
+          }
+        }
       },
       {
         "ordinal": 1,
         "name": "handle",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "utils",
+            "name": "handle"
+          }
+        }
       },
       {
         "ordinal": 2,
         "name": "name",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "utils",
+            "name": "name"
+          }
+        }
       },
       {
         "ordinal": 3,
         "name": "keywords",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "utils",
+            "name": "keywords"
+          }
+        }
       },
       {
         "ordinal": 4,
         "name": "parent_id",
-        "type_info": "Int4"
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "utils",
+            "name": "parent_id"
+          }
+        }
       }
     ],
     "parameters": {

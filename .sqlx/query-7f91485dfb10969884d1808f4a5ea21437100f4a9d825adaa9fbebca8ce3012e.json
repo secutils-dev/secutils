@@ -6,7 +6,13 @@
       {
         "ordinal": 0,
         "name": "verification_attempts",
-        "type_info": "Int4"
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "user_notification_destinations",
+            "name": "verification_attempts"
+          }
+        }
       }
     ],
     "parameters": {

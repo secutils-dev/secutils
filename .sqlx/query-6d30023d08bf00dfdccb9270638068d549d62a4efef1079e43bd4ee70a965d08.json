@@ -6,17 +6,35 @@
       {
         "ordinal": 0,
         "name": "key",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "user_data_webhooks_responders_kv",
+            "name": "key"
+          }
+        }
       },
       {
         "ordinal": 1,
         "name": "created_at",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "user_data_webhooks_responders_kv",
+            "name": "created_at"
+          }
+        }
       },
       {
         "ordinal": 2,
         "name": "value",
-        "type_info": "Bytea"
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "user_data_webhooks_responders_kv",
+            "name": "value"
+          }
+        }
       }
     ],
     "parameters": {

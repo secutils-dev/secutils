@@ -97,7 +97,7 @@ ORDER BY name ASC
             sort_col,
             params.order,
         );
-        let rows: Vec<RawUserSecret> = sqlx::query_as(&list)
+        let rows: Vec<RawUserSecret> = sqlx::query_as(sqlx::AssertSqlSafe(list))
             .bind(*user_id)
             .bind(params.query.as_deref())
             .bind(params.tags.as_slice())
@@ -108,7 +108,7 @@ ORDER BY name ASC
             .await?;
 
         let count = count_sql("user_data_secrets", "name", &SECRETS_TAG_JUNCTION);
-        let total: i64 = sqlx::query_scalar(&count)
+        let total: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(count))
             .bind(*user_id)
             .bind(params.query.as_deref())
             .bind(params.tags.as_slice())

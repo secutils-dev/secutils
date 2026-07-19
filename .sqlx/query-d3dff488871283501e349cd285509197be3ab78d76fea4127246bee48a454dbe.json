@@ -6,17 +6,25 @@
       {
         "ordinal": 0,
         "name": "responder_id",
-        "type_info": "Uuid"
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "user_data_webhooks_responders",
+            "name": "id"
+          }
+        }
       },
       {
         "ordinal": 1,
         "name": "request_count",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": "Expression"
       },
       {
         "ordinal": 2,
         "name": "last_requested_at",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamptz",
+        "origin": "Expression"
       }
     ],
     "parameters": {
