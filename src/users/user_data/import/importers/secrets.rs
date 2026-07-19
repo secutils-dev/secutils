@@ -223,7 +223,7 @@ mod tests {
     const TEST_ENCRYPTION_KEY: &str =
         "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2";
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn import_secrets_merge(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.security.secrets_encryption_key = Some(TEST_ENCRYPTION_KEY.to_string());
@@ -260,7 +260,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn import_secrets_skips_on_skip_action(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let user = mock_user()?;

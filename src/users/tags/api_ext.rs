@@ -184,7 +184,7 @@ mod tests {
         }
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn list_tags_returns_empty_for_new_user(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
@@ -195,7 +195,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn list_tags_page_applies_search_sort_and_total(pool: PgPool) -> anyhow::Result<()> {
         use crate::server::{PaginationParams, SortOrder};
 
@@ -242,7 +242,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn create_tag_validates_name(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
@@ -280,7 +280,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn create_tag_validates_color(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
@@ -299,7 +299,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn create_tag_normalizes_name(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
@@ -317,7 +317,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn create_and_list_tags(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
@@ -340,7 +340,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_tag_changes_fields(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
@@ -369,7 +369,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_tag_not_found(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
@@ -391,7 +391,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn delete_tag_removes_it(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
@@ -413,7 +413,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn delete_tag_not_found(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
@@ -429,7 +429,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn bulk_get_tags_returns_selected(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
         let mock_user = mock_user()?;

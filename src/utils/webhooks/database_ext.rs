@@ -763,7 +763,7 @@ mod tests {
         })
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_add_and_retrieve_responders(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -811,7 +811,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn correctly_handles_duplicated_responders_on_insert(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -923,7 +923,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_update_responder(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -974,7 +974,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn correctly_handles_duplicated_responders_on_update(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1108,7 +1108,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn correctly_handles_non_existent_responders_on_update(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1140,7 +1140,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_remove_responders(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1210,7 +1210,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_retrieve_responders_for_path_and_method(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1274,7 +1274,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_retrieve_responders_for_location(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1377,7 +1377,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_retrieve_catch_all_responder(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1458,7 +1458,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_retrieve_all_responders(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1489,7 +1489,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_retrieve_all_responders_stats(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1584,7 +1584,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn get_responders_page_sorts_by_last_requested(pool: PgPool) -> anyhow::Result<()> {
         use crate::{
             server::{ListParams, SortOrder},
@@ -1668,7 +1668,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_add_and_retrieve_history_revisions(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1742,7 +1742,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_remove_responder_requests(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1835,7 +1835,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_clear_all_responder_requests_at_once(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1913,7 +1913,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_bulk_get_responders_empty(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1925,7 +1925,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_bulk_get_responders_returns_matching(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1973,7 +1973,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn bulk_get_responders_ignores_non_existent(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -2004,7 +2004,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn bulk_get_responders_isolated_per_user(pool: PgPool) -> anyhow::Result<()> {
         let user_a = mock_user()?;
         let user_b = mock_user_with_id(uuid!("00000000-0000-0000-0000-000000000002"))?;
@@ -2030,7 +2030,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_bulk_get_responder_requests_empty(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -2045,7 +2045,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_bulk_get_responder_requests_returns_all_for_given_responders(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -2116,7 +2116,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn bulk_get_responder_requests_isolated_per_user(pool: PgPool) -> anyhow::Result<()> {
         let user_a = mock_user()?;
         let user_b = mock_user_with_id(uuid!("00000000-0000-0000-0000-000000000002"))?;
@@ -2149,7 +2149,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_set_and_get_responder_tags(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -2192,7 +2192,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_responder_replaces_tags(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -2239,7 +2239,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_responder_clears_all_tags(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -2277,7 +2277,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn insert_responder_with_nonexistent_tag_ids_fails(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -2298,7 +2298,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn insert_responder_returns_tags_ordered_by_name(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -2325,7 +2325,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn insert_responder_with_tags_is_atomic(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -2360,7 +2360,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn insert_responder_with_tags_empty_tags(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -2384,7 +2384,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_responder_with_tags_replaces_tags(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -2431,7 +2431,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_responder_with_tags_clears_tags(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -2464,7 +2464,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn insert_responder_with_tags_rolls_back_on_invalid_tags(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -2491,7 +2491,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn insert_responder_with_tags_handles_duplicate_tag_ids(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -2530,7 +2530,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_responder_with_tags_rolls_back_on_invalid_tags(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -2582,7 +2582,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn insert_responder_with_tags_isolated_between_users(pool: PgPool) -> anyhow::Result<()> {
         let user_a = mock_user()?;
         let user_b = mock_user_with_id(uuid!("00000000-0000-0000-0000-000000000002"))?;
@@ -2628,7 +2628,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn delete_expired_responder_kv_removes_only_expired_rows(
         pool: PgPool,
     ) -> anyhow::Result<()> {

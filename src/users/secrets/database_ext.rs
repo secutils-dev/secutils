@@ -380,7 +380,7 @@ mod tests {
         secret
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_insert_and_list_secrets(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -427,7 +427,7 @@ mod tests {
         .resolve()
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn paginates_secrets_by_name(pool: PgPool) -> anyhow::Result<()> {
         use crate::server::SortOrder;
         let db = Database::create(pool).await?;
@@ -471,7 +471,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn paginated_secrets_filter_by_search(pool: PgPool) -> anyhow::Result<()> {
         use crate::server::SortOrder;
         let db = Database::create(pool).await?;
@@ -510,7 +510,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn paginated_secrets_filter_by_tags(pool: PgPool) -> anyhow::Result<()> {
         use crate::server::{ListParams, SortOrder};
         let db = Database::create(pool).await?;
@@ -577,7 +577,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_get_secrets_with_values(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -608,7 +608,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_update_secret(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -636,7 +636,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_secret_not_found(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -653,7 +653,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_remove_secret(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -691,7 +691,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn secrets_are_isolated_per_user(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user_a = mock_user()?;
@@ -725,7 +725,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn duplicate_name_returns_conflict_error(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -748,7 +748,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_bulk_get_secrets_empty(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -760,7 +760,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_bulk_get_secrets_returns_matching(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -788,7 +788,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn bulk_get_secrets_ignores_non_existent(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -810,7 +810,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn bulk_get_secrets_isolated_per_user(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user_a = mock_user()?;
@@ -833,7 +833,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn cascade_delete_on_user_removal(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -859,7 +859,7 @@ mod tests {
             .id
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn insert_secret_with_tags_is_atomic(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -880,7 +880,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn insert_secret_with_tags_empty_tags(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -897,7 +897,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_secret_with_tags_replaces_tags(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -922,7 +922,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_secret_with_tags_clears_tags(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -945,7 +945,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn insert_secret_with_tags_rolls_back_on_invalid_tags(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -965,7 +965,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn insert_secret_returns_tags_ordered_by_name(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -985,7 +985,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn insert_secret_with_tags_handles_duplicate_tag_ids(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -1001,7 +1001,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_secret_with_tags_rolls_back_on_invalid_tags(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1031,7 +1031,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn insert_secret_with_tags_isolated_between_users(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user_a = mock_user()?;

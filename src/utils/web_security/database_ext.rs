@@ -394,7 +394,7 @@ mod tests {
         ])
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_add_and_retrieve_content_security_policies(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -449,7 +449,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn correctly_handles_duplicated_content_security_policies_on_insert(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -486,7 +486,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_update_content_security_policy_content(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -545,7 +545,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn correctly_handles_duplicated_content_security_policies_on_update(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -604,7 +604,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn correctly_handles_non_existent_content_security_policies_on_update(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -639,7 +639,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_remove_content_security_policies(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -723,7 +723,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_retrieve_all_content_security_policies(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -764,7 +764,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_bulk_get_content_security_policies_empty(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -779,7 +779,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_bulk_get_content_security_policies_returns_matching(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -837,7 +837,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn bulk_get_content_security_policies_ignores_non_existent(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -873,7 +873,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn bulk_get_content_security_policies_isolated_per_user(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -924,7 +924,7 @@ mod tests {
         })
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_set_and_get_csp_tags(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -966,7 +966,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_csp_replaces_tags(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1005,7 +1005,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_csp_clears_all_tags(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1036,7 +1036,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn insert_csp_with_nonexistent_tag_ids_fails(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1059,7 +1059,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn insert_csp_returns_tags_ordered_by_name(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1089,7 +1089,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn insert_csp_with_tags_is_atomic(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1124,7 +1124,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn insert_csp_with_tags_empty_tags(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1151,7 +1151,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_csp_with_tags_replaces_tags(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1195,7 +1195,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_csp_with_tags_clears_tags(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1226,7 +1226,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn insert_csp_with_tags_rolls_back_on_invalid_tags(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1254,7 +1254,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn insert_csp_with_tags_handles_duplicate_tag_ids(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1289,7 +1289,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_csp_with_tags_rolls_back_on_invalid_tags(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1335,7 +1335,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn insert_csp_with_tags_isolated_between_users(pool: PgPool) -> anyhow::Result<()> {
         let user_a = mock_user()?;
         let user_b = mock_user_with_id(uuid!("00000000-0000-0000-0000-000000000002"))?;

@@ -204,7 +204,7 @@ mod tests {
     use time::OffsetDateTime;
     use uuid::uuid;
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn returns_empty_summary_for_new_user(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -226,7 +226,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn returns_correct_aggregated_counts(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -353,7 +353,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn returns_top_3_recent_items_across_tools(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -443,7 +443,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn isolates_data_between_users(pool: PgPool) -> anyhow::Result<()> {
         let user_a = mock_user()?;
         let user_b = mock_user_with_id(uuid!("00000000-0000-0000-0000-000000000002"))?;

@@ -19,7 +19,7 @@ mod tests {
     use sqlx::PgPool;
     use uuid::uuid;
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn returns_empty_summary_for_authenticated_user(pool: PgPool) -> anyhow::Result<()> {
         let app_state = mock_app_state(pool).await?;
 
@@ -41,7 +41,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn returns_summary_with_data(pool: PgPool) -> anyhow::Result<()> {
         let app_state = mock_app_state(pool).await?;
 

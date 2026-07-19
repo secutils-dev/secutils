@@ -91,7 +91,7 @@ mod tests {
     use std::collections::BTreeMap;
     use time::OffsetDateTime;
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_get_settings_returns_none_when_empty(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -102,7 +102,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_upsert_and_get_settings(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -145,7 +145,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_remove_settings(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -173,7 +173,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn settings_deleted_on_user_removal(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;

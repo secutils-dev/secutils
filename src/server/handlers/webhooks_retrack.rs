@@ -295,7 +295,7 @@ mod tests {
     use url::Url;
     use uuid::uuid;
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn fails_for_unknown_retrack_trackers(pool: PgPool) -> anyhow::Result<()> {
         let retrack_server = MockServer::start();
         let mut config = mock_config()?;
@@ -342,7 +342,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn fails_for_not_specified_users(pool: PgPool) -> anyhow::Result<()> {
         let retrack_server = MockServer::start();
         let mut config = mock_config()?;
@@ -392,7 +392,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn fails_for_unknown_users(pool: PgPool) -> anyhow::Result<()> {
         let retrack_server = MockServer::start();
         let mut config = mock_config()?;
@@ -446,7 +446,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn fails_for_unknown_resources(pool: PgPool) -> anyhow::Result<()> {
         let retrack_server = MockServer::start();
         let mut config = mock_config()?;
@@ -503,7 +503,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn fails_for_not_specified_resource_id(pool: PgPool) -> anyhow::Result<()> {
         let retrack_server = MockServer::start();
         let mut config = mock_config()?;
@@ -560,7 +560,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn skips_notification_if_notification_is_disabled(pool: PgPool) -> anyhow::Result<()> {
         let retrack_server = MockServer::start();
         let mut config = mock_config()?;
@@ -623,7 +623,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn fails_for_not_supported_resources(pool: PgPool) -> anyhow::Result<()> {
         let retrack_server = MockServer::start();
         let mut config = mock_config()?;
@@ -686,7 +686,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn fails_for_unknown_trackers(pool: PgPool) -> anyhow::Result<()> {
         let retrack_server = MockServer::start();
         let mut config = mock_config()?;
@@ -749,7 +749,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_schedule_success_notification(pool: PgPool) -> anyhow::Result<()> {
         let retrack_server = MockServer::start();
         let mut config = mock_config()?;
@@ -853,7 +853,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_schedule_failure_notification(pool: PgPool) -> anyhow::Result<()> {
         let retrack_server = MockServer::start();
         let mut config = mock_config()?;
@@ -950,7 +950,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn fails_for_unknown_api_trackers(pool: PgPool) -> anyhow::Result<()> {
         let retrack_server = MockServer::start();
         let mut config = mock_config()?;
@@ -1013,7 +1013,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_schedule_api_tracker_success_notification(pool: PgPool) -> anyhow::Result<()> {
         let retrack_server = MockServer::start();
         let mut config = mock_config()?;
@@ -1117,7 +1117,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_schedule_api_tracker_failure_notification(pool: PgPool) -> anyhow::Result<()> {
         let retrack_server = MockServer::start();
         let mut config = mock_config()?;

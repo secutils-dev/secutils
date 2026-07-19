@@ -232,7 +232,7 @@ mod tests {
     use sqlx::PgPool;
     use uuid::uuid;
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_insert_and_list_tags(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -257,7 +257,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_update_tag(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -276,7 +276,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_tag_partial_fields(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -301,7 +301,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_nonexistent_tag_returns_none(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -320,7 +320,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_remove_tag(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -337,7 +337,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn tags_are_isolated_per_user(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user_a = mock_user()?;
@@ -360,7 +360,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn duplicate_name_returns_conflict_error(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -379,7 +379,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn rename_to_existing_name_returns_conflict(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -398,7 +398,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn bulk_get_returns_matching_tags(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -418,7 +418,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn bulk_get_empty_ids_returns_empty(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -432,7 +432,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn bulk_get_ignores_nonexistent_ids(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -448,7 +448,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn bulk_get_isolated_per_user(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user_a = mock_user()?;
@@ -469,7 +469,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn cascade_delete_on_user_removal(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;

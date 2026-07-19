@@ -284,7 +284,7 @@ mod tests {
             serde_json::from_value(schema_example::<ApiKeyRegenerateParams>()).unwrap();
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn list_api_keys_returns_empty_for_new_user(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
@@ -295,7 +295,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn create_api_key_returns_plaintext(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
@@ -321,7 +321,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn create_api_key_validates_name(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
@@ -359,7 +359,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn create_api_key_validates_expires_at(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
@@ -381,7 +381,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_api_key_changes_name(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
@@ -403,7 +403,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_api_key_rejects_duplicate_name(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
@@ -437,7 +437,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_api_key_not_found(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
@@ -456,7 +456,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn delete_api_key_removes_it(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
@@ -478,7 +478,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn delete_api_key_not_found(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
@@ -494,7 +494,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn regenerate_api_key_invalidates_old_token(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
@@ -539,7 +539,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn regenerate_api_key_not_found(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
@@ -558,7 +558,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn create_api_key_enforces_limit(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.security.max_user_api_keys = 2;

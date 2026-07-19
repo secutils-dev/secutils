@@ -200,7 +200,7 @@ mod tests {
 
     /// Cloning an empty source user returns a summary with zero counts everywhere and
     /// touches no destination tables (the destination user is brand-new).
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn clones_empty_user_with_zero_counts(pool: PgPool) -> anyhow::Result<()> {
         let (config, _retrack) = clone_test_config()?;
         let api = mock_api_with_config(pool, config).await?;
@@ -225,7 +225,7 @@ mod tests {
 
     /// Cloning a user with scripts and CSPs: counts match, IDs are regenerated, and the
     /// content of each entity is preserved verbatim on the destination side.
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn clones_scripts_and_csps_under_new_ids(pool: PgPool) -> anyhow::Result<()> {
         let (config, _retrack) = clone_test_config()?;
         let api = mock_api_with_config(pool, config).await?;
@@ -291,7 +291,7 @@ mod tests {
     /// passphrase so the destination row stores the plaintext re-encrypted under the
     /// destination's identity. Decrypting via the destination's secrets API must yield
     /// the original plaintext.
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn clones_secrets_via_ephemeral_passphrase_round_trip(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -338,7 +338,7 @@ mod tests {
     /// We can't easily seed responder request history without a full webhooks setup, so
     /// this test just verifies the toggle deserialises cleanly into export selections and
     /// produces an empty-history summary on an empty source.
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn include_history_toggle_compiles_into_export_selection(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -366,7 +366,7 @@ mod tests {
     /// regardless of how the source serialises them, and always marks them as `Import`.
     /// Verified end-to-end via a real export round-trip (which guarantees the same
     /// `UserDataImportFileData` shape the clone path actually sees in production).
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn build_all_selections_includes_every_entity(pool: PgPool) -> anyhow::Result<()> {
         use crate::users::{
             UserDataExportParams,

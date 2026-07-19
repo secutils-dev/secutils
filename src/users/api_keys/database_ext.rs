@@ -293,7 +293,7 @@ mod tests {
         }
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_insert_and_list_api_keys(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -316,7 +316,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_get_api_key_by_id(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -338,7 +338,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_get_api_key_by_hash(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -358,7 +358,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_update_api_key_name(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -382,7 +382,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_update_api_key_token(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -415,7 +415,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_remove_api_key(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -437,7 +437,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_update_last_used(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -459,7 +459,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn api_keys_are_isolated_per_user(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user_a = mock_user()?;
@@ -487,7 +487,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn duplicate_name_returns_conflict(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
@@ -508,7 +508,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn cascade_delete_on_user_removal(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;

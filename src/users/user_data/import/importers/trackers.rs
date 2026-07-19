@@ -269,7 +269,7 @@ mod tests {
         }
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn import_page_trackers_empty_handles_gracefully(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let user = mock_user()?;

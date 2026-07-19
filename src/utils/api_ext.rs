@@ -45,7 +45,7 @@ mod tests {
     use insta::assert_debug_snapshot;
     use sqlx::PgPool;
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_get_all_utils(pool: PgPool) -> anyhow::Result<()> {
         let mock_db = Database::create(pool).await?;
         let api = UtilsApiExt::new(&mock_db);

@@ -113,7 +113,7 @@ mod tests {
     use time::OffsetDateTime;
     use uuid::uuid;
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_create_job_with_correct_parameters(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.scheduler.notifications_send = "1/5 * * * * *".to_string();
@@ -143,7 +143,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_resume_job(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.scheduler.notifications_send = "0 0 * * * *".to_string();
@@ -181,7 +181,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_send_pending_notifications(pool: PgPool) -> anyhow::Result<()> {
         let mut scheduler = mock_scheduler(&pool).await?;
 

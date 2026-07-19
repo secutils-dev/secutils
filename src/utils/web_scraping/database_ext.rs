@@ -673,7 +673,7 @@ mod tests {
     use sqlx::PgPool;
     use uuid::uuid;
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_add_and_retrieve_page_trackers(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -721,7 +721,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn correctly_handles_duplicated_page_trackers_on_insert(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -759,7 +759,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_update_page_tracker(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -805,7 +805,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn correctly_handles_duplicated_page_trackers_on_update(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -852,7 +852,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn correctly_handles_non_existent_page_trackers_on_update(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -883,7 +883,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_remove_page_trackers(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -953,7 +953,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_retrieve_all_page_trackers(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -984,7 +984,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_add_and_retrieve_api_trackers(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1026,7 +1026,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn correctly_handles_duplicated_api_trackers_on_insert(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1064,7 +1064,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_update_api_tracker(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1110,7 +1110,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn correctly_handles_duplicated_api_trackers_on_update(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1157,7 +1157,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn correctly_handles_non_existent_api_trackers_on_update(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1188,7 +1188,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_remove_api_trackers(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1258,7 +1258,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_retrieve_all_api_trackers(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1289,7 +1289,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_bulk_get_page_trackers_empty(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1301,7 +1301,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_bulk_get_page_trackers_returns_matching(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1346,7 +1346,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn bulk_get_page_trackers_ignores_non_existent(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1374,7 +1374,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn bulk_get_page_trackers_isolated_per_user(pool: PgPool) -> anyhow::Result<()> {
         let user_a = mock_user()?;
         let user_b = mock_user_with_id(uuid!("00000000-0000-0000-0000-000000000002"))?;
@@ -1402,7 +1402,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_bulk_get_api_trackers_empty(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1414,7 +1414,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_bulk_get_api_trackers_returns_matching(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1459,7 +1459,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn bulk_get_api_trackers_ignores_non_existent(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1487,7 +1487,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn bulk_get_api_trackers_isolated_per_user(pool: PgPool) -> anyhow::Result<()> {
         let user_a = mock_user()?;
         let user_b = mock_user_with_id(uuid!("00000000-0000-0000-0000-000000000002"))?;
@@ -1517,7 +1517,7 @@ mod tests {
 
     // ── Page tracker tag tests ──────────────────────────────────────────
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_set_and_get_page_tracker_tags(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1559,7 +1559,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_page_tracker_replaces_tags(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1598,7 +1598,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_page_tracker_clears_all_tags(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1629,7 +1629,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn insert_page_tracker_with_nonexistent_tag_ids_fails(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1652,7 +1652,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn insert_page_tracker_returns_tags_ordered_by_name(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1678,7 +1678,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn insert_page_tracker_with_tags_is_atomic(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1711,7 +1711,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn insert_page_tracker_with_tags_empty_tags(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1735,7 +1735,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_page_tracker_with_tags_replaces_tags(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1777,7 +1777,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_page_tracker_with_tags_clears_tags(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1808,7 +1808,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn insert_page_tracker_with_tags_rolls_back_on_invalid_tags(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1834,7 +1834,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn insert_page_tracker_with_tags_handles_duplicate_tag_ids(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1869,7 +1869,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_page_tracker_with_tags_rolls_back_on_invalid_tags(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1914,7 +1914,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn insert_page_tracker_with_tags_isolated_between_users(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1974,7 +1974,7 @@ mod tests {
 
     // ── API tracker tag tests ───────────────────────────────────────────
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_set_and_get_api_tracker_tags(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -2016,7 +2016,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_api_tracker_replaces_tags(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -2055,7 +2055,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_api_tracker_clears_all_tags(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -2086,7 +2086,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn insert_api_tracker_with_nonexistent_tag_ids_fails(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -2107,7 +2107,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn insert_api_tracker_returns_tags_ordered_by_name(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -2133,7 +2133,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn insert_api_tracker_with_tags_is_atomic(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -2166,7 +2166,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn insert_api_tracker_with_tags_empty_tags(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -2190,7 +2190,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_api_tracker_with_tags_replaces_tags(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -2232,7 +2232,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_api_tracker_with_tags_clears_tags(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -2263,7 +2263,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn insert_api_tracker_with_tags_rolls_back_on_invalid_tags(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -2289,7 +2289,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn insert_api_tracker_with_tags_handles_duplicate_tag_ids(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -2324,7 +2324,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_api_tracker_with_tags_rolls_back_on_invalid_tags(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -2369,7 +2369,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn insert_api_tracker_with_tags_isolated_between_users(
         pool: PgPool,
     ) -> anyhow::Result<()> {

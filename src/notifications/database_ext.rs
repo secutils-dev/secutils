@@ -109,7 +109,7 @@ mod tests {
     use time::OffsetDateTime;
     use uuid::uuid;
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_add_and_retrieve_notifications(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         assert!(db.get_notification(1.try_into()?).await?.is_none());
@@ -172,7 +172,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_remove_notifications(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
 
@@ -211,7 +211,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_get_notification_ids(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
 

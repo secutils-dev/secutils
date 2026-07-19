@@ -271,7 +271,7 @@ mod tests {
     use time::OffsetDateTime;
     use uuid::uuid;
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn properly_schedules_notification(pool: PgPool) -> anyhow::Result<()> {
         let mock_user = mock_user()?;
         let api = mock_api(pool).await?;
@@ -343,7 +343,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn properly_sends_all_pending_notifications(pool: PgPool) -> anyhow::Result<()> {
         let mock_user = mock_user()?;
         let api = mock_api(pool).await?;
@@ -447,7 +447,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn properly_sends_email_notifications_with_attachments(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -530,7 +530,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn properly_sends_pending_notifications_in_batches(pool: PgPool) -> anyhow::Result<()> {
         let mock_user = mock_user()?;
         let api = mock_api(pool).await?;
@@ -593,7 +593,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn sends_email_notifications_respecting_catch_all_filter(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -734,7 +734,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn sends_email_notifications_respecting_wide_open_catch_all_filter(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -919,7 +919,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn user_destination_routes_to_verified_custom_email_with_unsubscribe_headers(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -972,7 +972,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn user_destination_falls_back_to_login_when_no_custom_email_configured(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1009,7 +1009,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn user_destination_falls_back_to_login_when_custom_email_unverified(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1058,7 +1058,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn user_destination_falls_back_to_login_when_custom_email_unsubscribed(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1100,7 +1100,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn user_destination_with_template_content_emits_body_footer_alongside_header(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1158,7 +1158,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn user_destination_login_fallback_omits_body_footer(pool: PgPool) -> anyhow::Result<()> {
         let mock_user = mock_user()?;
         let api = mock_api(pool).await?;
@@ -1202,7 +1202,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn email_destination_never_carries_unsubscribe_headers(
         pool: PgPool,
     ) -> anyhow::Result<()> {

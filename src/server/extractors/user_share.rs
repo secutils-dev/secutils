@@ -105,7 +105,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn fails_if_user_share_is_not_available(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let mock_user_share = UserShare {
@@ -135,7 +135,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_extract_user_share(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let mock_user_share = UserShare {

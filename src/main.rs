@@ -17,6 +17,11 @@ mod templates;
 mod users;
 mod utils;
 
+/// Shared migrator referenced by every `#[sqlx::test(migrator = "crate::MIGRATOR")]`.
+/// Without a shared migrator, `#[sqlx::test(migrator = "crate::MIGRATOR")]` inlines all migrations (SQL + checksums)
+/// next to every test, bloating test-build compile times.
+pub(crate) static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
+
 use crate::config::{Config, RawConfig};
 use anyhow::anyhow;
 use clap::{Arg, Command, crate_authors, crate_description, crate_version, value_parser};

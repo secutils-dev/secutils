@@ -784,7 +784,7 @@ mod tests {
         assert_eq!(resolve_client_address(&request), None);
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_handle_request(pool: PgPool) -> anyhow::Result<()> {
         let app_state = mock_app_state(pool).await?;
 
@@ -856,7 +856,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_handle_request_for_root_path(pool: PgPool) -> anyhow::Result<()> {
         let app_state = mock_app_state(pool).await?;
 
@@ -928,7 +928,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_handle_request_with_custom_subdomain(pool: PgPool) -> anyhow::Result<()> {
         let app_state = mock_app_state(pool).await?;
 
@@ -1058,7 +1058,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_handle_responders_with_script(pool: PgPool) -> anyhow::Result<()> {
         let app_state = mock_app_state(pool).await?;
 
@@ -1161,7 +1161,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn script_context_omits_raw_query_when_absent(pool: PgPool) -> anyhow::Result<()> {
         let app_state = mock_app_state(pool).await?;
 
@@ -1218,7 +1218,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn properly_handles_non_existent_or_inactive_responders(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1379,7 +1379,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn script_timeout_returns_gateway_timeout(pool: PgPool) -> anyhow::Result<()> {
         let app_state = mock_app_state(pool).await?;
 
@@ -1441,7 +1441,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn script_upstream_timeout_returns_gateway_timeout(pool: PgPool) -> anyhow::Result<()> {
         let app_state = mock_app_state(pool).await?;
 
@@ -1495,7 +1495,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn script_url_not_allowed_returns_bad_gateway(pool: PgPool) -> anyhow::Result<()> {
         let app_state = mock_app_state(pool).await?;
 
@@ -1554,7 +1554,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn script_connect_failure_returns_bad_gateway(pool: PgPool) -> anyhow::Result<()> {
         let app_state = mock_app_state(pool).await?;
 
@@ -1606,7 +1606,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn script_upstream_request_failed_returns_bad_gateway(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1659,7 +1659,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn script_response_too_large_returns_payload_too_large(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1722,7 +1722,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn script_generic_error_returns_internal_server_error(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1786,7 +1786,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn concurrent_request_limit_returns_too_many_requests(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1866,7 +1866,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn concurrent_request_succeeds_when_permits_available(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1920,7 +1920,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn script_returning_null_uses_defaults(pool: PgPool) -> anyhow::Result<()> {
         let app_state = mock_app_state(pool).await?;
 
@@ -1982,7 +1982,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn script_partial_override_merges_with_defaults(pool: PgPool) -> anyhow::Result<()> {
         let app_state = mock_app_state(pool).await?;
 
@@ -2045,7 +2045,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn script_skip_request_suppresses_tracking(pool: PgPool) -> anyhow::Result<()> {
         let app_state = mock_app_state(pool).await?;
 
@@ -2113,7 +2113,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn script_skip_request_false_tracks_normally(pool: PgPool) -> anyhow::Result<()> {
         let app_state = mock_app_state(pool).await?;
 
@@ -2170,7 +2170,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn script_without_skip_request_tracks_by_default(pool: PgPool) -> anyhow::Result<()> {
         let app_state = mock_app_state(pool).await?;
 
@@ -2227,7 +2227,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn script_failure_still_tracks_request(pool: PgPool) -> anyhow::Result<()> {
         let app_state = mock_app_state(pool).await?;
 
@@ -2289,7 +2289,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn script_track_response_stores_response(pool: PgPool) -> anyhow::Result<()> {
         let app_state = mock_app_state(pool).await?;
 
@@ -2359,7 +2359,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn script_track_response_default_no_response_data(pool: PgPool) -> anyhow::Result<()> {
         let app_state = mock_app_state(pool).await?;
 
@@ -2420,7 +2420,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn script_skip_request_with_track_response_skips_everything(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -2482,7 +2482,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn script_failure_auto_tracks_error_response(pool: PgPool) -> anyhow::Result<()> {
         let app_state = mock_app_state(pool).await?;
 
@@ -2545,7 +2545,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn no_script_responder_records_duration(pool: PgPool) -> anyhow::Result<()> {
         let app_state = mock_app_state(pool).await?;
 
@@ -2606,7 +2606,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn webhook_kv_ops_round_trip(pool: PgPool) -> anyhow::Result<()> {
         let app_state = mock_app_state(pool).await?;
         let user = mock_user()?;

@@ -536,7 +536,7 @@ mod tests {
     }
 
     /// Confirms the empty-destination guard short-circuits before any external work.
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn returns_400_for_empty_destination_email(pool: PgPool) -> anyhow::Result<()> {
         let server = MockServer::start();
         let tripwire = kratos_tripwire(&server);
@@ -553,7 +553,7 @@ mod tests {
     }
 
     /// Source lookup miss must return 404 without ever touching Kratos.
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn returns_404_when_source_user_missing(pool: PgPool) -> anyhow::Result<()> {
         let server = MockServer::start();
         let tripwire = kratos_tripwire(&server);
@@ -573,7 +573,7 @@ mod tests {
     }
 
     /// Pre-flight destination-email collision check beats Kratos to the punch.
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn returns_400_when_destination_already_registered(pool: PgPool) -> anyhow::Result<()> {
         let server = MockServer::start();
         let tripwire = kratos_tripwire(&server);
@@ -600,7 +600,7 @@ mod tests {
     }
 
     /// Identity-creation failure: nothing was inserted, so rollback shouldn't fire either.
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn returns_500_and_no_db_row_when_identity_creation_fails(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -636,7 +636,7 @@ mod tests {
 
     /// Signup-failure path (we already inserted the user up-front, so calling `signup` a second
     /// time fails the duplicate-check). Verifies rollback runs and clears the Kratos identity.
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn rolls_back_when_signup_fails(pool: PgPool) -> anyhow::Result<()> {
         let server = MockServer::start();
 
@@ -693,7 +693,7 @@ mod tests {
     }
 
     /// Recovery-link minting failure must trigger full rollback (Kratos identity + DB row).
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn rolls_back_when_recovery_link_minting_fails(pool: PgPool) -> anyhow::Result<()> {
         let server = MockServer::start();
         let destination_email = "clone@secutils.dev";
@@ -767,7 +767,7 @@ mod tests {
 
     /// Happy path - all Kratos calls succeed, no rollback runs, response carries the new id
     /// at the top level (because `User` skips serialising its own id).
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn happy_path_returns_id_and_recovery_link(pool: PgPool) -> anyhow::Result<()> {
         let server = MockServer::start();
         let destination_email = "clone@secutils.dev";

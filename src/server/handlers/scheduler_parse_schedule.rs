@@ -117,7 +117,7 @@ mod tests {
         assert!(!example.schedule.is_empty());
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn fails_if_schedule_is_invalid(pool: PgPool) -> anyhow::Result<()> {
         let app_state = mock_app_state(pool).await?;
 
@@ -142,7 +142,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn fails_if_schedule_min_interval_is_less_than_allowed_by_subscription(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -176,7 +176,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_parse_schedule(pool: PgPool) -> anyhow::Result<()> {
         let app_state = mock_app_state(pool).await?;
 

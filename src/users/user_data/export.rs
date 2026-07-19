@@ -347,7 +347,7 @@ mod tests {
         }
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn export_empty_selection(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let user = mock_user()?;
@@ -372,7 +372,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn export_scripts(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let user = mock_user()?;
@@ -406,7 +406,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn export_secrets_without_values(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.security.secrets_encryption_key =
@@ -444,7 +444,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn export_skips_nonexistent_ids(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let user = mock_user()?;
@@ -466,7 +466,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn export_certificate_templates(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let user = mock_user()?;
@@ -486,7 +486,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn export_content_security_policies(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let user = mock_user()?;
@@ -503,7 +503,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn export_private_keys_includes_pkcs8(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let user = mock_user()?;
@@ -543,7 +543,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn export_private_keys_all(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let user = mock_user()?;
@@ -590,7 +590,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn export_scripts_all(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let user = mock_user()?;
@@ -627,7 +627,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn export_secrets_all_without_passphrase(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.security.secrets_encryption_key =
@@ -670,7 +670,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn export_secrets_with_passphrase(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.security.secrets_encryption_key =
@@ -706,7 +706,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn export_secrets_short_passphrase_fails(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.security.secrets_encryption_key =
@@ -743,7 +743,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn export_secrets_selected_subset(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.security.secrets_encryption_key =
@@ -786,7 +786,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn export_scripts_selected_subset(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let user = mock_user()?;
@@ -828,7 +828,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn export_certificate_templates_all_with_data(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let user = mock_user()?;
@@ -872,7 +872,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn export_certificate_templates_selected(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let user = mock_user()?;
@@ -942,7 +942,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn export_content_security_policies_all_with_data(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let user = mock_user()?;
@@ -973,7 +973,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn export_content_security_policies_selected(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let user = mock_user()?;
@@ -1016,7 +1016,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn export_responders_all(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let user = mock_user()?;
@@ -1063,7 +1063,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn export_responders_selected(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let user = mock_user()?;
@@ -1134,7 +1134,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn export_responders_with_history(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let user = mock_user()?;
@@ -1201,7 +1201,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn export_multiple_entity_types(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let user = mock_user()?;
@@ -1254,7 +1254,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn export_private_keys_selected_subset(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let user = mock_user()?;
@@ -1297,7 +1297,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn export_skips_nonexistent_ids_for_all_types(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let user = mock_user()?;
@@ -1342,7 +1342,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn export_version_and_timestamp(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let user = mock_user()?;
@@ -1363,7 +1363,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn export_page_trackers_history_uses_subscription_revisions_limit(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1474,7 +1474,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn export_api_trackers_history_uses_subscription_revisions_limit(
         pool: PgPool,
     ) -> anyhow::Result<()> {

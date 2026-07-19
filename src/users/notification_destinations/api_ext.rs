@@ -578,7 +578,7 @@ mod tests {
         }
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn set_email_rejects_login_email(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
         let user = mock_user()?;
@@ -595,7 +595,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn set_email_rejects_invalid_shape(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
         let user = mock_user()?;
@@ -612,7 +612,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn set_then_verify_then_resolve(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
         let user = mock_user()?;
@@ -667,7 +667,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn unsubscribe_falls_back_to_login_email(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
         let user = mock_user()?;
@@ -699,7 +699,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn unsubscribe_with_bogus_token_is_silent(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
         api.notification_destinations_system()

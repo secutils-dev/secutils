@@ -521,7 +521,7 @@ mod tests {
         ])
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn properly_creates_new_content_security_policy(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
@@ -547,7 +547,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn properly_validates_content_security_policy_at_creation(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -633,7 +633,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn properly_updates_content_security_policy(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
@@ -706,7 +706,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn properly_validates_content_security_policy_at_update(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -799,7 +799,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn properly_imports_new_policy_via_text(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
 
@@ -856,7 +856,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn properly_imports_new_policy_from_enforcing_header_via_url(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -914,7 +914,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn properly_imports_new_policy_from_report_only_header_via_url(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -972,7 +972,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn properly_imports_new_policy_from_html_meta_via_url(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1040,7 +1040,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn properly_imports_new_policy_following_redirect_via_url(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1107,7 +1107,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn properly_imports_last_policy_if_multiple_found(pool: PgPool) -> anyhow::Result<()> {
         let api_with_public_network = mock_api_with_network(
             pool,
@@ -1212,7 +1212,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn properly_imports_ignoring_unknown_directives(pool: PgPool) -> anyhow::Result<()> {
         let api_with_public_network = mock_api_with_network(
             pool,
@@ -1326,7 +1326,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn fails_import_if_redirect_required_but_not_permitted(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1394,7 +1394,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn fails_import_if_header_or_html_meta_tag_is_not_found(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1513,7 +1513,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn fails_import_if_request_fails(pool: PgPool) -> anyhow::Result<()> {
         let api_with_public_network = mock_api_with_network(
             pool,
@@ -1609,7 +1609,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn properly_removes_policies(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
 
@@ -1666,7 +1666,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn properly_shares_policy(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
 
@@ -1704,7 +1704,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn properly_unshares_policy(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
 
@@ -1759,7 +1759,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn properly_unshares_policy_when_policy_is_removed(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
 
@@ -1798,7 +1798,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn properly_serializes_content_security_policy(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
         let mock_user = mock_user()?;

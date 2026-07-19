@@ -10,7 +10,7 @@ pub struct Database {
 impl Database {
     /// Opens database "connection".
     pub async fn create(pool: PgPool) -> anyhow::Result<Self> {
-        sqlx::migrate!("./migrations")
+        crate::MIGRATOR
             .run(&pool)
             .await
             .with_context(|| "Failed to migrate database")?;

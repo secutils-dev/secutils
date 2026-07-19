@@ -810,7 +810,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, now(), now())
         Ok(responder_id)
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn get_set_delete_round_trip(pool: PgPool) -> anyhow::Result<()> {
         let responder_id = seed_responder(&pool).await?;
 
@@ -840,7 +840,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, now(), now())
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn get_entry_reports_expiry(pool: PgPool) -> anyhow::Result<()> {
         let responder_id = seed_responder(&pool).await?;
 
@@ -876,7 +876,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, now(), now())
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn scoping_isolates_responders(pool: PgPool) -> anyhow::Result<()> {
         let a = seed_responder(&pool).await?;
         let b = seed_responder(&pool).await?;
@@ -897,7 +897,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, now(), now())
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn if_absent_is_first_writer_wins(pool: PgPool) -> anyhow::Result<()> {
         let responder_id = seed_responder(&pool).await?;
 
@@ -925,7 +925,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, now(), now())
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn if_absent_reclaims_expired_rows(pool: PgPool) -> anyhow::Result<()> {
         let responder_id = seed_responder(&pool).await?;
         let past = OffsetDateTime::now_utc() - TimeDuration::seconds(60);
@@ -955,7 +955,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, now(), now())
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn expired_rows_are_invisible(pool: PgPool) -> anyhow::Result<()> {
         let responder_id = seed_responder(&pool).await?;
         let past = OffsetDateTime::now_utc() - TimeDuration::seconds(1);
@@ -992,7 +992,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, now(), now())
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn set_rejects_oversized_key_and_value(pool: PgPool) -> anyhow::Result<()> {
         let responder_id = seed_responder(&pool).await?;
         let mut tight = quotas();
@@ -1016,7 +1016,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, now(), now())
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn set_enforces_entry_quota(pool: PgPool) -> anyhow::Result<()> {
         let responder_id = seed_responder(&pool).await?;
         let mut tight = quotas();
@@ -1041,7 +1041,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, now(), now())
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn set_enforces_total_bytes_quota(pool: PgPool) -> anyhow::Result<()> {
         let responder_id = seed_responder(&pool).await?;
         let mut tight = quotas();
@@ -1069,7 +1069,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, now(), now())
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn list_entries_prefix_after_limit_and_values(pool: PgPool) -> anyhow::Result<()> {
         let responder_id = seed_responder(&pool).await?;
         for key in ["req/a", "req/b", "req/c", "other/x"] {

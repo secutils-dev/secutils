@@ -285,7 +285,7 @@ pub mod tests {
         }
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_resume_jobs(pool: PgPool) -> anyhow::Result<()> {
         let mock_config = mock_scheduler_config(&pool).await?;
         let api = Arc::new(mock_api_with_config(pool, mock_config).await?);
@@ -315,7 +315,7 @@ pub mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn schedules_unique_jobs_if_not_started(pool: PgPool) -> anyhow::Result<()> {
         let mock_config = mock_scheduler_config(&pool).await?;
         let api = Arc::new(mock_api_with_config(pool, mock_config).await?);
@@ -371,7 +371,7 @@ pub mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn schedules_unique_jobs_if_cannot_resume(pool: PgPool) -> anyhow::Result<()> {
         let mock_config = mock_scheduler_config(&pool).await?;
         let api = Arc::new(mock_api_with_config(pool, mock_config).await?);

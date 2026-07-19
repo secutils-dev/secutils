@@ -97,7 +97,7 @@ mod tests {
     use sqlx::PgPool;
     use std::collections::BTreeMap;
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn get_settings_returns_none_for_new_user(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let user = mock_user()?;
@@ -108,7 +108,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn set_settings_merges_with_existing(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let user = mock_user()?;
@@ -159,7 +159,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn set_settings_removes_all_returns_none(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let user = mock_user()?;
@@ -185,7 +185,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn set_settings_rejects_invalid(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let user = mock_user()?;
@@ -202,7 +202,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn replace_settings_overwrites(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let user = mock_user()?;
@@ -243,7 +243,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn replace_settings_with_empty_removes(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let user = mock_user()?;

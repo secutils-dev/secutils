@@ -316,7 +316,7 @@ mod tests {
         assert!(example.content.len() <= MAX_SCRIPT_CONTENT_LENGTH);
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn list_scripts_filters_by_context(pool: PgPool) -> anyhow::Result<()> {
         use crate::users::scripts::ScriptContext;
 
@@ -422,7 +422,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn list_scripts_page_applies_context_search_and_total(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -481,7 +481,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn list_scripts_page_sorts_by_type(pool: PgPool) -> anyhow::Result<()> {
         use crate::server::{PaginationParams, SortOrder};
 
@@ -541,7 +541,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn list_scripts_returns_empty_for_new_user(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let mock_user = mock_user()?;
@@ -552,7 +552,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn create_script_validates_name(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let mock_user = mock_user()?;
@@ -599,7 +599,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn create_script_validates_content(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let mock_user = mock_user()?;
@@ -632,7 +632,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn create_script_validates_script_type(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let mock_user = mock_user()?;
@@ -674,7 +674,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn create_script_enforces_limit(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.subscriptions.ultimate.scripts.max_scripts = 2;
@@ -714,7 +714,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn create_and_list_scripts(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let mock_user = mock_user()?;
@@ -741,7 +741,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn get_script_returns_content(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let mock_user = mock_user()?;
@@ -771,7 +771,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_script_changes_content(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let mock_user = mock_user()?;
@@ -806,7 +806,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_script_not_found(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let mock_user = mock_user()?;
@@ -828,7 +828,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn delete_script_removes_it(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let mock_user = mock_user()?;
@@ -852,7 +852,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn delete_script_not_found(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let mock_user = mock_user()?;

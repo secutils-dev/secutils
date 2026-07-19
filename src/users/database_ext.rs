@@ -285,7 +285,7 @@ mod tests {
     use time::OffsetDateTime;
     use uuid::uuid;
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_add_and_retrieve_users(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         assert!(db.get_user_by_email("some-id").await?.is_none());
@@ -428,7 +428,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn ignores_email_case(pool: PgPool) -> anyhow::Result<()> {
         let user = MockUserBuilder::new(
             uuid!("00000000-0000-0000-0000-000000000001").into(),
@@ -482,7 +482,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn ignores_handle_case(pool: PgPool) -> anyhow::Result<()> {
         let user = MockUserBuilder::new(
             uuid!("00000000-0000-0000-0000-000000000001").into(),
@@ -536,7 +536,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_insert_user(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
 
@@ -596,7 +596,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_update_user(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
 
@@ -682,7 +682,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_remove_user(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         assert!(db.get_user_by_email("dev@secutils.dev").await?.is_none());
@@ -743,7 +743,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_add_and_retrieve_user_shares(pool: PgPool) -> anyhow::Result<()> {
         let user_shares = vec![
             UserShare {
@@ -794,7 +794,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_retrieve_user_shares_by_resource(pool: PgPool) -> anyhow::Result<()> {
         let user_shares = [
             UserShare {
@@ -863,7 +863,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_remove_user_shares(pool: PgPool) -> anyhow::Result<()> {
         let user_shares = vec![
             UserShare {

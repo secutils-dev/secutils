@@ -1005,7 +1005,7 @@ mod tests {
         })
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_create_private_key(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
 
@@ -1057,7 +1057,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn fails_to_create_private_key_if_name_is_invalid(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
 
@@ -1104,7 +1104,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_change_private_key_passphrase(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
 
@@ -1246,7 +1246,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_change_private_key_name(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
 
@@ -1350,7 +1350,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn fails_to_update_private_key_if_params_are_invalid(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
 
@@ -1449,7 +1449,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_export_private_key(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
 
@@ -1555,7 +1555,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_remove_private_key(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
 
@@ -1588,7 +1588,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_return_multiple_private_keys(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
 
@@ -1640,7 +1640,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_create_certificate_template(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
 
@@ -1664,7 +1664,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn fails_to_create_certificate_template_if_name_is_invalid(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1709,7 +1709,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_change_certificate_template_attributes(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
 
@@ -1783,7 +1783,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_change_certificate_template_name(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
 
@@ -1879,7 +1879,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn fails_to_update_certificate_template_if_params_are_invalid(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1955,7 +1955,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_remove_certificate_template(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
 
@@ -1992,7 +1992,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_return_multiple_certificate_templates(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
 
@@ -2109,7 +2109,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn correctly_generates_x509_certificate(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
 
@@ -2153,7 +2153,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn properly_shares_certificate_template(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
 
@@ -2192,7 +2192,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn properly_unshares_certificate_template(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
 
@@ -2247,7 +2247,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn properly_unshares_certificate_template_when_it_is_removed(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -2288,7 +2288,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn fails_to_get_peer_certificates_for_non_https_url(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
 
@@ -2322,7 +2322,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn fails_to_get_peer_certificates_for_non_public_url(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
 

@@ -766,7 +766,7 @@ mod tests {
         })
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_add_and_retrieve_private_keys(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -829,7 +829,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn correctly_handles_duplicated_private_keys_on_insert(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -869,7 +869,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_update_private_key_content(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -936,7 +936,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn correctly_handles_duplicated_private_keys_on_update(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1007,7 +1007,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn correctly_handles_non_existent_private_keys_on_update(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1046,7 +1046,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_remove_private_keys(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1135,7 +1135,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_retrieve_all_private_keys(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1188,7 +1188,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_add_and_retrieve_certificate_templates(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1243,7 +1243,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn correctly_handles_duplicated_certificate_templates_on_insert(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1280,7 +1280,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_update_certificate_template_content(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1369,7 +1369,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn correctly_handles_duplicated_certificate_templates_on_update(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1428,7 +1428,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn correctly_handles_non_existent_certificate_templates_on_update(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1462,7 +1462,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_remove_certificate_templates(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1543,7 +1543,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_retrieve_all_certificate_templates(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1582,7 +1582,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_bulk_get_certificate_templates_empty(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1597,7 +1597,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_bulk_get_certificate_templates_returns_matching(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1655,7 +1655,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn bulk_get_certificate_templates_ignores_non_existent(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1691,7 +1691,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn bulk_get_certificate_templates_isolated_per_user(pool: PgPool) -> anyhow::Result<()> {
         let user_a = mock_user()?;
         let user_b = mock_user_with_id(uuid!("00000000-0000-0000-0000-000000000002"))?;
@@ -1723,7 +1723,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_get_private_keys_for_export_empty(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1738,7 +1738,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_get_private_keys_for_export_includes_pkcs8(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1790,7 +1790,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn get_private_keys_for_export_isolated_per_user(pool: PgPool) -> anyhow::Result<()> {
         let user_a = mock_user()?;
         let user_b = mock_user_with_id(uuid!("00000000-0000-0000-0000-000000000002"))?;
@@ -1825,7 +1825,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_bulk_get_private_keys_for_export_empty(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = Database::create(pool).await?;
@@ -1840,7 +1840,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_bulk_get_private_keys_for_export_returns_matching(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1911,7 +1911,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn bulk_get_private_keys_for_export_ignores_non_existent(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1951,7 +1951,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn bulk_get_private_keys_for_export_isolated_per_user(
         pool: PgPool,
     ) -> anyhow::Result<()> {

@@ -465,7 +465,7 @@ mod tests {
         assert!(is_valid_secret_name(&"a".repeat(128)));
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn list_secrets_returns_empty_for_new_user(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.security.secrets_encryption_key = Some(TEST_ENCRYPTION_KEY.to_string());
@@ -478,7 +478,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn create_secret_validates_name(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.security.secrets_encryption_key = Some(TEST_ENCRYPTION_KEY.to_string());
@@ -531,7 +531,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn create_secret_validates_value(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.security.secrets_encryption_key = Some(TEST_ENCRYPTION_KEY.to_string());
@@ -564,7 +564,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn create_secret_enforces_limit(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.security.secrets_encryption_key = Some(TEST_ENCRYPTION_KEY.to_string());
@@ -602,7 +602,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn create_and_list_secrets(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.security.secrets_encryption_key = Some(TEST_ENCRYPTION_KEY.to_string());
@@ -629,7 +629,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn list_secrets_page_applies_search_sort_and_total(pool: PgPool) -> anyhow::Result<()> {
         use crate::server::{PaginationParams, SortOrder};
         let mut config = mock_config()?;
@@ -678,7 +678,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_secret_changes_value(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.security.secrets_encryption_key = Some(TEST_ENCRYPTION_KEY.to_string());
@@ -714,7 +714,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_secret_not_found(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.security.secrets_encryption_key = Some(TEST_ENCRYPTION_KEY.to_string());
@@ -738,7 +738,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn delete_secret_removes_it(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.security.secrets_encryption_key = Some(TEST_ENCRYPTION_KEY.to_string());
@@ -763,7 +763,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn delete_secret_not_found(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.security.secrets_encryption_key = Some(TEST_ENCRYPTION_KEY.to_string());
@@ -781,7 +781,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn delete_secret_cleans_up_responder_selected_list(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.security.secrets_encryption_key = Some(TEST_ENCRYPTION_KEY.to_string());
@@ -850,7 +850,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn delete_secret_collapses_responder_to_none_when_list_empty(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -908,7 +908,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn delete_secret_does_not_touch_responder_with_all_access(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1034,7 +1034,7 @@ mod tests {
         })
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn delete_secret_cleans_up_tracker_selected_list(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.security.secrets_encryption_key = Some(TEST_ENCRYPTION_KEY.to_string());
@@ -1084,7 +1084,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn delete_secret_collapses_tracker_to_none_when_list_empty(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1123,7 +1123,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn delete_secret_does_not_touch_tracker_with_all_access(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1160,7 +1160,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn get_decrypted_secrets_respects_access_modes(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.security.secrets_encryption_key = Some(TEST_ENCRYPTION_KEY.to_string());
@@ -1226,7 +1226,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn create_secret_fails_without_encryption_key(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api_with_config(pool, mock_config()?).await?;
         let mock_user = mock_user()?;
@@ -1249,7 +1249,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn create_secret_syncs_to_tracker_with_all_secrets(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.security.secrets_encryption_key = Some(TEST_ENCRYPTION_KEY.to_string());
@@ -1298,7 +1298,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_secret_syncs_to_tracker_with_all_secrets(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.security.secrets_encryption_key = Some(TEST_ENCRYPTION_KEY.to_string());
@@ -1359,7 +1359,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_secret_syncs_to_tracker_with_selected_secrets(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1431,7 +1431,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn update_secret_syncs_to_api_tracker_with_all_secrets(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1497,7 +1497,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn delete_secret_syncs_to_tracker(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.security.secrets_encryption_key = Some(TEST_ENCRYPTION_KEY.to_string());
@@ -1558,7 +1558,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn create_secret_skips_sync_when_no_trackers_use_secrets(
         pool: PgPool,
     ) -> anyhow::Result<()> {

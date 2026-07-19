@@ -101,7 +101,7 @@ pub mod tests {
         .await?)
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_retrieve_all_jobs(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
 

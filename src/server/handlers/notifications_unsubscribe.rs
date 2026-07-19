@@ -181,7 +181,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn get_returns_branded_html_confirmation_page(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let app_state = mock_app_state(pool).await?;
@@ -244,7 +244,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn get_marks_destination_unsubscribed_in_db(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let app_state = mock_app_state(pool).await?;
@@ -273,7 +273,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn get_returns_html_even_for_unknown_token(pool: PgPool) -> anyhow::Result<()> {
         // Do NOT seed any destination. We want to confirm the handler returns the same
         // 200/HTML response for an unknown token as for a real one — preserving the
@@ -302,7 +302,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn post_one_click_endpoint_still_returns_204(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let app_state = mock_app_state(pool).await?;

@@ -151,7 +151,7 @@ mod tests {
     use sqlx::PgPool;
     use uuid::uuid;
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_compile_account_activation_template_to_email(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
         let activation_code = "some-code";
@@ -206,7 +206,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_compile_password_reset_template_to_email(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
         let recovery_code = "some-code";
@@ -260,7 +260,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_compile_page_tracker_changes_template_to_email(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -317,7 +317,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_compile_page_tracker_changes_with_diff_template_to_email(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -370,7 +370,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_compile_page_tracker_short_content_with_diff_shows_content(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -398,7 +398,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_compile_page_tracker_changes_error_template_to_email(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -455,7 +455,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_compile_api_tracker_changes_template_to_email(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
 
@@ -510,7 +510,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_compile_api_tracker_changes_with_diff_template_to_email(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -563,7 +563,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_compile_api_tracker_short_content_with_diff_shows_content(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -591,7 +591,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_compile_notification_destination_verification_template_to_email(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -677,7 +677,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_compile_api_tracker_changes_error_template_to_email(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -734,7 +734,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_compile_responder_requests_received_template_to_email(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -784,7 +784,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_compile_responder_requests_received_singular_template_to_email(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -870,7 +870,7 @@ mod tests {
             );
         }
 
-        #[sqlx::test]
+        #[sqlx::test(migrator = "crate::MIGRATOR")]
         async fn page_tracker_changes_renders_footer_when_url_present(
             pool: PgPool,
         ) -> anyhow::Result<()> {
@@ -888,7 +888,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test]
+        #[sqlx::test(migrator = "crate::MIGRATOR")]
         async fn page_tracker_changes_omits_footer_when_url_absent(
             pool: PgPool,
         ) -> anyhow::Result<()> {
@@ -906,7 +906,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test]
+        #[sqlx::test(migrator = "crate::MIGRATOR")]
         async fn page_tracker_changes_error_renders_footer_when_url_present(
             pool: PgPool,
         ) -> anyhow::Result<()> {
@@ -924,7 +924,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test]
+        #[sqlx::test(migrator = "crate::MIGRATOR")]
         async fn api_tracker_changes_renders_footer_when_url_present(
             pool: PgPool,
         ) -> anyhow::Result<()> {
@@ -942,7 +942,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test]
+        #[sqlx::test(migrator = "crate::MIGRATOR")]
         async fn api_tracker_changes_omits_footer_when_url_absent(
             pool: PgPool,
         ) -> anyhow::Result<()> {
@@ -960,7 +960,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test]
+        #[sqlx::test(migrator = "crate::MIGRATOR")]
         async fn api_tracker_changes_error_renders_footer_when_url_present(
             pool: PgPool,
         ) -> anyhow::Result<()> {
@@ -978,7 +978,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test]
+        #[sqlx::test(migrator = "crate::MIGRATOR")]
         async fn responder_requests_received_renders_footer_when_url_present(
             pool: PgPool,
         ) -> anyhow::Result<()> {
@@ -996,7 +996,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test]
+        #[sqlx::test(migrator = "crate::MIGRATOR")]
         async fn responder_requests_received_omits_footer_when_url_absent(
             pool: PgPool,
         ) -> anyhow::Result<()> {
@@ -1019,7 +1019,7 @@ mod tests {
         // assertion) the rendered email must not invite the user to opt out of mail that
         // is exempt under RFC 8058.
 
-        #[sqlx::test]
+        #[sqlx::test(migrator = "crate::MIGRATOR")]
         async fn account_activation_ignores_unsubscribe_url(pool: PgPool) -> anyhow::Result<()> {
             let api = mock_api(pool).await?;
             let template = NotificationContentTemplate::AccountActivation {
@@ -1033,7 +1033,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test]
+        #[sqlx::test(migrator = "crate::MIGRATOR")]
         async fn account_recovery_ignores_unsubscribe_url(pool: PgPool) -> anyhow::Result<()> {
             let api = mock_api(pool).await?;
             let template = NotificationContentTemplate::AccountRecovery {
@@ -1046,7 +1046,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test]
+        #[sqlx::test(migrator = "crate::MIGRATOR")]
         async fn notification_destination_verification_ignores_unsubscribe_url(
             pool: PgPool,
         ) -> anyhow::Result<()> {

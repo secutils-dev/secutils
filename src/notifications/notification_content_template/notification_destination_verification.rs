@@ -51,7 +51,7 @@ mod tests {
     use crate::tests::mock_api;
     use sqlx::PgPool;
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn rejects_empty_verification_code(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
 
@@ -67,7 +67,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn url_encodes_code_in_rendered_email(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
 
@@ -96,7 +96,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn embeds_configured_home_link(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
 

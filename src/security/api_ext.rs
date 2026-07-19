@@ -635,7 +635,7 @@ mod tests {
         )?)
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn properly_signs_user_up(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
 
@@ -648,7 +648,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn cannot_signup_user_twice(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
         let security_api = api.security();
@@ -665,7 +665,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_update_subscription(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
         let security_api = api.security();
@@ -696,7 +696,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn doesnt_throw_if_user_does_not_exist_for_subscription_update(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -720,7 +720,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_generate_user_handle(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
         let handle = api.security().generate_user_handle().await?;
@@ -729,7 +729,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_authenticate_with_session_cookie(pool: PgPool) -> anyhow::Result<()> {
         let mock_user = mock_user()?;
 
@@ -762,7 +762,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn returns_none_for_invalid_session_cookie(pool: PgPool) -> anyhow::Result<()> {
         let server = MockServer::start();
         server.mock(|when, then| {
@@ -784,7 +784,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_authenticate_with_jwt(pool: PgPool) -> anyhow::Result<()> {
         let mock_user = mock_user()?;
         let token = encode_test_jwt(&mock_user.email, TEST_JWT_SECRET)?;
@@ -818,7 +818,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn fails_to_authenticate_with_jwt_if_secret_not_configured(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -833,7 +833,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_authenticate_with_api_key(pool: PgPool) -> anyhow::Result<()> {
         let mock_user = mock_user()?;
 
@@ -872,7 +872,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn returns_none_for_invalid_api_key(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
 
@@ -885,7 +885,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_terminate_user(pool: PgPool) -> anyhow::Result<()> {
         let mock_user = mock_user()?;
 
@@ -926,7 +926,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn terminate_removes_user_retrack_trackers(pool: PgPool) -> anyhow::Result<()> {
         let mock_user = mock_user()?;
         let user_id_str = mock_user.id.to_string();
@@ -973,7 +973,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn terminate_fails_when_retrack_cleanup_fails(pool: PgPool) -> anyhow::Result<()> {
         let mock_user = mock_user()?;
         let user_id_str = mock_user.id.to_string();
@@ -1009,7 +1009,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_create_identity(pool: PgPool) -> anyhow::Result<()> {
         let server = MockServer::start();
         let new_id = "11111111-1111-1111-1111-111111111111";
@@ -1034,7 +1034,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn create_identity_propagates_kratos_error(pool: PgPool) -> anyhow::Result<()> {
         let server = MockServer::start();
         server.mock(|when, then| {
@@ -1056,7 +1056,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_create_recovery_link(pool: PgPool) -> anyhow::Result<()> {
         let server = MockServer::start();
         let identity_id = uuid::uuid!("22222222-2222-2222-2222-222222222222");
@@ -1088,7 +1088,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn create_recovery_link_propagates_kratos_error(pool: PgPool) -> anyhow::Result<()> {
         let server = MockServer::start();
         server.mock(|when, then| {
@@ -1110,7 +1110,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn clone_data_round_trips_secrets_through_ephemeral_passphrase(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -1164,7 +1164,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn terminate_returns_none_for_nonexistent_user(pool: PgPool) -> anyhow::Result<()> {
         let server = MockServer::start();
         server.mock(|when, then| {
@@ -1184,7 +1184,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_get_operator_with_jwt(pool: PgPool) -> anyhow::Result<()> {
         let mock_user = mock_user()?;
         let token = encode_test_jwt(&mock_user.email, TEST_JWT_SECRET)?;
@@ -1204,7 +1204,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn get_operator_returns_none_for_non_operator_jwt(pool: PgPool) -> anyhow::Result<()> {
         let mock_user = mock_user()?;
         let token = encode_test_jwt(&mock_user.email, TEST_JWT_SECRET)?;
@@ -1223,7 +1223,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn get_operator_returns_none_for_api_key(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
 
@@ -1236,7 +1236,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_get_operator_with_session_cookie(pool: PgPool) -> anyhow::Result<()> {
         let mock_user = mock_user()?;
 
@@ -1267,7 +1267,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn authenticate_sets_is_operator_flag(pool: PgPool) -> anyhow::Result<()> {
         let mock_user = mock_user()?;
         let token = encode_test_jwt(&mock_user.email, TEST_JWT_SECRET)?;
@@ -1300,7 +1300,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn authenticate_returns_none_when_user_not_in_db(pool: PgPool) -> anyhow::Result<()> {
         let mock_user = mock_user()?;
         let token = encode_test_jwt(&mock_user.email, TEST_JWT_SECRET)?;
