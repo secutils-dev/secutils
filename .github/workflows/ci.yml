@@ -195,8 +195,18 @@ jobs:
       - name: Install dependencies
         run: npm --prefix components/secutils-docs ci
 
+      - name: Typecheck
+        run: npm --prefix components/secutils-docs run typecheck
+
+      - name: Test
+        run: npm --prefix components/secutils-docs test
+
       - name: Build
         run: npm --prefix components/secutils-docs run build
+
+      # The `llms.txt` generator derives markdown from the built HTML, so its output can only be checked post-build.
+      - name: Check generated LLM markdown
+        run: npm --prefix components/secutils-docs run check-llms
 
   ci-docker:
     name: Build Docker Images

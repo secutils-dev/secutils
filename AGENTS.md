@@ -49,10 +49,10 @@ from being upgraded as a coupled pair.
    see "What to watch for" below). Re-pin `playwright-core` to the same exact version as
    stage 3.
 9. **`components/secutils-docs` NPM packages** — Docusaurus majors change config schemas
-   (e.g. `siteConfig.markdown.hooks.onBrokenMarkdownLinks` migration in 3.10), and
-   `docusaurus-plugin-llms` defaults change between minors. Verify `llms.txt` /
-   `llms-index.txt` and the per-page `.md` companions resolve, and that the Nginx config
-   serves them with the right `Content-Type`.
+   (e.g. `siteConfig.markdown.hooks.onBrokenMarkdownLinks` migration in 3.10), and the local
+   `plugins/llms` plugin parses the rendered HTML, so theme markup changes can break it (see
+   "Docusaurus (stage 9)" below). Verify `llms.txt` / `llms-index.txt` and the per-page `.md`
+   companions resolve, and that the Nginx config serves them with the right `Content-Type`.
 10. **Root Docker base images** — `Dockerfile`, `Dockerfile.docs`, `Dockerfile.webui`. UPX,
     distroless runtime, `nginx-unprivileged`. Re-pin SHA256 manifest digests with
     `./dev/scripts/docker-pin-digests.sh`. Rebuild the e2e stack and curl-smoke each
@@ -83,7 +83,7 @@ do not skip steps even when the previous stage was green.
 | 6 (root Rust)      | `cargo +nightly fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo sqlx prepare --check && cargo test`                                                                              |
 | 7 (root Node)      | `npm --prefix components/secutils-webui run build && npm --prefix components/secutils-docs run build` (and lint/test in each)                                                                                  |
 | 8 (webui NPM)      | `npm --prefix components/secutils-webui run lint && npm --prefix components/secutils-webui run test && npm --prefix components/secutils-webui run build && npm --prefix components/secutils-webui run analyze` |
-| 9 (docs NPM)       | `npm --prefix components/secutils-docs run typecheck && npm --prefix components/secutils-docs run build` — then check the build output for `llms.txt`, `llms-index.txt`, and at least one per-page `.md`       |
+| 9 (docs NPM)       | `npm --prefix components/secutils-docs run typecheck && npm --prefix components/secutils-docs test && npm --prefix components/secutils-docs run build && npm --prefix components/secutils-docs run check-llms` |
 | 10 (root Docker)   | `make docker-api && make docker-webui && make docker-docs && make e2e-up BUILD=1` then curl-smoke `/api/status`, `/`, `/docs/`                                                                                 |
 | 11 (e2e)           | `make e2e-standalone-test && make e2e-test && make docs-screenshots` (full suites — partial runs miss DNS / network regressions, see below)                                                                    |
 
@@ -159,6 +159,36 @@ do not skip steps even when the previous stage was green.
 
 #### Docusaurus (stage 9)
 
+- **`llms.txt` is generated from the rendered HTML, not from the MDX sources.** The local
+  `components/secutils-docs/plugins/llms/index.ts` plugin runs in `postBuild`, reads each
+  route's `build/**/index.html`, extracts `.theme-doc-markdown`, and converts it with
+  `rehype-parse` → `rehype-remark` → `remark-gfm` → `remark-stringify`. This replaced the
+  `docusaurus-plugin-llms` package, which regex-scrubbed the raw MDX and therefore leaked
+  `<Steps steps={[…]}/>` JSX as literal text while deleting `<SampleFields>` entirely — the
+  content of a React component simply does not exist before rendering. Consequences:
+  - The plugin **depends on Docusaurus theme markup**. It normalizes `.su-steps`,
+    `.su-table`, `.theme-code-block` (Prism `div.token-line` rows), `.theme-admonition`
+    (`admonitionHeading`/`admonitionContent`, hash-suffixed) and `a.hash-link`. A rename in a
+    Docusaurus major would make every rule silently no-op, so the class names are listed in
+    the plugin's exported `THEME_MARKUP` and `check-llms` asserts they are still present in
+    the built HTML. That check also compares, per transform, how many constructs the HTML
+    contains against how many survived into the markdown, so counts self-calibrate as docs
+    content changes. Run it after any Docusaurus bump — it is the one thing that catches a
+    theme change; `npm test` uses fixtures, which would go stale in the same way.
+  - Two markdown-serialization details that regex-based checks trip over: remark switches a
+    list's marker (`1.` → `1)`, `-` → `*`) when it directly follows another list of the same
+    kind, and a construct inside an admonition comes out prefixed with `> `.
+  - Companion `.md` paths derive from the **route**, not the source file, per the llmstxt
+    "append `.md` to the page URL" convention. `docs/project/intro.md` carries `slug: /`, so
+    it lands at `build/docs.md`; the 2026 changelog lands at `build/project/changelog.md`.
+  - Relative image/link URLs are resolved against the route **without** a trailing slash.
+    `../img/x.png` from `/docs/guides/webhooks` is `/docs/img/x.png`; resolving against
+    `/docs/guides/webhooks/` would yield `/docs/guides/img/x.png`, which 404s.
+  - The plugin is TypeScript. Docusaurus loads plugin modules through jiti (which transpiles
+    TS), but resolves the path with a plain `createRequire`, so `docusaurus.config.js` must
+    reference it **with** the `.ts` extension. A bare `'./plugins/llms'` fails to resolve.
+  - `unified` and the `rehype`/`remark` packages are ESM-only and are loaded with dynamic
+    `await import()` inside `postBuild`, since the config is CommonJS.
 - **Nginx `types {}` in server scope replaces, not merges.** When adding `text/markdown
   md;` to serve the per-page companions, you must `include /etc/nginx/mime.types;` first
   in the same `server { … }` block, otherwise `.txt` (and everything else) regresses to

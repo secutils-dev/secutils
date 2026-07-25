@@ -31,21 +31,15 @@ const config = {
   plugins: [
     'docusaurus-plugin-sass',
     [
-      'docusaurus-plugin-llms',
+      // Local plugin. It derives the markdown from the *rendered* HTML, which is the only place the content of React
+      // components such as `<Steps>` and `<SampleFields>` exists. The path needs its `.ts` extension because
+      // Docusaurus resolves plugin paths with a plain `createRequire`, which only knows `.js`/`.json`/`.node`.
+      './plugins/llms/index.ts',
       {
-        generateLLMsTxt: true,
-        generateLLMsFullTxt: true,
-        // The default plugin layout puts only a link index in `llms.txt`. Many LLM crawlers fetch that URL alone and
-        // see nothing useful. Put the full concatenated docs at `llms.txt` and keep the compact TOC as `llms-index.txt`.
-        llmsTxtFilename: 'llms-index.txt',
-        llmsFullTxtFilename: 'llms.txt',
-        // Emit a per-page `.md` companion next to every doc so the `.md`-suffixed links in `llms-index.txt`
-        // (default behaviour since v0.4.0) actually resolve. Together with `addMdExtension: true` (v0.4.0 default)
-        // this matches the llmstxt.org spec: each TOC link points at a clean markdown rendering of the page.
-        generateMarkdownFiles: true,
-        // The docs preset uses `routeBasePath: '/'`, so HTML routes are served at `/docs/guides/...` (no `/docs/docs/`).
-        // Strip the `docsDir` segment from the generated `.md` paths so they line up with those routes.
-        preserveDirectoryStructure: false,
+        // Many LLM crawlers fetch `llms.txt` alone, so that file holds the full concatenated docs and the compact TOC
+        // lives at `llms-index.txt`.
+        fullFilename: 'llms.txt',
+        indexFilename: 'llms-index.txt',
         rootContent:
           'Compact index with links to each guide on the site. For all documentation in one file, use `llms.txt` in this directory.',
         fullRootContent:
@@ -53,8 +47,6 @@ const config = {
         title: 'Secutils.dev Documentation',
         description:
           'Documentation and guides for Secutils.dev - an open-source, versatile toolbox for security-minded engineers.',
-        includeBlog: false,
-        excludeImports: true,
       },
     ],
   ],

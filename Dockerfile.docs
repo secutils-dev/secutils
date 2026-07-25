@@ -10,12 +10,15 @@ COPY ["components/secutils-docs/*.json", "./"]
 COPY ["components/secutils-docs/*.js", "./"]
 RUN set -x && npm ci
 
-# Now copy the rest of the component files and build it.
+# Now copy the rest of the component files and build it. `plugins/` holds the local `llms.txt` generator, which runs in
+# Docusaurus' `postBuild`, and `check-llms` gates the image on that generator's output actually being clean markdown.
+COPY ["components/secutils-docs/plugins", "./plugins"]
+COPY ["components/secutils-docs/scripts", "./scripts"]
 COPY ["components/secutils-docs/src", "./src"]
 COPY ["components/secutils-docs/static", "./static"]
 COPY ["components/secutils-docs/docs", "./docs"]
 COPY ["components/secutils-docs/blog", "./blog"]
-RUN set -x && npm run build
+RUN set -x && npm run build && npm run check-llms
 
 FROM nginxinc/nginx-unprivileged:alpine3.24-slim@sha256:d9fa63891743a11eb56ca1b22d8cc227491df183ca3da2cf1bf2c6e010bf19a5
 COPY --from=builder ["/app/build/", "/usr/share/nginx/html/docs"]
