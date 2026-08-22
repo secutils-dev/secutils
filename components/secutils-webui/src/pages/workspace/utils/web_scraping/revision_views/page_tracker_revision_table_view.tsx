@@ -1,6 +1,6 @@
 import type { EuiDataGridCellValueElementProps, Pagination } from '@elastic/eui';
 import { EuiText } from '@elastic/eui';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
 import { DataGrid } from '../../../../../components';
 import type { TrackerRevisionsViewMode } from '../tracker_revisions';
@@ -54,16 +54,24 @@ export function PageTrackerRevisionTableView({ data }: PageTrackerRevisionTableV
   );
   const onChangePage = useCallback((pageIndex: number) => setPagination({ ...pagination, pageIndex }), [pagination]);
 
-  return (
-    <DataGrid
-      width="100%"
-      aria-label="Page tracker data table"
-      columns={data.columns.map((column) => ({
+  // Memoized because EuiDataGrid re-seeds its column width map whenever the `columns` prop
+  // changes identity, discarding user resizes on every sort or page change.
+  const columns = useMemo(
+    () =>
+      data.columns.map((column) => ({
         id: column.id,
         display: column.label,
         displayAsText: column.label,
         isSortable: !!column.sortable,
-      }))}
+      })),
+    [data.columns],
+  );
+
+  return (
+    <DataGrid
+      width="100%"
+      aria-label="Page tracker data table"
+      columns={columns}
       columnVisibility={{ visibleColumns, setVisibleColumns }}
       rowCount={data.rows.length}
       renderCellValue={({ rowIndex, columnId }: EuiDataGridCellValueElementProps) => {

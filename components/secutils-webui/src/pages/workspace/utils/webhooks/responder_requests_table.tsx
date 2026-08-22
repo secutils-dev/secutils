@@ -27,6 +27,51 @@ export interface ResponderRequestsTableProps {
 
 const AUTO_REFRESH_INTERVAL_MS = 3000;
 
+const HIDDEN_COLUMNS = new Set(['proxyHeaders', 'responseStatusCode', 'responseHeaders', 'responseBody']);
+
+// Kept at module scope: EuiDataGrid re-seeds its column width map whenever the `columns`
+// prop changes identity, so an array rebuilt on render would discard user resizes on
+// every auto-refresh.
+const COLUMNS: EuiDataGridColumn[] = [
+  {
+    id: 'timestamp',
+    display: 'Timestamp',
+    displayAsText: 'Timestamp',
+    schema: 'datetime',
+    defaultSortDirection: 'desc',
+    initialWidth: 170,
+    isSortable: true,
+    isExpandable: false,
+    isResizable: false,
+  },
+  { id: 'address', display: 'Client address', displayAsText: 'Client address', isExpandable: false },
+  { id: 'method', display: 'Method', displayAsText: 'Method', initialWidth: 80, isExpandable: false },
+  { id: 'url', display: 'URL', displayAsText: 'URL', isSortable: true },
+  { id: 'headers', display: 'Headers', displayAsText: 'Headers' },
+  { id: 'proxyHeaders', display: 'Proxy headers', displayAsText: 'Proxy headers' },
+  { id: 'body', display: 'Body', displayAsText: 'Body', schema: 'numeric', isSortable: true },
+  {
+    id: 'duration',
+    display: 'Duration',
+    displayAsText: 'Duration',
+    schema: 'numeric',
+    initialWidth: 100,
+    isExpandable: false,
+    isSortable: true,
+  },
+  {
+    id: 'responseStatusCode',
+    display: 'Resp. status',
+    displayAsText: 'Resp. status',
+    schema: 'numeric',
+    initialWidth: 110,
+    isExpandable: false,
+    isSortable: true,
+  },
+  { id: 'responseHeaders', display: 'Resp. headers', displayAsText: 'Resp. headers' },
+  { id: 'responseBody', display: 'Resp. body', displayAsText: 'Resp. body', schema: 'numeric', isSortable: true },
+];
+
 const TEXT_DECODER = new TextDecoder();
 function binaryToText(binary: number[]) {
   return TEXT_DECODER.decode(new Uint8Array(binary));
@@ -86,37 +131,32 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
   const [autoRefresh, setAutoRefresh] = useState(true);
   const isFetchingRef = useRef(false);
 
-  const loadRequests = useCallback(
-    (silent = false) => {
-      if (isFetchingRef.current) {
-        return;
-      }
+  // Never switches back to `pending` once the first load succeeded: unmounting the grid
+  // would throw away the user's column widths, density and open cell popover.
+  const loadRequests = useCallback(() => {
+    if (isFetchingRef.current) {
+      return;
+    }
 
-      isFetchingRef.current = true;
-      if (!silent) {
-        setRequests({ status: 'pending' });
-      }
-
-      apiFetch(`/api/webhooks/responders/${encodeURIComponent(responder.id)}/_history`)
-        .then(async (res) => {
-          if (!res.ok) {
-            throw await ResponseError.fromResponse(res);
-          }
-          setRequests({ status: 'succeeded', data: (await res.json()) as ResponderRequest[] });
-        })
-        .catch((err: Error) => {
-          setRequests((currentRevisions) => ({
-            status: 'failed',
-            error: getErrorMessage(err),
-            state: currentRevisions.state,
-          }));
-        })
-        .finally(() => {
-          isFetchingRef.current = false;
-        });
-    },
-    [responder.id],
-  );
+    isFetchingRef.current = true;
+    apiFetch(`/api/webhooks/responders/${encodeURIComponent(responder.id)}/_history`)
+      .then(async (res) => {
+        if (!res.ok) {
+          throw await ResponseError.fromResponse(res);
+        }
+        setRequests({ status: 'succeeded', data: (await res.json()) as ResponderRequest[] });
+      })
+      .catch((err: Error) => {
+        setRequests((currentRequests) =>
+          currentRequests.status === 'succeeded'
+            ? currentRequests
+            : { status: 'failed', error: getErrorMessage(err), state: currentRequests.state },
+        );
+      })
+      .finally(() => {
+        isFetchingRef.current = false;
+      });
+  }, [responder.id]);
 
   useEffect(() => {
     if (!uiState.synced || !uiState.user) {
@@ -136,52 +176,12 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
       return;
     }
 
-    const intervalId = setInterval(() => loadRequests(true), AUTO_REFRESH_INTERVAL_MS);
+    const intervalId = setInterval(() => loadRequests(), AUTO_REFRESH_INTERVAL_MS);
     return () => clearInterval(intervalId);
   }, [autoRefresh, responder.enabled, responder.settings.requestsToTrack, loadRequests]);
 
-  const HIDDEN_COLUMNS = new Set(['proxyHeaders', 'responseStatusCode', 'responseHeaders', 'responseBody']);
-  const columns: EuiDataGridColumn[] = [
-    {
-      id: 'timestamp',
-      display: 'Timestamp',
-      displayAsText: 'Timestamp',
-      schema: 'datetime',
-      defaultSortDirection: 'desc',
-      initialWidth: 170,
-      isSortable: true,
-      isExpandable: false,
-      isResizable: false,
-    },
-    { id: 'address', display: 'Client address', displayAsText: 'Client address', isExpandable: false },
-    { id: 'method', display: 'Method', displayAsText: 'Method', initialWidth: 80, isExpandable: false },
-    { id: 'url', display: 'URL', displayAsText: 'URL', isSortable: true },
-    { id: 'headers', display: 'Headers', displayAsText: 'Headers' },
-    { id: 'proxyHeaders', display: 'Proxy headers', displayAsText: 'Proxy headers' },
-    { id: 'body', display: 'Body', displayAsText: 'Body', schema: 'numeric', isSortable: true },
-    {
-      id: 'duration',
-      display: 'Duration',
-      displayAsText: 'Duration',
-      schema: 'numeric',
-      initialWidth: 100,
-      isExpandable: false,
-      isSortable: true,
-    },
-    {
-      id: 'responseStatusCode',
-      display: 'Resp. status',
-      displayAsText: 'Resp. status',
-      schema: 'numeric',
-      initialWidth: 110,
-      isExpandable: false,
-      isSortable: true,
-    },
-    { id: 'responseHeaders', display: 'Resp. headers', displayAsText: 'Resp. headers' },
-    { id: 'responseBody', display: 'Resp. body', displayAsText: 'Resp. body', schema: 'numeric', isSortable: true },
-  ];
   const [visibleColumns, setVisibleColumns] = useState(() =>
-    columns.filter(({ id }) => !HIDDEN_COLUMNS.has(id)).map(({ id }) => id),
+    COLUMNS.filter(({ id }) => !HIDDEN_COLUMNS.has(id)).map(({ id }) => id),
   );
   const [sortingColumns, setSortingColumns] = useState<Array<{ id: string; direction: 'asc' | 'desc' }>>([
     { id: 'timestamp', direction: 'desc' },
@@ -473,7 +473,7 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
                 <EuiButtonIcon
                   iconType="refresh"
                   aria-label="Update"
-                  isDisabled={requests.status === 'pending' || !responder.enabled}
+                  isDisabled={!responder.enabled}
                   onClick={() => loadRequests()}
                 />
               </EuiToolTip>
@@ -524,7 +524,7 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
       <DataGrid
         width="100%"
         aria-label="Requests"
-        columns={columns}
+        columns={COLUMNS}
         columnVisibility={{ visibleColumns, setVisibleColumns }}
         rowCount={sortedData.length}
         renderCellValue={renderCellValue}
