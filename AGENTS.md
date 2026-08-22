@@ -1,13 +1,67 @@
 # AGENTS.md
 
+Secutils.dev is an open-source security toolbox: webhook responders, X.509 certificates, CSP
+policies, and web page / API change tracking. Rust + actix-web API, React + EUI web UI,
+Docusaurus docs, PostgreSQL, Ory Kratos, and the Retrack tracking service as a git submodule.
+`ARCHITECTURE.md` has the service topology, ports, and repository layout.
+
+Sections below: dependency upgrades · e2e tests · docs screenshots · adding an HTTP route ·
+paginating a list endpoint · JS runtime perf harness · Web UI bundle-size budget.
+
+## Other AGENTS.md files
+
+This file covers the **root** repo only. Two siblings own their own surface — read them rather
+than guessing, and do not duplicate their rules here:
+
+| File                           | Covers                                                                                                                                                                                                                                                                                           |
+|--------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `components/retrack/AGENTS.md` | The Retrack submodule: its own Cargo / NPM / Docker upgrade recipe, the Camoufox triple, its own perf harness.                                                                                                                                                                                   |
+| `dev/tools/AGENTS.md`          | The standalone single-page tool apps under `dev/tools/` — style guide, `su-tool-*` meta tags, URL state encoding, the `*.skill.md` agent surface, OG images. Driven by `make deploy-tools` / `tools-bundles` / `tools-og` / `tools-check` and the `e2e/tools/` suite. CI ignores `dev/tools/**`. |
+
+## Everyday commands
+
+`make help` lists every target. The inner loop:
+
+| Command           | What it does                                                                                                     |
+|-------------------|------------------------------------------------------------------------------------------------------------------|
+| `make dev-up`     | Start dev infra in Docker (Postgres, Kratos, Retrack, scraper). `BUILD=1` rebuilds, narrowed by `ONLY=`/`SKIP=`. |
+| `make api`        | Run the Secutils API on the host (`cargo run`, port 7070).                                                       |
+| `make webui`      | Run the Web UI dev server on the host (port 7171).                                                               |
+| `make docs`       | Run the Docusaurus dev server on the host (port 7373).                                                           |
+| `make webui-test` | Web UI unit tests (vitest). `ARGS="--watch"` to iterate.                                                         |
+| `make db-reset`   | Drop, create, and migrate the dev database.                                                                      |
+| `make dev-down`   | Stop dev infra and remove volumes.                                                                               |
+
+Everything else — e2e, docs screenshots, Docker images, deploys, the perf harness — has its own
+section below or a self-documenting `make` target.
+
+## Pre-push gate
+
+`.husky/pre-push` runs on every push and is the fastest way to learn you broke something. It is
+**not** the same set as CI:
+
+```bash
+make webui-test                                   # vitest
+cargo sqlx prepare --check                        # `.sqlx/` offline cache is current
+cargo +nightly fmt --all -- --check               # nightly toolchain is REQUIRED
+cargo clippy --all --all-targets -- -D warnings
+```
+
+`rustfmt` runs on **nightly** because `rustfmt.toml` uses unstable options, so
+`rustup toolchain install nightly && rustup component add --toolchain nightly rustfmt` is a
+one-time prerequisite. `.github/workflows/ci.yml` adds `cargo test`, the webui build + bundle
+analyzer, the docs build + `check-llms`, all Docker images, and the full e2e and docs-screenshot
+suites. CI skips pushes that only touch `*.md`, `.husky/**`, or `dev/tools/**`.
+
 ## Dependency upgrades
 
 This repo's dependency surface spans two Cargo workspaces (root + the `components/retrack`
-submodule), four NPM packages (`components/secutils-webui`, `components/secutils-docs`,
-`components/retrack` + `components/retrack/components/retrack-web-scraper`, the e2e harness
-and the workspace-root `package.json`), six Dockerfiles, an Ory Kratos server image, and
-the `playwright-core` / `@playwright/test` / `playwright-python` triple. A naive "bump
-everything in one commit" produces an unreviewable diff and an undebuggable failure mode.
+submodule), six NPM packages (the workspace-root `package.json`, `components/secutils-webui`,
+`components/secutils-docs`, `e2e`, plus `components/retrack` and
+`components/retrack/components/retrack-web-scraper` inside the submodule), six Dockerfiles, an
+Ory Kratos server image, and the `playwright-core` / `@playwright/test` / `playwright-python`
+triple. The `dev/tools/js/*` bundles version independently and are outside these stages. A naive
+"bump everything in one commit" produces an unreviewable diff and an undebuggable failure mode.
 Always upgrade in **eleven sequential stages**, each individually committable and verifiable.
 
 ### Recommended upgrade order
@@ -41,9 +95,13 @@ from being upgraded as a coupled pair.
    to the SHA you committed in stages 1–4 (`cd components/retrack && git pull` then
    `git add components/retrack` from the parent), then `cargo update`.
    Refresh `.sqlx/` against the dev Postgres.
-7. **Root `.nvmrc`** — bump to the same Node major as stage 2; mirror in `engines.node`
-   and `@types/node` of all four root-level `package.json` files (root, secutils-webui,
-   secutils-docs, e2e). Refresh all four lockfiles.
+7. **Root `.nvmrc`** — bump to the same Node major as stage 2 and refresh all four root-level
+   lockfiles (root, secutils-webui, secutils-docs, e2e). Only `secutils-docs` declares a
+   top-level `engines.node`; mirror the major there, and bump `@types/node` to `^M.x`
+   wherever it is declared. **Leave `targets.retrack.engines.node` in
+   `components/secutils-webui/package.json` alone** — that is the Parcel *output* target for
+   the retrack preview bundle, not the toolchain version, so changing it changes what the
+   bundle compiles down to.
 8. **`components/secutils-webui` NPM packages** — read the EUI / React / Parcel release
    notes (EUI majors and Parcel resolver behaviour have repeatedly forced workarounds,
    see "What to watch for" below). Re-pin `playwright-core` to the same exact version as
@@ -125,16 +183,17 @@ do not skip steps even when the previous stage was green.
   Docusaurus and EUI's TS consumers have not validated v6 yet.
 - **`eslint-plugin-react-hooks` 7.x** rejects `useCallback(debounce(...))` as improper
   memoization. Use `useMemo(() => debounce(...), [])` instead.
-- **`@peculiar/x509` v2 + Parcel.** v2 transitively pulls `@peculiar/utils` which uses
-  `package.json#exports` subpaths (`./bytes`). Parcel 2.16's default resolver does not
-  honour `exports` subpaths and fails with `Failed to resolve '@peculiar/utils/bytes'`.
-  Two options: (a) keep `@peculiar/x509` pinned to `^1.x`, or (b) explicitly enable
-  Parcel's `exports` resolution via:
+- **`@peculiar/x509` v2 + Parcel.** v2 transitively pulls `@peculiar/utils`, which exposes
+  `package.json#exports` subpaths (`./bytes`). Parcel 2.16's default resolver does not honour
+  `exports` subpaths unless told to, and fails with `Failed to resolve
+  '@peculiar/utils/bytes'`. The webui already opts in via
   ```json
   "@parcel/resolver-default": { "packageExports": true }
   ```
-  in the leaf `package.json`. The webui takes option (a) for now to avoid the
-  `reflect-metadata` polyfill v2 requires.
+  in `components/secutils-webui/package.json`, so that half is handled — the setting is also
+  what lets any other `exports`-only dependency resolve, so do not remove it. `@peculiar/x509`
+  itself is still pinned to `^1.x` for a second, independent reason: v2 requires a
+  `reflect-metadata` polyfill. Both blockers must clear before v2 can land.
 - **`http-proxy-middleware` v4 is ESM-only**, so it cannot be required from the CommonJS
   `.proxyrc.ts`. Stay on v3 for the Parcel dev-server proxy.
 - **EUI majors** read the entire CHANGELOG. Common patterns: token renames in CSS-in-JS
@@ -153,7 +212,15 @@ do not skip steps even when the previous stage was green.
 - **Let the user pick when the successor is a judgement call.** Renames are mechanical, but a
   metaphorical glyph is a design decision that a list of names cannot settle. Render the old
   glyph (from the previous version's `npm pack`, since the new one no longer ships it) beside
-  the candidates in a throwaway HTML page, screenshot it, and embed it in the reply.
+  the candidates in a throwaway HTML page, screenshot it, and embed it in the reply. Render them on
+  the real background and leave the coloured ones untinted, or the comparison hides the very
+  difference being judged. Take each asset path from its loader in the icon map — the file name does
+  not follow from the glyph name (`securityApp` → `assets/app_security.js`).
+- **Never replace a glyph with a `logo*` or `*App` one.** Both carry their own fills and ignore
+  `currentColor`, so they render coloured among monochrome siblings, and the `*App` marks are drawn
+  for light backgrounds so they also go dark-on-dark in the dark theme. No check catches either.
+  Also check whether the removed name was itself an alias: its target is usually still shipped under
+  the canonical name, which keeps the appearance identical.
 - **Any EUI bump can invalidate docs screenshots**, and a glyph change always does — re-run
   `make docs-screenshots` inside stage 8.
 - **`playwright-core` and `@playwright/test` must share a minor.** The webui pins
@@ -320,9 +387,12 @@ Tests live in `e2e/standalone/` and use `playwright.standalone.config.ts`. Run t
 make e2e-standalone-test
 ```
 
-The codegen transformer smoke test spawns `npx playwright codegen` to capture the current
-boilerplate format and verifies the web UI's script transformer can handle it. This catches
-breaking changes to codegen output when Playwright is upgraded.
+`codegen_transformer_smoke.spec.ts` spawns `npx playwright codegen` to capture the current
+boilerplate format and verifies the web UI's script transformer can handle it, which catches
+breaking changes to codegen output when Playwright is upgraded. The other two,
+`webhook_e2ee_wire_parity.spec.ts` and `webhook_responder_script_smoke.spec.ts`, pin the
+webhook end-to-end-encryption wire format and the responder script runtime. CI runs this suite
+before starting the Docker stack, so a failure here blocks the whole e2e job.
 
 ### Debugging flaky tests
 
@@ -483,11 +553,10 @@ The e2e project uses ESLint + Prettier with these key rules:
 ### Overview
 
 Docs screenshot tests generate screenshots used in the documentation site
-(`components/secutils-docs/`). Each test file in `e2e/docs/` corresponds to a guide topic
-(e.g. `csp.spec.ts`, `webhooks.spec.ts`, `digital_certificates.spec.ts`,
-`web_scraping.spec.ts`, `export_import.spec.ts`, `home.spec.ts`, `secrets.spec.ts`,
-`user_scripts.spec.ts`). Screenshots are saved directly into
-`components/secutils-docs/static/img/docs/guides/<topic>/`.
+(`components/secutils-docs/`). Each test file in `e2e/docs/` corresponds to a guide topic —
+`api_keys`, `csp`, `digital_certificates`, `export_import`, `home`, `notification_email`,
+`secrets`, `tags`, `user_scripts`, `web_scraping`, `webhooks`. Screenshots are saved directly
+into `components/secutils-docs/static/img/docs/guides/<topic>/`.
 
 ```bash
 # Run all docs screenshot tests
@@ -668,9 +737,10 @@ The tools output to `/tmp/screenshot-diff/`:
    make docs-screenshots-loop ARGS="docs/csp.spec.ts" RUNS=10
    ```
 
-**Expected residual instability:** With sticky-pixel stabilization, all 159 screenshots
-should be byte-identical across runs.  If new screenshots are added without an existing
-reference file on disk, the first run establishes the baseline; subsequent runs converge.
+**Expected residual instability:** With sticky-pixel stabilization, every screenshot under
+`components/secutils-docs/static/img/docs/guides/` should be byte-identical across runs.  If
+new screenshots are added without an existing reference file on disk, the first run establishes
+the baseline; subsequent runs converge.
 
 **Common instability patterns and their solutions:**
 
@@ -1384,6 +1454,11 @@ Structural zero-valued metrics (e.g. `peak_rss_delta_kb = 0`) are handled explic
   the report, prints the delta table, and appends to history only on material
   movement), uploads `/tmp/perf.json` as an artefact, and commits the updated
   `.perf/history.jsonl` back to `main` with `[skip ci]` in the commit message.
+- The commit happens through `dev/scripts/commit-ci-history.sh`, shared with the `ci-webui`
+  bundle-size job. Both jobs check out the same SHA and race to push, so the script
+  fetch-rebase-retries (up to `PUSH_MAX_ATTEMPTS`, default 5). That is safe only because each
+  job touches a distinct append-only file; do not point a third job at a file another one
+  writes.
 - The commit step is a no-op when nothing moved — `history.jsonl` is unmodified, so
   `git diff --cached --quiet` is true.
 - The job **never fails on regressions**. Warnings are visible in the job log; acting on
@@ -1401,7 +1476,7 @@ benches/js-runtime-perf/scripts/*.js             # JS fixtures loaded via `inclu
 src/lib.rs                                       # Minimal library target exposing `js_runtime`
 .perf/config.json                                # Scenario list + warning thresholds
 .perf/history.jsonl                              # Append-only history (one JSON per run)
-scripts/analyze-perf.ts                          # Node 22 analyzer (reads /tmp/perf.json)
+scripts/analyze-perf.ts                          # Node analyzer, runs on the `.nvmrc` Node (reads /tmp/perf.json)
 scripts/perf-report.html                         # Standalone HTML viewer for history.jsonl
 ```
 
@@ -1417,3 +1492,23 @@ scripts/perf-report.html                         # Standalone HTML viewer for hi
 - Benchmark results are platform-sensitive. History entries include `env.os`, `env.arch`,
   and `env.cpuModel` for this reason; absolute numbers from a laptop are not directly
   comparable to those from a CI runner.
+
+---
+
+## Web UI bundle-size budget (`components/secutils-webui/.bundlesize/`)
+
+`npm --prefix components/secutils-webui run analyze` — the stage 8 gate, and a step in the
+`ci-webui` job — is the bundle-size analogue of the perf harness. `scripts/analyze-bundle.ts`
+measures the tracked bundles in `dist/`, compares them to the last entry in
+`.bundlesize/history.jsonl`, prints a delta table, and appends only when something moved. CI
+commits the updated history back to `main` through the same `commit-ci-history.sh` helper the
+perf job uses.
+
+It reads `dist/` rather than building, so run `npm run build` first — `npm run build:analyze`
+does clean + build + analyze in one go. Like the perf harness it is **advisory**: it exits
+non-zero only when `dist/` is missing, never on a regression.
+
+Budgets live in `.bundlesize/config.json`: percentage thresholds for an individual bundle, a
+category, and the total, plus the `trackedBundles` glob patterns. **A new lazy-loaded workspace
+route needs its pattern added there**, otherwise it lands in the untracked "other chunks"
+bucket and its growth is never reported.

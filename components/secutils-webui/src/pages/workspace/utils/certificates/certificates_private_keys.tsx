@@ -181,7 +181,7 @@ export default function CertificatesPrivateKeys() {
       >
         <EuiFlexItem>
           <EuiEmptyPrompt
-            icon={<EuiIcon type={'securityApp'} size={'xl'} aria-hidden={true} />}
+            icon={<EuiIcon type={'key'} size={'xl'} aria-hidden={true} />}
             title={<h2>You don&apos;t have any private keys yet</h2>}
             titleSize="s"
             style={{ maxWidth: '60em', display: 'flex' }}

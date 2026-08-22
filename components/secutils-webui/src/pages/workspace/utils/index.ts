@@ -52,7 +52,7 @@ export function getUtilIcon(utilHandle: string) {
     case UTIL_HANDLES.workspaceScripts:
       return 'code';
     case UTIL_HANDLES.webhooksResponders:
-      return 'logoWebhook';
+      return 'vectorTriangle';
     case UTIL_HANDLES.certificatesCertificateTemplates:
       return 'document';
     case UTIL_HANDLES.certificatesPrivateKeys:

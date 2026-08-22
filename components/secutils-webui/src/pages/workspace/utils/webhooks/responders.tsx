@@ -216,7 +216,7 @@ export default function Responders() {
       >
         <EuiFlexItem>
           <EuiEmptyPrompt
-            icon={<EuiIcon type={'logoWebhook'} size={'xl'} aria-hidden={true} />}
+            icon={<EuiIcon type={'vectorTriangle'} size={'xl'} aria-hidden={true} />}
             title={<h2>You don&apos;t have any responders yet</h2>}
             titleSize="s"
             style={{ maxWidth: '60em', display: 'flex' }}

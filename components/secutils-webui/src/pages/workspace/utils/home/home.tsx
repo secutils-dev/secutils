@@ -59,7 +59,7 @@ const TOOLS: ToolDefinition[] = [
   {
     id: 'webhooks',
     title: 'Webhooks',
-    icon: 'logoWebhook',
+    icon: 'vectorTriangle',
     description: 'Create mock HTTP APIs, test webhook integrations, and set up honeypot endpoints.',
     utilNames: ['Webhooks', 'Responders'],
     guideUrl: '/docs/guides/webhooks',
@@ -68,7 +68,7 @@ const TOOLS: ToolDefinition[] = [
   {
     id: 'certificates',
     title: 'Digital Certificates',
-    icon: 'securityApp',
+    icon: 'lock',
     description: 'Generate X.509 certificate templates and manage private keys for HTTPS and code signing.',
     utilNames: ['Digital Certificates', 'Certificate templates'],
     guideUrl: '/docs/category/digital-certificates',

@@ -2,6 +2,20 @@
 
 All tools in `dev/tools/` are standalone single-HTML-file apps (embedded CSS + JS) styled to look consistent with the Secutils.dev web application. Use `md.html` as the canonical reference implementation.
 
+This file owns the `dev/tools/` surface only. The repo-root `AGENTS.md` covers everything else
+(API, web UI, docs, e2e, dependency upgrades); CI ignores pushes that only touch `dev/tools/**`,
+so the gates here are `make tools-check` / `make e2e-tools-test`, not the main pipeline.
+
+Roughly grouped, the sections below are: **contracts** (browser-support policy, `su-tool-path`,
+`su-tool-promote`, `{{TOOLS_HOST}}`, `@su:responder-script`, `data-su-bundle`, URL state
+encoding, the AI-agent surface, SEO, OG images) · **visual chrome** (brand colours, typography,
+header, theme toggle, buttons, two-pane layouts, CTA banner, footer, analytics, dialogs,
+popovers, form validation, responsive) · **code** (JavaScript style, long tasks, busy-state,
+polling) · **process** (pre-deploy verification, new-tool checklist, PDF export).
+
+Per-tool deviations from the rules below are called out inline where they exist; the current
+ones are `mock-saml-idp.html` (pre-banner chrome) and `certificate-decoder.html` (ES5 syntax).
+
 ## Browser-support policy
 
 Target **evergreen browsers** (current Chrome / Firefox / Safari / Edge). Allow **Baseline
@@ -74,9 +88,7 @@ When **creating a new tool**, **deleting a tool**, or **changing a tool's alias*
    </a>
    ```
 
-3. **Update the table above** in this AGENTS.md file to keep the mapping accurate.
-
-4. **Update [`e2e/tools/registry.ts`](../../e2e/tools/registry.ts)** - append a row
+3. **Update [`e2e/tools/registry.ts`](../../e2e/tools/registry.ts)** - append a row
    with the tool's slug, source filename, accent color, and OG icon symbol. The
    registry holds **OG-generation and E2E-specific metadata** that does not belong
    in user-facing HTML (accent color, icon glyph, application category). It does
@@ -129,7 +141,10 @@ warning; the README, skill-sibling, and non-promoted-leak checks still run.
 The e2e suite (`e2e/tools/index.spec.ts` and `e2e/tools/registry.spec.ts`)
 covers the inverse - non-promoted tools must be absent from the index page and
 every aggregate, while their `.md` companion must still be reachable. Run it
-after touching either side of that boundary; CI runs it on every push.
+after touching either side of that boundary. **Nothing runs it for you**:
+`dev/tools/**` is in the `paths-ignore` list of `.github/workflows/ci.yml`, so
+a tools-only push starts no CI job at all. Every gate in this file is one you
+invoke by hand.
 
 ## Host config and templating (`{{TOOLS_HOST}}`)
 
@@ -372,8 +387,11 @@ same fast path as for bundle-less tools.
   Typical compression ratio is ~4-5x (a 3 MB raw bundle lands at ~700 KB
   gzipped, ~950 KB base64'd, ~1 MB JSON-encoded -- well under the default
   2 MB PUT cap). Cost is a one-time ~10-20 ms decompression on first use.
-  Today only `pdf-extractor.html` (`liteparse`) needs this; the other
-  bundle-using tools stay on raw inlining.
+  Both bundle-using tools are on it today -- `pdf-extractor.html`
+  (`liteparse`) and `forecast.html` (`micro-ml`) -- so treat
+  `gzip-base64` as the default for a new bundle and only drop back to raw
+  inlining if the bundle is small enough that the decompression hop is not
+  worth it.
 - **Pre-deploy syntax check (#1 in "Pre-deploy verification" below) skips
   `type="text/plain"` blocks** the same way it already skips
   `application/ld+json` ones. The bundle is its own build artifact, validated
@@ -750,14 +768,23 @@ distinct.
 
 Each per-tool HTML carries a uniform header button so humans can discover the
 skill file (the URL is otherwise invisible to non-AI eyes). The href is set at
-runtime from `location.pathname` so the markup is identical across tools:
+runtime from `location.pathname` so the markup is identical across tools -
+hard-coding the href defeats the point, because the same file is served from
+whatever `{{TOOLS_HOST}}` and path the responder is mounted at:
 
 ```js
-const path = location.pathname.replace(/\/$/, '') || '/';
-if (path !== '/') {
-    document.getElementById('skillLink').href = path + '.md';
+const skillLinkEl = document.getElementById('skillLink');
+if (skillLinkEl) {
+    const p = location.pathname;
+    skillLinkEl.href = (p === '/' || p === '') ? '/llms.txt' : p.replace(/\/$/, '') + '.md';
 }
 ```
+
+The `/` branch is defensive - the index deliberately omits the chip (see below),
+so it never runs there. `jwt-debugger.html` is the reference implementation.
+`forecast.html` is the one deviation: it hard-codes
+`href="https://{{TOOLS_HOST}}/forecast.md"` in the markup and omits the mobile
+`.skill-link span { display: none; }` collapse. Do not copy it.
 
 The index page (`/`) deliberately omits this chip. Agents have five
 overlapping ways to find `/llms.txt` from `/` without parsing the HTML:
@@ -889,6 +916,12 @@ or empty tag fails CI.
   banner, **delete** the `<nav class="su-related">` element and the matching
   `.su-related*` CSS rules.
 
+  `mock-saml-idp.html` is the last tool still on the old block - it ships
+  `<nav class="su-related">` with a hand-curated list and has no CTA banner.
+  It is `promote: false`, so the stale list is not linked from anywhere public,
+  which is why the migration has not been forced. Migrate it if you are editing
+  that file for another reason; do not treat its markup as the pattern.
+
 ### Per-tool OG image
 
 Every tool ships a 1200x630 OG image at
@@ -908,7 +941,7 @@ dark and a light PNG per tool into
 verbatim, so the final URLs are stable and unhashed.
 
 ```bash
-# Regenerate every OG image (14 PNGs: dark + light × 7 tools)
+# Regenerate every OG image (a dark + light pair per registry.ts entry, index included)
 make tools-og
 
 # Verify byte-stability (re-runs N times, checks the files do not change)
@@ -1330,7 +1363,8 @@ copyBtn.addEventListener('click', async () => {
 ## Two-pane layouts (`.panel-bar`)
 
 Tools that show a two-pane editor / output split (`certificate-decoder`,
-`saml-decoder`) align the tops of both panel bodies by
+`saml-decoder`, `jwt-debugger`, `pdf-extractor`, `forecast` - grep
+`.panel-bar` for the current set) align the tops of both panel bodies by
 giving each header bar a **fixed** height, not `min-height` and not
 content-driven padding:
 
@@ -1496,7 +1530,7 @@ Two-line layout: the tool description on the first line, the Privacy / Credits l
 </footer>
 ```
 
-Tools whose browser side ships **zero** third-party JS (today: `index.html`, `echo.html` - tiny-inflate is server-side only) omit the Credits link and the middle-dot separator, leaving the fineprint as a single Privacy button.
+Tools whose browser side ships **zero** third-party JS (today: `index.html`, `echo.html` - tiny-inflate is server-side only - and `webhook.html`) omit the Credits link and the middle-dot separator, leaving the fineprint as a single Privacy button.
 
 ```css
 .su-footer {
@@ -1565,7 +1599,13 @@ Three load-bearing details:
   host as the page). Bypasses third-party adblockers that filter `plausible.io`
   or generic analytics domains, and piggybacks on the existing connection pool.
   The host is reverse-proxied to Plausible upstream by the same infra that
-  serves the tools.
+  serves the tools. **This is the one deliberate exception to the
+  `{{TOOLS_HOST}}` rule** - every tool hard-codes the literal host here rather
+  than templating it, because the reverse-proxy route to Plausible is pinned to
+  `tools.secutils.dev` in infra, not derived from the deploy variable. If
+  `SECUTILS_TOOLS_PUBLIC_HOST` is ever changed, this URL must be updated in every
+  `dev/tools/*.html` **and** the proxy route moved with it; templating it would
+  silently point analytics at a host with no `/js/script.js` behind it.
 - **`defer`, not `async`.** `defer` keeps the script's execution ordered
   relative to the inline init shim (which runs in document order after parsing
   finishes) and avoids the tiny race where the queue stub might run before the
@@ -1690,9 +1730,10 @@ chrome wiring:
 
 Three lines: open, close, and a reference. No state, no listeners on the
 backdrop, no manual focus management - the native `<dialog>` handles all of
-that. Tools that ship in IE-era syntax (`var` / `function ()`) like
-`index.html` mirror the same style with `var` instead of `const`; the
-behaviour is identical.
+that. The two tools still on ES5-era syntax (`var` / `function ()`) -
+`index.html` and `certificate-decoder.html` - mirror the same style with `var`
+instead of `const`; the behaviour is identical. New tools use the modern form
+(see "JavaScript Style").
 
 ## Credits dialog (footer)
 
@@ -1714,9 +1755,9 @@ one short and the per-tool diff small.
 
 ### When to omit the link
 
-If a tool ships **zero** third-party browser JS (today: `index.html` and
-`echo.html`), drop both the footer button and the `<dialog>` block - there
-is nothing to credit. Vendored code that runs only inside the
+If a tool ships **zero** third-party browser JS (today: `index.html`,
+`echo.html`, and `webhook.html`), drop both the footer button and the
+`<dialog>` block - there is nothing to credit. Vendored code that runs only inside the
 `@su:responder-script` block (e.g. `echo.html`'s tiny-inflate) does not
 count: the dialog scope is the browser-side experience the user actually
 interacts with.
@@ -1824,9 +1865,9 @@ The `e.target !== dlg` guard skips clicks that bubble from inside the dialog
 content. The `getBoundingClientRect` check is required because the dialog's
 hit-box covers the entire viewport when the backdrop is shown — the rectangle
 comparison is what distinguishes "clicked the backdrop" from "clicked a child
-form control whose own click handler stopped propagation". Tools that ship in
-ES5-style chrome (`index.html`) mirror the same logic with `var` and IIFE
-hoisting; the behaviour is identical and the LOC budget still holds.
+form control whose own click handler stopped propagation". The ES5-style tools
+(`index.html`, `certificate-decoder.html`) mirror the same logic with `var` and
+IIFE hoisting; the behaviour is identical and the LOC budget still holds.
 
 Drop the fallback once Safari's Baseline status flips to Widely Available
 (track via <https://webstatus.dev/features/dialog-closedby>); the `closedby="any"`
@@ -2600,6 +2641,9 @@ that explains it in detail.
    a sibling **Credits** button next to Privacy and a matching `<dialog>` listing
    each library with a GitHub link (see "Credits dialog"). Do NOT add a separate
    `<nav class="su-related">` block - the banner is the sole related-tools surface.
+   If the tool needs server-side logic, embed it as an `@su:responder-script`
+   comment; if it needs an npm package that can't run inline, add a sub-package
+   under `dev/tools/js/` and a `data-su-bundle` placeholder.
 2. **Author the skill** - `dev/tools/<name>.skill.md` as a real Claude Code / Cursor
    SKILL.md (terse `name` + `description` frontmatter, rich Markdown body with `## Inputs`,
    `## Wire format`, `## How to produce the URL` runnable snippet, `## After producing`,
@@ -2614,7 +2658,10 @@ that explains it in detail.
    `SECUTILS_HTML_APP_RESPONDER_ID_<TOOL>` and `SECUTILS_HTML_APP_RESPONDER_ID_<TOOL>_MD`.
    The cross-cutting agent-discovery aggregate IDs (`_LLMS_TXT`, `_ROBOTS_TXT`,
    `_SITEMAP_XML`, `_AGENT_SKILLS_INDEX`) are one-time per environment and re-used
-   for every tool deploy.
+   for every tool deploy. If the tool routes on sub-paths, create the HTML
+   responder as a **prefix** match (`location.pathType: "^"`) - `deploy.ts` never
+   touches `location`, so this cannot be fixed later by re-deploying (see
+   "Responder Script").
 6. **Run the pre-deploy checks** - inline-script syntax (`#1`),
    `html-minifier-terser` dry-run (`#2`), URL-state round-trip (`#3` if applicable),
    responder-script smoke (`#4` if applicable).
