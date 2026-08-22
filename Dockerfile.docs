@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM --platform=$BUILDPLATFORM node:24-alpine3.24@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd AS builder
+FROM --platform=$BUILDPLATFORM node:24-alpine3.24@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS builder
 ARG SECUTILS_ENV="prod"
 ENV SECUTILS_ENV=${SECUTILS_ENV}
 WORKDIR /app
@@ -20,6 +20,6 @@ COPY ["components/secutils-docs/docs", "./docs"]
 COPY ["components/secutils-docs/blog", "./blog"]
 RUN set -x && npm run build && npm run check-llms
 
-FROM nginxinc/nginx-unprivileged:alpine3.24-slim@sha256:d9fa63891743a11eb56ca1b22d8cc227491df183ca3da2cf1bf2c6e010bf19a5
+FROM nginxinc/nginx-unprivileged:alpine3.24-slim@sha256:f08c8378b2ac3a544e3e9ee664c3efb733b5aa53c774ca4ec8d5d0cc641d9e88
 COPY --from=builder ["/app/build/", "/usr/share/nginx/html/docs"]
 COPY ["components/secutils-docs/config/nginx.conf", "/etc/nginx/conf.d/default.conf"]
