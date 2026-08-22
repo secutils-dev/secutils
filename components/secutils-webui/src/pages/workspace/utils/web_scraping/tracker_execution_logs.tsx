@@ -60,7 +60,7 @@ function PhaseDetails({ phases }: { phases: TrackerExecutionLogPhase[] }) {
             <EuiFlexGroup gutterSize="xs" alignItems="center" responsive={false}>
               {i > 0 && (
                 <EuiFlexItem grow={false}>
-                  <EuiIcon type="sortRight" size="s" color="subdued" />
+                  <EuiIcon type="sortRight" size="s" color="subdued" aria-hidden={true} />
                 </EuiFlexItem>
               )}
               <EuiFlexItem grow={false}>
@@ -147,7 +147,7 @@ export function TrackerExecutionLogs({ kind, tracker }: TrackerExecutionLogsProp
         sortable: true,
         render: (hasChanges: boolean | undefined) =>
           hasChanges === true ? (
-            <EuiBadge color="primary" iconType="indexEdit">
+            <EuiBadge color="primary" iconType="tablePencil">
               Yes
             </EuiBadge>
           ) : hasChanges === false ? (
@@ -228,7 +228,7 @@ export function TrackerExecutionLogs({ kind, tracker }: TrackerExecutionLogsProp
           }
           return (
             <EuiIcon
-              type={expandedRows[log.id] ? 'arrowDown' : 'arrowRight'}
+              type={expandedRows[log.id] ? 'chevronSingleDown' : 'chevronSingleRight'}
               onClick={() => toggleRow(log)}
               css={css`
                 cursor: pointer;
@@ -303,7 +303,7 @@ export function TrackerExecutionLogs({ kind, tracker }: TrackerExecutionLogsProp
   if (logs.data.length === 0) {
     return (
       <EuiEmptyPrompt
-        iconType="editorComment"
+        iconType="comment"
         titleSize="xs"
         title={<h3>No execution logs yet</h3>}
         body={<p>Logs will appear after the tracker runs.</p>}

@@ -47,7 +47,7 @@ export function TagsFilter({ tags, selectedTagIds, onSelectedTagIdsChange }: Tag
         <EuiPopover
           button={
             <EuiFilterButton
-              iconType="arrowDown"
+              iconType="chevronSingleDown"
               onClick={() => setIsPopoverOpen(!isPopoverOpen)}
               isSelected={isPopoverOpen}
               numFilters={tags.length}

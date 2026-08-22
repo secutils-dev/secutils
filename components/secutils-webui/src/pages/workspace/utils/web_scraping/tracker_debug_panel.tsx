@@ -126,7 +126,7 @@ function ScriptDetail({ label, data, params }: { label: string; data: ScriptDebu
         <>
           <EuiSpacer size="s" />
           {data.error ? (
-            <EuiCallOut title={`${label} script failed`} color="danger" iconType="error" size="s">
+            <EuiCallOut announceOnMount title={`${label} script failed`} color="danger" iconType="error" size="s">
               <p>{data.error}</p>
             </EuiCallOut>
           ) : data.result != null ? (
@@ -312,7 +312,7 @@ function RequestDetail({ data }: { data: ApiRequestDebugInfo }) {
       {data.error ? (
         <>
           <EuiSpacer size="s" />
-          <EuiCallOut title="Request failed" color="danger" iconType="error" size="s">
+          <EuiCallOut announceOnMount title="Request failed" color="danger" iconType="error" size="s">
             <p>{data.error}</p>
           </EuiCallOut>
         </>
@@ -469,7 +469,7 @@ function ResultDetail({ debugResult }: { debugResult: DebugResult }) {
       {debugResult.error ? (
         <>
           <EuiSpacer size="s" />
-          <EuiCallOut title="Pipeline failed" color="danger" iconType="error" size="s">
+          <EuiCallOut announceOnMount title="Pipeline failed" color="danger" iconType="error" size="s">
             <p>{debugResult.error}</p>
           </EuiCallOut>
         </>
@@ -611,7 +611,7 @@ export function TrackerDebugPanel({ isOpen, onClose, onStatusChange, buildDebugR
       ) : (
         <EuiModalBody style={{ minHeight: 0 }}>
           {result?.status === 'failed' ? (
-            <EuiCallOut title="Debug request failed" color="danger" iconType="error" size="s">
+            <EuiCallOut announceOnMount title="Debug request failed" color="danger" iconType="error" size="s">
               <p>{result.error}</p>
             </EuiCallOut>
           ) : null}

@@ -1,3 +1,4 @@
+import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 
 import { assertSeoBasics, assertSkillMd, getTool } from './_helpers';
@@ -7,7 +8,7 @@ const tool = getTool('md');
 // Drives the imperative editor API the page exposes once the editor mounts
 // (CodeMirror from esm.sh, or a <textarea> fallback). This keeps tests
 // independent of the editor's internal DOM.
-async function setMarkdown(page: import('@playwright/test').Page, md: string): Promise<void> {
+async function setMarkdown(page: Page, md: string): Promise<void> {
   await page.waitForFunction(() => typeof (window as { __suEditorAPI?: unknown }).__suEditorAPI !== 'undefined');
   await page.evaluate((text) => {
     (window as { __suEditorAPI: { setText(t: string): void } }).__suEditorAPI.setText(text);
@@ -134,7 +135,7 @@ test.describe(`${tool.name} (${tool.path})`, () => {
       '<main><article><h1>Rendered</h1></article></main>',
       '<script type="text/markdown" id="su-md-source" data-source="markdown">',
       '# Round trip\n\nConsole: `console.log("<\\/script>")`',
-      '<\/script>',
+      '</script>',
       '</body></html>',
     ].join('\n');
 

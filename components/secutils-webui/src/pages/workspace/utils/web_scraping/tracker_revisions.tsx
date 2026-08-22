@@ -310,7 +310,7 @@ export function TrackerRevisions({ kind, tracker, onHealthRefreshNeeded, childre
       >
         <EuiFlexItem>
           <EuiEmptyPrompt
-            icon={<EuiIcon type={'securitySignalDetected'} size={'xl'} />}
+            icon={<EuiIcon type={'securitySignalDetected'} size={'xl'} aria-hidden={true} />}
             title={<h2>Nothing has been tracked yet</h2>}
             body={
               <div>
@@ -351,9 +351,9 @@ export function TrackerRevisions({ kind, tracker, onHealthRefreshNeeded, childre
           <EuiFlexItem grow={false}>
             <EuiFlexGroup alignItems="center" responsive={false} gutterSize="xs">
               <EuiFlexItem grow={false}>
-                <EuiToolTip content="Newer revision">
+                <EuiToolTip content="Newer revision" disableScreenReaderOutput>
                   <EuiButtonIcon
-                    iconType="arrowLeft"
+                    iconType="chevronSingleLeft"
                     aria-label="Newer revision"
                     isDisabled={isLoading || !canGoNewer}
                     onClick={() => setRevisionIndex((i) => (i !== null && i > 0 ? i - 1 : i))}
@@ -374,9 +374,9 @@ export function TrackerRevisions({ kind, tracker, onHealthRefreshNeeded, childre
                 />
               </EuiFlexItem>
               <EuiFlexItem grow={false}>
-                <EuiToolTip content="Older revision">
+                <EuiToolTip content="Older revision" disableScreenReaderOutput>
                   <EuiButtonIcon
-                    iconType="arrowRight"
+                    iconType="chevronSingleRight"
                     aria-label="Older revision"
                     isDisabled={isLoading || !canGoOlder}
                     onClick={() => setRevisionIndex((i) => (i !== null && i < totalRevisions - 1 ? i + 1 : i))}
@@ -432,7 +432,7 @@ export function TrackerRevisions({ kind, tracker, onHealthRefreshNeeded, childre
             </EuiFlexItem>
             {!isLogsMode && totalRevisions > 0 && (
               <EuiFlexItem grow={false}>
-                <EuiToolTip content="Update">
+                <EuiToolTip content="Update" disableScreenReaderOutput>
                   <EuiButtonIcon
                     iconType="refresh"
                     aria-label="Update"
@@ -444,7 +444,7 @@ export function TrackerRevisions({ kind, tracker, onHealthRefreshNeeded, childre
             )}
             {(isLogsMode || totalRevisions > 0) && (
               <EuiFlexItem grow={false}>
-                <EuiToolTip content={isLogsMode ? 'Clear logs' : 'Clear history'}>
+                <EuiToolTip content={isLogsMode ? 'Clear logs' : 'Clear history'} disableScreenReaderOutput>
                   <EuiButtonIcon
                     iconType="cross"
                     color="danger"

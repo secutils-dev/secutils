@@ -152,6 +152,7 @@ export default function ScriptEditFlyout({
             }
           >
             <EuiFieldText
+              isInvalid={name.length > 0 && !nameValid}
               name="scriptName"
               value={name}
               onChange={(e) => setName(e.target.value)}

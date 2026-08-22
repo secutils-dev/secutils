@@ -24,7 +24,7 @@ export function PageErrorState({ title, content, action }: PageErrorStateProps) 
       content={content}
       action={actionNode}
       color={'danger'}
-      icon={<EuiIcon type={'warning'} color={'danger'} size={'xl'} />}
+      icon={<EuiIcon type={'warning'} color={'danger'} size={'xl'} aria-hidden={true} />}
     />
   );
 }

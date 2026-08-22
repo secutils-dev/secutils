@@ -114,10 +114,11 @@ do not skip steps even when the previous stage was green.
   always present. Removing the execArgv flag in `worker.ts` is mandatory; **also**
   `delete (globalThis as { crypto?: unknown }).crypto;` inside the sandboxed user-script
   worker so user code cannot reach the host's `WebCrypto` API.
-- **ESLint 10** ships `preserve-caught-error` (rethrow with `{ cause: err }`) and
-  `eslint-plugin-import@2.32.0` does not yet support v10 as a peer. The whole project is
-  pinned to **ESLint 9.x** until plugin support catches up. Do not bump `eslint` /
-  `@eslint/js` past `^9` in any leaf `package.json`.
+- **ESLint 10 is per-package, not project-wide.** `e2e` and `retrack-web-scraper` are on v10;
+  `secutils-webui` is held on **9.x** by `eslint-plugin-react` and `@elastic/eslint-plugin-eui`,
+  which both cap their peer at `^9`, so it can only move when they publish v10 support — check
+  their peer ranges before trying. v10 also ships `preserve-caught-error` (rethrow with
+  `{ cause: err }`).
 - **TypeScript 6** deprecates `compilerOptions.baseUrl`. Remove it and migrate any `paths`
   entries to direct relative imports. The root project is pinned to **TS 5.9.x** because
   Docusaurus and EUI's TS consumers have not validated v6 yet.
@@ -138,6 +139,22 @@ do not skip steps even when the previous stage was green.
 - **EUI majors** read the entire CHANGELOG. Common patterns: token renames in CSS-in-JS
   (`euiTheme.colors.*`), new required props on data-grid, default ARIA-label changes that
   break `getByRole({ name: ... })` selectors in e2e tests.
+- **EUI icon removals pass every check we have.** `IconType` resolves through an unpublished
+  EUI path, so it degrades to `string`: a removed glyph survives lint, vitest, `parcel build`
+  and the analyzer, then renders as an empty box. Majors drop glyphs by the dozen, so diff
+  `typeToPathMap` (`es/components/icon/icon_map.js`) between the two versions, then grep
+  `src/` for **every quoted occurrence** of each removed name — grepping `iconType=` misses
+  ternaries, helpers that return a bare name, and empty-state `EuiIcon`s. Filter non-icon
+  homonyms by hand (`type={'email'}` on an input is not a glyph).
+- **`@elastic/eui/no-deprecated-icon-aliases` covers aliases, not removals**, and it only reads
+  JSX props — a helper returning a bare glyph name is invisible to it, so keep the grep. It is
+  the one EUI rule set to `error`; the rest of the plugin is advisory.
+- **Let the user pick when the successor is a judgement call.** Renames are mechanical, but a
+  metaphorical glyph is a design decision that a list of names cannot settle. Render the old
+  glyph (from the previous version's `npm pack`, since the new one no longer ships it) beside
+  the candidates in a throwaway HTML page, screenshot it, and embed it in the reply.
+- **Any EUI bump can invalidate docs screenshots**, and a glyph change always does — re-run
+  `make docs-screenshots` inside stage 8.
 - **`playwright-core` and `@playwright/test` must share a minor.** The webui pins
   `playwright-core` (used at runtime to render preview), retrack pins it for the scraper,
   and the e2e harness pins `@playwright/test`. They drive the same Chromium and the same
@@ -145,7 +162,9 @@ do not skip steps even when the previous stage was green.
   bumping, run `make e2e-standalone-test` first; the codegen smoke test detects breaking
   changes to Playwright's `--target` boilerplate before they corrupt the webui's script
   transformer. All four Playwright surfaces (webui/scraper `playwright-core`, e2e
-  `@playwright/test`, camoufox `playwright-python`) are currently unified at `1.61.0`.
+  `@playwright/test`, camoufox `playwright-python`) are currently on `1.61.x`, so `npm
+  outdated` in `e2e` reports a newer Playwright indefinitely — that bump belongs to the
+  coordinated stages 3/8/11, never to `e2e` alone.
 - **Do not pass a `logger` option to `connect`/`connectOverCDP`.** It is not a valid
   `ConnectOptions`/`ConnectOverCDPOptions` field (only *launch* options accept one), so
   `retrack-web-scraper`'s `connectToBrowserServer` must not forward one. For connect-time
@@ -272,6 +291,19 @@ make e2e-down
 make e2e-standalone-test
 ```
 
+**Getting a code change into the stack.** The `make docker-*` targets tag their own images and
+the e2e stack does not use them, so a `make docker-webui` never reaches the tests. `BUILD=1`
+does, but it rebuilds every buildable service including the Rust API. For a single service,
+rebuild just that one:
+
+```bash
+docker compose -f dev/docker/docker-compose.yml -f dev/docker/docker-compose.e2e.yml \
+  --env-file .env up -d --build secutils_webui
+```
+
+When a test disagrees with the source, confirm the change is actually being served before
+debugging the test — grep the built asset in the container.
+
 ### Standalone tests (`e2e/standalone/`)
 
 Standalone tests validate tooling and transformers against the currently installed Playwright
@@ -353,6 +385,14 @@ mirror how a real user perceives the page.
    ```typescript
    page.locator('input[name="password"], input[name="identifier"], form');
    ```
+
+For EUI internals that have no semantic locator, prefer the component objects from
+`@elastic/eui-test-helpers` (data grid, toast list, combo box, super select) over hand-written
+class selectors. They need `testIdAttribute: 'data-test-subj'` in the Playwright config and a
+`data-test-subj` on the EUI component itself, and they resolve their root with `getByTestId` —
+so a wrong or missing subj makes them **silently do nothing** rather than fail. In a shared
+helper, assert the root is attached first. They do not cover everything (e.g. data-grid header
+cells and resize handles), so raw locators remain the fallback.
 
 ### Timeouts
 
@@ -622,17 +662,19 @@ reference file on disk, the first run establishes the baseline; subsequent runs 
 
 **Common instability patterns and their solutions:**
 
-| Symptom                     | Likely Cause                                 | Fix                                                                     |
-|-----------------------------|----------------------------------------------|-------------------------------------------------------------------------|
-| Byte-diff but no pixel diff | PNG DEFLATE non-determinism or ±1 AA jitter  | `stabilizeScreenshot()` (automatic - restores reference file)           |
-| Text changes between runs   | Relative timestamps ("a few seconds ago")    | `fixEntityTimestamps()` or `pinEntityTimestamps()`                      |
-| URL segments differ         | User-specific webhook subdomain              | Automatic DOM normalization in `waitForStableUiBeforeScreenshot`        |
-| Random subdomain in flyout  | Auto-generated prefix in "Add responder"     | `await flyout.getByLabel('Subdomain prefix').clear()` before screenshot |
-| ±1 diffs at icon/text edges | Sub-pixel anti-aliasing between browser runs | Handled by sticky-pixel stabilization (automatic)                       |
-| Thin line diffs at edges    | Scrollbar visibility                         | Hidden by stability CSS (`::-webkit-scrollbar`)                         |
-| Monaco editor differences   | Cursor, minimap, decorations                 | Hidden by stability CSS                                                 |
-| Clipped region shifts       | Tooltip/bounding box sub-pixel jitter        | Use `Math.floor`/`Math.ceil` + generous padding                         |
-| Animation artifacts         | CSS transitions captured in screenshot       | `addStyleTag` after `goto()` disables transitions before screenshots    |
+| Symptom                     | Likely Cause                                     | Fix                                                                     |
+|-----------------------------|--------------------------------------------------|-------------------------------------------------------------------------|
+| Byte-diff but no pixel diff | PNG DEFLATE non-determinism or ±1 AA jitter      | `stabilizeScreenshot()` (automatic - restores reference file)           |
+| Text changes between runs   | Relative timestamps ("a few seconds ago")        | `fixEntityTimestamps()` or `pinEntityTimestamps()`                      |
+| URL segments differ         | User-specific webhook subdomain                  | Automatic DOM normalization in `waitForStableUiBeforeScreenshot`        |
+| Random subdomain in flyout  | Auto-generated prefix in "Add responder"         | `await flyout.getByLabel('Subdomain prefix').clear()` before screenshot |
+| ±1 diffs at icon/text edges | Sub-pixel anti-aliasing between browser runs     | Handled by sticky-pixel stabilization (automatic)                       |
+| Thin line diffs at edges    | Scrollbar visibility                             | Hidden by stability CSS (`::-webkit-scrollbar`)                         |
+| Monaco editor differences   | Cursor, minimap, decorations                     | Hidden by stability CSS                                                 |
+| Clipped region shifts       | Tooltip/bounding box sub-pixel jitter            | Use `Math.floor`/`Math.ceil` + generous padding                         |
+| Animation artifacts         | CSS transitions captured in screenshot           | `addStyleTag` after `goto()` disables transitions before screenshots    |
+| Red highlight missing       | Re-render replaced the node `highlightOn` styled | `highlightOn` settles the UI first (automatic)                          |
+| Few-pixel diffs             | AA jitter above the sticky threshold             | Accepted residual; do not widen `MAX_CHANNEL_DIFF`                      |
 
 **Important: Do NOT use `addInitScript` to inject stability CSS.** Injecting
 `transition-duration: 0s` before the React app renders prevents `transitionend` events from

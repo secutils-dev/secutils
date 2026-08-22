@@ -58,7 +58,7 @@ export default function WorkspaceScripts() {
 
   const createButton = useMemo(
     () => (
-      <EuiButton iconType={'plusInCircle'} title="Create a new script" fill onClick={() => setScriptToEdit({})}>
+      <EuiButton iconType={'plusCircle'} title="Create a new script" fill onClick={() => setScriptToEdit({})}>
         Add script
       </EuiButton>
     ),
@@ -213,7 +213,7 @@ export default function WorkspaceScripts() {
       >
         <EuiFlexItem>
           <EuiEmptyPrompt
-            icon={<EuiIcon type={'editorCodeBlock'} size={'xl'} />}
+            icon={<EuiIcon type={'code'} size={'xl'} aria-hidden={true} />}
             title={<h2>No scripts yet</h2>}
             titleSize="s"
             style={{ maxWidth: '60em', display: 'flex' }}

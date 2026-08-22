@@ -98,6 +98,9 @@ jobs:
       - name: Install dependencies
         run: npm --prefix components/secutils-webui ci
 
+      - name: Lint
+        run: npm --prefix components/secutils-webui run lint
+
       - name: Test
         run: npm --prefix components/secutils-webui run test
 
@@ -285,6 +288,10 @@ jobs:
         run: |
           npm ci
           npx playwright install --with-deps chromium
+
+      - name: Lint
+        working-directory: e2e
+        run: npm run lint
 
       - name: Run standalone tests (no Docker stack needed)
         working-directory: e2e

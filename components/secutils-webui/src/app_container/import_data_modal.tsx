@@ -55,14 +55,14 @@ interface EntityRowConfig {
 const ENTITY_ROW_CONFIGS: EntityRowConfig[] = [
   { id: 'settings', label: 'Settings', icon: 'gear' },
   { id: 'tags', label: 'Tags', icon: 'tag' },
-  { id: 'scripts', label: 'Scripts', icon: 'console' },
+  { id: 'scripts', label: 'Scripts', icon: 'commandLine' },
   { id: 'secrets', label: 'Secrets', icon: 'lock' },
-  { id: 'responders', label: 'Responders', icon: 'node' },
+  { id: 'responders', label: 'Responders', icon: 'logoWebhook' },
   { id: 'certificateTemplates', label: 'Certificate Templates', icon: 'securityApp' },
   { id: 'privateKeys', label: 'Private Keys', icon: 'securityApp' },
   { id: 'contentSecurityPolicies', label: 'Content Security Policies', icon: 'globe' },
-  { id: 'pageTrackers', label: 'Page Trackers', icon: 'cut' },
-  { id: 'apiTrackers', label: 'API Trackers', icon: 'cut' },
+  { id: 'pageTrackers', label: 'Page Trackers', icon: 'scissors' },
+  { id: 'apiTrackers', label: 'API Trackers', icon: 'scissors' },
 ];
 
 interface ImportItem {
@@ -596,7 +596,13 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize, 
           {deleteItems.length > 0 && (
             <>
               {items.length > 0 && <EuiSpacer size="s" />}
-              <EuiCallOut title={`${deleteItems.length} item(s) not in file`} color="danger" size="s" iconType="trash">
+              <EuiCallOut
+                announceOnMount
+                title={`${deleteItems.length} item(s) not in file`}
+                color="danger"
+                size="s"
+                iconType="trash"
+              >
                 <EuiText size="xs" color="subdued">
                   Check items you want to delete. Unchecked items will be kept.
                 </EuiText>
@@ -786,7 +792,7 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize, 
         render: (_label: string, row: EntityRowConfig) => (
           <EuiFlexGroup gutterSize="s" alignItems="center" responsive={false}>
             <EuiFlexItem grow={false}>
-              <EuiIcon type={row.icon} size="m" />
+              <EuiIcon type={row.icon} size="m" aria-hidden={true} />
             </EuiFlexItem>
             <EuiFlexItem grow={false}>
               <strong>{row.label}</strong>
@@ -829,7 +835,7 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize, 
             <EuiButtonIcon
               onClick={() => toggleExpanded(row.id)}
               aria-label={expandedRows[row.id] ? 'Collapse' : 'Expand'}
-              iconType={expandedRows[row.id] ? 'arrowDown' : 'arrowRight'}
+              iconType={expandedRows[row.id] ? 'chevronSingleDown' : 'chevronSingleRight'}
             />
           );
         },
@@ -868,13 +874,19 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize, 
         {parseError && (
           <>
             <EuiSpacer size="s" />
-            <EuiCallOut title={parseError} color="danger" size="s" />
+            <EuiCallOut announceOnMount title={parseError} color="danger" size="s" />
           </>
         )}
         {fileHasEncryptedSecrets && (
           <>
             <EuiSpacer size="s" />
-            <EuiCallOut title="This file contains encrypted secret values." color="primary" size="s" iconType="lock">
+            <EuiCallOut
+              announceOnMount
+              title="This file contains encrypted secret values."
+              color="primary"
+              size="s"
+              iconType="lock"
+            >
               <EuiFieldPassword
                 placeholder="Enter passphrase to decrypt secrets"
                 value={secretsPassphrase}
@@ -913,12 +925,18 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize, 
       <>
         {importUrl && (
           <>
-            <EuiCallOut title="Importing sample data from documentation" color="primary" size="s" iconType="document" />
+            <EuiCallOut
+              announceOnMount
+              title="Importing sample data from documentation"
+              color="primary"
+              size="s"
+              iconType="document"
+            />
             <EuiSpacer size="s" />
           </>
         )}
         {(preview.warnings ?? []).map((w, i) => (
-          <EuiCallOut key={i} title={w} color="warning" size="s" iconType="warning" />
+          <EuiCallOut announceOnMount key={i} title={w} color="warning" size="s" iconType="warning" />
         ))}
         {(preview.warnings ?? []).length > 0 && <EuiSpacer size="s" />}
 
@@ -981,7 +999,7 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize, 
     }
     content = (
       <>
-        <EuiCallOut title="Import complete" color="success" iconType="check">
+        <EuiCallOut announceOnMount title="Import complete" color="success" iconType="check">
           {Object.entries(importResult).map(([key, res]) => (
             <p key={key}>
               <strong>{entityTypeLabels[key] ?? key}</strong>: {res.imported} imported
@@ -996,7 +1014,7 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize, 
         {Object.entries(importResult).some(([, res]) => res.errors.length > 0) && (
           <>
             <EuiSpacer size="s" />
-            <EuiCallOut title="Errors" color="danger" size="s" iconType="warning">
+            <EuiCallOut announceOnMount title="Errors" color="danger" size="s" iconType="warning">
               {Object.entries(importResult)
                 .filter(([, res]) => res.errors.length > 0)
                 .map(([key, res]) => (
@@ -1043,7 +1061,7 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize, 
               fill
               color={mode === 'apply' ? 'danger' : 'primary'}
               isLoading={importing}
-              iconType="importAction"
+              iconType="upload"
             >
               {mode === 'apply' ? 'Apply' : 'Import'}
             </EuiButton>

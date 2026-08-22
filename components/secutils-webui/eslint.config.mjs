@@ -1,5 +1,6 @@
 // @ts-check
 
+import euiPlugin from '@elastic/eslint-plugin-eui';
 import eslint from '@eslint/js';
 import tsEsLint from 'typescript-eslint';
 import react from 'eslint-plugin-react';
@@ -81,6 +82,16 @@ export default tsEsLint.config(
           ignoreDeclarationSort: true,
         },
       ],
+    },
+  },
+  {
+    files: ['**/*.ts', '**/*.tsx'],
+    // The plugin still ships an eslintrc-style config (`plugins` as a string array), so the flat
+    // config has to register it by hand; only the rule map is reusable.
+    plugins: { '@elastic/eui': euiPlugin },
+    rules: {
+      ...euiPlugin.configs.recommended.rules,
+      '@elastic/eui/no-deprecated-icon-aliases': 'error',
     },
   },
   eslintPluginPrettierRecommended,

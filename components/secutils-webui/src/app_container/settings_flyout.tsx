@@ -369,7 +369,7 @@ export default function SettingsFlyout({ onClose, importUrl, onImportUrlConsumed
               {uiState.user?.isActivated ? null : (
                 <>
                   <EuiButtonEmpty
-                    iconType={'email'}
+                    iconType={'mail'}
                     color={'danger'}
                     target="_blank"
                     title={'Activate your account to access all features.'}
@@ -458,12 +458,12 @@ export default function SettingsFlyout({ onClose, importUrl, onImportUrlConsumed
           <EuiFormRow fullWidth>
             <EuiFlexGroup>
               <EuiFlexItem grow={false}>
-                <EuiButton iconType="exportAction" onClick={() => setExportModalVisible(true)}>
+                <EuiButton iconType="download" onClick={() => setExportModalVisible(true)}>
                   Export data
                 </EuiButton>
               </EuiFlexItem>
               <EuiFlexItem grow={false}>
-                <EuiButton iconType="importAction" onClick={() => setImportModalVisible(true)}>
+                <EuiButton iconType="upload" onClick={() => setImportModalVisible(true)}>
                   Import data
                 </EuiButton>
               </EuiFlexItem>

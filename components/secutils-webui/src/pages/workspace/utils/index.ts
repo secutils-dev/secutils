@@ -50,15 +50,15 @@ export function getUtilIcon(utilHandle: string) {
     case UTIL_HANDLES.workspaceSecrets:
       return 'lock';
     case UTIL_HANDLES.workspaceScripts:
-      return 'editorCodeBlock';
+      return 'code';
     case UTIL_HANDLES.webhooksResponders:
-      return 'node';
+      return 'logoWebhook';
     case UTIL_HANDLES.certificatesCertificateTemplates:
       return 'document';
     case UTIL_HANDLES.certificatesPrivateKeys:
       return 'key';
     case UTIL_HANDLES.webSecurityCsp:
-      return 'documents';
+      return 'globe';
     case UTIL_HANDLES.webScrapingPage:
       return 'article';
     case UTIL_HANDLES.webScrapingApi:

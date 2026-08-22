@@ -74,14 +74,14 @@ interface EntityRow {
 const ENTITY_ROWS: EntityRow[] = [
   { id: 'settings', label: 'Settings', icon: 'gear' },
   { id: 'tags', label: 'Tags', icon: 'tag' },
-  { id: 'scripts', label: 'Scripts', icon: 'console' },
+  { id: 'scripts', label: 'Scripts', icon: 'commandLine' },
   { id: 'secrets', label: 'Secrets', icon: 'lock' },
-  { id: 'responders', label: 'Responders', icon: 'node', historyKey: 'responders' },
+  { id: 'responders', label: 'Responders', icon: 'logoWebhook', historyKey: 'responders' },
   { id: 'certificateTemplates', label: 'Certificate Templates', icon: 'securityApp' },
   { id: 'privateKeys', label: 'Private Keys', icon: 'securityApp' },
   { id: 'contentSecurityPolicies', label: 'Content Security Policies', icon: 'globe' },
-  { id: 'pageTrackers', label: 'Page Trackers', icon: 'cut', historyKey: 'pageTrackers' },
-  { id: 'apiTrackers', label: 'API Trackers', icon: 'cut', historyKey: 'apiTrackers' },
+  { id: 'pageTrackers', label: 'Page Trackers', icon: 'scissors', historyKey: 'pageTrackers' },
+  { id: 'apiTrackers', label: 'API Trackers', icon: 'scissors', historyKey: 'apiTrackers' },
 ];
 
 interface NamedItem {
@@ -360,6 +360,7 @@ export default function ExportDataModal({ addToast, onClose }: Props) {
                 <>
                   <EuiSpacer size="s" />
                   <EuiCallOut
+                    announceOnMount
                     title="This file will contain encrypted secret values. Keep it secure and remember your passphrase."
                     color="warning"
                     size="s"
@@ -476,7 +477,7 @@ export default function ExportDataModal({ addToast, onClose }: Props) {
         render: (_label: string, row: EntityRow) => (
           <EuiFlexGroup gutterSize="s" alignItems="center" responsive={false}>
             <EuiFlexItem grow={false}>
-              <EuiIcon type={row.icon} size="m" />
+              <EuiIcon type={row.icon} size="m" aria-hidden={true} />
             </EuiFlexItem>
             <EuiFlexItem grow={false}>
               <strong>{row.label}</strong>
@@ -514,7 +515,7 @@ export default function ExportDataModal({ addToast, onClose }: Props) {
             <EuiButtonIcon
               onClick={() => toggleExpanded(row)}
               aria-label={expandedRows[row.id] ? 'Collapse' : 'Expand'}
-              iconType={expandedRows[row.id] ? 'arrowDown' : 'arrowRight'}
+              iconType={expandedRows[row.id] ? 'chevronSingleDown' : 'chevronSingleRight'}
             />
           );
         },
@@ -562,7 +563,7 @@ export default function ExportDataModal({ addToast, onClose }: Props) {
             loading ||
             (includeSecretValues && (secretsPassphrase.length < 8 || secretsPassphrase !== secretsPassphraseRepeat))
           }
-          iconType="exportAction"
+          iconType="download"
         >
           Export {hasAnythingSelected ? `(${totalSelected + (includeSettings ? 1 : 0)} items)` : ''}
         </EuiButton>

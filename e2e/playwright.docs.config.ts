@@ -9,6 +9,9 @@ export default defineConfig({
   use: {
     baseURL: process.env.BASE_URL ?? 'http://localhost:7171',
     screenshot: 'only-on-failure',
+    // Required by @elastic/eui-test-helpers component objects, which resolve their root
+    // locator with getByTestId.
+    testIdAttribute: 'data-test-subj',
     video: 'off',
     trace: 'off',
     viewport: { width: 1600, height: 900 },

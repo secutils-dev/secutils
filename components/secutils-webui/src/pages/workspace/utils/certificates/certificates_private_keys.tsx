@@ -49,7 +49,7 @@ export default function CertificatesPrivateKeys() {
   const createButton = useMemo(
     () => (
       <EuiButton
-        iconType={'plusInCircle'}
+        iconType={'plusCircle'}
         title="Create a new private key"
         fill
         onClick={() => setPrivateKeyToEdit(undefined)}
@@ -181,7 +181,7 @@ export default function CertificatesPrivateKeys() {
       >
         <EuiFlexItem>
           <EuiEmptyPrompt
-            icon={<EuiIcon type={'securityApp'} size={'xl'} />}
+            icon={<EuiIcon type={'securityApp'} size={'xl'} aria-hidden={true} />}
             title={<h2>You don&apos;t have any private keys yet</h2>}
             titleSize="s"
             style={{ maxWidth: '60em', display: 'flex' }}
@@ -202,6 +202,7 @@ export default function CertificatesPrivateKeys() {
       settings?.[PRIVATE_KEYS_PROD_WARNING_USER_SETTINGS_KEY] === true ? null : (
         <div>
           <EuiCallOut
+            announceOnMount
             title="Don't use generated private keys in production environments"
             color="warning"
             iconType="warning"
@@ -254,7 +255,8 @@ export default function CertificatesPrivateKeys() {
               name: (
                 <EuiToolTip content="A unique name of the private key">
                   <span>
-                    Name <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" />
+                    Name{' '}
+                    <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" aria-hidden={true} />
                   </span>
                 </EuiToolTip>
               ),
@@ -272,7 +274,8 @@ export default function CertificatesPrivateKeys() {
               name: (
                 <EuiToolTip content="Algorithm used to generate a private key.">
                   <span>
-                    Type <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" />
+                    Type{' '}
+                    <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" aria-hidden={true} />
                   </span>
                 </EuiToolTip>
               ),
@@ -286,7 +289,8 @@ export default function CertificatesPrivateKeys() {
               name: (
                 <EuiToolTip content="Indicates whether the private key is encrypted with a passphrase or not.">
                   <span>
-                    Encryption <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" />
+                    Encryption{' '}
+                    <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" aria-hidden={true} />
                   </span>
                 </EuiToolTip>
               ),

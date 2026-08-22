@@ -90,6 +90,7 @@ export function ContentSecurityPolicyShareModal({ policy, onClose }: ContentSecu
     userShare?.status === 'failed' ? (
       <EuiFormRow>
         <EuiCallOut
+          announceOnMount
           size="s"
           title={userShare.error ?? 'An error occurred, please try again later'}
           color="danger"

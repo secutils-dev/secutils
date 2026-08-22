@@ -1,1 +1,1 @@
-import 'monaco-editor/esm/vs/language/typescript/ts.worker.js';
+import 'monaco-editor/languages/features/typescript/ts.worker.js';

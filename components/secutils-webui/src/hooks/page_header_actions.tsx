@@ -113,7 +113,7 @@ export function usePageHeaderActions() {
               </EuiContextMenuItem>,
               <EuiContextMenuItem
                 key="signout"
-                icon="exit"
+                icon="logOut"
                 onClick={() => {
                   setIsAccountPopoverOpen(false);
 

@@ -153,7 +153,7 @@ export function WorkspacePage() {
           id: util.handle,
           name: util.name,
           onClick: () => toggleSection(util.handle),
-          icon: <EuiIcon type={isOpen ? 'arrowDown' : 'arrowRight'} size="s" />,
+          icon: <EuiIcon type={isOpen ? 'chevronSingleDown' : 'chevronSingleRight'} size="s" aria-hidden={true} />,
           items: isOpen ? childItems : undefined,
           isSelected: false,
         };
@@ -164,7 +164,7 @@ export function WorkspacePage() {
         id: util.handle,
         name: util.name,
         href: childItems ? undefined : utilUrl,
-        icon: utilIcon ? <EuiIcon type={utilIcon} /> : undefined,
+        icon: utilIcon ? <EuiIcon type={utilIcon} aria-hidden={true} /> : undefined,
         isSelected: selectedUtil?.handle === util.handle && !deepLinkFromParam,
         items: childItems,
         forceOpen: childItems ? false : undefined,
@@ -241,6 +241,7 @@ export function WorkspacePage() {
       `}
       type={utilIcon}
       size={'xl'}
+      aria-hidden={true}
     />
   ) : null;
 

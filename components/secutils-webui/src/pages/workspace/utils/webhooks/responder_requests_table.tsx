@@ -370,7 +370,7 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
       >
         <EuiFlexItem>
           <EuiEmptyPrompt
-            icon={<EuiIcon type={'securitySignalDetected'} size={'xl'} />}
+            icon={<EuiIcon type={'securitySignalDetected'} size={'xl'} aria-hidden={true} />}
             title={<h2>Responder doesn&apos;t track requests</h2>}
             titleSize="s"
             style={{ maxWidth: '60em', display: 'flex' }}
@@ -438,9 +438,9 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
         <EuiFlexItem grow={false}>
           <EuiFlexGroup alignItems={'center'} gutterSize={'s'} responsive={false}>
             <EuiFlexItem grow={false}>
-              <EuiToolTip content="Export as HAR">
+              <EuiToolTip content="Export as HAR" disableScreenReaderOutput>
                 <EuiButtonIcon
-                  iconType="exportAction"
+                  iconType="download"
                   aria-label="Export as HAR"
                   isDisabled={requests.status !== 'succeeded' || requests.data.length === 0}
                   onClick={() => {
@@ -469,7 +469,7 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
               </EuiToolTip>
             </EuiFlexItem>
             <EuiFlexItem grow={false}>
-              <EuiToolTip content="Update">
+              <EuiToolTip content="Update" disableScreenReaderOutput>
                 <EuiButtonIcon
                   iconType="refresh"
                   aria-label="Update"
@@ -479,7 +479,7 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
               </EuiToolTip>
             </EuiFlexItem>
             <EuiFlexItem grow={false}>
-              <EuiToolTip content="Clear request history">
+              <EuiToolTip content="Clear request history" disableScreenReaderOutput>
                 <EuiButtonIcon
                   iconType="cross"
                   color="danger"
@@ -514,7 +514,7 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
   } else if (requests.data.length === 0) {
     content = (
       <EuiEmptyPrompt
-        icon={<EuiIcon type={'radar'} size={'xl'} />}
+        icon={<EuiIcon type={'radar'} size={'xl'} aria-hidden={true} />}
         title={<h2>Still waiting for the first request to arrive</h2>}
         titleSize="s"
       />
@@ -524,6 +524,7 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
       <DataGrid
         width="100%"
         aria-label="Requests"
+        data-test-subj="responder-requests-grid"
         columns={COLUMNS}
         columnVisibility={{ visibleColumns, setVisibleColumns }}
         rowCount={sortedData.length}

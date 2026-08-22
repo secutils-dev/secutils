@@ -12,13 +12,13 @@ export function TrackerName({ tracker, href }: { tracker: TrackerLike; href: str
 
   const icons = [];
   if (jobConfig) {
-    icons.push(<EuiIcon key="time" type={'timeRefresh'} size="s" title={'Scheduled checks are enabled'} />);
+    icons.push(<EuiIcon key="time" type={'refreshTime'} size="s" title={'Scheduled checks are enabled'} />);
   }
   if (tracker.retrack.notifications) {
     icons.push(<EuiIcon key="bell" type={'bell'} size="s" title={'Notifications are enabled'} />);
   }
   if (isDisabled) {
-    icons.push(<EuiIcon key="offline" type={'offline'} size="s" title={'Tracker is disabled'} />);
+    icons.push(<EuiIcon key="offline" type={'wifiSlash'} size="s" title={'Tracker is disabled'} />);
   }
 
   return <EntityName name={tracker.name} href={href} disabled={isDisabled} icons={icons} tags={tracker.tags} />;

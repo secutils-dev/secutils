@@ -11,7 +11,7 @@ export function PageSuccessState({ title, content, action }: PageSuccessStatePro
       content={content}
       action={action}
       color={'success'}
-      icon={<EuiIcon type={'check'} color={'success'} size={'xl'} />}
+      icon={<EuiIcon type={'check'} color={'success'} size={'xl'} aria-hidden={true} />}
     />
   );
 }

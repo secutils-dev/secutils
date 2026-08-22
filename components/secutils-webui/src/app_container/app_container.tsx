@@ -106,7 +106,12 @@ export function AppContainer() {
       <AppContext.Provider value={{ uiState, refreshUiState, settings, setSettings: updateSettings, addToast }}>
         <Outlet />
       </AppContext.Provider>
-      <EuiGlobalToastList toasts={toasts} dismissToast={removeToast} toastLifeTimeMs={5000} />
+      <EuiGlobalToastList
+        toasts={toasts}
+        dismissToast={removeToast}
+        toastLifeTimeMs={5000}
+        data-test-subj="global-toasts"
+      />
     </EuiProvider>
   );
 }

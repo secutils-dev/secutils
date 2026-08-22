@@ -126,9 +126,7 @@ test.describe('Tools registry - cross-cutting agent-discovery artefacts', () => 
       expect(skill, 'every entry must be type=skill-md').toMatchObject({ type: 'skill-md' });
       // Agent Skills naming spec: 1-64 chars, lowercase alphanumeric + hyphens,
       // no leading/trailing/consecutive hyphens.
-      expect(skill.name, 'name must conform to Agent Skills naming spec').toMatch(
-        /^[a-z0-9]+(-[a-z0-9]+)*$/,
-      );
+      expect(skill.name, 'name must conform to Agent Skills naming spec').toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
       expect(skill.name.length).toBeLessThanOrEqual(64);
       expect(skill.description, 'description must be non-empty').toMatch(/\S/);
       expect(skill.url, 'url must point at our tools host .md').toMatch(new RegExp(`^https://${TOOLS_HOST}/.+\\.md$`));

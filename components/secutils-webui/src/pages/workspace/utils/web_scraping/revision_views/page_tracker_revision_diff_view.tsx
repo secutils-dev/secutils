@@ -58,7 +58,7 @@ export default function PageTrackerRevisionDiffView({
   if (originalContent === modifiedContent) {
     return (
       <EuiEmptyPrompt
-        icon={<EuiIcon type="check" size="xl" color="success" />}
+        icon={<EuiIcon type="check" size="xl" color="success" aria-hidden={true} />}
         title={<h3>No changes</h3>}
         body={<p>The content is identical between these two revisions.</p>}
         titleSize="xs"

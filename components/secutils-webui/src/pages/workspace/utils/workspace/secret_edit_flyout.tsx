@@ -104,6 +104,7 @@ export function SecretEditFlyout({ editingId, editingName, initialTagIds, onClos
             }
           >
             <EuiFieldText
+              isInvalid={name.length > 0 && !nameValid}
               name="secretName"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -133,6 +134,7 @@ export function SecretEditFlyout({ editingId, editingName, initialTagIds, onClos
             }
           >
             <EuiTextArea
+              isInvalid={valueTooLong}
               value={value}
               onChange={(e) => setValue(e.target.value)}
               rows={6}

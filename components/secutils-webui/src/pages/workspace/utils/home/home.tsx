@@ -59,7 +59,7 @@ const TOOLS: ToolDefinition[] = [
   {
     id: 'webhooks',
     title: 'Webhooks',
-    icon: 'node',
+    icon: 'logoWebhook',
     description: 'Create mock HTTP APIs, test webhook integrations, and set up honeypot endpoints.',
     utilNames: ['Webhooks', 'Responders'],
     guideUrl: '/docs/guides/webhooks',
@@ -86,7 +86,7 @@ const TOOLS: ToolDefinition[] = [
   {
     id: 'webScraping',
     title: 'Web Scraping',
-    icon: 'cut',
+    icon: 'scissors',
     description: 'Track changes in web pages and API responses over time with scheduled checks.',
     utilNames: ['Web Scraping', 'Page trackers'],
     guideUrl: '/docs/category/web-scraping',
@@ -251,7 +251,7 @@ export default function Home() {
             <EuiFlexItem key={tool.id} style={{ minWidth: CARD_MIN_WIDTH }}>
               <EuiCard
                 css={toolCardStyle}
-                icon={<EuiIcon size="xl" type={tool.icon} />}
+                icon={<EuiIcon size="xl" type={tool.icon} aria-hidden={true} />}
                 title={tool.title}
                 titleSize="xs"
                 paddingSize="l"
@@ -287,7 +287,7 @@ export default function Home() {
                     <EuiFlexItem grow={false}>
                       <EuiButtonEmpty
                         size="s"
-                        iconType="training"
+                        iconType="documentation"
                         href={tool.guideUrl}
                         target="_blank"
                         onClick={stopPropagation}
@@ -325,8 +325,9 @@ export default function Home() {
                             <EuiFlexItem grow={false}>
                               <EuiIcon
                                 size="s"
-                                type={completed ? 'checkInCircleFilled' : 'plusInCircle'}
+                                type={completed ? 'checkCircleFill' : 'plusCircle'}
                                 color={completed ? 'success' : 'subdued'}
+                                aria-hidden={true}
                               />
                             </EuiFlexItem>
                             <EuiFlexItem>
@@ -363,7 +364,7 @@ export default function Home() {
                         <EuiFlexItem key={i}>
                           <EuiFlexGroup gutterSize="s" alignItems="center" responsive={false}>
                             <EuiFlexItem grow={false}>
-                              <EuiIcon size="s" type={recentItemIcon} color="subdued" />
+                              <EuiIcon size="s" type={recentItemIcon} color="subdued" aria-hidden={true} />
                             </EuiFlexItem>
                             <EuiFlexItem grow={false}>
                               <EuiButtonEmpty size="xs" flush="left" onClick={() => navigate(item.path)}>
@@ -395,12 +396,12 @@ export default function Home() {
       {/* Learn & community links */}
       <EuiFlexGroup gutterSize="l" justifyContent="center" wrap responsive={false}>
         <EuiFlexItem grow={false}>
-          <EuiButtonEmpty iconType="training" href="/docs/category/guides" target="_blank">
+          <EuiButtonEmpty iconType="documentation" href="/docs/category/guides" target="_blank">
             Getting Started
           </EuiButtonEmpty>
         </EuiFlexItem>
         <EuiFlexItem grow={false}>
-          <EuiButtonEmpty iconType="cheer" href="/docs/project/changelog" target="_blank">
+          <EuiButtonEmpty iconType="megaphone" href="/docs/project/changelog" target="_blank">
             What&apos;s New
           </EuiButtonEmpty>
         </EuiFlexItem>

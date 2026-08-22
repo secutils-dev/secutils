@@ -127,7 +127,7 @@ export function Page({
                   aria-label={isNavOpen ? 'Close navigation' : 'Open navigation'}
                   onClick={() => onToggleNav(!isNavOpen)}
                 >
-                  <EuiIcon type="menu" size="l" />
+                  <EuiIcon type="menu" size="l" aria-hidden={true} />
                 </EuiHeaderSectionItemButton>
               ) : null}
             </EuiHeaderSectionItem>

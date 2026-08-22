@@ -40,11 +40,18 @@ export function CertificateTemplateGenerateModal({ template, onClose }: Certific
   const generatingStatusCallout =
     generatingStatus?.status === 'succeeded' ? (
       <EuiFormRow>
-        <EuiCallOut size="s" title="Certificate successfully generated." color="success" iconType="check" />
+        <EuiCallOut
+          announceOnMount
+          size="s"
+          title="Certificate successfully generated."
+          color="success"
+          iconType="check"
+        />
       </EuiFormRow>
     ) : generatingStatus?.status === 'failed' ? (
       <EuiFormRow>
         <EuiCallOut
+          announceOnMount
           size="s"
           title={generatingStatus.error ?? 'An error occurred, please try again later'}
           color="danger"

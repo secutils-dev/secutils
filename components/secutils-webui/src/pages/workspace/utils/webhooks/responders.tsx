@@ -52,7 +52,7 @@ export default function Responders() {
   const createButton = useMemo(
     () => (
       <EuiButton
-        iconType={'plusInCircle'}
+        iconType={'plusCircle'}
         title="Create new responder"
         fill
         onClick={() => setResponderToEdit(undefined)}
@@ -216,7 +216,7 @@ export default function Responders() {
       >
         <EuiFlexItem>
           <EuiEmptyPrompt
-            icon={<EuiIcon type={'node'} size={'xl'} />}
+            icon={<EuiIcon type={'logoWebhook'} size={'xl'} aria-hidden={true} />}
             title={<h2>You don&apos;t have any responders yet</h2>}
             titleSize="s"
             style={{ maxWidth: '60em', display: 'flex' }}
@@ -261,7 +261,8 @@ export default function Responders() {
               name: (
                 <EuiToolTip content="Name of the responder">
                   <span>
-                    Name <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" />
+                    Name{' '}
+                    <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" aria-hidden={true} />
                   </span>
                 </EuiToolTip>
               ),
@@ -278,7 +279,7 @@ export default function Responders() {
               name: (
                 <EuiToolTip content="A unique URL of the responder endpoint">
                   <span>
-                    URL <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" />
+                    URL <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" aria-hidden={true} />
                   </span>
                 </EuiToolTip>
               ),
@@ -294,7 +295,11 @@ export default function Responders() {
                     {url}
                   </EuiText>
                 ) : (
-                  <EuiIcon type="minus" color={responder.enabled ? undefined : theme.euiTheme.colors.textDisabled} />
+                  <EuiIcon
+                    type="minus"
+                    color={responder.enabled ? undefined : theme.euiTheme.colors.textDisabled}
+                    aria-hidden={true}
+                  />
                 );
               },
             },
@@ -402,7 +407,7 @@ export default function Responders() {
                   <EuiButtonIcon
                     onClick={() => toggleResponderRequests(item)}
                     aria-label={itemIdToExpandedRowMap[item.id] ? 'Hide requests' : 'Show requests'}
-                    iconType={itemIdToExpandedRowMap[item.id] ? 'arrowDown' : 'arrowRight'}
+                    iconType={itemIdToExpandedRowMap[item.id] ? 'chevronSingleDown' : 'chevronSingleRight'}
                   />
                 );
               },

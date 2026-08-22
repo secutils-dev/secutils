@@ -283,7 +283,7 @@ export default function ApiKeysModal({ addToast, onClose }: Props) {
           <>
             <EuiFlexGroup justifyContent="flexEnd">
               <EuiFlexItem grow={false}>
-                <EuiButton size="s" iconType="plusInCircle" onClick={startCreate}>
+                <EuiButton size="s" iconType="plusCircle" onClick={startCreate}>
                   Create API key
                 </EuiButton>
               </EuiFlexItem>

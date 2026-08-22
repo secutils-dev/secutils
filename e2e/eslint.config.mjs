@@ -4,7 +4,7 @@ import eslint from '@eslint/js';
 import tsEsLint from 'typescript-eslint';
 import globals from 'globals';
 import eslintPluginPrettierRecommended from 'eslint-plugin-prettier/recommended';
-import importPlugin from 'eslint-plugin-import';
+import importPlugin from 'eslint-plugin-import-x';
 
 export default tsEsLint.config(
   {
@@ -14,7 +14,13 @@ export default tsEsLint.config(
   ...tsEsLint.configs.recommended,
   {
     files: ['**/*.ts'],
-    extends: [importPlugin.flatConfigs.recommended, importPlugin.flatConfigs.typescript],
+    extends: [importPlugin.flatConfigs.recommended],
+    // `flatConfigs.typescript` points at eslint-import-resolver-typescript, which is not
+    // installed and predates import-x's resolver interface. import-x bundles its own resolver,
+    // so the TS extensions are all that need declaring.
+    settings: {
+      'import-x/resolver-next': [importPlugin.createNodeResolver({ extensions: ['.ts', '.js', '.mjs', '.json'] })],
+    },
     languageOptions: {
       ecmaVersion: 2018,
       sourceType: 'module',
@@ -37,7 +43,7 @@ export default tsEsLint.config(
       'eol-last': ['error', 'always'],
       'no-multiple-empty-lines': ['error', { max: 1, maxEOF: 0 }],
 
-      'import/order': [
+      'import-x/order': [
         'error',
         {
           groups: ['builtin', 'external', 'internal', ['parent', 'sibling', 'index']],
@@ -51,7 +57,7 @@ export default tsEsLint.config(
         },
       ],
 
-      'import/no-duplicates': ['error'],
+      'import-x/no-duplicates': ['error'],
 
       'sort-imports': [
         'error',

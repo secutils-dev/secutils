@@ -11,6 +11,9 @@ export default defineConfig({
     baseURL: process.env.BASE_URL ?? 'http://localhost:7171',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
+    // Required by @elastic/eui-test-helpers component objects, which resolve their root
+    // locator with getByTestId.
+    testIdAttribute: 'data-test-subj',
   },
   projects: [
     {

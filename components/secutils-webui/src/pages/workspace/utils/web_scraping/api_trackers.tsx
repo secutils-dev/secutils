@@ -55,7 +55,7 @@ export default function ApiTrackers() {
   const createButton = useMemo(
     () => (
       <EuiButton
-        iconType={'plusInCircle'}
+        iconType={'plusCircle'}
         fill
         title="Track content for an API"
         onClick={() => setTrackerToEdit(undefined)}
@@ -218,7 +218,7 @@ export default function ApiTrackers() {
       >
         <EuiFlexItem>
           <EuiEmptyPrompt
-            icon={<EuiIcon type={'cut'} size={'xl'} />}
+            icon={<EuiIcon type={'scissors'} size={'xl'} aria-hidden={true} />}
             title={<h2>You don&apos;t have any API trackers yet</h2>}
             titleSize="s"
             style={{ maxWidth: '60em', display: 'flex' }}
@@ -266,7 +266,8 @@ export default function ApiTrackers() {
               name: (
                 <EuiToolTip content="Name of the API tracker">
                   <span>
-                    Name <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" />
+                    Name{' '}
+                    <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" aria-hidden={true} />
                   </span>
                 </EuiToolTip>
               ),
@@ -280,7 +281,8 @@ export default function ApiTrackers() {
               name: (
                 <EuiToolTip content="Recent execution status (oldest to newest)">
                   <span>
-                    Health <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" />
+                    Health{' '}
+                    <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" aria-hidden={true} />
                   </span>
                 </EuiToolTip>
               ),
@@ -422,7 +424,7 @@ export default function ApiTrackers() {
                   <EuiButtonIcon
                     onClick={() => toggleItemDetails(tracker)}
                     aria-label={itemIdToExpandedRowMap[tracker.id] ? 'Hide history' : 'Show history'}
-                    iconType={itemIdToExpandedRowMap[tracker.id] ? 'arrowDown' : 'arrowRight'}
+                    iconType={itemIdToExpandedRowMap[tracker.id] ? 'chevronSingleDown' : 'chevronSingleRight'}
                   />
                 );
               },

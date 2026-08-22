@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
 
+import { EuiGlobalToastListObject } from '@elastic/eui-test-helpers';
 import type { APIRequestContext, Locator, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 import { PNG } from 'pngjs';
@@ -219,6 +220,10 @@ export async function goto(page: Page, url: string) {
 }
 
 export async function highlightOn(locator: Locator) {
+  // The outline is an inline style on a live DOM node, so a re-render that replaces that node
+  // silently drops it and the screenshot comes out unhighlighted. Settling first means the
+  // element we decorate is the one that gets captured.
+  await waitForStableUiBeforeScreenshot(locator.page());
   await locator.evaluate((el) => {
     el.style.outline = '3px dashed red';
     el.style.outlineOffset = '3px';
@@ -227,10 +232,12 @@ export async function highlightOn(locator: Locator) {
 }
 
 export async function dismissAllToasts(page: Page) {
-  const toasts = page.getByRole('button', { name: 'Dismiss toast' });
-  for (const toast of await toasts.all()) {
-    await toast.click();
-  }
+  const toastList = new EuiGlobalToastListObject(page, 'global-toasts');
+  // EuiGlobalToastList always renders its container, so a missing root means the subj is gone,
+  // not that there is nothing to dismiss - without this, `closeAll` would quietly no-op and
+  // every caller would keep passing with toasts still on screen.
+  await expect(toastList.locator).toBeAttached();
+  await toastList.closeAll();
 }
 
 /** Fixed timestamp (Feb 19 2025) used to pin entity timestamps in screenshots.

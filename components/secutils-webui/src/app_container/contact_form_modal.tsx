@@ -67,11 +67,18 @@ export function ContactFormModal({ onClose }: ContactFormModalProps) {
   const sendingStatusCallout =
     sendingStatus?.status === 'succeeded' ? (
       <EuiFormRow>
-        <EuiCallOut size="s" title="Your message has been successfully sent." color="success" iconType="check" />
+        <EuiCallOut
+          announceOnMount
+          size="s"
+          title="Your message has been successfully sent."
+          color="success"
+          iconType="check"
+        />
       </EuiFormRow>
     ) : sendingStatus?.status === 'failed' ? (
       <EuiFormRow>
         <EuiCallOut
+          announceOnMount
           size="s"
           title={sendingStatus.error ?? 'An error occurred, please try again later'}
           color="danger"

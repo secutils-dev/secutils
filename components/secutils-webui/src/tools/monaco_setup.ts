@@ -1,14 +1,16 @@
 import { loader } from '@monaco-editor/react';
-import type { typescript as MonacoTypescriptNs } from 'monaco-editor';
-import * as monaco from 'monaco-editor/esm/vs/editor/editor.api';
-import 'monaco-editor/esm/vs/basic-languages/css/css.contribution';
-import 'monaco-editor/esm/vs/basic-languages/html/html.contribution';
-import 'monaco-editor/esm/vs/basic-languages/javascript/javascript.contribution';
-import 'monaco-editor/esm/vs/basic-languages/xml/xml.contribution';
-import 'monaco-editor/esm/vs/language/css/monaco.contribution';
-import 'monaco-editor/esm/vs/language/html/monaco.contribution';
-import 'monaco-editor/esm/vs/language/json/monaco.contribution';
-import * as _monacoTypescript from 'monaco-editor/esm/vs/language/typescript/monaco.contribution';
+import * as monaco from 'monaco-editor/editor';
+// `monaco-editor/editor` is API-only since 0.56; editor contributions (context menu, find, folding,
+// diff editor, …) are opt-in and none of them are reachable without this.
+import 'monaco-editor/features/register.all';
+import 'monaco-editor/languages/definitions/css/register';
+import 'monaco-editor/languages/definitions/html/register';
+import 'monaco-editor/languages/definitions/javascript/register';
+import 'monaco-editor/languages/definitions/xml/register';
+import 'monaco-editor/languages/features/css/register';
+import 'monaco-editor/languages/features/html/register';
+import 'monaco-editor/languages/features/json/register';
+import * as monacoTypescript from 'monaco-editor/languages/features/typescript/register';
 
 loader.config({ monaco });
 
@@ -31,7 +33,5 @@ self.MonacoEnvironment = {
     return '/tools/monaco/editor.worker.js';
   },
 };
-
-const monacoTypescript = _monacoTypescript as unknown as typeof MonacoTypescriptNs;
 
 export { monaco, monacoTypescript };

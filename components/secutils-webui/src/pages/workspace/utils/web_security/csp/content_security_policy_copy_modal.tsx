@@ -89,6 +89,7 @@ ${sourceToUse === 'enforcingHeader' ? 'Content-Security-Policy' : 'Content-Secur
     serializingStatus?.status === 'failed' ? (
       <EuiFormRow>
         <EuiCallOut
+          announceOnMount
           size="s"
           title={serializingStatus.error ?? 'An error occurred, please try again later'}
           color="danger"

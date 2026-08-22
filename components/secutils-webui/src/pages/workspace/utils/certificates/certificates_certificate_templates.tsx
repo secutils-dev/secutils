@@ -63,7 +63,7 @@ export default function CertificatesCertificateTemplates() {
 
   const importButton = useMemo(
     () => (
-      <EuiButton iconType={'importAction'} title="Import certificate template" onClick={() => setShowImportModal(true)}>
+      <EuiButton iconType={'upload'} title="Import certificate template" onClick={() => setShowImportModal(true)}>
         Import template
       </EuiButton>
     ),
@@ -73,7 +73,7 @@ export default function CertificatesCertificateTemplates() {
   const createButton = useMemo(
     () => (
       <EuiButton
-        iconType={'plusInCircle'}
+        iconType={'plusCircle'}
         title="Create a new certificate template"
         fill
         onClick={() => setTemplateToEdit(undefined)}
@@ -207,7 +207,7 @@ export default function CertificatesCertificateTemplates() {
       >
         <EuiFlexItem>
           <EuiEmptyPrompt
-            icon={<EuiIcon type={'securityApp'} size={'xl'} />}
+            icon={<EuiIcon type={'securityApp'} size={'xl'} aria-hidden={true} />}
             title={<h2>You don&apos;t have any certificate templates yet</h2>}
             titleSize="s"
             style={{ maxWidth: '60em', display: 'flex' }}
@@ -231,6 +231,7 @@ export default function CertificatesCertificateTemplates() {
       settings?.[SELF_SIGNED_PROD_WARNING_USER_SETTINGS_KEY] === true ? null : (
         <div>
           <EuiCallOut
+            announceOnMount
             title="Don't use self-signed certificates in production environments"
             color="warning"
             iconType="warning"
@@ -282,7 +283,8 @@ export default function CertificatesCertificateTemplates() {
               name: (
                 <EuiToolTip content="A unique name of the certificate template">
                   <span>
-                    Name <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" />
+                    Name{' '}
+                    <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" aria-hidden={true} />
                   </span>
                 </EuiToolTip>
               ),
@@ -300,7 +302,8 @@ export default function CertificatesCertificateTemplates() {
               name: (
                 <EuiToolTip content="Specifies whether the certificate can be used to sign other certificates (Certification Authority) or not.">
                   <span>
-                    Type <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" />
+                    Type{' '}
+                    <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" aria-hidden={true} />
                   </span>
                 </EuiToolTip>
               ),

@@ -36,7 +36,7 @@ export default function WorkspaceTags() {
 
   const createButton = useMemo(
     () => (
-      <EuiButton iconType={'plusInCircle'} title="Create a new tag" fill onClick={() => setTagToEdit(undefined)}>
+      <EuiButton iconType={'plusCircle'} title="Create a new tag" fill onClick={() => setTagToEdit(undefined)}>
         Add tag
       </EuiButton>
     ),
@@ -179,7 +179,7 @@ export default function WorkspaceTags() {
       >
         <EuiFlexItem>
           <EuiEmptyPrompt
-            icon={<EuiIcon type={'tag'} size={'xl'} />}
+            icon={<EuiIcon type={'tag'} size={'xl'} aria-hidden={true} />}
             title={<h2>No tags yet</h2>}
             titleSize="s"
             style={{ maxWidth: '60em', display: 'flex' }}

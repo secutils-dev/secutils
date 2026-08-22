@@ -76,6 +76,7 @@ export function TagEditFlyout({ onClose, tag }: TagEditFlyoutProps) {
             error={name.length > 50 ? 'Name must be 50 characters or fewer.' : undefined}
           >
             <EuiFieldText
+              isInvalid={name.length > 0 && !nameValid}
               name="tagName"
               value={name}
               onChange={(e) => setName(e.target.value)}

@@ -347,7 +347,7 @@ export function CertificateTemplateImportModal({ onClose }: CertificateTemplateI
         {parseError ? (
           <>
             <EuiSpacer size="m" />
-            <EuiCallOut title="Error" color="danger" iconType="warning" size="s">
+            <EuiCallOut announceOnMount title="Error" color="danger" iconType="warning" size="s">
               <p>{parseError}</p>
             </EuiCallOut>
           </>

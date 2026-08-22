@@ -47,7 +47,7 @@ export default function WorkspaceSecrets() {
 
   const createButton = useMemo(
     () => (
-      <EuiButton iconType={'plusInCircle'} title="Create a new secret" fill onClick={() => setSecretToEdit({})}>
+      <EuiButton iconType={'plusCircle'} title="Create a new secret" fill onClick={() => setSecretToEdit({})}>
         Add secret
       </EuiButton>
     ),
@@ -180,7 +180,7 @@ export default function WorkspaceSecrets() {
       >
         <EuiFlexItem>
           <EuiEmptyPrompt
-            icon={<EuiIcon type={'lock'} size={'xl'} />}
+            icon={<EuiIcon type={'lock'} size={'xl'} aria-hidden={true} />}
             title={<h2>No secrets yet</h2>}
             titleSize="s"
             style={{ maxWidth: '60em', display: 'flex' }}

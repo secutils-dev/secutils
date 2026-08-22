@@ -51,7 +51,7 @@ export default function WebSecurityContentSecurityPolicies() {
       <EuiFlexGroup responsive={false} gutterSize="s" alignItems="center" justifyContent={'center'}>
         <EuiFlexItem grow={false}>
           <EuiButton
-            iconType={'importAction'}
+            iconType={'upload'}
             title="Import content security policy"
             onClick={() => setIsImportModalOpen(true)}
           >
@@ -60,7 +60,7 @@ export default function WebSecurityContentSecurityPolicies() {
         </EuiFlexItem>
         <EuiFlexItem grow={false}>
           <EuiButton
-            iconType={'plusInCircle'}
+            iconType={'plusCircle'}
             fill
             title="Create new content security policy"
             onClick={() => setPolicyToEdit(undefined)}
@@ -215,7 +215,7 @@ export default function WebSecurityContentSecurityPolicies() {
       >
         <EuiFlexItem>
           <EuiEmptyPrompt
-            icon={<EuiIcon type={'globe'} size={'xl'} />}
+            icon={<EuiIcon type={'globe'} size={'xl'} aria-hidden={true} />}
             title={<h2>You don&apos;t have any content security policies yet</h2>}
             titleSize="s"
             style={{ maxWidth: '60em', display: 'flex' }}
@@ -259,7 +259,8 @@ export default function WebSecurityContentSecurityPolicies() {
               name: (
                 <EuiToolTip content="Content security policy name">
                   <span>
-                    Name <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" />
+                    Name{' '}
+                    <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" aria-hidden={true} />
                   </span>
                 </EuiToolTip>
               ),
@@ -277,7 +278,8 @@ export default function WebSecurityContentSecurityPolicies() {
               name: (
                 <EuiToolTip content="Content security policy as it should appear in HTTP header or <meta> tag.">
                   <span>
-                    Policy <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" />
+                    Policy{' '}
+                    <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" aria-hidden={true} />
                   </span>
                 </EuiToolTip>
               ),
@@ -315,7 +317,7 @@ export default function WebSecurityContentSecurityPolicies() {
                 {
                   name: 'Copy',
                   description: 'Copy policy',
-                  icon: 'copyClipboard',
+                  icon: 'copy',
                   type: 'icon',
                   onClick: setPolicyToCopy,
                 },

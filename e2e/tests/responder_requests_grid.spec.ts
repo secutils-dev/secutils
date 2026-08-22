@@ -1,3 +1,4 @@
+import { EuiDataGridObject } from '@elastic/eui-test-helpers';
 import { expect, test } from '@playwright/test';
 
 import { ensureUserAndLogin } from '../helpers';
@@ -48,10 +49,12 @@ test.describe('Responder Requests Grid', () => {
     await page.getByRole('button', { name: 'Show requests' }).click();
 
     // One cell per recorded request, so the count tracks how many requests the grid shows.
-    const requestRows = page.locator('.euiDataGridRowCell[data-gridcell-column-id="timestamp"]');
+    const grid = new EuiDataGridObject(page, 'responder-requests-grid');
+    const requestRows = grid.cells('timestamp');
     await expect(requestRows).toHaveCount(1, { timeout: 15000 });
 
-    // Raw locators: EUI exposes neither the header cell nor its resize handle via a role.
+    // Raw locators: the component object covers rows and cells, but EUI exposes neither the
+    // header cell nor its resize handle via a role.
     const urlHeader = page.locator('[data-test-subj="dataGridHeaderCell-url"]');
     const resizer = urlHeader.locator('[data-test-subj="dataGridColumnResizer"]');
     await expect(resizer).toBeAttached();

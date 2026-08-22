@@ -42,11 +42,18 @@ export function PrivateKeyExportModal({ privateKey, onClose }: PrivateKeyExportM
   const exportStatusCallout =
     exportStatus?.status === 'succeeded' ? (
       <EuiFormRow>
-        <EuiCallOut size="s" title="Private key successfully exported." color="success" iconType="check" />
+        <EuiCallOut
+          announceOnMount
+          size="s"
+          title="Private key successfully exported."
+          color="success"
+          iconType="check"
+        />
       </EuiFormRow>
     ) : exportStatus?.status === 'failed' ? (
       <EuiFormRow>
         <EuiCallOut
+          announceOnMount
           size="s"
           title={exportStatus.error ?? 'An error occurred, please try again later'}
           color="danger"
