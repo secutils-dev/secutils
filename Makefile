@@ -24,8 +24,9 @@ DEPLOY_CAMOUFOX_TAG 	?=
 
 ## ---------- Development ----------
 
-dev-up: ## Start dev infrastructure (DB, Kratos, Retrack). Use BUILD=1 to rebuild images.
-	docker compose -f $(COMPOSE_DEV) --env-file $(ENV_FILE) up $(if $(BUILD),--build) -d
+dev-up: ## Start dev infrastructure (DB, Kratos, Retrack). Use BUILD=1 to rebuild images, narrowed with ONLY=svc1,svc2 or SKIP=svc1,svc2.
+	$(if $(BUILD),ONLY="$(ONLY)" SKIP="$(SKIP)" ./dev/scripts/compose-build.sh -f $(COMPOSE_DEV) --env-file $(ENV_FILE))
+	docker compose -f $(COMPOSE_DEV) --env-file $(ENV_FILE) up -d
 
 dev-down: ## Stop dev infrastructure and remove volumes.
 	docker compose -f $(COMPOSE_DEV) --env-file $(ENV_FILE) down --volumes --remove-orphans
@@ -66,8 +67,9 @@ ifdef EXTERNAL_NETWORK
   COMPOSE_E2E_FILES += -f $(COMPOSE_EXTERNAL_NET)
 endif
 
-e2e-up: ## Start the full e2e stack (all services in Docker). Use BUILD=1 to rebuild images. Use EXTERNAL_NETWORK=<name> to join an external Docker network.
-	docker compose $(COMPOSE_E2E_FILES) --env-file $(ENV_FILE) up $(if $(BUILD),--build) -d
+e2e-up: ## Start the full e2e stack (all services in Docker). Use BUILD=1 to rebuild images, narrowed with ONLY=svc1,svc2 or SKIP=svc1,svc2. Use EXTERNAL_NETWORK=<name> to join an external Docker network.
+	$(if $(BUILD),ONLY="$(ONLY)" SKIP="$(SKIP)" ./dev/scripts/compose-build.sh $(COMPOSE_E2E_FILES) --env-file $(ENV_FILE))
+	docker compose $(COMPOSE_E2E_FILES) --env-file $(ENV_FILE) up -d
 
 e2e-down: ## Stop the e2e stack and remove volumes.
 	docker compose $(COMPOSE_E2E_FILES) --env-file $(ENV_FILE) down --volumes --remove-orphans

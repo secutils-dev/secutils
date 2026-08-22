@@ -232,6 +232,10 @@ do not skip steps even when the previous stage was green.
   scripts read `FROM image:tag@sha256:...`, drop the digest, query
   `docker buildx imagetools inspect`, and rewrite. They always re-pin, even when the
   tag is unchanged — rolling tags drift between runs.
+- **Never `--no-cache` the Camoufox image.** Its ~150 MB browser download lives in a BuildKit
+  cache mount so that invalidating the layer does not re-fetch it, but `--no-cache` **empties
+  cache mounts**, so it both re-downloads and discards the copy every later build would have
+  reused. To force the layer to re-run, change something it depends on instead.
 - **Disk pressure during the Rust image build is real** — the secutils API image
   compiles the full workspace from scratch when the BuildKit cache is cold. If the build
   fails with `No space left on device`, run `make docker-prune` (which prunes both
@@ -293,12 +297,11 @@ make e2e-standalone-test
 
 **Getting a code change into the stack.** The `make docker-*` targets tag their own images and
 the e2e stack does not use them, so a `make docker-webui` never reaches the tests. `BUILD=1`
-does, but it rebuilds every buildable service including the Rust API. For a single service,
-rebuild just that one:
+does, but it rebuilds every buildable service — including the Rust API and the Camoufox image.
+Narrow it:
 
 ```bash
-docker compose -f dev/docker/docker-compose.yml -f dev/docker/docker-compose.e2e.yml \
-  --env-file .env up -d --build secutils_webui
+make e2e-up BUILD=1 ONLY=secutils_webui          # or SKIP=retrack_web_scraper_camoufox
 ```
 
 When a test disagrees with the source, confirm the change is actually being served before
