@@ -237,7 +237,13 @@ export async function dismissAllToasts(page: Page) {
   // not that there is nothing to dismiss - without this, `closeAll` would quietly no-op and
   // every caller would keep passing with toasts still on screen.
   await expect(toastList.locator).toBeAttached();
-  await toastList.closeAll();
+  // `closeAll` snapshots the close buttons up front, then asserts the list is empty: a toast that
+  // renders a beat after the snapshot is never clicked, so the assertion can only pass if that
+  // toast auto-dismisses within its 5s timeout, which EUI's longer toast lifetime does not
+  // guarantee. Retrying re-snapshots and clicks the late arrival instead of waiting it out.
+  await expect(async () => {
+    await toastList.closeAll();
+  }).toPass({ timeout: 30_000 });
 }
 
 /** Fixed timestamp (Feb 19 2025) used to pin entity timestamps in screenshots.

@@ -334,8 +334,12 @@ test.describe('API Tracker Debug Panel', () => {
       await expect(extractorStep).toBeVisible({ timeout: 15000 });
       await extractorStep.click();
 
-      await expect(modal.getByText('Extractor script failed')).toBeVisible();
-      await expect(modal.getByText("Cannot read property 'items'", { exact: false })).toBeVisible();
+      // Asserted on the modal rather than matched by text: these callouts set `announceOnMount`, so
+      // EUI mirrors their content into a `role="status"` region ~50ms after mount and clears it ~2s
+      // later. A `getByText` inside the modal resolves to two elements while that region is live,
+      // which fails as a strict mode violation depending only on how fast the machine is.
+      await expect(modal).toContainText('Extractor script failed');
+      await expect(modal).toContainText("Cannot read property 'items'");
 
       // No params in this fixture, so Params tab should not appear.
       await expect(modal.getByRole('tab', { name: 'Params' })).not.toBeVisible();
@@ -456,8 +460,8 @@ test.describe('API Tracker Debug Panel', () => {
       const resultStep = modal.getByRole('button', { name: 'Result' });
       await expect(resultStep).toBeVisible({ timeout: 15000 });
 
-      await expect(modal.getByText('Pipeline failed')).toBeVisible();
-      await expect(modal.getByText('500 Internal Server Error', { exact: false })).toBeVisible();
+      await expect(modal).toContainText('Pipeline failed');
+      await expect(modal).toContainText('500 Internal Server Error');
     });
 
     test('shows error callout in Request step detail', async ({ page }) => {
@@ -491,8 +495,8 @@ test.describe('API Tracker Debug Panel', () => {
       await expect(requestStep).toBeVisible({ timeout: 15000 });
       await requestStep.click();
 
-      await expect(modal.getByText('Request failed')).toBeVisible();
-      await expect(modal.getByText('500 Internal Server Error')).toBeVisible();
+      await expect(modal).toContainText('Request failed');
+      await expect(modal).toContainText('500 Internal Server Error');
     });
   });
 

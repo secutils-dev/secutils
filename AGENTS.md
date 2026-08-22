@@ -93,7 +93,8 @@ do not skip steps even when the previous stage was green.
 
 - **`deno_core`** bumps invalidate the `js_runtime::tests::can_access_deno_apis` snapshot
   (same as in retrack) and may pin a transitive `deno_error` patch version that needs
-  matching in the workspace `Cargo.toml` (e.g. 0.7.1 vs 0.7.3).
+  matching in the workspace `Cargo.toml` (e.g. 0.7.1 vs 0.7.3). `cargo outdated` cannot
+  run here at all because of that exact pin — query the crates.io index instead.
 - **`sqlx`** macros validate against `.sqlx/`. After any query change or `sqlx` bump:
   ```bash
   docker compose -f dev/docker/docker-compose.yml up -d secutils_db
@@ -395,7 +396,15 @@ class selectors. They need `testIdAttribute: 'data-test-subj'` in the Playwright
 `data-test-subj` on the EUI component itself, and they resolve their root with `getByTestId` —
 so a wrong or missing subj makes them **silently do nothing** rather than fail. In a shared
 helper, assert the root is attached first. They do not cover everything (e.g. data-grid header
-cells and resize handles), so raw locators remain the fallback.
+cells and resize handles), so raw locators remain the fallback. Their waits can also be stricter
+than they look: the toast list's `closeAll` snapshots the close buttons before asserting the list
+is empty, so a toast arriving mid-close is never clicked — wrap it in `toPass`.
+
+**Never match the text of an `announceOnMount` `EuiCallOut`.** EUI mirrors such a callout's title
+and body into a transient `role="status"` region shortly after mount and clears it seconds later,
+so `getByText` resolves to two elements only while that region is live. The result is a strict mode
+violation (which is thrown, not retried) that passes or fails purely on machine speed. Assert
+`toContainText` on the enclosing container instead — one element, no ambiguity.
 
 ### Timeouts
 

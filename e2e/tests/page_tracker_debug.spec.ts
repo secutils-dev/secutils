@@ -295,8 +295,10 @@ test.describe('Page Tracker Debug Panel', () => {
       const resultStep = modal.getByRole('button', { name: 'Result' });
       await expect(resultStep).toBeVisible({ timeout: 15000 });
 
-      await expect(modal.getByText('Pipeline failed')).toBeVisible();
-      await expect(modal.getByText('TimeoutError', { exact: false })).toBeVisible();
+      // See `api_tracker_debug.spec.ts`: `announceOnMount` callouts duplicate their text into a
+      // transient live region, so matching by text inside the modal is ambiguous for ~2s.
+      await expect(modal).toContainText('Pipeline failed');
+      await expect(modal).toContainText('TimeoutError');
     });
   });
 

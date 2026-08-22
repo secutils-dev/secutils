@@ -1390,7 +1390,9 @@ test.describe('Data Export and Import', () => {
     await modal.getByRole('button', { name: 'Import' }).click();
 
     // Wait for result.
-    await expect(modal.getByText('Import complete')).toBeVisible({ timeout: 15000 });
+    // Asserted on the modal: this callout sets `announceOnMount`, so matching by text is ambiguous
+    // while EUI's transient `role="status"` mirror of the callout content is present.
+    await expect(modal).toContainText('Import complete', { timeout: 15000 });
 
     // Verify no errors.
     await expect(modal.getByText('Errors')).not.toBeVisible();
