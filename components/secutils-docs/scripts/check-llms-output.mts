@@ -3,9 +3,17 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import docusaurusConfig from '../docusaurus.config.js';
 import { THEME_MARKUP } from '../plugins/llms/index.ts';
 
 const BUILD_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'build');
+
+/**
+ * The site origin varies by `SECUTILS_ENV` (the e2e docs image builds against `http://localhost:7171`) and the llms
+ * plugin absolutizes every URL against it, so the expected prefix has to come from the same config the build read
+ * rather than be pinned to production. Run `build` and this check with the same `SECUTILS_ENV`.
+ */
+const DOCS_URL = new URL(docusaurusConfig.baseUrl!, docusaurusConfig.url).href;
 
 const FULL_FILE = 'llms.txt';
 const INDEX_FILE = 'llms-index.txt';
@@ -80,8 +88,8 @@ for (const value of ['**Name**:', 'HTML Responder', '/html-responder', 'Content-
 // `<Steps>` must become an ordered list of screenshots, with image URLs absolute so they resolve from `llms.txt` too.
 assert.match(webhooks, /^1\. !\[/m, 'guides/webhooks.md has no ordered step list.');
 assert.ok(
-  webhooks.includes('https://secutils.dev/docs/img/docs/guides/webhooks/'),
-  'guides/webhooks.md step images are not absolute URLs under /docs/img/.',
+  webhooks.includes(`${DOCS_URL}img/docs/guides/webhooks/`),
+  `guides/webhooks.md step images are not absolute URLs under ${DOCS_URL}img/.`,
 );
 
 // Fenced code keeps its language, which is lost if Prism token markup is serialized verbatim.
@@ -133,10 +141,7 @@ assert.equal(relativeImage, null, `Image target is not absolute: ${relativeImage
 const index = generated.get(INDEX_FILE)!;
 assert.ok(index.includes('## Table of Contents'), `${INDEX_FILE} has no table of contents.`);
 for (const relativePath of COMPANIONS) {
-  assert.ok(
-    index.includes(`(https://secutils.dev/docs/${relativePath})`),
-    `${INDEX_FILE} does not link to ${relativePath}.`,
-  );
+  assert.ok(index.includes(`(${DOCS_URL}${relativePath})`), `${INDEX_FILE} does not link to ${relativePath}.`);
 }
 
 // The full file must hold every page's content, not just links. Each page contributes a `## <title>` section, matched
