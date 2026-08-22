@@ -85,7 +85,8 @@ struct ResponderOutput {
 }
 
 struct ScriptError {
-    response: HttpResponse<BoxBody>,
+    // Boxed to keep the error variant of `execute_responder_script`'s `Result` small.
+    response: Box<HttpResponse<BoxBody>>,
     error_status_code: u16,
     error_body: Vec<u8>,
 }
@@ -465,7 +466,7 @@ pub async fn webhooks_responders(
         ..
     } = match script_outcome {
         Ok(output) => output,
-        Err(script_err) => return Ok(script_err.response),
+        Err(script_err) => return Ok(*script_err.response),
     };
 
     // Prepare response, set response status code.
@@ -582,7 +583,7 @@ async fn execute_responder_script<R: for<'de> Deserialize<'de> + Send + 'static>
             return Err(ScriptError {
                 error_status_code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                 error_body: msg.as_bytes().to_vec(),
-                response: HttpResponse::InternalServerError().body(msg),
+                response: Box::new(HttpResponse::InternalServerError().body(msg)),
             });
         }
     };
@@ -648,7 +649,7 @@ async fn execute_responder_script<R: for<'de> Deserialize<'de> + Send + 'static>
             Err(ScriptError {
                 error_status_code: status.as_u16(),
                 error_body: err_msg.into_bytes(),
-                response,
+                response: Box::new(response),
             })
         }
     }
