@@ -85,6 +85,77 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     await expect(page.locator('#previewArticle mark.su-hl')).toContainText('marked');
   });
 
+  test('highlights inline code in tables in preview and HTML export', async ({ page }) => {
+    await page.goto(tool.path);
+    await setMarkdown(
+      page,
+      [
+        '| Behaviour | **Workflows** (this PR) | AB **conversation** | AB **agent** | **Dashboards** write-restricted |',
+        '| --- | --- | --- | --- | --- |',
+        '| Storage | own ES index | own ES index | own ES index | root metadata on the saved object |',
+        '| Field name | `access_control` | `access_control` | `access_control` | `accessControl` |',
+        '| Modes | `private`, `public` | `private`, `public` | `private`, `shared`, `public` | `default`, `write_restricted` |',
+        '| What the restrictive mode restricts | visibility | visibility | visibility | ==writes only - everyone still reads== |',
+        '| Default for new objects | ==`public`== | `private` | `private` | `default` |',
+      ].join('\n'),
+    );
+
+    const preview = page.locator('#previewArticle');
+    await expect(preview.locator('mark.su-hl')).toHaveText(['writes only - everyone still reads', 'public']);
+    await expect(preview.getByRole('cell', { name: 'public', exact: true }).locator('mark.su-hl code')).toBeVisible();
+    await expect(preview).not.toContainText('==');
+
+    await page.getByRole('button', { name: 'HTML', exact: true }).click();
+    const exported = page.frameLocator('#htmlPreview').locator('article');
+    await expect(exported.locator('mark.su-hl')).toHaveText(['writes only - everyone still reads', 'public']);
+    await expect(exported.getByRole('cell', { name: 'public', exact: true }).locator('mark.su-hl code')).toBeVisible();
+    await expect(exported).not.toContainText('==');
+  });
+
+  test('highlights preserve nested inline formatting and literal code delimiters', async ({ page }) => {
+    await page.goto(tool.path);
+    await setMarkdown(
+      page,
+      'Before ==use `a == b` with **bold**, *emphasis*, and [a link](https://example.com)== after.\n\n' +
+        '==``a ` b == c``== and ==another==.',
+    );
+
+    const marks = page.locator('#previewArticle mark.su-hl');
+    await expect(marks).toHaveText(['use a == b with bold, emphasis, and a link', 'a ` b == c', 'another']);
+    await expect(marks.first().locator('code')).toHaveText('a == b');
+    await expect(marks.first().locator('strong')).toHaveText('bold');
+    await expect(marks.first().locator('em')).toHaveText('emphasis');
+    await expect(marks.first().getByRole('link', { name: 'a link' })).toHaveAttribute('href', 'https://example.com');
+  });
+
+  test('keeps code, escaped, empty, and unmatched highlight markers literal', async ({ page }) => {
+    await page.goto(tool.path);
+    await setMarkdown(
+      page,
+      [
+        '`==inline code==`',
+        '```text\n==fenced code==\n```',
+        '    ==indented code==',
+        '<code>==HTML code==</code>',
+        '\\==escaped\\==',
+        'Empty == == and ==== stay intact before ==highlighted==.',
+        'Unmatched ==marker',
+      ].join('\n\n'),
+    );
+
+    const preview = page.locator('#previewArticle');
+    await expect(preview.locator('mark.su-hl')).toHaveText(['highlighted']);
+    await expect(preview.locator('code')).toHaveText([
+      '==inline code==',
+      '==fenced code==\n',
+      '==indented code==\n',
+      '==HTML code==',
+    ]);
+    await expect(preview).toContainText('==escaped==');
+    await expect(preview).toContainText('Empty == == and ==== stay intact before highlighted.');
+    await expect(preview).toContainText('Unmatched ==marker');
+  });
+
   test('mermaid code blocks render to an inline SVG diagram', async ({ page }) => {
     await page.goto(tool.path);
     await setMarkdown(page, ['```mermaid', 'flowchart LR', '  A[Start] --> B[End]', '```'].join('\n'));

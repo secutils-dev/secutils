@@ -206,6 +206,7 @@ body.su-view-html #htmlPreview { display: block; }
 .preview-article del { color: var(--text-muted); }
 /* ==highlight== */
 .preview-article .su-hl { background: var(--hl-bg); color: var(--hl-text); padding: 0 3px; border-radius: 3px; }
+.preview-article .su-hl code { background: transparent; color: inherit; }
 /* find-in-page hits */
 .preview-article .find-hit { background: rgba(254, 208, 71, 0.35); border-radius: 2px; }
 .preview-article .find-hit.current { background: var(--primary); color: var(--primary-text); }
@@ -801,7 +802,44 @@ if (!('closedBy' in HTMLDialogElement.prototype)) {
     }
 }
 
-marked.use({ gfm: true, breaks: false });
+marked.use({
+    gfm: true,
+    breaks: false,
+    extensions: [{
+        name: 'highlight',
+        level: 'inline',
+        start(src) { return src.indexOf('=='); },
+        tokenizer(src) {
+            if (!src.startsWith('==') || this.lexer.state.inRawBlock) return;
+            // Parse before HTML splits the delimiters across text nodes. Skip
+            // escaped characters and complete code spans when finding the end.
+            const delimiters = /\\[\s\S]|`+|==/g;
+            delimiters.lastIndex = 2;
+            let match;
+            while ((match = delimiters.exec(src))) {
+                if (match[0].startsWith('`')) {
+                    const code = this.lexer.tokenizer.codespan(src.slice(match.index));
+                    if (code) delimiters.lastIndex = match.index + code.raw.length;
+                    continue;
+                }
+                if (match[0] !== '==') continue;
+                const text = src.slice(2, match.index);
+                const raw = src.slice(0, match.index + 2);
+                // Consume an empty pair as literal text so its closing marker
+                // cannot become the opener of a later highlight.
+                if (!text.trim()) return { type: 'text', raw, text: raw };
+                return {
+                    type: 'highlight',
+                    raw,
+                    tokens: this.lexer.inlineTokens(text),
+                };
+            }
+        },
+        renderer(token) {
+            return `<mark class="su-hl">${this.parser.parseInline(token.tokens)}</mark>`;
+        },
+    }],
+});
 
 const escHTML = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -1028,49 +1066,6 @@ function enhanceAlerts(root) {
     }
 }
 
-// ---- ==highlight== marks ----
-function markParts(text) {
-    const parts = [];
-    let cursor = 0;
-    while (cursor < text.length) {
-        const open = text.indexOf('==', cursor);
-        if (open < 0) break;
-        const close = text.indexOf('==', open + 2);
-        if (close < 0) break;
-        const body = text.slice(open + 2, close);
-        if (!body.trim()) { cursor = close + 2; continue; }
-        if (open > cursor) parts.push({ text: text.slice(cursor, open) });
-        parts.push({ mark: body });
-        cursor = close + 2;
-    }
-    if (!parts.length) return null;
-    if (cursor < text.length) parts.push({ text: text.slice(cursor) });
-    return parts;
-}
-function enhanceMarks(root) {
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-        acceptNode: (node) => {
-            if (shouldSkipTextNode(node)) return NodeFilter.FILTER_REJECT;
-            return node.nodeValue.indexOf('==') >= 0 ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
-        },
-    });
-    const nodes = [];
-    while (walker.nextNode()) nodes.push(walker.currentNode);
-    for (const node of nodes) {
-        const parts = markParts(node.nodeValue);
-        if (!parts) continue;
-        const frag = document.createDocumentFragment();
-        for (const part of parts) {
-            if (part.text !== undefined) { frag.appendChild(document.createTextNode(part.text)); continue; }
-            const mark = document.createElement('mark');
-            mark.className = 'su-hl';
-            mark.textContent = part.mark;
-            frag.appendChild(mark);
-        }
-        node.parentNode.replaceChild(frag, node);
-    }
-}
-
 // ---- Wide-table horizontal scroll wrap ----
 function enhanceWideTables(root) {
     for (const table of root.querySelectorAll('table')) {
@@ -1123,7 +1118,6 @@ async function render(md) {
         }
     }
     enhanceAlerts(el);
-    enhanceMarks(el);
     if (needsMath(md)) { try { await enhanceMath(el); } catch {} }
     enhanceWideTables(el);
     enhanceHeadingAnchors(el);
@@ -1871,6 +1865,7 @@ pre:hover .copy-btn { opacity: 1; }
 article blockquote { border-left: 4px solid var(--bq-border); margin: 0 0 16px; padding: 12px 20px; background: var(--bq-bg); border-radius: 0 8px 8px 0; color: var(--bq-text); }
 article blockquote p:last-child { margin-bottom: 0; }
 article mark, article .su-hl { background: var(--hl-bg); color: var(--hl-text); padding: 0 3px; border-radius: 3px; }
+article .su-hl code { background: transparent; color: inherit; }
 article del { color: var(--text-muted); }
 article .katex-display { overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
 article .su-math-error { color: #cf222e; font-family: "Roboto Mono", monospace; font-size: .9em; }
