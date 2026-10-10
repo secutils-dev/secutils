@@ -46,7 +46,7 @@ The source code for Secutils.dev is hosted in a single mono-repo at [**secutils-
 CI runs on [**GitHub Actions**](https://github.com/features/actions), which provides 2,000 free minutes per month on the free plan. With everything in a single repo, I have a small set of workflows:
 
 - `ci.yml`: builds and tests the Rust API, the Web UI, and the docs site, runs `cargo clippy` and `cargo test`, and validates that the OpenAPI spec snapshot is in sync.
-- `ci-perf.yml`: runs the [**JS runtime performance harness**](https://github.com/secutils-dev/secutils/blob/main/AGENTS.md#js-runtime-performance-harness-benchesjs-runtime-perf) on every push to `main` and appends a record to `.perf/history.jsonl` only when something materially moves.
+- `ci-perf.yml`: runs the [**JS runtime performance harness**](https://github.com/secutils-dev/secutils/blob/main/dev/agent-guides/performance.md#js-runtime-harness) on every push to `main` and appends a record to `.perf/history.jsonl` only when something materially moves.
 - `e2e.yml`: brings up the full Docker Compose stack and runs the [**Playwright e2e suite**](https://github.com/secutils-dev/secutils/tree/main/e2e).
 
 Aggressive use of Cargo and `npm` caches keeps individual runs short. Average wall time for the Rust build is under 5 minutes thanks to `sccache` and `SQLX_OFFLINE=true` (cached query metadata in `.sqlx/`).

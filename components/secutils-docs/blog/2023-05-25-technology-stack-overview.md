@@ -76,7 +76,7 @@ The API is built on [**Actix Web**](https://github.com/actix/actix-web) and is o
 
 There are also unauthenticated `/api/status` and `/api/ui/*` endpoints (status probes and the Web UI bootstrap state) and the user-facing `*.webhooks.secutils.dev/*` subdomain that the API serves directly. The full list with request/response schemas is browsable at [**secutils.dev/api-docs**](https://secutils.dev/api-docs).
 
-Every public route is annotated with [**utoipa**](https://github.com/juhaku/utoipa) so the OpenAPI specification is generated automatically from the Rust source and is published live at [**secutils.dev/api-docs/openapi.json**](https://secutils.dev/api-docs/openapi.json). The authoring conventions (path parameters, request body types, sync-guard tests for schema examples) are documented in [**AGENTS.md**](https://github.com/secutils-dev/secutils/blob/main/AGENTS.md#adding-a-new-http-route).
+Every public route is annotated with [**utoipa**](https://github.com/juhaku/utoipa) so the OpenAPI specification is generated automatically from the Rust source and is published live at [**secutils.dev/api-docs/openapi.json**](https://secutils.dev/api-docs/openapi.json). The authoring conventions (path parameters, request body types, sync-guard tests for schema examples) are documented in the [**HTTP route guide**](https://github.com/secutils-dev/secutils/blob/main/dev/agent-guides/http-routes.md).
 
 ### Database: PostgreSQL 16 (via SQLx)
 
