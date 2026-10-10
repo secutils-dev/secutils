@@ -241,8 +241,8 @@ do not skip steps even when the previous stage was green.
   fork.** The fork requires a Playwright driver internal (`lib/browserServerImpl.js`) that
   current Playwright does not ship and crash-loops with `MODULE_NOT_FOUND`; the official
   package resolves Playwright via the driver's public `index.js` + `firefox.launchServer()`.
-  Its `playwright<1.61` pin is overridden in `Dockerfile.web-scraper-camoufox`. See the
-  retrack submodule's `AGENTS.md` for the full Camoufox recipe.
+  The current wrapper supports the pinned Playwright version without an override. See the
+  retrack submodule's `AGENTS.md` for the Camoufox recipe, native build dependencies, and runtime checks.
 
 #### Docusaurus (stage 9)
 
