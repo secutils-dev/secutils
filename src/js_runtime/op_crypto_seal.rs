@@ -32,6 +32,7 @@ use openssl::{
     sign::Signer,
     symm::{Cipher, Crypter, Mode},
 };
+use std::mem::MaybeUninit;
 
 /// Length, in bytes, of a SEC1 uncompressed P-256 public key.
 const P256_PUBLIC_KEY_LEN: usize = 65;
@@ -145,16 +146,18 @@ fn seal(recipient_pub_b64: &str, plaintext: &str) -> Result<String, JsErrorBox> 
     let aes_key = hkdf_sha256_32(&shared, &recipient_pub_bytes, &ephemeral_pub_bytes)
         .map_err(os_err("HKDF failed"))?;
 
-    let mut nonce = [0u8; AES_GCM_NONCE_LEN];
-    openssl::rand::rand_bytes(&mut nonce).map_err(os_err("Failed to generate nonce"))?;
-    let (ciphertext, tag) = aes_256_gcm_encrypt(&aes_key, &nonce, plaintext.as_bytes())
+    // The nonce becomes readable only after the OS random source fills every byte.
+    let mut nonce_storage = [MaybeUninit::uninit(); AES_GCM_NONCE_LEN];
+    let nonce = getrandom::fill_uninit(&mut nonce_storage)
+        .map_err(|err| JsErrorBox::generic(format!("Failed to generate nonce: {err}")))?;
+    let (ciphertext, tag) = aes_256_gcm_encrypt(&aes_key, nonce, plaintext.as_bytes())
         .map_err(os_err("AES-256-GCM encryption failed"))?;
 
     let mut sealed = Vec::with_capacity(
         P256_PUBLIC_KEY_LEN + AES_GCM_NONCE_LEN + ciphertext.len() + AES_GCM_TAG_LEN,
     );
     sealed.extend_from_slice(&ephemeral_pub_bytes);
-    sealed.extend_from_slice(&nonce);
+    sealed.extend_from_slice(nonce);
     sealed.extend_from_slice(&ciphertext);
     sealed.extend_from_slice(&tag);
 
@@ -193,8 +196,8 @@ fn sha256_hex(data_b64: &str) -> Result<String, JsErrorBox> {
 #[cfg(test)]
 mod tests {
     use super::{
-        AES_GCM_TAG_LEN, P256_PUBLIC_KEY_LEN, ecdh_shared, hkdf_sha256_32, p256_group, seal,
-        sha256_hex,
+        AES_GCM_NONCE_LEN, AES_GCM_TAG_LEN, P256_PUBLIC_KEY_LEN, ecdh_shared, hkdf_sha256_32,
+        p256_group, seal, sha256_hex,
     };
     use base64ct::{Base64UrlUnpadded, Encoding};
     use openssl::{
@@ -285,6 +288,10 @@ mod tests {
         let b = seal(&recipient.pub_b64, "hello").unwrap();
         // Distinct ephemeral keys + nonces => distinct ciphertexts for identical input.
         assert_ne!(a, b);
+        let a = Base64UrlUnpadded::decode_vec(&a).unwrap();
+        let b = Base64UrlUnpadded::decode_vec(&b).unwrap();
+        let nonce_range = P256_PUBLIC_KEY_LEN..P256_PUBLIC_KEY_LEN + AES_GCM_NONCE_LEN;
+        assert_ne!(&a[nonce_range.clone()], &b[nonce_range]);
     }
 
     #[test]
@@ -341,14 +348,15 @@ mod tests {
     }
 
     #[test]
-    fn hkdf_matches_rfc5869_style_vector() {
-        // Deterministic check that extract+expand is stable and 32 bytes long.
-        let okm = hkdf_sha256_32(b"input-key-material", b"salt", b"info").unwrap();
+    fn hkdf_is_deterministic_and_domain_separated() {
+        // Use a recipient public key as the salt, as the sealing protocol does.
+        let salt = fresh_recipient().pub_bytes;
+        let okm = hkdf_sha256_32(b"input-key-material", &salt, b"info").unwrap();
         assert_eq!(okm.len(), 32);
-        let again = hkdf_sha256_32(b"input-key-material", b"salt", b"info").unwrap();
+        let again = hkdf_sha256_32(b"input-key-material", &salt, b"info").unwrap();
         assert_eq!(okm, again);
         // A different info must yield a different key (domain separation).
-        let other = hkdf_sha256_32(b"input-key-material", b"salt", b"info2").unwrap();
+        let other = hkdf_sha256_32(b"input-key-material", &salt, b"info2").unwrap();
         assert_ne!(okm, other);
     }
 }
