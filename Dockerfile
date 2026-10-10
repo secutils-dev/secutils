@@ -1,9 +1,9 @@
-# syntax=docker/dockerfile:1.2
+# syntax=docker/dockerfile:1
 
-FROM rust:1.98-slim-trixie@sha256:cc0448b41c3b7b7fea44f5dc50eacba729a56db365b65b7bd5e8a82d5b3db078 AS server_builder
+FROM rust:1.99-slim-trixie@sha256:2752b332db73fdbb7dc576f06c82ed1f312005784ef913d7e04a28f5f55dc581 AS server_builder
 
 ARG TARGETARCH
-ARG UPX_VERSION=5.2.0
+ARG UPX_VERSION=5.2.1
 
 ## Statically link binary to OpenSSL libraries.
 ENV OPENSSL_STATIC=yes
@@ -46,7 +46,7 @@ RUN --mount=type=cache,target=/app/target set -x && cargo build --release && \
     upx --best --lzma ./secutils
 
 # Check out https://gcr.io/distroless/cc-debian13:nonroot
-FROM gcr.io/distroless/cc-debian13:nonroot@sha256:a77defd6fedbb3392b175ba8ea3d1c22be963c1597c248c3ba987ddd80bfb512
+FROM gcr.io/distroless/cc-debian13:nonroot@sha256:e792ab3d241a468a4fd7519ddbbebe66b49b5f365771716ea688ad40b6c6f1c2
 EXPOSE 7070
 
 WORKDIR /app
