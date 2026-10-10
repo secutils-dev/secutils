@@ -825,6 +825,12 @@ if (!('closedBy' in HTMLDialogElement.prototype)) {
 marked.use({
     gfm: true,
     breaks: false,
+    hooks: {
+        processAllTokens(tokens) {
+            escapeUnmatchedInlineHtml(tokens);
+            return tokens;
+        },
+    },
     extensions: [{
         name: 'highlight',
         level: 'inline',
@@ -862,6 +868,32 @@ marked.use({
 });
 
 const escHTML = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+const HTML_VOID_TAGS = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
+function escapeUnmatchedInlineHtml(value) {
+    if (!value || typeof value !== 'object') return;
+    if (Array.isArray(value)) {
+        const open = [];
+        for (const token of value) {
+            if (token?.type !== 'html' || token.block) continue;
+            const tag = token.text.match(/^<(\/?)([a-z][\w:-]*)\b[^>]*>$/i);
+            if (!tag) continue;
+            const name = tag[2].toLowerCase();
+            if (HTML_VOID_TAGS.has(name)) continue;
+            if (!tag[1]) {
+                open.push({ name, token });
+            } else {
+                const index = open.findLastIndex((entry) => entry.name === name);
+                if (index < 0) token.text = escHTML(token.text);
+                else open.splice(index, 1);
+            }
+        }
+        // Match within one inline token list, so a prose <Button> cannot
+        // capture a later paragraph (or match an unrelated button there).
+        for (const { token } of open) token.text = escHTML(token.text);
+    }
+    for (const child of Object.values(value)) escapeUnmatchedInlineHtml(child);
+}
 
 // Yield to the event loop between highlight passes so long documents
 // don't block input. See AGENTS.md -> "Long tasks (scheduler.yield)".

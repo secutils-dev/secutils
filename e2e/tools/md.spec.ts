@@ -46,6 +46,42 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     await expect(page.locator('#emptyState')).toBeHidden();
   });
 
+  test('unmatched inline HTML stays literal without swallowing the rest of the document', async ({ page }) => {
+    await page.goto(tool.path);
+    await setMarkdown(
+      page,
+      [
+        'An ESLint/Oxlint plugin to enforce rules like "no raw colors" and',
+        '"no restyling <Button> from outside" with errors to steer agents',
+        'back to your variants and tokens.',
+        '',
+        'Unmatched <span class="example"> and </em> stay visible.',
+        '',
+        'Paired <em>HTML</em>, <button>Click</button>, and a break<br>still work.',
+        '',
+        '## Next section',
+        '',
+        '- A later item',
+      ].join('\n'),
+    );
+
+    const preview = page.locator('#previewArticle');
+    await expect(preview).toContainText('"no restyling <Button> from outside"');
+    await expect(preview).toContainText('Unmatched <span class="example"> and </em> stay visible.');
+    await expect(preview.locator('button')).toHaveText(['Click']);
+    await expect(preview.locator('em')).toHaveText(['HTML']);
+    await expect(preview.locator('br')).toHaveCount(1);
+    await expect(preview.locator(':scope > h2')).toContainText('Next section');
+    await expect(preview.locator(':scope > ul > li')).toHaveText(['A later item']);
+
+    await page.getByRole('button', { name: 'HTML', exact: true }).click();
+    const exported = page.frameLocator('#htmlPreview').locator('article');
+    await expect(exported).toContainText('"no restyling <Button> from outside"');
+    await expect(exported.locator('button')).toHaveText(['Click']);
+    await expect(exported.locator(':scope > h2')).toContainText('Next section');
+    await expect(exported.locator(':scope > ul > li')).toHaveText(['A later item']);
+  });
+
   test('Source view swaps preview for the editor and back', async ({ page }) => {
     await page.goto(tool.path);
     await setMarkdown(page, '# Editable');
