@@ -6,6 +6,34 @@ import { assertSeoBasics, assertSkillMd, getTool } from './_helpers';
 
 const tool = getTool('pdf');
 
+test('Markdown export keeps backslashes, pipes, and link delimiters inside their cells', async ({ page }) => {
+  await page.goto(tool.path);
+  const table = await page.evaluate(() => {
+    const pdf = window as unknown as {
+      emitTable(lines: unknown[], anchors: number[], links: unknown[]): string;
+    };
+    const item = (text: string, x: number, y: number, fontName = '') => ({
+      text,
+      x,
+      y,
+      width: 10,
+      height: 10,
+      fontName,
+    });
+    return pdf.emitTable(
+      [
+        { items: [item('Left', 0, 0), item('Right', 100, 0)] },
+        { items: [item('a\\|b', 0, 20, 'Bold'), item('Link', 100, 20)] },
+      ],
+      [0, 100],
+      [{ x: 100, y: 20, width: 10, height: 10, url: 'https://example.org/a\\)|<x>\n' }],
+    );
+  });
+  expect(table).toBe(
+    '| Left | Right |\n| --- | --- |\n| **a\\\\\\|b** | [Link](https://example.org/a%5c%29%7c%3cx%3e%0a) |',
+  );
+});
+
 /**
  * Build a shareable PDF Extractor URL fragment from a pre-extracted state
  * payload. Mirrors the production wire format encoded in

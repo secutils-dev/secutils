@@ -33,6 +33,26 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     await expect(page.locator('#decoded-payload')).toHaveValue(/"name": "John Doe"/);
   });
 
+  test('pastes tokens as text and preserves the colored segments', async ({ page }) => {
+    await page.goto(tool.path);
+    const encoded = page.locator('#encoded-output');
+    const paste = async (value: string) => {
+      await encoded.fill('');
+      await encoded.evaluate((element, text) => {
+        const clipboardData = new DataTransfer();
+        clipboardData.setData('text/plain', text);
+        element.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true }));
+      }, value);
+    };
+    await paste(SAMPLE_JWT);
+    await expect(encoded.locator('.token-part-header')).toHaveText(SAMPLE_JWT.split('.')[0]);
+    await expect(encoded.locator('.token-part-signature')).toHaveText(SAMPLE_JWT.split('.')[2]);
+    const malicious = '<img src=x onerror="document.body.dataset.injected=1">';
+    await paste(malicious);
+    await expect(encoded).toHaveText(malicious);
+    await expect(encoded.locator('img')).toHaveCount(0);
+  });
+
   test('unwraps an Elastic essu-prefixed LZ4 token', async ({ page }) => {
     await page.goto(tool.path);
     const encoded = page.locator('#encoded-output');

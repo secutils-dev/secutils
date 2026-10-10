@@ -82,6 +82,17 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     await expect(exported.locator(':scope > ul > li')).toHaveText(['A later item']);
   });
 
+  test('extracts export titles as text, including entities and multiline headings', async ({ page }) => {
+    await page.goto(tool.path);
+    await setMarkdown(page, '<h1>A &amp; B\n<em>Title</em> &lt;script&gt;</h1>');
+    await page.getByRole('button', { name: 'HTML', exact: true }).click();
+    const frame = page.frameLocator('#htmlPreview');
+    await expect
+      .poll(() => frame.locator('html').evaluate((el) => el.ownerDocument.title))
+      .toBe('A & B Title <script>');
+    await expect(frame.locator('article h1')).toContainText('A & B');
+  });
+
   test('Source view swaps preview for the editor and back', async ({ page }) => {
     await page.goto(tool.path);
     await setMarkdown(page, '# Editable');

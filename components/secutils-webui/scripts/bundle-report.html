@@ -166,7 +166,8 @@
         return;
       }
       const cur = data.at(-1), prev = data.at(-2);
-      let html = '<thead><tr><th>Bundle</th><th>Previous</th><th>Current</th><th>Diff</th><th>Change</th></tr></thead><tbody>';
+      table.innerHTML = '<thead><tr><th>Bundle</th><th>Previous</th><th>Current</th><th>Diff</th><th>Change</th></tr></thead>';
+      const body = table.createTBody();
 
       const allKeys = [...new Set([...Object.keys(cur.bundles || {}), ...Object.keys(prev.bundles || {})])];
       for (const key of allKeys) {
@@ -175,38 +176,50 @@
         const change = pct(c, p);
         const cls = change > 5 ? 'regression' : change < -2 ? 'improvement' : '';
         const pctCls = change > 10 ? 'warn' : change < -2 ? 'good' : '';
-        html += `<tr class="${cls}"><td>${key}</td><td>${fmt(p)}</td><td>${fmt(c)}</td><td>${fmt(c - p)}</td><td class="${pctCls}">${fmtPct(change)}</td></tr>`;
+        const row = appendCells(body, [key, fmt(p), fmt(c), fmt(c - p), fmtPct(change)]);
+        row.className = cls;
+        row.lastElementChild.className = pctCls;
       }
 
       // Category rows.
-      html += '<tr><th colspan="5" style="text-align:left;padding-top:16px;">Categories</th></tr>';
+      const categoryHeading = document.createElement('th');
+      categoryHeading.colSpan = 5;
+      categoryHeading.style.cssText = 'text-align:left;padding-top:16px;';
+      categoryHeading.textContent = 'Categories';
+      body.insertRow().appendChild(categoryHeading);
       for (const cat of Object.keys(cur.categories || {})) {
         const c = cur.categories[cat]?.[m] || 0;
         const p = prev.categories?.[cat]?.[m] || 0;
         const change = pct(c, p);
         const cls = cat === 'total' ? '' : (change > 5 ? 'regression' : change < -2 ? 'improvement' : '');
         const pctCls = change > 8 ? 'warn' : change < -2 ? 'good' : '';
-        const bold = cat === 'total' ? 'font-weight:700;' : '';
-        html += `<tr class="${cls}" style="${bold}"><td>${cat}</td><td>${fmt(p)}</td><td>${fmt(c)}</td><td>${fmt(c - p)}</td><td class="${pctCls}">${fmtPct(change)}</td></tr>`;
+        const row = appendCells(body, [cat, fmt(p), fmt(c), fmt(c - p), fmtPct(change)]);
+        row.className = cls;
+        if (cat === 'total') row.style.fontWeight = '700';
+        row.lastElementChild.className = pctCls;
       }
+    }
 
-      html += '</tbody>';
-      table.innerHTML = html;
+    function appendCells(body, values) {
+      const row = body.insertRow();
+      for (const value of values) row.insertCell().textContent = value;
+      return row;
     }
 
     function renderHistory(m) {
       const table = document.getElementById('historyTable');
-      let html = '<thead><tr><th>Date</th><th>Commit</th><th>Total Raw</th><th>Total ' + m.charAt(0).toUpperCase() + m.slice(1) + '</th><th>Bundles</th></tr></thead><tbody>';
+      table.innerHTML = '<thead><tr><th>Date</th><th>Commit</th><th>Total Raw</th><th></th><th>Bundles</th></tr></thead>';
+      table.tHead.rows[0].cells[3].textContent = `Total ${m.charAt(0).toUpperCase()}${m.slice(1)}`;
+      const body = table.createTBody();
       for (let i = data.length - 1; i >= 0; i--) {
         const d = data[i];
         const date = new Date(d.timestamp).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' });
         const sha = d.commitSha?.slice(0, 7) || '?';
         const total = d.categories?.total || {};
         const bundleCount = Object.keys(d.bundles || {}).length;
-        html += `<tr><td>${date}</td><td title="${d.commitMessage || ''}">${sha}</td><td>${fmt(total.raw)}</td><td>${fmt(total[m])}</td><td>${bundleCount} tracked</td></tr>`;
+        const row = appendCells(body, [date, sha, fmt(total.raw), fmt(total[m]), `${bundleCount} tracked`]);
+        row.cells[1].title = d.commitMessage || '';
       }
-      html += '</tbody>';
-      table.innerHTML = html;
     }
 
     document.getElementById('fileInput').addEventListener('change', (e) => {

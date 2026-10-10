@@ -26,8 +26,8 @@
   <meta name="twitter:description" content="Generate signed SAML responses for testing Elasticsearch and Kibana SSO. IdP- and SP-initiated flows. No signup.">
   <meta name="twitter:image" content="https://secutils.dev/docs/img/og/og-mock-saml-idp.png">
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"Mock SAML IdP","url":"https://{{TOOLS_HOST}}/elastic/saml/idp-login","applicationCategory":"SecurityApplication","operatingSystem":"Any","browserRequirements":"Requires JavaScript","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"publisher":{"@type":"Organization","name":"Secutils.dev","url":"https://secutils.dev"},"sameAs":"https://github.com/secutils-dev/secutils/blob/main/dev/tools/mock-saml-idp.html","description":"Generate signed SAML responses for testing Elasticsearch and Kibana SSO. Supports IdP-initiated and SP-initiated flows with configurable users, roles, and attributes. Browser-only, no signup."}</script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jsrsasign/10.9.0/jsrsasign-all-min.js" defer fetchpriority="low"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js" defer fetchpriority="low"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jsrsasign/10.9.0/jsrsasign-all-min.js" integrity="sha384-flsvBcqDe6PhROU4y0obEENLrrj1Verzmkwmw2yIg1riI90Pp1vOI9S13ImovahU" crossorigin="anonymous" defer fetchpriority="low"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js" integrity="sha384-rNlaE5fs9dGIjmxWDALQh/RBAaGRYT5ChrzHo6tRfgrZ36iRFAiquP5g41Jsv+0j" crossorigin="anonymous" defer fetchpriority="low"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=Roboto+Mono:wght@400..700&display=swap" rel="stylesheet">
@@ -635,7 +635,10 @@ const SAML_CALLBACK_PATH = "/api/security/saml/callback";
         if (currentMode !== 'advanced') return;
         const box = $('statusBox');
         const cls = type === 'error' ? 'text-error' : type === 'success' ? 'text-success' : 'text-info';
-        box.insertAdjacentHTML('beforeend', `<div class="${cls}">&gt; ${msg}</div>`);
+        const entry = document.createElement('div');
+        entry.className = cls;
+        entry.textContent = `> ${msg}`;
+        box.appendChild(entry);
         box.scrollTop = box.scrollHeight;
     };
 
@@ -702,8 +705,8 @@ const SAML_CALLBACK_PATH = "/api/security/saml/callback";
             if (samlRequestId) log(`   SP-Initiated flow: InResponseTo="${samlRequestId}"`);
             else log('   IdP-Initiated flow: No InResponseTo attribute');
 
-            const roleAttributeValues = roles.map((role) => `<saml:AttributeValue>${role}</saml:AttributeValue>`).join('');
-            const inResponseToAttr = samlRequestId ? ` InResponseTo="${samlRequestId}"` : '';
+            const roleAttributeValues = roles.map((role) => `<saml:AttributeValue>${escapeText(role)}</saml:AttributeValue>`).join('');
+            const inResponseToAttr = samlRequestId ? ` InResponseTo="${escapeAttr(samlRequestId)}"` : '';
 
             const assertionXml =
                 `<saml:Assertion xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" Version="2.0" ID="${assertionID}" IssueInstant="${issueInstant}">` +
@@ -711,7 +714,7 @@ const SAML_CALLBACK_PATH = "/api/security/saml/callback";
                     '<saml:Subject>' +
                         `<saml:NameID Format="urn:oasis:names:tc:SAML:1.1:nameid-format:transient">${nameID}</saml:NameID>` +
                         '<saml:SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer">' +
-                            `<saml:SubjectConfirmationData NotOnOrAfter="${notOnOrAfter}" Recipient="${destination}"${inResponseToAttr}/>` +
+                            `<saml:SubjectConfirmationData NotOnOrAfter="${notOnOrAfter}" Recipient="${escapeAttr(destination)}"${inResponseToAttr}/>` +
                         '</saml:SubjectConfirmation>' +
                     '</saml:Subject>' +
                     `<saml:AuthnStatement AuthnInstant="${issueInstant}" SessionIndex="${sessionIndex}">` +
@@ -721,16 +724,16 @@ const SAML_CALLBACK_PATH = "/api/security/saml/callback";
                     '</saml:AuthnStatement>' +
                     '<saml:AttributeStatement>' +
                         '<saml:Attribute FriendlyName="principal" Name="http://saml.elastic-cloud.com/attributes/principal" NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:uri">' +
-                            `<saml:AttributeValue>${username}</saml:AttributeValue>` +
+                            `<saml:AttributeValue>${escapeText(username)}</saml:AttributeValue>` +
                         '</saml:Attribute>' +
                         '<saml:Attribute FriendlyName="roles" Name="http://saml.elastic-cloud.com/attributes/roles" NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:uri">' +
                             roleAttributeValues +
                         '</saml:Attribute>' +
                         '<saml:Attribute FriendlyName="email" Name="http://saml.elastic-cloud.com/attributes/email" NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:uri">' +
-                            `<saml:AttributeValue>${email}</saml:AttributeValue>` +
+                            `<saml:AttributeValue>${escapeText(email)}</saml:AttributeValue>` +
                         '</saml:Attribute>' +
                         '<saml:Attribute FriendlyName="name" Name="http://saml.elastic-cloud.com/attributes/name" NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:uri">' +
-                            `<saml:AttributeValue>${fullname}</saml:AttributeValue>` +
+                            `<saml:AttributeValue>${escapeText(fullname)}</saml:AttributeValue>` +
                         '</saml:Attribute>' +
                     '</saml:AttributeStatement>' +
                 '</saml:Assertion>';
@@ -804,7 +807,7 @@ const SAML_CALLBACK_PATH = "/api/security/saml/callback";
 
             log('9. Building SAML Response...');
             const responseXml =
-                `<samlp:Response xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" ID="${responseID}"${inResponseToAttr} Version="2.0" IssueInstant="${issueInstant}" Destination="${destination}">` +
+                `<samlp:Response xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" ID="${responseID}"${inResponseToAttr} Version="2.0" IssueInstant="${issueInstant}" Destination="${escapeAttr(destination)}">` +
                     `<saml:Issuer xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion">${ISSUER}</saml:Issuer>` +
                     '<samlp:Status>' +
                         '<samlp:StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:Success"/>' +

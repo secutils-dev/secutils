@@ -27,7 +27,7 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     await input.fill(SAMPLE_SAML_B64);
 
     await expect(page.locator('#decoded-xml-container')).toContainText('AttributeStatement');
-    await page.locator('#attributes-tab').click();
+    await page.getByRole('tab', { name: 'Attributes', exact: true }).click();
     await expect(page.locator('#attributes-table-body')).toContainText('john@example.org');
   });
 });

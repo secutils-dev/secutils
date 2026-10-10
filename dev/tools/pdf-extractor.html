@@ -2005,17 +2005,13 @@ function escapeMarkdown(s) {
     // Backslash-escape the characters Markdown treats specially inside an
     // inline span. Whitespace and most printable characters pass through
     // verbatim so the round-trip stays human-readable.
-    return s.replace(/\\/g, '\\\\').replace(/([*_`\[\]<>])/g, '\\$1');
-}
-
-function escapePipe(s) {
-    return s.replace(/\|/g, '\\|').replace(/\n/g, ' ');
+    return s.replace(/([\\*_`\[\]<>|])/g, '\\$1');
 }
 
 function escapeUrl(url) {
-    // Markdown link targets can't contain unescaped `)`; also strip
-    // newlines so a malformed annotation can't break the link syntax.
-    return url.replace(/[\n\r]/g, '').replace(/\)/g, '%29');
+    // Keep PDF annotations inside the Markdown destination, including when
+    // they contain a backslash before a parenthesis or table delimiter.
+    return url.replace(/[\u0000-\u0020\\()<>|]/g, (char) => `%${char.charCodeAt(0).toString(16).padStart(2, '0')}`);
 }
 
 function itemInsideRect(it, r) {
@@ -2115,7 +2111,7 @@ function emitTable(tableLines, anchors, pageLinks) {
             if (!rendered) continue;
             cells[nearest] = cells[nearest] ? cells[nearest] + ' ' + rendered : rendered;
         }
-        return cells.map(escapePipe);
+        return cells.map((cell) => cell.replace(/[\r\n]/g, ' '));
     });
     const header = rows[0];
     const sep = new Array(cols).fill('---');

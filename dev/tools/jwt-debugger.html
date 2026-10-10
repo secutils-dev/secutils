@@ -26,7 +26,7 @@
     <meta name="twitter:description" content="Free JWT debugger. Decode, verify, and sign HMAC JSON Web Tokens directly in your browser. No signup.">
     <meta name="twitter:image" content="https://secutils.dev/docs/img/og/og-jwt.png">
     <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"JWT Debugger","url":"https://{{TOOLS_HOST}}/jwt","applicationCategory":"SecurityApplication","operatingSystem":"Any","browserRequirements":"Requires JavaScript","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"publisher":{"@type":"Organization","name":"Secutils.dev","url":"https://secutils.dev"},"sameAs":"https://github.com/secutils-dev/secutils/blob/main/dev/tools/jwt-debugger.html","description":"Free JWT debugger. Decode, verify, and sign HMAC JSON Web Tokens (HS256, HS384, HS512) directly in your browser. State stays in the URL fragment so tokens never leave your machine."}</script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jose/4.14.4/index.umd.min.js" defer fetchpriority="low"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jose/4.14.4/index.umd.min.js" integrity="sha384-poiEbfNKlGsC2UCQ/2tTuNE0fFy0BsCXn1io3SyuDm7TqWh8EgorXSCmzu8UE4rD" crossorigin="anonymous" defer fetchpriority="low"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=Roboto+Mono:wght@400..700&display=swap" rel="stylesheet">
@@ -786,7 +786,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // would reset the caret to position 0.
     const renderColoredToken = (jwt) => {
         const [h, p, s] = jwt.split('.');
-        encodedOutput.innerHTML = `<span class="token-part-header">${h}</span><span class="token-dot">.</span><span class="token-part-payload">${p}</span><span class="token-dot">.</span><span class="token-part-signature">${s}</span>`;
+        const parts = [
+            ['token-part-header', h], ['token-dot', '.'],
+            ['token-part-payload', p], ['token-dot', '.'],
+            ['token-part-signature', s],
+        ];
+        encodedOutput.replaceChildren(...parts.map(([className, text]) => {
+            const span = document.createElement('span');
+            span.className = className;
+            span.textContent = text ?? '';
+            return span;
+        }));
     };
 
     const clearDecodedPanels = () => {

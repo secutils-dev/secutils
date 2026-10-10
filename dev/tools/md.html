@@ -557,7 +557,7 @@ html.su-loading #emptyState { display: none; }
     <!-- marked / highlight.js are used at top-level inline-script execution (marked.use(...))
          so they cannot be `defer`red without restructuring. Network priority is still demoted. -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" fetchpriority="low"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" fetchpriority="low"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" integrity="sha384-F/bZzf7p3Joyp5psL90p/p89AZJsndkSoGwRpXcZhleCWhd8SnRuoYo4d0yirjJp" crossorigin="anonymous" fetchpriority="low"></script>
 
     <!-- CodeMirror 6 ESM loader. Falls back to a plain textarea if any import fails. -->
     <script type="module">
@@ -1185,10 +1185,11 @@ function stripFrontmatter(md) {
 }
 
 function extractTitle(html) {
-    const tm = html.match(/<h1[^>]*>(.*?)<\/h1>/i);
-    if (!tm) return filename;
-    const text = tm[1].replace(/<a class="su-anchor"[\s\S]*?<\/a>/gi, '').replace(/<[^>]*>/g, '').trim();
-    return text || filename;
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const heading = doc.querySelector('h1');
+    if (!heading) return filename;
+    for (const anchor of heading.querySelectorAll('a.su-anchor')) anchor.remove();
+    return heading.textContent.trim() || filename;
 }
 
 function setDocTitle() {
@@ -1274,9 +1275,12 @@ function setViewMode(mode) {
     if (mode === 'html') renderHtmlPreview();
 }
 
+let htmlPreviewGeneration = 0;
 async function renderHtmlPreview() {
+    const generation = ++htmlPreviewGeneration;
     if (!markdown.trim()) { els.htmlPreview.srcdoc = '<!DOCTYPE html><title>Preview</title>'; return; }
-    els.htmlPreview.srcdoc = await generateOutput(readOptions());
+    const html = await generateOutput(readOptions());
+    if (generation === htmlPreviewGeneration && viewMode === 'html') els.htmlPreview.srcdoc = html;
 }
 
 for (const b of els.viewBtns) {
