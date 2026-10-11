@@ -681,19 +681,47 @@ You can find more examples of content extractor scripts at the [Secutils.dev San
 Custom cron schedules are available only for [**Pro** subscription](https://secutils.dev/pricing) users.
 :::
 
-In this section, you can learn more about the supported cron expression syntax used to configure custom tracking schedules. A cron expression is a string consisting of six or seven subexpressions that describe individual details of the schedule. These subexpressions, separated by white space, can contain any of the allowed values with various combinations of the allowed characters for that subexpression:
+A custom cron expression contains six required fields and an optional year field, separated by spaces. Custom schedules run in **UTC**.
 
 | Subexpression  | Mandatory | Allowed values  | Allowed special characters |
 |----------------|-----------|-----------------|----------------------------|
 | `Seconds`      | Yes       | 0-59            | * / , -                    |
 | `Minutes`      | Yes       | 0-59            | * / , -                    |
 | `Hours`        | Yes       | 0-23            | * / , -                    |
-| `Day of month` | Yes       | 1-31            | * / , - ?                  |
-| `Month`        | Yes       | 0-11 or JAN-DEC | * / , -                    |
-| `Day of week`  | Yes       | 1-7 or SUN-SAT  | * / , - ?                  |
-| `Year`         | No        | 1970-2099       | * / , -                    |
+| `Day of month` | Yes       | 1-31            | * / , - ? L W              |
+| `Month`        | Yes       | 1-12 or JAN-DEC  | * / , -                    |
+| `Day of week`  | Yes       | 0-7 or SUN-SAT   | * / , - ? L #              |
+| `Year`         | No        | 1-5000          | * / , -                    |
 
-Following the described cron syntax, you can create almost any schedule you want as long as the interval between two consecutive checks is **longer than 10 minutes**. Below are some examples of supported cron expressions:
+Months use `1` for January and `12` for December. Weekdays use `0` or `7` for Sunday, `1` for Monday, through `6` for Saturday.
+
+The `*` character matches every value in a field. The `?` character acts like `*` in the day-of-month and day-of-week fields.
+If both day fields contain restrictions, **both must match**. For example, `0 0 12 1 * MON` runs only when the first day of a month is Monday.
+
+The `L` modifier selects the last day or specified weekday of a month. The `W` modifier selects the weekday nearest a specified day.
+The `#` modifier selects a weekday occurrence within a month, such as `MON#2` for the second Monday.
+
+### Step syntax and migration
+
+A step uses a wildcard or an explicit range before `/`:
+
+- `*/10` in the minutes field selects minutes `0`, `10`, `20`, `30`, `40`, and `50`.
+- `5-59/10` in the minutes field selects minutes `5`, `15`, `25`, `35`, `45`, and `55`.
+
+:::caution Croner 4 syntax change
+Single-number steps such as `0/10` and omitted-start steps such as `/10` are no longer accepted.
+
+If an existing custom schedule uses these forms, update the schedule before saving or importing the tracker:
+
+- Replace `0/10` or `/10` with `*/10`.
+- Replace a nonzero starting value with an explicit range. For example, replace `5/10` in the minutes field with `5-59/10`.
+
+Apply the same changes to schedules in exported tracker files before importing them.
+:::
+
+### Schedule examples
+
+For the Pro subscription, consecutive checks must be **at least 10 minutes** apart. All times in these examples are UTC:
 
 | Expression            | Meaning                                             |
 |-----------------------|-----------------------------------------------------|
@@ -701,7 +729,7 @@ Following the described cron syntax, you can create almost any schedule you want
 | `0 15 10 ? * *`       | Run at 10:15 every day                              |
 | `0 15 10 * * ?`       | Run at 10:15 every day                              |
 | `0 15 10 * * ? *`     | Run at 10:15 every day                              |
-| `0 15 10 * * ? 2025`  | Run at 10:15 every day during the year 2025         |
+| `0 15 10 * * ? 2030`  | Run at 10:15 every day during the year 2030         |
 | `0 */10 14 * * ?`     | Run every 10 minutes from 14:00 to 14:59, every day |
 | `0 10,44 14 ? 3 WED`  | Run at 14:10 and at 14:44 every Wednesday in March  |
 | `0 15 10 ? * MON-FRI` | Run at 10:15 from Monday to Friday                  |
