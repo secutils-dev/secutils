@@ -69,4 +69,28 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     expect(values.requestId).toBe(requestId);
     expect(values.attributes.filter((value) => value === name)).toHaveLength(2);
   });
+
+  test('submits only to HTTP destinations and rejects invalid input', async ({ page }) => {
+    await page.goto(tool.path);
+    await page.locator('#advancedModeBtn').click();
+    await page.locator('#username').fill('alice');
+    await page.locator('#fullname').fill('Alice');
+    await page.locator('#email').fill('alice@example.org');
+    await page.evaluate(() => {
+      HTMLFormElement.prototype.submit = function () {
+        this.dataset.submitted = 'true';
+      };
+    });
+    const form = page.locator('#realPostForm');
+    for (const destination of ['ftp://example.org', 'http://[invalid', 'javascript:alert(1)']) {
+      await page.locator('#destination').fill(destination);
+      await page.locator('#submitBtn').click();
+      await expect(page.locator('#statusBox')).toContainText('ERROR:');
+      await expect(form).not.toHaveAttribute('data-submitted');
+    }
+    await page.locator('#destination').fill('localhost:5601/some/path');
+    await page.locator('#submitBtn').click();
+    await expect(form).toHaveAttribute('action', 'http://localhost:5601/api/security/saml/callback');
+    await expect(form).toHaveAttribute('data-submitted', 'true');
+  });
 });

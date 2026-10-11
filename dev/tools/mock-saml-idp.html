@@ -529,15 +529,12 @@ const SAML_CALLBACK_PATH = "/api/security/saml/callback";
     // 5. DESTINATION URL HANDLING
     // ==========================================
     const normalizeDestination = (input) => {
-        try {
-            let urlStr = input.trim();
-            if (!urlStr.startsWith('http://') && !urlStr.startsWith('https://')) {
-                urlStr = `http://${urlStr}`;
-            }
-            return new URL(urlStr).origin + SAML_CALLBACK_PATH;
-        } catch {
-            return input.replace(/\/+$/, '') + SAML_CALLBACK_PATH;
+        const value = input.trim();
+        const url = new URL(value.includes('://') ? value : `http://${value}`);
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+            throw new Error('Destination must use HTTP or HTTPS.');
         }
+        return new URL(SAML_CALLBACK_PATH, url.origin).href;
     };
 
     // ==========================================
@@ -689,8 +686,6 @@ const SAML_CALLBACK_PATH = "/api/security/saml/callback";
         const email = $('email').value;
         const roles = selectedRoles.length > 0 ? selectedRoles : ['viewer'];
         const rawDestination = $('destination').value || 'http://localhost:5601';
-        const destination = normalizeDestination(rawDestination);
-        $('realPostForm').action = destination;
 
         const now = new Date();
         const issueInstant = now.toISOString();
@@ -701,6 +696,8 @@ const SAML_CALLBACK_PATH = "/api/security/saml/callback";
         const nameID = generateID();
 
         try {
+            const destination = normalizeDestination(rawDestination);
+            $('realPostForm').action = destination;
             log('1. Building SAML Assertion...');
             if (samlRequestId) log(`   SP-Initiated flow: InResponseTo="${samlRequestId}"`);
             else log('   IdP-Initiated flow: No InResponseTo attribute');
