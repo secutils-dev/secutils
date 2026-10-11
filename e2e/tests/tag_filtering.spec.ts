@@ -352,6 +352,8 @@ test.describe('Tag filtering', () => {
       // The "No matching items" empty state should appear with "Clear filters" button.
       const clearButton = page.getByRole('button', { name: 'Clear filters' });
       await expect(clearButton).toBeVisible({ timeout: 5000 });
+      await expect(page.getByRole('heading', { name: 'No matching items' })).toBeVisible();
+      await expect(page.getByText(/hidden by active filters/)).toHaveCount(0);
       await clearButton.click();
 
       // After clearing, URL should have no q or tags params.

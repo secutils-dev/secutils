@@ -243,9 +243,7 @@ export default function WorkspaceScripts() {
           sorting={sorting}
           pagination={pagination}
           onChange={onTableChange}
-          noItemsMessage={
-            <FilteredEmptyState totalItems={total} hasPageFilters={hasPageFilters} onClearFilters={clearPageFilters} />
-          }
+          noItemsMessage={<FilteredEmptyState hasPageFilters={hasPageFilters} onClearFilters={clearPageFilters} />}
         />
       </>
     );

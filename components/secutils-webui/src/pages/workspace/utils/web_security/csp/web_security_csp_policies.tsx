@@ -246,9 +246,7 @@ export default function WebSecurityContentSecurityPolicies() {
         <EuiBasicTable
           loading={loading}
           pagination={pagination}
-          noItemsMessage={
-            <FilteredEmptyState totalItems={total} hasPageFilters={hasPageFilters} onClearFilters={clearPageFilters} />
-          }
+          noItemsMessage={<FilteredEmptyState hasPageFilters={hasPageFilters} onClearFilters={clearPageFilters} />}
           sorting={sorting}
           onChange={onTableChange}
           items={policies}
