@@ -183,7 +183,7 @@ export default defineConfig({
     target: "es2022",
     outDir: "dist",
     emptyOutDir: true,
-    minify: "esbuild",
+    minify: "oxc",
     sourcemap: false,
     chunkSizeWarningLimit: 8 * 1024,
     // Library mode produces a single self-contained ESM module at
@@ -196,7 +196,7 @@ export default defineConfig({
       formats: ["es"],
       fileName: () => "liteparse.js",
     },
-    rollupOptions: {
+    rolldownOptions: {
       // Force-bundle everything: in library mode Vite externalises npm
       // deps by default; we override so the produced ESM is fully
       // self-contained (no runtime `import "@llamaindex/liteparse"` lookup
@@ -207,7 +207,7 @@ export default defineConfig({
         // (notably the top-level await in liteparse's pdfjs.js) into a
         // single output, so the deploy inliner has exactly one file to
         // splice into the HTML responder body.
-        inlineDynamicImports: true,
+        codeSplitting: false,
         exports: "named",
       },
     },

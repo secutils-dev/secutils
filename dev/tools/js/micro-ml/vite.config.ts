@@ -76,7 +76,7 @@ export default defineConfig({
     target: "es2022",
     outDir: "dist",
     emptyOutDir: true,
-    minify: "esbuild",
+    minify: "oxc",
     sourcemap: false,
     // Inline every asset (including the .wasm pulled in by upstream's
     // `new URL('./micro_ml_core_bg.wasm', import.meta.url)`) as a data
@@ -88,12 +88,12 @@ export default defineConfig({
       formats: ["es"],
       fileName: () => "micro-ml.js",
     },
-    rollupOptions: {
+    rolldownOptions: {
       external: [],
       output: {
         // Single output file -- `data-su-bundle` inlines exactly one
         // module body into the placeholder.
-        inlineDynamicImports: true,
+        codeSplitting: false,
         exports: "named",
       },
     },

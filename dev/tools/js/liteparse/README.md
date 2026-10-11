@@ -26,8 +26,8 @@ missing or older than the sources here.
 | dep                       | version     | notes                                           |
 |---------------------------|-------------|-------------------------------------------------|
 | `@llamaindex/liteparse`   | `1.5.3`     | exact pin -- we patch its internals via stubs   |
-| `tesseract.js`            | `^6.0.1`    | OCR engine; lazy-fetches worker + lang from CDN |
-| `vite`                    | `^7.1.13`   | bundler                                         |
+| `tesseract.js`            | `^7.0.0`    | OCR engine; lazy-fetches worker + lang from CDN |
+| `vite`                    | `^8.3.2`    | bundler                                         |
 | (vendored) `pdfjs-dist`   | `5.6.205`   | shipped inside `@llamaindex/liteparse` itself   |
 
 The `pdfjs-dist` build is **not** a direct dep -- we alias

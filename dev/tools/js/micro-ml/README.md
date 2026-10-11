@@ -26,7 +26,7 @@ bundles) in one go. `make deploy-tools` builds it on demand if
 | dep         | version    | notes                                                   |
 |-------------|------------|---------------------------------------------------------|
 | `micro-ml`  | `1.0.0`    | exact pin -- we patch its WASM-loader path via the plugin in `vite.config.ts` |
-| `vite`      | `^7.1.13`  | bundler                                                 |
+| `vite`      | `^8.3.2`   | bundler                                                 |
 | (vendored) `micro_ml_core_bg.wasm` | (~145 KB) | shipped inside `micro-ml` itself        |
 
 The bundle is shipped to the responder body in the `gzip-base64` encoding
