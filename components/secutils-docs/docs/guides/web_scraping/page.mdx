@@ -702,7 +702,7 @@ Following the described cron syntax, you can create almost any schedule you want
 | `0 15 10 * * ?`       | Run at 10:15 every day                              |
 | `0 15 10 * * ? *`     | Run at 10:15 every day                              |
 | `0 15 10 * * ? 2025`  | Run at 10:15 every day during the year 2025         |
-| `0 0/10 14 * * ?`     | Run every 10 minutes from 14:00 to 14:59, every day |
+| `0 */10 14 * * ?`     | Run every 10 minutes from 14:00 to 14:59, every day |
 | `0 10,44 14 ? 3 WED`  | Run at 14:10 and at 14:44 every Wednesday in March  |
 | `0 15 10 ? * MON-FRI` | Run at 10:15 from Monday to Friday                  |
 | `0 11 15 8 10 ?`      | Run every October 8 at 15:11                        |
