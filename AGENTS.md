@@ -50,3 +50,7 @@ Preserve Retrack snapshots against its own feature set.
 
 When a commit is requested, use conventional commits.
 Dependency, image, and submodule changes use `chore(deps)`, `chore(docker)`, and `chore(submodule)` respectively.
+
+Before pushing, fetch the target remote and rebase unpublished commits onto its latest branch.
+If upstream advances during verification, repeat the fetch and rebase before retrying the push.
+Apply this workflow in each repository, including Retrack, and record its final rebased SHA in the parent submodule pointer.
