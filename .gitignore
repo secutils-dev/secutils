@@ -9,6 +9,7 @@ dist
 .env
 .DS_Store
 .claude
+.cursor
 
 *.private.env.json
 deploy.env

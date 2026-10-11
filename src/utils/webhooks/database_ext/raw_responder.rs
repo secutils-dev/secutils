@@ -2,6 +2,7 @@ use crate::{
     users::RawSecretsAccess,
     utils::webhooks::{
         Responder, ResponderMethod, ResponderNotificationSettings, ResponderSettings,
+        ResponderStats, ResponderSummary, ResponderSummarySettings,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -23,6 +24,55 @@ pub(super) struct RawResponder {
 impl RawResponder {
     pub fn get_raw_method(method: ResponderMethod) -> anyhow::Result<Vec<u8>> {
         Ok(postcard::to_stdvec(&method)?)
+    }
+}
+
+/// Responder list row: the responder columns plus computed size and history stats.
+#[derive(Debug, Eq, PartialEq, Clone, sqlx::FromRow)]
+pub(super) struct RawResponderSummary {
+    pub id: Uuid,
+    pub name: String,
+    pub location: String,
+    pub method: Vec<u8>,
+    pub enabled: bool,
+    pub settings: Vec<u8>,
+    pub settings_size: i32,
+    pub request_count: i64,
+    pub last_requested_at: Option<OffsetDateTime>,
+    pub created_at: OffsetDateTime,
+    pub updated_at: OffsetDateTime,
+}
+
+impl TryFrom<RawResponderSummary> for ResponderSummary {
+    type Error = anyhow::Error;
+
+    fn try_from(raw: RawResponderSummary) -> Result<Self, Self::Error> {
+        // ponytail: decodes the full settings blob (body included) only to read three flags, so
+        // Postgres still ships each visible row's settings to Rust. Ceiling: list cost grows with
+        // the bodies of the visible rows. Upgrade path: denormalize `has_script` and
+        // `requests_to_track` into columns (like `notifications_enabled`), backfill them, update
+        // every write path including import, and stop selecting `settings` here.
+        let settings = deserialize_settings(&raw.settings)?;
+        Ok(ResponderSummary {
+            id: raw.id,
+            name: raw.name,
+            location: raw.location.parse()?,
+            method: postcard::from_bytes::<ResponderMethod>(&raw.method)?,
+            enabled: raw.enabled,
+            settings: ResponderSummarySettings {
+                requests_to_track: settings.requests_to_track,
+                has_script: settings.script.is_some(),
+                has_notifications: settings.notifications.is_some(),
+            },
+            settings_size: u64::try_from(raw.settings_size)?,
+            stats: ResponderStats {
+                request_count: usize::try_from(raw.request_count)?,
+                last_requested_at: raw.last_requested_at,
+            },
+            tags: vec![],
+            created_at: raw.created_at,
+            updated_at: raw.updated_at,
+        })
     }
 }
 

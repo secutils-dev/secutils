@@ -15,7 +15,7 @@ import { unix } from 'moment';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { buildHar } from './build_har';
-import type { Responder } from './responder';
+import type { ResponderSummary } from './responder';
 import type { ResponderRequest } from './responder_request';
 import { DataGrid, PageErrorState, PageLoadingState } from '../../../../components';
 import { EmptyHistoryIcon } from '../../../../components/legacy_icons';
@@ -23,7 +23,7 @@ import { apiFetch, type AsyncData, formatBytes, getErrorMessage, ResponseError }
 import { useWorkspaceContext } from '../../hooks';
 
 export interface ResponderRequestsTableProps {
-  responder: Responder;
+  responder: ResponderSummary;
 }
 
 const AUTO_REFRESH_INTERVAL_MS = 3000;

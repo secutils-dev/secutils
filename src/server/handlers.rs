@@ -214,12 +214,12 @@ pub(crate) async fn resolve_shared_user(
         content_security_policies::csp_unshare,
         // Webhooks responders
         responders::responders_list,
+        responders::responders_get,
         responders::responders_create,
         responders::responders_update,
         responders::responders_delete,
         responders::responders_get_history,
         responders::responders_clear_history,
-        responders::responders_get_stats,
         // Page trackers
         page_trackers::page_trackers_list,
         page_trackers::page_trackers_create,
@@ -337,6 +337,8 @@ pub(crate) async fn resolve_shared_user(
         crate::utils::webhooks::ResponderPathType,
         crate::utils::webhooks::ResponderSettings,
         crate::utils::webhooks::ResponderStats,
+        crate::utils::webhooks::ResponderSummary,
+        crate::utils::webhooks::ResponderSummarySettings,
         crate::utils::webhooks::RespondersCreateParams,
         crate::utils::webhooks::RespondersUpdateParams,
         crate::users::SecretsAccess,
@@ -483,7 +485,6 @@ mod tests {
           "/api/web_security/csp/{policy_id}/_share",
           "/api/web_security/csp/{policy_id}/_unshare",
           "/api/webhooks/responders",
-          "/api/webhooks/responders/_stats",
           "/api/webhooks/responders/{responder_id}",
           "/api/webhooks/responders/{responder_id}/_clear",
           "/api/webhooks/responders/{responder_id}/_history"
@@ -577,7 +578,7 @@ mod tests {
           "Page_ContentSecurityPolicy",
           "Page_PageTracker",
           "Page_PrivateKey",
-          "Page_Responder",
+          "Page_ResponderSummary",
           "Page_UserScript",
           "Page_UserSecret",
           "Page_UserTag",
@@ -597,6 +598,8 @@ mod tests {
           "ResponderPathType",
           "ResponderSettings",
           "ResponderStats",
+          "ResponderSummary",
+          "ResponderSummarySettings",
           "RespondersCreateParams",
           "RespondersUpdateParams",
           "RetrackTracker",
@@ -1294,6 +1297,18 @@ mod tests {
         // GET (list)
         assert_eq!(path["get"]["operationId"], "responders_list");
         assert_eq!(path["get"]["tags"][0], "webhooks");
+        assert_eq!(
+            path["get"]["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/Page_ResponderSummary"
+        );
+
+        // GET (detail)
+        let detail = &spec["paths"]["/api/webhooks/responders/{responder_id}"]["get"];
+        assert_eq!(detail["operationId"], "responders_get");
+        assert_eq!(
+            detail["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/Responder"
+        );
 
         // POST (create)
         assert_eq!(path["post"]["operationId"], "responders_create");
@@ -1314,10 +1329,6 @@ mod tests {
         // _clear
         let clear = &spec["paths"]["/api/webhooks/responders/{responder_id}/_clear"]["post"];
         assert_eq!(clear["operationId"], "responders_clear_history");
-
-        // _stats
-        let stats = &spec["paths"]["/api/webhooks/responders/_stats"]["get"];
-        assert_eq!(stats["operationId"], "responders_get_stats");
     }
 
     #[test]

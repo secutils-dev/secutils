@@ -8,11 +8,15 @@ use crate::{
     users::{EntityTag, RawEntityTag, UserId, group_entity_tags},
     utils::webhooks::{
         Responder, ResponderLocation, ResponderMethod, ResponderPathType, ResponderRequest,
-        ResponderStats,
+        ResponderSummary,
+        api_ext::{
+            RESPONDER_LAST_REQUESTED_AT_SQL, RESPONDER_REQUEST_COUNT_SQL,
+            RESPONDER_SETTINGS_SIZE_SQL,
+        },
     },
 };
 use anyhow::{anyhow, bail};
-use raw_responder::RawResponder;
+use raw_responder::{RawResponder, RawResponderSummary};
 use raw_responder_request::RawResponderRequest;
 use sqlx::{Acquire, Pool, Postgres, query, query_as};
 use std::collections::HashMap;
@@ -70,8 +74,8 @@ ORDER BY updated_at
             .collect::<anyhow::Result<Vec<_>>>()
     }
 
-    /// Returns a single page of responders for a user, honoring search, tag, sort, and pagination
-    /// parameters, plus the total count.
+    /// Returns a single page of responder summaries for a user, honoring search, tag, sort, and
+    /// pagination parameters, plus the total count.
     ///
     /// `sort_col` MUST originate from the caller's static allowlist.
     pub async fn get_responders_page(
@@ -79,16 +83,22 @@ ORDER BY updated_at
         user_id: UserId,
         params: &ListParams,
         sort_col: &str,
-    ) -> anyhow::Result<(Vec<Responder>, i64)> {
+    ) -> anyhow::Result<(Vec<ResponderSummary>, i64)> {
+        let columns = format!(
+            "id, name, location, method, enabled, settings, created_at, updated_at, \
+             {RESPONDER_SETTINGS_SIZE_SQL} AS settings_size, \
+             {RESPONDER_REQUEST_COUNT_SQL} AS request_count, \
+             {RESPONDER_LAST_REQUESTED_AT_SQL} AS last_requested_at"
+        );
         let list = list_sql(
             "user_data_webhooks_responders",
-            "id, name, location, method, enabled, settings, created_at, updated_at",
+            &columns,
             "name",
             &RESPONDERS_TAG_JUNCTION,
             sort_col,
             params.order,
         );
-        let rows: Vec<RawResponder> = sqlx::query_as(sqlx::AssertSqlSafe(list))
+        let rows: Vec<RawResponderSummary> = sqlx::query_as(sqlx::AssertSqlSafe(list))
             .bind(*user_id)
             .bind(params.query.as_deref())
             .bind(params.tags.as_slice())
@@ -113,39 +123,9 @@ ORDER BY updated_at
 
         let responders = rows
             .into_iter()
-            .map(Responder::try_from)
+            .map(ResponderSummary::try_from)
             .collect::<anyhow::Result<Vec<_>>>()?;
         Ok((responders, total))
-    }
-
-    /// Retrieves stats for all responders.
-    pub async fn get_responders_stats(
-        &self,
-        user_id: UserId,
-    ) -> anyhow::Result<Vec<ResponderStats>> {
-        let raw_responders_stats = query!(
-            r#"
-SELECT r.id AS responder_id, COUNT(rh.id) AS request_count, MAX(rh.created_at) AS last_requested_at
-FROM user_data_webhooks_responders AS r
-JOIN user_data_webhooks_responders_history AS rh
-ON r.id = rh.responder_id
-WHERE r.user_id = $1
-GROUP BY r.id
-ORDER BY r.updated_at
-                "#,
-            *user_id
-        )
-        .fetch_all(self.pool)
-        .await?;
-
-        Ok(raw_responders_stats
-            .into_iter()
-            .map(|record| ResponderStats {
-                responder_id: record.responder_id,
-                request_count: record.request_count.unwrap_or(0) as usize,
-                last_requested_at: record.last_requested_at,
-            })
-            .collect())
     }
 
     /// Retrieves responders for the specified user matching the given IDs.
@@ -1489,96 +1469,176 @@ mod tests {
         Ok(())
     }
 
+    fn list_params(order: crate::server::SortOrder) -> crate::server::ListParams {
+        crate::server::ListParams {
+            offset: 0,
+            limit: 10,
+            order,
+            query: None,
+            tags: vec![],
+            global_tags: vec![],
+        }
+    }
+
     #[sqlx::test(migrator = "crate::MIGRATOR")]
-    async fn can_retrieve_all_responders_stats(pool: PgPool) -> anyhow::Result<()> {
+    async fn get_responders_page_returns_summaries(pool: PgPool) -> anyhow::Result<()> {
+        use crate::{
+            server::SortOrder,
+            utils::webhooks::{ResponderNotificationSettings, ResponderSummarySettings},
+        };
+
         let user = mock_user()?;
-        let db = Database::create(pool).await?;
+        let db = Database::create(pool.clone()).await?;
         db.insert_user(&user).await?;
 
-        let responders = [
-            MockResponderBuilder::create(
-                uuid!("00000000-0000-0000-0000-000000000001"),
-                "some-name",
-                "/",
-            )?
-            .build(),
-            MockResponderBuilder::create(
-                uuid!("00000000-0000-0000-0000-000000000002"),
-                "some-name-2",
-                "/path",
-            )?
-            .build(),
-        ];
+        let plain_id = uuid!("00000000-0000-0000-0000-000000000001");
+        let rich_id = uuid!("00000000-0000-0000-0000-000000000002");
+        let legacy_id = uuid!("00000000-0000-0000-0000-000000000003");
+        let mut rich = MockResponderBuilder::create(rich_id, "b-rich", "/rich")?
+            .with_body("rich body")
+            .build();
+        rich.settings.requests_to_track = 7;
+        rich.settings.script = Some("return {};".to_string());
+        rich.settings.notifications = Some(ResponderNotificationSettings {
+            throttle_seconds: 3600,
+        });
 
         let webhooks = db.webhooks();
-        for responder in responders.iter() {
-            webhooks.insert_responder(user.id, responder).await?;
+        for responder in [
+            MockResponderBuilder::create(plain_id, "a-plain", "/plain")?.build(),
+            rich,
+            MockResponderBuilder::create(legacy_id, "c-legacy", "/legacy")?.build(),
+        ] {
+            webhooks.insert_responder(user.id, &responder).await?;
         }
 
-        assert!(webhooks.get_responders_stats(user.id).await?.is_empty());
+        // Legacy V1 settings: requests_to_track=3, body="body", headers=[key: value], a script,
+        // and no secrets or notifications fields.
+        let legacy_settings: Vec<u8> = vec![
+            3, 200, 1, 1, 4, 98, 111, 100, 121, 1, 1, 3, 107, 101, 121, 5, 118, 97, 108, 117, 101,
+            1, 31, 114, 101, 116, 117, 114, 110, 32, 123, 32, 98, 111, 100, 121, 58, 32, 96, 99,
+            117, 115, 116, 111, 109, 32, 98, 111, 100, 121, 96, 32, 125, 59,
+        ];
+        sqlx::query("UPDATE user_data_webhooks_responders SET settings = $1 WHERE id = $2")
+            .bind(&legacy_settings)
+            .bind(legacy_id)
+            .execute(&pool)
+            .await?;
 
         webhooks
             .insert_responder_request(
                 user.id,
-                &create_request(
-                    uuid!("00000000-0000-0000-0000-000000000001"),
-                    responders[0].id,
-                )?,
+                &create_request(uuid!("00000000-0000-0000-0000-000000000011"), rich_id)?,
             )
             .await?;
-        assert_eq!(
-            webhooks.get_responders_stats(user.id).await?,
-            vec![ResponderStats {
-                responder_id: responders[0].id,
-                request_count: 1,
-                last_requested_at: Some(OffsetDateTime::from_unix_timestamp(946720800)?)
-            }]
-        );
 
-        webhooks
-            .insert_responder_request(
-                user.id,
-                &ResponderRequest {
-                    created_at: OffsetDateTime::from_unix_timestamp(946720810)?,
-                    ..create_request(
-                        uuid!("00000000-0000-0000-0000-000000000002"),
-                        responders[0].id,
-                    )?
-                },
-            )
+        let (page, total) = webhooks
+            .get_responders_page(user.id, &list_params(SortOrder::Asc), "name")
             .await?;
+        assert_eq!(total, 3);
         assert_eq!(
-            webhooks.get_responders_stats(user.id).await?,
-            vec![ResponderStats {
-                responder_id: responders[0].id,
-                request_count: 2,
-                last_requested_at: Some(OffsetDateTime::from_unix_timestamp(946720810)?)
-            }]
-        );
-
-        webhooks
-            .insert_responder_request(
-                user.id,
-                &create_request(
-                    uuid!("00000000-0000-0000-0000-000000000003"),
-                    responders[1].id,
-                )?,
-            )
-            .await?;
-        assert_eq!(
-            webhooks.get_responders_stats(user.id).await?,
+            page.iter()
+                .map(|r| (r.id, r.settings, r.stats))
+                .collect::<Vec<_>>(),
             vec![
-                ResponderStats {
-                    responder_id: responders[0].id,
-                    request_count: 2,
-                    last_requested_at: Some(OffsetDateTime::from_unix_timestamp(946720810)?)
-                },
-                ResponderStats {
-                    responder_id: responders[1].id,
-                    request_count: 1,
-                    last_requested_at: Some(OffsetDateTime::from_unix_timestamp(946720800)?)
-                }
+                (
+                    plain_id,
+                    ResponderSummarySettings {
+                        requests_to_track: 0,
+                        has_script: false,
+                        has_notifications: false,
+                    },
+                    ResponderStats {
+                        request_count: 0,
+                        last_requested_at: None,
+                    }
+                ),
+                (
+                    rich_id,
+                    ResponderSummarySettings {
+                        requests_to_track: 7,
+                        has_script: true,
+                        has_notifications: true,
+                    },
+                    ResponderStats {
+                        request_count: 1,
+                        last_requested_at: Some(OffsetDateTime::from_unix_timestamp(946720800)?),
+                    }
+                ),
+                (
+                    legacy_id,
+                    ResponderSummarySettings {
+                        requests_to_track: 3,
+                        has_script: true,
+                        has_notifications: false,
+                    },
+                    ResponderStats {
+                        request_count: 0,
+                        last_requested_at: None,
+                    }
+                ),
             ]
+        );
+        assert_eq!(page[2].settings_size, legacy_settings.len() as u64);
+
+        Ok(())
+    }
+
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
+    async fn get_responders_page_sorts_by_settings_size(pool: PgPool) -> anyhow::Result<()> {
+        use crate::{server::SortOrder, utils::webhooks::api_ext::RESPONDER_SETTINGS_SIZE_SQL};
+
+        let user = mock_user()?;
+        let db = Database::create(pool.clone()).await?;
+        db.insert_user(&user).await?;
+
+        let webhooks = db.webhooks();
+        for (index, (name, body_len)) in [("medium", 100), ("small", 10), ("large", 1000)]
+            .into_iter()
+            .enumerate()
+        {
+            let id = Uuid::from_u128(index as u128 + 1);
+            webhooks
+                .insert_responder(
+                    user.id,
+                    &MockResponderBuilder::create(id, name, &format!("/{name}"))?
+                        .with_body(&"x".repeat(body_len))
+                        .build(),
+                )
+                .await?;
+        }
+
+        let (asc, _) = webhooks
+            .get_responders_page(
+                user.id,
+                &list_params(SortOrder::Asc),
+                RESPONDER_SETTINGS_SIZE_SQL,
+            )
+            .await?;
+        assert_eq!(
+            asc.iter().map(|r| r.name.as_str()).collect::<Vec<_>>(),
+            vec!["small", "medium", "large"]
+        );
+        for responder in &asc {
+            let octet_length: i32 = sqlx::query_scalar(
+                "SELECT octet_length(settings) FROM user_data_webhooks_responders WHERE id = $1",
+            )
+            .bind(responder.id)
+            .fetch_one(&pool)
+            .await?;
+            assert_eq!(responder.settings_size, octet_length as u64);
+        }
+
+        let (desc, _) = webhooks
+            .get_responders_page(
+                user.id,
+                &list_params(SortOrder::Desc),
+                RESPONDER_SETTINGS_SIZE_SQL,
+            )
+            .await?;
+        assert_eq!(
+            desc.iter().map(|r| r.name.as_str()).collect::<Vec<_>>(),
+            vec!["large", "medium", "small"]
         );
 
         Ok(())
@@ -1587,8 +1647,7 @@ mod tests {
     #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn get_responders_page_sorts_by_last_requested(pool: PgPool) -> anyhow::Result<()> {
         use crate::{
-            server::{ListParams, SortOrder},
-            utils::webhooks::api_ext::RESPONDER_LAST_REQUESTED_AT_SQL,
+            server::SortOrder, utils::webhooks::api_ext::RESPONDER_LAST_REQUESTED_AT_SORT_SQL,
         };
 
         let user = mock_user()?;
@@ -1629,21 +1688,12 @@ mod tests {
             )
             .await?;
 
-        let page_params = |order| ListParams {
-            offset: 0,
-            limit: 10,
-            order,
-            query: None,
-            tags: vec![],
-            global_tags: vec![],
-        };
-
         // Descending: most recently requested first, never-requested last (epoch sentinel).
         let (desc, total) = webhooks
             .get_responders_page(
                 user.id,
-                &page_params(SortOrder::Desc),
-                RESPONDER_LAST_REQUESTED_AT_SQL,
+                &list_params(SortOrder::Desc),
+                RESPONDER_LAST_REQUESTED_AT_SORT_SQL,
             )
             .await?;
         assert_eq!(total, 3);
@@ -1651,13 +1701,15 @@ mod tests {
             desc.iter().map(|r| r.name.as_str()).collect::<Vec<_>>(),
             vec!["new", "old", "never"]
         );
+        // The sort-only sentinel never leaks into the displayed value.
+        assert_eq!(desc[2].stats.last_requested_at, None);
 
         // Ascending: never-requested first, then oldest to newest.
         let (asc, _) = webhooks
             .get_responders_page(
                 user.id,
-                &page_params(SortOrder::Asc),
-                RESPONDER_LAST_REQUESTED_AT_SQL,
+                &list_params(SortOrder::Asc),
+                RESPONDER_LAST_REQUESTED_AT_SORT_SQL,
             )
             .await?;
         assert_eq!(

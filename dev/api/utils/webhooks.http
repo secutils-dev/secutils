@@ -15,13 +15,13 @@ POST {{host}}/api/webhooks/responders/018cb666-e66c-755c-8d1e-7ff6cacb8641/_clea
 Authorization: {{api-credentials}}
 Accept: application/json
 
-### Get all responders.
-GET {{host}}/api/webhooks/responders
+### Get responder summaries (first page).
+GET {{host}}/api/webhooks/responders?page=0&pageSize=15&sort=updatedAt&order=desc
 Cookie: {{cookie-credentials}}
 Accept: application/json
 
-### Get all responders stats.
-GET {{host}}/api/webhooks/responders/_stats
+### Get responder with all settings.
+GET {{host}}/api/webhooks/responders/018cb666-e66c-755c-8d1e-7ff6cacb8641
 Cookie: {{cookie-credentials}}
 Accept: application/json
 

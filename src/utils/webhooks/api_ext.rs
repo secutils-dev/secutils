@@ -18,27 +18,45 @@ use crate::{
     utils::{
         constants::MAX_ENTITY_NAME_LENGTH,
         webhooks::{
-            Responder, ResponderMethod, ResponderPathType, ResponderRequest, ResponderStats,
+            Responder, ResponderMethod, ResponderPathType, ResponderRequest, ResponderSummary,
         },
     },
 };
 
-/// SQL `ORDER BY` expression for a responder's "last requested" time: the most recent request
-/// timestamp from its history, or the unix epoch when it has never been requested (so
-/// never-requested responders sort as the oldest, matching how the UI renders "—" for them). This
-/// mirrors `MAX(created_at)` used by [`WebhooksDatabaseExt::get_responders_stats`], so the sort
-/// order is consistent with the displayed value. It contains no user input and is only ever used
-/// via the allowlist below.
-pub(crate) const RESPONDER_LAST_REQUESTED_AT_SQL: &str = "COALESCE((SELECT MAX(rh.created_at) \
+// The SQL expressions below are static, correlated against the outer
+// `user_data_webhooks_responders` row, and contain no user input. The `rh.user_id` correlation
+// lets them use the `(user_id, responder_id, created_at)` history index.
+
+/// The most recent retained request timestamp of a responder, or `NULL` if there is none.
+pub(crate) const RESPONDER_LAST_REQUESTED_AT_SQL: &str = "(SELECT MAX(rh.created_at) \
      FROM user_data_webhooks_responders_history rh \
-     WHERE rh.responder_id = user_data_webhooks_responders.id), to_timestamp(0))";
+     WHERE rh.user_id = user_data_webhooks_responders.user_id \
+     AND rh.responder_id = user_data_webhooks_responders.id)";
+
+/// Sort expression for [`RESPONDER_LAST_REQUESTED_AT_SQL`]: never-requested responders sort as the
+/// oldest. It must wrap the display expression verbatim so the sort matches the displayed value.
+pub(crate) const RESPONDER_LAST_REQUESTED_AT_SORT_SQL: &str = "COALESCE((SELECT MAX(rh.created_at) \
+     FROM user_data_webhooks_responders_history rh \
+     WHERE rh.user_id = user_data_webhooks_responders.user_id \
+     AND rh.responder_id = user_data_webhooks_responders.id), to_timestamp(0))";
+
+/// The number of retained requests of a responder.
+pub(crate) const RESPONDER_REQUEST_COUNT_SQL: &str = "(SELECT COUNT(*) \
+     FROM user_data_webhooks_responders_history rh \
+     WHERE rh.user_id = user_data_webhooks_responders.user_id \
+     AND rh.responder_id = user_data_webhooks_responders.id)";
+
+/// Size of the serialized responder settings. `octet_length` on `bytea` reads the raw size from
+/// the TOAST header without detoasting the value.
+pub(crate) const RESPONDER_SETTINGS_SIZE_SQL: &str = "octet_length(settings)";
 
 /// Allowlist of client sort keys mapped to responder SQL columns (or expressions).
 const RESPONDERS_SORT_COLUMNS: &[(&str, &str)] = &[
     ("name", "name"),
     ("createdAt", "created_at"),
     ("updatedAt", "updated_at"),
-    ("lastRequestedAt", RESPONDER_LAST_REQUESTED_AT_SQL),
+    ("lastRequestedAt", RESPONDER_LAST_REQUESTED_AT_SORT_SQL),
+    ("settingsSize", RESPONDER_SETTINGS_SIZE_SQL),
 ];
 use anyhow::bail;
 use std::collections::HashMap;
@@ -75,12 +93,12 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, 'u, DR, ET>
         Ok(responders)
     }
 
-    /// Returns a single page of responders for the user, honoring search, tag, sort, and pagination
-    /// parameters.
+    /// Returns a single page of responder summaries for the user, honoring search, tag, sort, and
+    /// pagination parameters.
     pub async fn list_responders_page(
         &self,
         params: &PaginationParams,
-    ) -> anyhow::Result<Page<Responder>> {
+    ) -> anyhow::Result<Page<ResponderSummary>> {
         let webhooks = self.api.db.webhooks();
         let sort_col = params.sort_column(RESPONDERS_SORT_COLUMNS, "name");
         let list_params = params.resolve();
@@ -94,15 +112,6 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, 'u, DR, ET>
             responder.tags = tags_map.remove(&responder.id).unwrap_or_default();
         }
         Ok(Page::new(responders, total))
-    }
-
-    /// Retrieves stats for all responders that belong to the specified user.
-    pub async fn get_responders_stats(&self) -> anyhow::Result<Vec<ResponderStats>> {
-        self.api
-            .db
-            .webhooks()
-            .get_responders_stats(self.user.id)
-            .await
     }
 
     /// Returns responder by its ID.
@@ -584,9 +593,11 @@ where
 
 #[cfg(test)]
 mod tests {
+    use super::{RESPONDER_LAST_REQUESTED_AT_SORT_SQL, RESPONDER_LAST_REQUESTED_AT_SQL};
     use crate::{
         error::Error as SecutilsError,
-        tests::{mock_api, mock_user},
+        server::PaginationParams,
+        tests::{mock_api, mock_user, mock_user_with_id},
         users::SecretsAccess,
         utils::webhooks::{
             Responder, ResponderLocation, ResponderMethod, ResponderNotificationSettings,
@@ -1752,15 +1763,21 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn last_requested_at_sort_wraps_display_expression() {
+        assert_eq!(
+            RESPONDER_LAST_REQUESTED_AT_SORT_SQL,
+            format!("COALESCE({RESPONDER_LAST_REQUESTED_AT_SQL}, to_timestamp(0))")
+        );
+    }
+
     #[sqlx::test(migrator = "crate::MIGRATOR")]
-    async fn properly_returns_all_responders_stats(pool: PgPool) -> anyhow::Result<()> {
+    async fn list_page_includes_retained_history_stats(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
         let webhooks = api.webhooks(&mock_user);
-        assert!(webhooks.get_responders().await?.is_empty());
-
         let settings = ResponderSettings {
             requests_to_track: 10,
             status_code: 200,
@@ -1770,12 +1787,101 @@ mod tests {
             secrets: SecretsAccess::None,
             notifications: None,
         };
-        let responder_one = webhooks
+        let create = |name: &str, path: &str| RespondersCreateParams {
+            name: name.to_string(),
+            location: ResponderLocation {
+                path_type: ResponderPathType::Exact,
+                path: path.to_string(),
+                subdomain_prefix: None,
+            },
+            method: ResponderMethod::Any,
+            enabled: true,
+            settings: settings.clone(),
+            tag_ids: vec![],
+        };
+        let responder_one = webhooks.create_responder(create("name_one", "/")).await?;
+        let responder_two = webhooks
+            .create_responder(create("name_two", "/path"))
+            .await?;
+
+        webhooks
+            .create_responder_request(responder_one.id, get_request_create_params("/?a=1"))
+            .await?
+            .unwrap();
+        let last_request = webhooks
+            .create_responder_request(responder_one.id, get_request_create_params("/?a=2"))
+            .await?
+            .unwrap();
+
+        let stats = |page: &crate::server::Page<crate::utils::webhooks::ResponderSummary>| {
+            page.items
+                .iter()
+                .map(|r| (r.id, r.stats))
+                .collect::<Vec<_>>()
+        };
+        let page = webhooks
+            .list_responders_page(&PaginationParams::default())
+            .await?;
+        assert_eq!(
+            stats(&page),
+            vec![
+                (
+                    responder_one.id,
+                    ResponderStats {
+                        request_count: 2,
+                        last_requested_at: Some(last_request.created_at),
+                    }
+                ),
+                (
+                    responder_two.id,
+                    ResponderStats {
+                        request_count: 0,
+                        last_requested_at: None,
+                    }
+                ),
+            ]
+        );
+
+        // Stats reflect retained history only, so clearing it resets them.
+        webhooks.clear_responder_requests(responder_one.id).await?;
+        let page = webhooks
+            .list_responders_page(&PaginationParams::default())
+            .await?;
+        assert_eq!(
+            page.items[0].stats,
+            ResponderStats {
+                request_count: 0,
+                last_requested_at: None,
+            }
+        );
+
+        Ok(())
+    }
+
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
+    async fn list_page_omits_heavy_settings(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
+        let mock_user = mock_user()?;
+        api.db.insert_user(&mock_user).await?;
+
+        let webhooks = api.webhooks(&mock_user);
+        let settings = ResponderSettings {
+            requests_to_track: 5,
+            status_code: 200,
+            body: Some("x".repeat(1024 * 1024)),
+            headers: Some(vec![("x-heavy-header".to_string(), "value".to_string())]),
+            script: Some("return { body: 'heavy script' };".to_string()),
+            secrets: SecretsAccess::All,
+            notifications: Some(ResponderNotificationSettings {
+                throttle_seconds: 3600,
+            }),
+        };
+        let responder = webhooks
             .create_responder(RespondersCreateParams {
-                name: "name_one".to_string(),
+                name: "heavy".to_string(),
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
-                    path: "/".to_string(),
+                    path: "/heavy".to_string(),
                     subdomain_prefix: None,
                 },
                 method: ResponderMethod::Any,
@@ -1784,57 +1890,38 @@ mod tests {
                 tag_ids: vec![],
             })
             .await?;
-        let responder_two = webhooks
-            .create_responder(RespondersCreateParams {
-                name: "name_two".to_string(),
-                location: ResponderLocation {
-                    path_type: ResponderPathType::Exact,
-                    path: "/path".to_string(),
-                    subdomain_prefix: None,
-                },
-                method: ResponderMethod::Any,
-                enabled: false,
-                settings: settings.clone(),
-                tag_ids: vec![],
-            })
+
+        let page = webhooks
+            .list_responders_page(&PaginationParams::default())
             .await?;
+        let json = serde_json::to_string(&page)?;
+        assert!(json.len() < 4096, "list page is {} bytes", json.len());
+        for key in ["\"body\"", "\"headers\"", "\"script\"", "\"secrets\""] {
+            assert!(!json.contains(key), "list page contains {key}: {json}");
+        }
 
-        assert!(webhooks.get_responders_stats().await?.is_empty());
+        let summary = &page.items[0];
+        assert_eq!(summary.settings.requests_to_track, 5);
+        assert!(summary.settings.has_script);
+        assert!(summary.settings.has_notifications);
+        assert!(summary.settings_size > 1024 * 1024);
 
-        let request_one = webhooks
-            .create_responder_request(responder_one.id, get_request_create_params("/?query=value"))
-            .await?
-            .unwrap();
         assert_eq!(
-            webhooks.get_responders_stats().await?,
-            vec![ResponderStats {
-                responder_id: responder_one.id,
-                request_count: 1,
-                last_requested_at: Some(request_one.created_at),
-            }]
+            webhooks
+                .get_responder(responder.id)
+                .await?
+                .map(|r| r.settings),
+            Some(settings)
         );
 
-        let request_two = webhooks
-            .create_responder_request(
-                responder_two.id,
-                get_request_create_params("/path?query=value"),
-            )
-            .await?
-            .unwrap();
-        assert_eq!(
-            webhooks.get_responders_stats().await?,
-            vec![
-                ResponderStats {
-                    responder_id: responder_one.id,
-                    request_count: 1,
-                    last_requested_at: Some(request_one.created_at),
-                },
-                ResponderStats {
-                    responder_id: responder_two.id,
-                    request_count: 1,
-                    last_requested_at: Some(request_two.created_at),
-                }
-            ]
+        // Another user can't read the responder details.
+        let other_user = mock_user_with_id(uuid!("00000000-0000-0000-0000-000000000002"))?;
+        api.db.insert_user(&other_user).await?;
+        assert!(
+            api.webhooks(&other_user)
+                .get_responder(responder.id)
+                .await?
+                .is_none()
         );
 
         Ok(())

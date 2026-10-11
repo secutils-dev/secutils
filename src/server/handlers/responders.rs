@@ -5,7 +5,9 @@ use crate::{
         pagination::{Page, PaginationParams},
     },
     users::User,
-    utils::webhooks::{Responder, ResponderStats, RespondersCreateParams, RespondersUpdateParams},
+    utils::webhooks::{
+        Responder, ResponderSummary, RespondersCreateParams, RespondersUpdateParams,
+    },
 };
 use actix_web::{HttpResponse, delete, get, post, put, web};
 use utoipa::IntoParams;
@@ -16,12 +18,13 @@ pub struct ResponderIdPath {
     pub responder_id: Uuid,
 }
 
-/// Lists responders for the authenticated user (paginated).
+/// Lists responder summaries for the authenticated user (paginated). Summaries omit the body,
+/// headers, script, and secrets settings; use the responder detail endpoint to get them.
 #[utoipa::path(
     tags = ["webhooks"],
     params(PaginationParams),
     responses(
-        (status = 200, description = "Paginated list of responders.", body = Page<Responder>),
+        (status = 200, description = "Paginated list of responder summaries.", body = Page<ResponderSummary>),
         (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
@@ -37,6 +40,33 @@ pub async fn responders_list(
         .list_responders_page(&pagination.into_inner())
         .await?;
     Ok(HttpResponse::Ok().json(responders))
+}
+
+/// Returns a responder by ID, including all of its settings.
+#[utoipa::path(
+    tags = ["webhooks"],
+    params(ResponderIdPath),
+    responses(
+        (status = 200, description = "Responder.", body = Responder),
+        (status = NOT_FOUND, description = "Responder not found."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
+    )
+)]
+#[get("/api/webhooks/responders/{responder_id}")]
+pub async fn responders_get(
+    state: web::Data<AppState>,
+    user: User,
+    path: web::Path<ResponderIdPath>,
+) -> Result<HttpResponse, Error> {
+    match state
+        .api
+        .webhooks(&user)
+        .get_responder(path.responder_id)
+        .await?
+    {
+        Some(responder) => Ok(HttpResponse::Ok().json(responder)),
+        None => Ok(HttpResponse::NotFound().finish()),
+    }
 }
 
 /// Creates a new responder.
@@ -160,24 +190,6 @@ pub async fn responders_clear_history(
         .await?;
     Ok(HttpResponse::NoContent().finish())
 }
-
-/// Returns aggregate stats for all responders.
-#[utoipa::path(
-    tags = ["webhooks"],
-    responses(
-        (status = 200, description = "List of responder stats.", body = [ResponderStats]),
-        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
-    )
-)]
-#[get("/api/webhooks/responders/_stats")]
-pub async fn responders_get_stats(
-    state: web::Data<AppState>,
-    user: User,
-) -> Result<HttpResponse, Error> {
-    let stats = state.api.webhooks(&user).get_responders_stats().await?;
-    Ok(HttpResponse::Ok().json(stats))
-}
-
 #[cfg(test)]
 mod tests {
     use crate::{

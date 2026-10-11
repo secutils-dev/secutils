@@ -34,13 +34,19 @@ lightweight HTTP traffic inspector. The human-readable guide lives at
 
 | Method   | Path                                               | Purpose                                                |
 |----------|----------------------------------------------------|--------------------------------------------------------|
-| `GET`    | `/api/webhooks/responders`                         | List all responders for the current user.              |
+| `GET`    | `/api/webhooks/responders`                         | List responder summaries with request stats.           |
+| `GET`    | `/api/webhooks/responders/{responder_id}`          | Return a responder with all of its settings.           |
 | `POST`   | `/api/webhooks/responders`                         | Create a new responder (`RespondersCreateParams`).     |
 | `PUT`    | `/api/webhooks/responders/{responder_id}`          | Replace responder settings (`RespondersUpdateParams`). |
 | `DELETE` | `/api/webhooks/responders/{responder_id}`          | Permanently delete the responder and its history.      |
 | `GET`    | `/api/webhooks/responders/{responder_id}/_history` | Return the captured request history.                   |
 | `POST`   | `/api/webhooks/responders/{responder_id}/_clear`   | Clear the captured request history.                    |
-| `GET`    | `/api/webhooks/responders/_stats`                  | Aggregate stats across all responders.                 |
+
+The list returns `ResponderSummary` items. They omit the body, headers,
+script, and secrets settings. Each item has `settingsSize` (serialized
+settings size in bytes) and `stats` (`requestCount` and `lastRequestedAt`
+for the retained request history). To read the full settings, use
+`GET /api/webhooks/responders/{responder_id}`.
 
 ## Authentication
 

@@ -32,7 +32,8 @@ import { TagsComboBox } from '../../components/tags_combo_box';
 import { useWorkspaceContext } from '../../hooks';
 
 export interface ResponderEditFlyoutProps {
-  responder?: Partial<Responder>;
+  /** Full responder to edit, a full responder without identity to duplicate, or none to create. */
+  responder?: Responder | (Omit<Responder, 'id' | 'createdAt' | 'updatedAt'> & { id?: never });
   onClose: (success?: boolean) => void;
 }
 

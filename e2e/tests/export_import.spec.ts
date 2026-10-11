@@ -878,8 +878,16 @@ test.describe('Data Export and Import', () => {
     expect(keyExportRes.ok()).toBeTruthy();
 
     // ── Step 7f: Validate responder config ─────────────────────────────
+    // The list returns summaries, so read full settings from the detail endpoint.
     const respondersRes = await page.request.get('/api/webhooks/responders');
-    const { items: responders } = await respondersRes.json();
+    const { items: responderSummaries } = await respondersRes.json();
+    const responders = await Promise.all(
+      responderSummaries.map(async ({ id }: { id: string }) => {
+        const res = await page.request.get(`/api/webhooks/responders/${encodeURIComponent(id)}`);
+        expect(res.ok()).toBeTruthy();
+        return res.json();
+      }),
+    );
     const importedResponder = responders.find((r: { name: string }) => r.name === 'import-test-responder');
     expect(importedResponder).toBeDefined();
     expect(importedResponder.location).toEqual({ pathType: '=', path: '/import-resp-test' });

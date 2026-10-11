@@ -8,6 +8,7 @@ mod responder_script_context;
 mod responder_script_result;
 mod responder_settings;
 mod responder_stats;
+mod responder_summary;
 
 pub use self::{
     responder::Responder,
@@ -20,4 +21,5 @@ pub use self::{
     responder_script_result::ResponderScriptResult,
     responder_settings::ResponderSettings,
     responder_stats::ResponderStats,
+    responder_summary::{ResponderSummary, ResponderSummarySettings},
 };

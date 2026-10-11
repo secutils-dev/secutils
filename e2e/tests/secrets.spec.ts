@@ -322,11 +322,10 @@ test.describe('Secrets access in responder edit flyout', () => {
     await dismissAllToasts(page);
 
     // Verify via API that secrets were persisted.
-    const listRes = await page.request.get('/api/webhooks/responders');
-    expect(listRes.ok()).toBeTruthy();
-    const { items: responders } = await listRes.json();
-    const responder = responders.find((r: { name: string }) => r.name === 'secrets-responder');
-    expect(responder).toBeDefined();
+    const { id } = await createRes.json();
+    const responderRes = await page.request.get(`/api/webhooks/responders/${id}`);
+    expect(responderRes.ok()).toBeTruthy();
+    const responder = await responderRes.json();
     expect(responder.settings.secrets).toEqual({ type: 'selected', secrets: ['RESPONDER_KEY'] });
   });
 
@@ -369,11 +368,10 @@ test.describe('Secrets access in responder edit flyout', () => {
     await dismissAllToasts(page);
 
     // Verify via API that secrets mode is now "none".
-    const listRes = await page.request.get('/api/webhooks/responders');
-    expect(listRes.ok()).toBeTruthy();
-    const { items: responders } = await listRes.json();
-    const responder = responders.find((r: { name: string }) => r.name === 'secrets-responder');
-    expect(responder).toBeDefined();
+    const { id } = await createRes.json();
+    const responderRes = await page.request.get(`/api/webhooks/responders/${id}`);
+    expect(responderRes.ok()).toBeTruthy();
+    const responder = await responderRes.json();
     expect(responder.settings.secrets).toBeUndefined();
 
     // Re-open and verify it shows "None".

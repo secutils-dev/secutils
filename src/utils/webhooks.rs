@@ -7,7 +7,8 @@ pub use self::{
     responders::{
         Responder, ResponderLocation, ResponderMethod, ResponderNotificationSettings,
         ResponderPathType, ResponderRequest, ResponderRequestHeaders, ResponderScriptContext,
-        ResponderScriptResult, ResponderSettings, ResponderStats,
+        ResponderScriptResult, ResponderSettings, ResponderStats, ResponderSummary,
+        ResponderSummarySettings,
     },
 };
 

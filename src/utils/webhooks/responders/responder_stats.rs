@@ -2,18 +2,16 @@ use serde::Serialize;
 use serde_with::{TimestampSeconds, serde_as};
 use time::OffsetDateTime;
 use utoipa::ToSchema;
-use uuid::Uuid;
 
-/// Represents a responder stat.
+/// Responder request stats, computed from the currently retained request history (not lifetime
+/// totals): clearing the history resets them.
 #[serde_as]
 #[derive(Debug, Copy, Clone, Serialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ResponderStats {
-    /// Unique responder ID that the stat belongs to (UUIDv7).
-    pub responder_id: Uuid,
     /// Number of responder requests that are currently stored.
     pub request_count: usize,
-    /// The timestamp when the responder was last requested.
+    /// The timestamp of the most recent stored request, if any.
     #[serde_as(as = "Option<TimestampSeconds<i64>>")]
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<i64>)]
@@ -25,30 +23,25 @@ mod tests {
     use crate::utils::webhooks::ResponderStats;
     use insta::assert_json_snapshot;
     use time::OffsetDateTime;
-    use uuid::uuid;
 
     #[test]
     fn serialization() -> anyhow::Result<()> {
         assert_json_snapshot!(ResponderStats {
-            responder_id: uuid!("00000000-0000-0000-0000-000000000001"),
             request_count: 10,
             last_requested_at: Some(OffsetDateTime::from_unix_timestamp(946720800)?)
         }, @r###"
         {
-          "responderId": "00000000-0000-0000-0000-000000000001",
           "requestCount": 10,
           "lastRequestedAt": 946720800
         }
         "###);
 
         assert_json_snapshot!(ResponderStats {
-            responder_id: uuid!("00000000-0000-0000-0000-000000000001"),
-            request_count: 10,
+            request_count: 0,
             last_requested_at: None
         }, @r###"
         {
-          "responderId": "00000000-0000-0000-0000-000000000001",
-          "requestCount": 10
+          "requestCount": 0
         }
         "###);
 

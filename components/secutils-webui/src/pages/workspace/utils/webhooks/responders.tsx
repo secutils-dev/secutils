@@ -19,14 +19,22 @@ import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useSt
 import type { ReactNode } from 'react';
 
 import { UTIL_HANDLES } from '..';
-import type { Responder } from './responder';
+import type { ResponderSummary } from './responder';
+import { getResponder } from './responder';
+import type { ResponderEditFlyoutProps } from './responder_edit_flyout';
 import { ResponderName } from './responder_name';
 import { ResponderRequestsTable } from './responder_requests_table';
-import type { ResponderStats } from './responder_stats';
 import { PageErrorState, PageLoadingState } from '../../../../components';
 import { useUserTags } from '../../../../hooks';
 import type { Page, PaginationRequest } from '../../../../model';
-import { apiFetch, buildPaginationQuery, getCopyName, ResponseError } from '../../../../model';
+import {
+  apiFetch,
+  buildPaginationQuery,
+  formatBytes,
+  getCopyName,
+  getErrorMessage,
+  ResponseError,
+} from '../../../../model';
 import {
   FilteredEmptyState,
   ItemsTableFilter,
@@ -34,20 +42,20 @@ import {
   useServerPaginatedItems,
 } from '../../components/items_table_filter';
 import { TimestampTableCell } from '../../components/timestamp_table_cell';
-import { useWorkspaceContext } from '../../hooks';
+import { useEntityLoader, useWorkspaceContext } from '../../hooks';
 import { getWorkspaceEntityAbsoluteLink, getWorkspaceEntityLink } from '../workspace_links';
 
 const ResponderEditFlyout = lazy(() => import('./responder_edit_flyout'));
 
 export default function Responders() {
   const theme = useEuiTheme();
-  const { uiState, setTitleActions } = useWorkspaceContext();
+  const { uiState, setTitleActions, addToast } = useWorkspaceContext();
 
   const [initialized, setInitialized] = useState(false);
-  const [stats, setStats] = useState<Map<string, ResponderStats>>(new Map());
-  const [responderToRemove, setResponderToRemove] = useState<Responder | null>(null);
-  const [responderToEdit, setResponderToEdit] = useState<Partial<Responder> | null | undefined>(null);
+  const [responderToRemove, setResponderToRemove] = useState<ResponderSummary | null>(null);
+  const [responderToEdit, setResponderToEdit] = useState<ResponderEditFlyoutProps['responder'] | null>(null);
   const { allTags } = useUserTags();
+  const { load: loadResponder, cancel: cancelResponderLoad, loading: responderLoading } = useEntityLoader(getResponder);
 
   const createButton = useMemo(
     () => (
@@ -55,12 +63,26 @@ export default function Responders() {
         iconType={'plusCircle'}
         title="Create new responder"
         fill
-        onClick={() => setResponderToEdit(undefined)}
+        onClick={() => {
+          cancelResponderLoad();
+          setResponderToEdit(undefined);
+        }}
       >
         Create responder
       </EuiButton>
     ),
-    [],
+    [cancelResponderLoad],
+  );
+
+  const onLoadResponderError = useCallback(
+    (name: string, err: unknown) =>
+      addToast({
+        id: 'load-responder-error',
+        iconType: 'warning',
+        color: 'danger',
+        title: `Failed to load responder "${name}": ${getErrorMessage(err)}`,
+      }),
+    [addToast],
   );
 
   const docsButton = (
@@ -74,23 +96,12 @@ export default function Responders() {
     </EuiButtonEmpty>
   );
 
-  const fetcher = useCallback(async (request: PaginationRequest): Promise<Page<Responder>> => {
-    const [respondersRes, respondersStatsRes] = await Promise.all([
-      apiFetch(`/api/webhooks/responders${buildPaginationQuery(request)}`),
-      apiFetch('/api/webhooks/responders/_stats'),
-    ]);
-
-    if (!respondersRes.ok) {
-      throw await ResponseError.fromResponse(respondersRes);
+  const fetcher = useCallback(async (request: PaginationRequest): Promise<Page<ResponderSummary>> => {
+    const res = await apiFetch(`/api/webhooks/responders${buildPaginationQuery(request)}`);
+    if (!res.ok) {
+      throw await ResponseError.fromResponse(res);
     }
-    if (!respondersStatsRes.ok) {
-      throw await ResponseError.fromResponse(respondersStatsRes);
-    }
-
-    const page = (await respondersRes.json()) as Page<Responder>;
-    const respondersStat = (await respondersStatsRes.json()) as ResponderStats[];
-    setStats(new Map(respondersStat.map((stat) => [stat.responderId, stat])));
-    return page;
+    return (await res.json()) as Page<ResponderSummary>;
   }, []);
 
   const {
@@ -109,7 +120,7 @@ export default function Responders() {
     hasActiveFilters,
     clearPageFilters,
     refresh,
-  } = useServerPaginatedItems<Responder>({
+  } = useServerPaginatedItems<ResponderSummary>({
     fetcher,
     allTags,
     defaultSortField: 'updatedAt',
@@ -133,7 +144,7 @@ export default function Responders() {
   }, [isEmpty, createButton, setTitleActions]);
 
   const getResponderUrl = useCallback(
-    (responder: Responder) => {
+    (responder: ResponderSummary) => {
       if (!uiState.user) {
         return '-';
       }
@@ -186,7 +197,7 @@ export default function Responders() {
     </EuiConfirmModal>
   ) : null;
 
-  const toggleResponderRequests = (responder: Responder) => {
+  const toggleResponderRequests = (responder: ResponderSummary) => {
     const itemIdToExpandedRowMapValues = { ...itemIdToExpandedRowMap };
     if (itemIdToExpandedRowMapValues[responder.id]) {
       delete itemIdToExpandedRowMapValues[responder.id];
@@ -245,7 +256,7 @@ export default function Responders() {
         </ItemsTableFilter>
         <EuiSpacer size="m" />
         <EuiBasicTable
-          loading={loading}
+          loading={loading || responderLoading}
           pagination={pagination}
           noItemsMessage={<FilteredEmptyState hasPageFilters={hasPageFilters} onClearFilters={clearPageFilters} />}
           sorting={sorting}
@@ -266,7 +277,7 @@ export default function Responders() {
               ),
               field: 'name',
               sortable: true,
-              render: (_, responder: Responder) => (
+              render: (_, responder: ResponderSummary) => (
                 <ResponderName
                   responder={responder}
                   href={getWorkspaceEntityLink(UTIL_HANDLES.webhooksResponders, responder.id)}
@@ -282,7 +293,7 @@ export default function Responders() {
                 </EuiToolTip>
               ),
               field: 'path',
-              render: (_, responder: Responder) => {
+              render: (_, responder: ResponderSummary) => {
                 const url = getResponderUrl(responder);
                 return responder.enabled && url ? (
                   <EuiLink href={url} target="_blank" style={{ minWidth: '200px', display: 'inline-block' }}>
@@ -305,7 +316,7 @@ export default function Responders() {
               name: 'Method',
               field: 'method',
               width: '100px',
-              render: (_, { enabled, method }: Responder) => (
+              render: (_, { enabled, method }: ResponderSummary) => (
                 <EuiText size={'s'} color={enabled ? undefined : theme.euiTheme.colors.textDisabled}>
                   <b>{method}</b>
                 </EuiText>
@@ -317,12 +328,32 @@ export default function Responders() {
               width: '160px',
               mobileOptions: { width: 'unset' },
               sortable: true,
-              render: (_, responder: Responder) => (
+              render: (_, responder: ResponderSummary) => (
                 <TimestampTableCell
-                  timestamp={stats.get(responder.id)?.lastRequestedAt}
+                  timestamp={responder.stats.lastRequestedAt}
                   highlightRecent
                   disabled={!responder.enabled}
                 />
+              ),
+            },
+            {
+              name: (
+                <EuiToolTip content="Serialized responder settings size, including body, headers, script, and other settings.">
+                  <span>
+                    Size{' '}
+                    <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" aria-hidden={true} />
+                  </span>
+                </EuiToolTip>
+              ),
+              field: 'settingsSize',
+              width: '90px',
+              align: 'right',
+              mobileOptions: { width: 'unset' },
+              sortable: true,
+              render: (_, { enabled, settingsSize }: ResponderSummary) => (
+                <EuiText size={'s'} color={enabled ? undefined : theme.euiTheme.colors.textDisabled}>
+                  {formatBytes(settingsSize)}
+                </EuiText>
               ),
             },
             {
@@ -331,7 +362,7 @@ export default function Responders() {
               width: '160px',
               mobileOptions: { width: 'unset' },
               sortable: true,
-              render: (_, responder: Responder) => (
+              render: (_, responder: ResponderSummary) => (
                 <TimestampTableCell timestamp={responder.updatedAt} disabled={!responder.enabled} />
               ),
             },
@@ -345,14 +376,14 @@ export default function Responders() {
                   description: 'Copy ID to clipboard',
                   icon: 'tokenKey',
                   type: 'icon',
-                  onClick: ({ id }: Responder) => void navigator.clipboard.writeText(id),
+                  onClick: ({ id }: ResponderSummary) => void navigator.clipboard.writeText(id),
                 },
                 {
                   name: 'Copy link',
                   description: 'Copy link to responder in grid',
                   icon: 'link',
                   type: 'icon',
-                  onClick: ({ id }: Responder) =>
+                  onClick: ({ id }: ResponderSummary) =>
                     void navigator.clipboard.writeText(
                       getWorkspaceEntityAbsoluteLink(UTIL_HANDLES.webhooksResponders, id),
                     ),
@@ -363,22 +394,28 @@ export default function Responders() {
                   icon: 'pencil',
                   type: 'icon',
                   isPrimary: true,
-                  onClick: setResponderToEdit,
+                  onClick: ({ id, name }: ResponderSummary) =>
+                    loadResponder(id, setResponderToEdit, (err) => onLoadResponderError(name, err)),
                 },
                 {
                   name: 'Duplicate',
                   description: 'Duplicate responder',
                   icon: 'copy',
                   type: 'icon',
-                  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                  onClick: ({ id, createdAt, updatedAt, name, ...rest }: Responder) =>
-                    setResponderToEdit({
-                      ...rest,
-                      name: getCopyName(
-                        name,
-                        responders.map((r) => r.name),
-                      ),
-                    }),
+                  onClick: ({ id, name }: ResponderSummary) =>
+                    loadResponder(
+                      id,
+                      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                      ({ id: _id, createdAt, updatedAt, ...source }) =>
+                        setResponderToEdit({
+                          ...source,
+                          name: getCopyName(
+                            source.name,
+                            responders.map((r) => r.name),
+                          ),
+                        }),
+                      (err) => onLoadResponderError(name, err),
+                    ),
                 },
                 {
                   name: 'Remove',
@@ -400,7 +437,7 @@ export default function Responders() {
                   <span>Show requests</span>
                 </EuiScreenReaderOnly>
               ),
-              render: (item: Responder) => {
+              render: (item: ResponderSummary) => {
                 return (
                   <EuiButtonIcon
                     onClick={() => toggleResponderRequests(item)}
