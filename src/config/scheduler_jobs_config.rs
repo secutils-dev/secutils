@@ -24,7 +24,7 @@ fn default_responders_notify() -> String {
 impl Default for SchedulerJobsConfig {
     fn default() -> Self {
         Self {
-            notifications_send: "0/30 * * * * *".to_string(),
+            notifications_send: "*/30 * * * * *".to_string(),
             webhooks_kv_sweep: default_webhooks_kv_sweep(),
             responders_notify: default_responders_notify(),
         }
@@ -39,7 +39,7 @@ mod tests {
     #[test]
     fn serialization_and_default() {
         assert_toml_snapshot!(SchedulerJobsConfig::default(), @r###"
-        notifications_send = '0/30 * * * * *'
+        notifications_send = '*/30 * * * * *'
         webhooks_kv_sweep = '0 */5 * * * *'
         responders_notify = '0 * * * * *'
         "###);
@@ -49,7 +49,7 @@ mod tests {
     fn deserialization() {
         let config: SchedulerJobsConfig = toml::from_str(
             r#"
-        notifications_send = '0/30 * * * * *'
+        notifications_send = '*/30 * * * * *'
         webhooks_kv_sweep = '0 */5 * * * *'
         responders_notify = '0 * * * * *'
     "#,
@@ -62,7 +62,7 @@ mod tests {
     fn deserialization_defaults_webhooks_kv_sweep() {
         let config: SchedulerJobsConfig = toml::from_str(
             r#"
-        notifications_send = '0/30 * * * * *'
+        notifications_send = '*/30 * * * * *'
     "#,
         )
         .unwrap();

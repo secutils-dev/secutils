@@ -116,7 +116,7 @@ mod tests {
     #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn can_create_job_with_correct_parameters(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.scheduler.notifications_send = "1/5 * * * * *".to_string();
+        config.scheduler.notifications_send = "1-59/5 * * * * *".to_string();
 
         let api = mock_api_with_config(pool, config).await?;
 
@@ -133,7 +133,7 @@ mod tests {
             Some(
                 CronJob(
                     CronJob {
-                        schedule: "1/5 * * * * *",
+                        schedule: "1-59/5 * * * * *",
                     },
                 ),
             ),

@@ -2027,7 +2027,7 @@ mod tests {
                 enabled: true,
                 config: PageTrackerConfig {
                     job: Some(SchedulerJobConfig {
-                        schedule: "0/5 * * * * *".to_string(),
+                        schedule: "*/5 * * * * *".to_string(),
                         ..job_config.clone()
                     }),
                     ..config.clone()
@@ -2870,7 +2870,7 @@ mod tests {
             update_and_fail(web_scraping.update_page_tracker(tracker.id, PageTrackerUpdateParams {
                 config: Some(PageTrackerConfig {
                     job: Some(SchedulerJobConfig {
-                        schedule: "0/5 * * * * *".to_string(),
+                        schedule: "*/5 * * * * *".to_string(),
                         ..job_config.clone()
                     }),
                     ..config.clone()
@@ -3930,7 +3930,7 @@ mod tests {
                 enabled: true,
                 config: ApiTrackerConfig {
                     job: Some(SchedulerJobConfig {
-                        schedule: "0/5 * * * * *".to_string(),
+                        schedule: "*/5 * * * * *".to_string(),
                         ..job_config.clone()
                     }),
                     ..config.clone()
@@ -4720,7 +4720,7 @@ mod tests {
             update_and_fail(web_scraping.update_api_tracker(tracker.id, ApiTrackerUpdateParams {
                 config: Some(ApiTrackerConfig {
                     job: Some(SchedulerJobConfig {
-                        schedule: "0/5 * * * * *".to_string(),
+                        schedule: "*/5 * * * * *".to_string(),
                         ..job_config.clone()
                     }),
                     ..config.clone()

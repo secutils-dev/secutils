@@ -213,7 +213,7 @@ mod tests {
                 search_index_version: 4,
             },
             scheduler: SchedulerJobsConfig {
-                notifications_send: "0/30 * * * * *",
+                notifications_send: "*/30 * * * * *",
                 webhooks_kv_sweep: "0 */5 * * * *",
                 responders_notify: "0 * * * * *",
             },

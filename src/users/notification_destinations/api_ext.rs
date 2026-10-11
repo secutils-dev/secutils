@@ -13,10 +13,7 @@ use crate::{
     },
 };
 use anyhow::Context;
-use argon2::{
-    Argon2, PasswordHasher, PasswordVerifier,
-    password_hash::{PasswordHash, SaltString, rand_core::OsRng},
-};
+use argon2::{Argon2, PasswordHasher, PasswordVerifier, password_hash::phc::PasswordHash};
 use base64ct::{Base64UrlUnpadded, Encoding};
 use serde::Deserialize;
 use time::OffsetDateTime;
@@ -439,10 +436,9 @@ fn generate_unsubscribe_token() -> anyhow::Result<String> {
 /// Argon2id PHC string for the supplied code. Salt is generated per call so the same code
 /// hashes to a different value every time.
 fn hash_verification_code(code: &str) -> anyhow::Result<String> {
-    let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
     let phc = argon2
-        .hash_password(code.as_bytes(), &salt)
+        .hash_password(code.as_bytes())
         .map_err(|e| anyhow::anyhow!("Argon2 hash failed: {e}"))?;
     Ok(phc.to_string())
 }
@@ -563,9 +559,17 @@ mod tests {
     #[test]
     fn hash_round_trip() {
         let phc = hash_verification_code("123456").unwrap();
+        assert_ne!(phc, hash_verification_code("123456").unwrap());
         assert!(verify_code_against_hash("123456", &phc));
         assert!(!verify_code_against_hash("654321", &phc));
         assert!(!verify_code_against_hash("", &phc));
+    }
+
+    #[test]
+    fn verifies_legacy_argon2id_phc_hash() {
+        let phc = "$argon2id$v=19$m=65536,t=2,p=1$c29tZXNhbHQ$CTFhFdXPJO1aFaMaO6Mm5c8y7cJHAph8ArZWb2GRPPc";
+        assert!(verify_code_against_hash("password", phc));
+        assert!(!verify_code_against_hash("incorrect", phc));
     }
 
     #[test]
