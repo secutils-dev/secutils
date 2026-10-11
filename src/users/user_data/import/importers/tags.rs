@@ -3,8 +3,10 @@ use crate::{
     network::{DnsResolver, EmailTransport},
     users::{
         EntityTag, TagCreateParams, User, UserTag,
+        tags::user_tag::normalize_tag_name,
         user_data::import::{
-            ConflictResolution, ImportEntityResult, ImportEntitySelection, resolve_name,
+            ConflictResolution, ImportEntityResult, ImportEntitySelection, ImportNameKind,
+            resolve_name,
         },
     },
 };
@@ -42,7 +44,8 @@ pub async fn import_tags<DR: DnsResolver, ET: EmailTransport>(
     for file_tag in file_tags {
         let selection = selections.get(&file_tag.id);
 
-        if let Some(existing) = existing_by_name.get(file_tag.name.as_str()) {
+        let normalized_name = normalize_tag_name(&file_tag.name);
+        if let Some(existing) = existing_by_name.get(normalized_name.as_str()) {
             // Name conflict - apply conflict resolution.
             let resolution = selection.and_then(|s| s.conflict_resolution);
             match resolution {
@@ -50,7 +53,12 @@ pub async fn import_tags<DR: DnsResolver, ET: EmailTransport>(
                     // Create with a unique copy name.
                     match tags_api
                         .create_tag(TagCreateParams {
-                            name: resolve_name(&file_tag.name, selection, &used_names),
+                            name: resolve_name(
+                                &file_tag.name,
+                                selection,
+                                &used_names,
+                                ImportNameKind::Tag,
+                            ),
                             color: file_tag.color.clone(),
                         })
                         .await
@@ -289,7 +297,8 @@ mod tests {
         };
         let selections = HashMap::from([(old_id, &sel)]);
 
-        let (tag_id_map, result) = import_tags(&api, &user, &[file_tag], &selections).await;
+        let (tag_id_map, result) =
+            import_tags(&api, &user, std::slice::from_ref(&file_tag), &selections).await;
         assert_eq!(result.imported, 1);
         assert_eq!(result.skipped, 0);
         assert_eq!(result.failed, 0);
@@ -307,6 +316,46 @@ mod tests {
                 .any(|t| t.id == new_id && t.name == "alpha (copy 1)")
         );
 
+        let (second_map, result) = import_tags(&api, &user, &[file_tag], &selections).await;
+        assert_eq!(result.imported, 1);
+        assert_eq!(result.failed, 0, "{:?}", result.errors);
+        let db_tags = api.tags(&user).list_tags().await?;
+        assert_eq!(db_tags.len(), 3);
+        assert!(
+            db_tags
+                .iter()
+                .any(|t| t.id == second_map[&old_id] && t.name == "alpha (copy 2)")
+        );
+
+        Ok(())
+    }
+
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
+    async fn import_tags_rename_maximum_length_normalized_name(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api_with_config(pool, mock_config()?).await?;
+        let user = mock_user()?;
+        api.db.upsert_user(&user).await?;
+        let name = "a".repeat(50);
+        api.tags(&user)
+            .create_tag(TagCreateParams {
+                name: name.clone(),
+                color: "#54B399".into(),
+            })
+            .await?;
+        let file_tag = make_file_tag(&name.to_uppercase(), "#E7664C");
+        let selection = ImportEntitySelection {
+            source_id: file_tag.id,
+            action: ImportAction::Import,
+            conflict_resolution: Some(ConflictResolution::Rename),
+        };
+        let selections = HashMap::from([(file_tag.id, &selection)]);
+        let (tag_id_map, result) =
+            import_tags(&api, &user, std::slice::from_ref(&file_tag), &selections).await;
+        assert_eq!(result.imported, 1);
+        assert_eq!(result.failed, 0, "{:?}", result.errors);
+        let tags = api.tags(&user).list_tags().await?;
+        assert!(tags.iter().any(|tag| tag.id == tag_id_map[&file_tag.id]
+            && tag.name == format!("{} (copy 1)", "a".repeat(41))));
         Ok(())
     }
 

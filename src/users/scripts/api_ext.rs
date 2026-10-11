@@ -51,7 +51,7 @@ pub struct ScriptUpdateParams {
 }
 
 /// Maximum length for a script name.
-const MAX_SCRIPT_NAME_LENGTH: usize = 128;
+pub(crate) const MAX_SCRIPT_NAME_LENGTH: usize = 128;
 /// Maximum length for script content (50 KB).
 const MAX_SCRIPT_CONTENT_LENGTH: usize = 50 * 1024;
 

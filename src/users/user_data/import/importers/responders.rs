@@ -6,8 +6,8 @@ use crate::{
         user_data::{
             export::{ExportedResponder, ExportedResponderRequest},
             import::{
-                ConflictResolution, ImportEntityResult, ImportEntitySelection, remap_tag_ids,
-                resolve_name, should_skip,
+                ConflictResolution, ImportEntityResult, ImportEntitySelection, ImportNameKind,
+                remap_tag_ids, resolve_name, should_skip,
             },
         },
     },
@@ -44,7 +44,7 @@ pub async fn import_responders<DR: DnsResolver, ET: EmailTransport>(
         }
 
         let location = &resp.location;
-        let name = resolve_name(&resp.name, selection, &used_names);
+        let name = resolve_name(&resp.name, selection, &used_names, ImportNameKind::Entity);
         let is_overwrite =
             selection.is_some_and(|s| s.conflict_resolution == Some(ConflictResolution::Overwrite));
 

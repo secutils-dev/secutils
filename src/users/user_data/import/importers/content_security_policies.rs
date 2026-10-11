@@ -4,8 +4,8 @@ use crate::{
     users::{
         User,
         user_data::import::{
-            ConflictResolution, ImportEntityResult, ImportEntitySelection, remap_tag_ids,
-            resolve_name, should_skip,
+            ConflictResolution, ImportEntityResult, ImportEntitySelection, ImportNameKind,
+            remap_tag_ids, resolve_name, should_skip,
         },
     },
     utils::web_security::{
@@ -39,7 +39,7 @@ pub async fn import_content_security_policies<DR: DnsResolver, ET: EmailTranspor
             continue;
         }
 
-        let resolved_name = resolve_name(&csp.name, selection, &used_names);
+        let resolved_name = resolve_name(&csp.name, selection, &used_names, ImportNameKind::Entity);
 
         // Handle overwrite.
         if selection.is_some_and(|s| s.conflict_resolution == Some(ConflictResolution::Overwrite))

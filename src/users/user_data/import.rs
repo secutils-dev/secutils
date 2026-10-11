@@ -15,7 +15,7 @@ pub use self::{
         ConflictResolution, ImportAction, ImportEntitySelection, ImportMode, ImportSelections,
         UserDataImportParams, UserDataImportPreviewParams,
     },
-    resolve_name::resolve_name,
+    resolve_name::{ImportNameKind, resolve_name},
     results::{ImportEntityResult, UserDataImportResult},
     should_skip::should_skip,
 };

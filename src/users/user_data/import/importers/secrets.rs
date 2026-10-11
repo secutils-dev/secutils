@@ -6,8 +6,8 @@ use crate::{
         secrets::{SecretsEncryptionMeta, decrypt_secret_from_export},
         user_data::{
             import::{
-                ConflictResolution, ImportEntityResult, ImportEntitySelection, remap_tag_ids,
-                resolve_name, should_skip,
+                ConflictResolution, ImportEntityResult, ImportEntitySelection, ImportNameKind,
+                remap_tag_ids, resolve_name, should_skip,
             },
             shared::DataFileSecret,
         },
@@ -54,7 +54,8 @@ pub async fn import_secrets<DR: DnsResolver, ET: EmailTransport>(
             let resolution = selection.and_then(|s| s.conflict_resolution);
             match resolution {
                 Some(ConflictResolution::Rename) => {
-                    let new_name = resolve_name(&secret.name, selection, &used_names);
+                    let new_name =
+                        resolve_name(&secret.name, selection, &used_names, ImportNameKind::Secret);
                     let remapped_tags = remap_tag_ids(&secret.tags, tag_id_map);
                     match secrets_api
                         .create_secret(SecretCreateParams {
@@ -257,6 +258,64 @@ mod tests {
         assert_eq!(secrets.len(), 1);
         assert_eq!(secrets[0].name, "my_secret");
 
+        Ok(())
+    }
+
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
+    async fn import_secrets_rename_conflicts_with_valid_unique_names(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let mut config = mock_config()?;
+        config.security.secrets_encryption_key = Some(TEST_ENCRYPTION_KEY.to_string());
+        let api = mock_api_with_config(pool, config).await?;
+        let user = mock_user()?;
+        api.db.upsert_user(&user).await?;
+
+        for name in ["KIBANA_API_KEY".to_string(), "A".repeat(128)] {
+            api.secrets(&user)
+                .create_secret(SecretCreateParams {
+                    name: name.clone(),
+                    value: "original-value".into(),
+                    tag_ids: vec![],
+                })
+                .await?;
+
+            for n in 1..=2 {
+                let secret_id = Uuid::now_v7();
+                let result = execute_import(
+                    &api,
+                    &user,
+                    UserDataImportParams {
+                        data: make_secrets_file(vec![make_secret(secret_id, &name, None)]),
+                        mode: ImportMode::Merge,
+                        secrets_passphrase: None,
+                        apply_deletions: None,
+                        selections: ImportSelections {
+                            secrets: vec![ImportEntitySelection {
+                                source_id: secret_id,
+                                action: ImportAction::Import,
+                                conflict_resolution: Some(ConflictResolution::Rename),
+                            }],
+                            ..Default::default()
+                        },
+                    },
+                )
+                .await?;
+                assert_eq!(result.results.secrets.imported, 1);
+                assert_eq!(
+                    result.results.secrets.failed, 0,
+                    "{:?}",
+                    result.results.secrets.errors
+                );
+
+                let suffix = format!("_COPY_{n}");
+                let copy_name = format!("{}{suffix}", &name[..name.len().min(128 - suffix.len())]);
+                let values = api.secrets(&user).decrypt_all_secrets().await?;
+                assert_eq!(values[&copy_name], "placeholder");
+                assert_eq!(values[&name], "original-value");
+            }
+        }
+        assert_eq!(api.secrets(&user).list_secrets().await?.len(), 6);
         Ok(())
     }
 

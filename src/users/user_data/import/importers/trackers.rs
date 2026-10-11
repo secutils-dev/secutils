@@ -7,8 +7,8 @@ use crate::{
         user_data::{
             export::ExportedTracker,
             import::{
-                ConflictResolution, ImportEntityResult, ImportEntitySelection, resolve_name,
-                should_skip,
+                ConflictResolution, ImportEntityResult, ImportEntitySelection, ImportNameKind,
+                resolve_name, should_skip,
             },
         },
     },
@@ -61,7 +61,12 @@ pub async fn import_trackers<DR: DnsResolver, ET: EmailTransport>(
             continue;
         }
 
-        let name = resolve_name(&tracker.name, selection, &used_names);
+        let name = resolve_name(
+            &tracker.name,
+            selection,
+            &used_names,
+            ImportNameKind::Entity,
+        );
 
         // Handle overwrite.
         if selection.is_some_and(|s| s.conflict_resolution == Some(ConflictResolution::Overwrite))

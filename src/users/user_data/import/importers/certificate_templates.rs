@@ -5,8 +5,8 @@ use crate::{
     users::{
         User,
         user_data::import::{
-            ConflictResolution, ImportEntityResult, ImportEntitySelection, resolve_name,
-            should_skip,
+            ConflictResolution, ImportEntityResult, ImportEntitySelection, ImportNameKind,
+            resolve_name, should_skip,
         },
     },
     utils::certificates::{CertificateTemplate, TemplatesCreateParams},
@@ -38,7 +38,12 @@ pub async fn import_certificate_templates<DR: DnsResolver, ET: EmailTransport>(
             continue;
         }
 
-        let resolved_name = resolve_name(&template.name, selection, &used_names);
+        let resolved_name = resolve_name(
+            &template.name,
+            selection,
+            &used_names,
+            ImportNameKind::Entity,
+        );
 
         // Handle overwrite.
         if selection.is_some_and(|s| s.conflict_resolution == Some(ConflictResolution::Overwrite))

@@ -5,8 +5,8 @@ use crate::{
         User,
         scripts::ScriptCreateParams,
         user_data::import::{
-            ConflictResolution, ImportEntityResult, ImportEntitySelection, ImportedScript,
-            remap_tag_ids, resolve_name, should_skip,
+            ConflictResolution, ImportEntityResult, ImportEntitySelection, ImportNameKind,
+            ImportedScript, remap_tag_ids, resolve_name, should_skip,
         },
     },
 };
@@ -34,7 +34,7 @@ pub async fn import_scripts<DR: DnsResolver, ET: EmailTransport>(
             continue;
         }
 
-        let name = resolve_name(&script.name, selection, &used_names);
+        let name = resolve_name(&script.name, selection, &used_names, ImportNameKind::Script);
 
         // Handle overwrite: delete existing with the same name.
         if selection.is_some_and(|s| s.conflict_resolution == Some(ConflictResolution::Overwrite))

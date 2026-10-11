@@ -42,7 +42,7 @@ pub struct SecretUpdateParams {
 }
 
 /// Maximum length for a secret name.
-const MAX_SECRET_NAME_LENGTH: usize = 128;
+pub(crate) const MAX_SECRET_NAME_LENGTH: usize = 128;
 /// Maximum length for a secret value (10 KB).
 const MAX_SECRET_VALUE_LENGTH: usize = 10 * 1024;
 

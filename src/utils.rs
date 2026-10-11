@@ -13,6 +13,8 @@ pub use self::{
     util::Util,
 };
 
+pub(crate) use self::constants::MAX_ENTITY_NAME_LENGTH;
+
 #[cfg(test)]
 pub mod tests {
     pub use super::{
