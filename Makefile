@@ -15,11 +15,23 @@ DEPLOY_PLATFORM     	?= linux/arm64
 DEPLOY_DEV_TAG      	?= latest
 DEPLOY_PROD_TAG     	?=
 DEPLOY_CAMOUFOX_TAG 	?=
+DEPLOY_BUILD_ROUTE       ?= auto
+DEPLOY_REMOTE_IMAGES     ?=
+DEPLOY_REMOTE_HOST       ?=
+DEPLOY_REMOTE_DOCKER     ?= sudo -n docker
+DEPLOY_REMOTE_DIR        ?= /home/ubuntu/secutils-build
+DEPLOY_REMOTE_BUILDER    ?= secutils-deploy
+DEPLOY_REMOTE_MEMORY     ?= 2g
+DEPLOY_REMOTE_CPU_QUOTA  ?= 100000
+DEPLOY_REMOTE_MIN_FREE_GB ?= 8
+export DEPLOY_REGISTRY DEPLOY_PLATFORM DEPLOY_DEV_TAG DEPLOY_PROD_TAG DEPLOY_CAMOUFOX_TAG
+export DEPLOY_BUILD_ROUTE DEPLOY_REMOTE_IMAGES DEPLOY_REMOTE_HOST DEPLOY_REMOTE_DOCKER
+export DEPLOY_REMOTE_DIR DEPLOY_REMOTE_BUILDER DEPLOY_REMOTE_MEMORY DEPLOY_REMOTE_CPU_QUOTA DEPLOY_REMOTE_MIN_FREE_GB
 
 .PHONY: dev-up dev-down api webui webui-test docs e2e-up e2e-down e2e-test e2e-test-loop e2e-standalone-test docs-screenshots docs-screenshots-loop docs-screenshots-diff docs-screenshots-analyze agent-push agent-pull clean docker-df docker-prune docker-prune-images docker-prune-buildcache docker-pin-digests perf perf-analyze perf-report
 .PHONY: deploy-dev deploy-dev-api deploy-dev-webui deploy-dev-docs deploy-dev-retrack-api deploy-dev-retrack-scraper
 .PHONY: deploy-prod deploy-prod-api deploy-prod-webui deploy-prod-docs deploy-prod-retrack-api deploy-prod-retrack-scraper
-.PHONY: deploy-camoufox
+.PHONY: deploy-camoufox deploy-health deploy-stats
 .PHONY: deploy-tools tools-bundles tools-og tools-og-loop tools-check e2e-tools-test
 
 ## ---------- Development ----------
@@ -153,10 +165,14 @@ docker-pin-digests: ## Re-pin base images in root Dockerfiles to current SHA256 
 ## ---------- Deploy (build & push to Docker registry) ----------
 
 define _buildx_push
-	DOCKER_BUILDKIT=1 docker buildx build --progress=plain --push \
-		--platform $(DEPLOY_PLATFORM) \
-		--tag $(DEPLOY_REGISTRY)/$(1):$(2) $(3)
+	bash dev/scripts/deploy-images.sh publish $(1) $(2) $(if $(DRY_RUN),--dry-run)
 endef
+
+deploy-health: ## Show remote Docker disk, CPU, memory, and swap capacity.
+	bash dev/scripts/deploy-images.sh health
+
+deploy-stats: ## Show private build and push timing history from .deploy/.
+	bash dev/scripts/deploy-images.sh stats
 
 _require-deploy-registry:
 	@test -n "$(DEPLOY_REGISTRY)" || \
