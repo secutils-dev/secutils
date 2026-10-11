@@ -19,36 +19,10 @@ use crate::{
         constants::MAX_ENTITY_NAME_LENGTH,
         webhooks::{
             Responder, ResponderMethod, ResponderPathType, ResponderRequest, ResponderSummary,
+            database_ext::{RESPONDER_LAST_REQUESTED_AT_SORT_SQL, RESPONDER_SETTINGS_SIZE_SQL},
         },
     },
 };
-
-// The SQL expressions below are static, correlated against the outer
-// `user_data_webhooks_responders` row, and contain no user input. The `rh.user_id` correlation
-// lets them use the `(user_id, responder_id, created_at)` history index.
-
-/// The most recent retained request timestamp of a responder, or `NULL` if there is none.
-pub(crate) const RESPONDER_LAST_REQUESTED_AT_SQL: &str = "(SELECT MAX(rh.created_at) \
-     FROM user_data_webhooks_responders_history rh \
-     WHERE rh.user_id = user_data_webhooks_responders.user_id \
-     AND rh.responder_id = user_data_webhooks_responders.id)";
-
-/// Sort expression for [`RESPONDER_LAST_REQUESTED_AT_SQL`]: never-requested responders sort as the
-/// oldest. It must wrap the display expression verbatim so the sort matches the displayed value.
-pub(crate) const RESPONDER_LAST_REQUESTED_AT_SORT_SQL: &str = "COALESCE((SELECT MAX(rh.created_at) \
-     FROM user_data_webhooks_responders_history rh \
-     WHERE rh.user_id = user_data_webhooks_responders.user_id \
-     AND rh.responder_id = user_data_webhooks_responders.id), to_timestamp(0))";
-
-/// The number of retained requests of a responder.
-pub(crate) const RESPONDER_REQUEST_COUNT_SQL: &str = "(SELECT COUNT(*) \
-     FROM user_data_webhooks_responders_history rh \
-     WHERE rh.user_id = user_data_webhooks_responders.user_id \
-     AND rh.responder_id = user_data_webhooks_responders.id)";
-
-/// Size of the serialized responder settings. `octet_length` on `bytea` reads the raw size from
-/// the TOAST header without detoasting the value.
-pub(crate) const RESPONDER_SETTINGS_SIZE_SQL: &str = "octet_length(settings)";
 
 /// Allowlist of client sort keys mapped to responder SQL columns (or expressions).
 const RESPONDERS_SORT_COLUMNS: &[(&str, &str)] = &[
@@ -593,10 +567,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{RESPONDER_LAST_REQUESTED_AT_SORT_SQL, RESPONDER_LAST_REQUESTED_AT_SQL};
     use crate::{
         error::Error as SecutilsError,
-        server::PaginationParams,
+        server::{PaginationParams, SortOrder},
         tests::{mock_api, mock_user, mock_user_with_id},
         users::SecretsAccess,
         utils::webhooks::{
@@ -1763,14 +1736,6 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn last_requested_at_sort_wraps_display_expression() {
-        assert_eq!(
-            RESPONDER_LAST_REQUESTED_AT_SORT_SQL,
-            format!("COALESCE({RESPONDER_LAST_REQUESTED_AT_SQL}, to_timestamp(0))")
-        );
-    }
-
     #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn list_page_includes_retained_history_stats(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
@@ -1854,6 +1819,83 @@ mod tests {
                 last_requested_at: None,
             }
         );
+
+        Ok(())
+    }
+
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
+    async fn list_page_maps_computed_sort_keys(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool.clone()).await?;
+        let mock_user = mock_user()?;
+        api.db.insert_user(&mock_user).await?;
+
+        // Name, size, and last-requested orders all differ, so a wrong or missing allowlist entry
+        // (which silently falls back to sorting by name) fails the assertions.
+        let webhooks = api.webhooks(&mock_user);
+        let mut ids = vec![];
+        for (name, body_len) in [("a", 10), ("b", 1000), ("c", 100)] {
+            let responder = webhooks
+                .create_responder(RespondersCreateParams {
+                    name: name.to_string(),
+                    location: ResponderLocation {
+                        path_type: ResponderPathType::Exact,
+                        path: format!("/{name}"),
+                        subdomain_prefix: None,
+                    },
+                    method: ResponderMethod::Any,
+                    enabled: true,
+                    settings: ResponderSettings {
+                        requests_to_track: 10,
+                        status_code: 200,
+                        body: Some("x".repeat(body_len)),
+                        headers: None,
+                        script: None,
+                        secrets: SecretsAccess::None,
+                        notifications: None,
+                    },
+                    tag_ids: vec![],
+                })
+                .await?;
+            ids.push(responder.id);
+        }
+        // `a` is requested first, `c` last, and `b` never. Request timestamps have second
+        // precision, so pin them explicitly.
+        for (id, path, requested_at) in [(ids[0], "/a", 946720800), (ids[2], "/c", 946720900)] {
+            webhooks
+                .create_responder_request(id, get_request_create_params(path))
+                .await?
+                .unwrap();
+            sqlx::query(
+                "UPDATE user_data_webhooks_responders_history SET created_at = $1 \
+                 WHERE responder_id = $2",
+            )
+            .bind(time::OffsetDateTime::from_unix_timestamp(requested_at)?)
+            .bind(id)
+            .execute(&pool)
+            .await?;
+        }
+
+        for (sort, expected) in [
+            ("name", ["c", "b", "a"]),
+            ("settingsSize", ["b", "c", "a"]),
+            ("lastRequestedAt", ["c", "a", "b"]),
+        ] {
+            let page = webhooks
+                .list_responders_page(&PaginationParams {
+                    sort: Some(sort.to_string()),
+                    order: Some(SortOrder::Desc),
+                    ..Default::default()
+                })
+                .await?;
+            assert_eq!(
+                page.items
+                    .iter()
+                    .map(|r| r.name.as_str())
+                    .collect::<Vec<_>>(),
+                expected,
+                "sort by {sort}"
+            );
+        }
 
         Ok(())
     }

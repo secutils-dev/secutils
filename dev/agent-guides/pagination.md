@@ -80,12 +80,16 @@ Leave opaque or service-owned fields unsortable until a schema/service change su
 
 Select a computed value and sort by it through the same static SQL expression, so the display and sort cannot drift.
 Use static correlated SQL expressions only, with no user input.
+Define them in `database_ext.rs`: keep display-only expressions private and export sort expressions as `pub(super)` for the `api_ext.rs` allowlist.
 Correlate history subqueries on `user_id` too, so they use the `(user_id, …)` history indexes.
 Keep nullable values nullable for display.
 For sorting, wrap them in `COALESCE(…, <sentinel>)` so empty rows sort oldest rather than first under `DESC`.
 The allowlist needs `&'static str`, so the wrapper is a second literal: guard it with a unit test.
 Read `RESPONDER_LAST_REQUESTED_AT_SQL`, `RESPONDER_LAST_REQUESTED_AT_SORT_SQL`, and `RESPONDER_SETTINGS_SIZE_SQL` as examples.
 Add a SQLx test with distinct values and an empty row, for both directions.
+These runtime queries bypass compile-time checks, so tests must execute every expression against Postgres.
+Also add an API-layer test that sorts through each client key, with name and computed orders that differ.
+An unknown key silently falls back to the default sort, so database-layer tests alone miss a broken mapping.
 
 ## Summary rows and detail
 

@@ -9,10 +9,6 @@ use crate::{
     utils::webhooks::{
         Responder, ResponderLocation, ResponderMethod, ResponderPathType, ResponderRequest,
         ResponderSummary,
-        api_ext::{
-            RESPONDER_LAST_REQUESTED_AT_SQL, RESPONDER_REQUEST_COUNT_SQL,
-            RESPONDER_SETTINGS_SIZE_SQL,
-        },
     },
 };
 use anyhow::{anyhow, bail};
@@ -28,6 +24,34 @@ const RESPONDERS_TAG_JUNCTION: TagJunction = TagJunction {
     table: "user_data_webhooks_responders_tags",
     entity_col: "responder_id",
 };
+
+// Responder list SQL expressions. They are interpolated into runtime queries, so they must stay
+// static: correlated against the outer `user_data_webhooks_responders` row, with no user input.
+// The `rh.user_id` correlation lets them use the `(user_id, responder_id, created_at)` history
+// index. Tests execute each of them against Postgres.
+
+/// The most recent retained request timestamp of a responder, or `NULL` if there is none.
+const RESPONDER_LAST_REQUESTED_AT_SQL: &str = "(SELECT MAX(rh.created_at) \
+     FROM user_data_webhooks_responders_history rh \
+     WHERE rh.user_id = user_data_webhooks_responders.user_id \
+     AND rh.responder_id = user_data_webhooks_responders.id)";
+
+/// Sort expression for [`RESPONDER_LAST_REQUESTED_AT_SQL`]: never-requested responders sort as the
+/// oldest. It must wrap the display expression verbatim so the sort matches the displayed value.
+pub(super) const RESPONDER_LAST_REQUESTED_AT_SORT_SQL: &str = "COALESCE((SELECT MAX(rh.created_at) \
+     FROM user_data_webhooks_responders_history rh \
+     WHERE rh.user_id = user_data_webhooks_responders.user_id \
+     AND rh.responder_id = user_data_webhooks_responders.id), to_timestamp(0))";
+
+/// The number of retained requests of a responder.
+const RESPONDER_REQUEST_COUNT_SQL: &str = "(SELECT COUNT(*) \
+     FROM user_data_webhooks_responders_history rh \
+     WHERE rh.user_id = user_data_webhooks_responders.user_id \
+     AND rh.responder_id = user_data_webhooks_responders.id)";
+
+/// Size of the serialized responder settings. `octet_length` on `bytea` reads the raw size from
+/// the TOAST header without detoasting the value.
+pub(super) const RESPONDER_SETTINGS_SIZE_SQL: &str = "octet_length(settings)";
 
 /// A responder that has notifications enabled and at least one tracked request that the user has
 /// not been notified about yet. Returned by [`WebhooksDatabaseExt::get_responders_pending_notification`].
@@ -1469,6 +1493,17 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn last_requested_at_sort_wraps_display_expression() {
+        assert_eq!(
+            super::RESPONDER_LAST_REQUESTED_AT_SORT_SQL,
+            format!(
+                "COALESCE({}, to_timestamp(0))",
+                super::RESPONDER_LAST_REQUESTED_AT_SQL
+            )
+        );
+    }
+
     fn list_params(order: crate::server::SortOrder) -> crate::server::ListParams {
         crate::server::ListParams {
             offset: 0,
@@ -1586,7 +1621,8 @@ mod tests {
 
     #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn get_responders_page_sorts_by_settings_size(pool: PgPool) -> anyhow::Result<()> {
-        use crate::{server::SortOrder, utils::webhooks::api_ext::RESPONDER_SETTINGS_SIZE_SQL};
+        use super::RESPONDER_SETTINGS_SIZE_SQL;
+        use crate::server::SortOrder;
 
         let user = mock_user()?;
         let db = Database::create(pool.clone()).await?;
@@ -1646,9 +1682,8 @@ mod tests {
 
     #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn get_responders_page_sorts_by_last_requested(pool: PgPool) -> anyhow::Result<()> {
-        use crate::{
-            server::SortOrder, utils::webhooks::api_ext::RESPONDER_LAST_REQUESTED_AT_SORT_SQL,
-        };
+        use super::RESPONDER_LAST_REQUESTED_AT_SORT_SQL;
+        use crate::server::SortOrder;
 
         let user = mock_user()?;
         let db = Database::create(pool).await?;
