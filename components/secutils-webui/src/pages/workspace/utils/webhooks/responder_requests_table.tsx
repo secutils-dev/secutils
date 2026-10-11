@@ -18,6 +18,7 @@ import { buildHar } from './build_har';
 import type { Responder } from './responder';
 import type { ResponderRequest } from './responder_request';
 import { DataGrid, PageErrorState, PageLoadingState } from '../../../../components';
+import { EmptyHistoryIcon } from '../../../../components/legacy_icons';
 import { apiFetch, type AsyncData, formatBytes, getErrorMessage, ResponseError } from '../../../../model';
 import { useWorkspaceContext } from '../../hooks';
 
@@ -370,7 +371,7 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
       >
         <EuiFlexItem>
           <EuiEmptyPrompt
-            icon={<EuiIcon type={'securitySignalDetected'} size={'xl'} aria-hidden={true} />}
+            icon={<EuiIcon type={EmptyHistoryIcon} size={'xl'} aria-hidden={true} />}
             title={<h2>Responder doesn&apos;t track requests</h2>}
             titleSize="s"
             style={{ maxWidth: '60em', display: 'flex' }}

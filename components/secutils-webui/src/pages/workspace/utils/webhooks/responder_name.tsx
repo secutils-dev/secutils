@@ -1,12 +1,13 @@
 import { EuiIcon } from '@elastic/eui';
 
 import type { Responder } from './responder';
+import { ScriptIcon } from '../../../../components/legacy_icons';
 import { EntityName } from '../../components/entity_name';
 
 export function ResponderName({ responder, href }: { responder: Responder; href: string }) {
   const icons = [];
   if (responder.settings.script) {
-    icons.push(<EuiIcon key="script" type={'function'} size="s" title={'Responder generates responses dynamically'} />);
+    icons.push(<EuiIcon key="script" type={ScriptIcon} size="s" title={'Responder generates responses dynamically'} />);
   }
   if (!responder.enabled) {
     icons.push(<EuiIcon key="offline" type={'wifiSlash'} size="s" title={'Responder is disabled'} />);

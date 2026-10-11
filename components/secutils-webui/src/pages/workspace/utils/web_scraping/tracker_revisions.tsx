@@ -26,6 +26,7 @@ import { PageTrackerRevisionChartView } from './revision_views/page_tracker_revi
 import type { TrackerDataRevision } from './tracker_data_revision';
 import { TrackerExecutionLogs } from './tracker_execution_logs';
 import { PageErrorState, PageLoadingState } from '../../../../components';
+import { EmptyHistoryIcon } from '../../../../components/legacy_icons';
 import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage, ResponseError } from '../../../../model';
 import { useWorkspaceContext } from '../../hooks';
 
@@ -310,7 +311,7 @@ export function TrackerRevisions({ kind, tracker, onHealthRefreshNeeded, childre
       >
         <EuiFlexItem>
           <EuiEmptyPrompt
-            icon={<EuiIcon type={'securitySignalDetected'} size={'xl'} aria-hidden={true} />}
+            icon={<EuiIcon type={EmptyHistoryIcon} size={'xl'} aria-hidden={true} />}
             title={<h2>Nothing has been tracked yet</h2>}
             body={
               <div>

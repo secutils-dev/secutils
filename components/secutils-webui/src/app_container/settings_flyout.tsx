@@ -411,12 +411,7 @@ export default function SettingsFlyout({ onClose, importUrl, onImportUrlConsumed
                 {subscriptionDescription}
                 <br />
                 <br />
-                <EuiButtonEmpty
-                  iconType={'payment'}
-                  flush={'left'}
-                  href={uiState.subscription.manageUrl}
-                  target="_blank"
-                >
+                <EuiButtonEmpty iconType={'money'} flush={'left'} href={uiState.subscription.manageUrl} target="_blank">
                   Manage subscription
                 </EuiButtonEmpty>
               </>
