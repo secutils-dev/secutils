@@ -1,3 +1,5 @@
+import 'reflect-metadata';
+
 import type { CertificateAttributes, SignatureAlgorithm } from './certificate_attributes';
 import type { PrivateKeyAlgorithm, PrivateKeyCurveName, PrivateKeySize } from './private_key_alg';
 
@@ -121,7 +123,6 @@ function getDnField(dn: string, field: string) {
 }
 
 export async function parseCertificateFromDer(der: ArrayBuffer, pem: string): Promise<ParsedCertificate> {
-  await import('reflect-metadata');
   const x509 = await import('@peculiar/x509');
   const cert = new x509.X509Certificate(der);
 
