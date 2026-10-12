@@ -12,7 +12,7 @@ export function ResponderName({ responder, href }: { responder: ResponderSummary
   if (!responder.enabled) {
     icons.push(<EuiIcon key="offline" type={'wifiSlash'} size="s" title={'Responder is disabled'} />);
   }
-  if (responder.settings.hasNotifications) {
+  if (responder.settings.notifications) {
     icons.push(<EuiIcon key="notifications" type={'bell'} size="s" title={'Email notifications are enabled'} />);
   }
 

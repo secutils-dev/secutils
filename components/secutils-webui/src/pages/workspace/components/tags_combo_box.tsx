@@ -2,17 +2,17 @@ import { EuiComboBox, EuiFormRow } from '@elastic/eui';
 import type { EuiComboBoxOptionOption } from '@elastic/eui';
 import { useCallback, useMemo, useState } from 'react';
 
-import type { UserTag } from '../../../model/user_tags';
-import { createUserTag, TAG_COLOR_SWATCHES } from '../../../model/user_tags';
+import { createUserTag, TAG_COLOR_SWATCHES, type UserTag } from '../../../model';
 
 export interface TagsComboBoxProps {
   allTags: UserTag[];
   selectedTagIds: string[];
   onChange: (tagIds: string[]) => void;
   onTagCreated?: (tag: UserTag) => void;
+  isDisabled?: boolean;
 }
 
-export function TagsComboBox({ allTags, selectedTagIds, onChange, onTagCreated }: TagsComboBoxProps) {
+export function TagsComboBox({ allTags, selectedTagIds, onChange, onTagCreated, isDisabled }: TagsComboBoxProps) {
   const [isCreating, setIsCreating] = useState(false);
 
   const options: EuiComboBoxOptionOption<string>[] = useMemo(
@@ -66,8 +66,14 @@ export function TagsComboBox({ allTags, selectedTagIds, onChange, onTagCreated }
   );
 
   return (
-    <EuiFormRow label="Tags" helpText="Select existing tags or type to create a new one." fullWidth>
+    <EuiFormRow
+      label="Tags"
+      helpText="Select existing tags or type to create a new one."
+      fullWidth
+      isDisabled={isDisabled}
+    >
       <EuiComboBox
+        isDisabled={isDisabled}
         placeholder="Select tags"
         options={options}
         selectedOptions={selectedOptions}

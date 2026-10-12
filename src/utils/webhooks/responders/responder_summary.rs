@@ -1,6 +1,8 @@
 use crate::{
-    users::EntityTag,
-    utils::webhooks::{ResponderLocation, ResponderMethod, ResponderStats},
+    users::{EntityTag, SecretsAccess},
+    utils::webhooks::{
+        ResponderLocation, ResponderMethod, ResponderNotificationSettings, ResponderStats,
+    },
 };
 use serde::Serialize;
 use time::OffsetDateTime;
@@ -8,7 +10,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 /// Lightweight responder representation returned by list endpoints. It omits the potentially
-/// large body, headers, and script; use the responder detail endpoint to get the full responder.
+/// large body and script; use the responder detail endpoint to get the full responder.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ResponderSummary {
@@ -43,23 +45,36 @@ pub struct ResponderSummary {
     pub updated_at: OffsetDateTime,
 }
 
-/// Subset of the responder settings included in [`ResponderSummary`].
-#[derive(Debug, Copy, Clone, Serialize, PartialEq, Eq, ToSchema)]
+/// Responder settings included in [`ResponderSummary`]: everything except the potentially large
+/// body and script.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ResponderSummarySettings {
     /// Number of requests to track.
     pub requests_to_track: usize,
+    /// HTTP status code to respond with.
+    pub status_code: u16,
+    /// Optional headers to respond with.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub headers: Option<Vec<(String, String)>>,
     /// Indicates whether the responder has a script.
     pub has_script: bool,
-    /// Indicates whether notifications are enabled for the responder.
-    pub has_notifications: bool,
+    /// Controls which user secrets are available to this responder.
+    #[serde(skip_serializing_if = "SecretsAccess::is_none")]
+    pub secrets: SecretsAccess,
+    /// Notification settings, if notifications are enabled for the responder.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notifications: Option<ResponderNotificationSettings>,
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::webhooks::{
-        ResponderLocation, ResponderMethod, ResponderPathType, ResponderStats, ResponderSummary,
-        ResponderSummarySettings,
+    use crate::{
+        users::SecretsAccess,
+        utils::webhooks::{
+            ResponderLocation, ResponderMethod, ResponderNotificationSettings, ResponderPathType,
+            ResponderStats, ResponderSummary, ResponderSummarySettings,
+        },
     };
     use insta::assert_json_snapshot;
     use time::OffsetDateTime;
@@ -79,8 +94,15 @@ mod tests {
             enabled: true,
             settings: ResponderSummarySettings {
                 requests_to_track: 10,
+                status_code: 201,
+                headers: Some(vec![("key".to_string(), "value".to_string())]),
                 has_script: true,
-                has_notifications: false,
+                secrets: SecretsAccess::Selected {
+                    secrets: vec!["API_KEY".to_string()],
+                },
+                notifications: Some(ResponderNotificationSettings {
+                    throttle_seconds: 3600,
+                }),
             },
             settings_size: 1024,
             stats: ResponderStats {
@@ -102,8 +124,23 @@ mod tests {
           "enabled": true,
           "settings": {
             "requestsToTrack": 10,
+            "statusCode": 201,
+            "headers": [
+              [
+                "key",
+                "value"
+              ]
+            ],
             "hasScript": true,
-            "hasNotifications": false
+            "secrets": {
+              "type": "selected",
+              "secrets": [
+                "API_KEY"
+              ]
+            },
+            "notifications": {
+              "throttleSeconds": 3600
+            }
           },
           "settingsSize": 1024,
           "stats": {

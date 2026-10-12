@@ -493,6 +493,7 @@ test.describe('Web scraping guide screenshots', () => {
       await row.getByRole('button', { name: 'Edit' }).click();
       const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Edit responder' }) });
       await expect(flyout).toBeVisible();
+      await expect(flyout.getByLabel('Name', { exact: true })).toBeEnabled();
 
       await flyout.getByText('Body', { exact: true }).scrollIntoViewIfNeeded();
       const saveButton = flyout.getByRole('button', { name: 'Save' });

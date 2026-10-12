@@ -358,6 +358,7 @@ test.describe('Certificate templates guide screenshots', () => {
       .getByRole('dialog')
       .filter({ has: page.getByRole('heading', { name: 'Edit responder' }) });
     await expect(responderFlyout).toBeVisible();
+    await expect(responderFlyout.getByLabel('Name', { exact: true })).toBeEnabled();
 
     await responderFlyout.getByText('Body', { exact: true }).scrollIntoViewIfNeeded();
     const saveResponderButton = responderFlyout.getByRole('button', { name: 'Save' });

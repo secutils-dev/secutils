@@ -221,6 +221,7 @@ test.describe('CSP guide screenshots', () => {
       .getByRole('dialog')
       .filter({ has: page.getByRole('heading', { name: 'Edit responder' }) });
     await expect(responderFlyout).toBeVisible();
+    await expect(responderFlyout.getByLabel('Name', { exact: true })).toBeEnabled();
 
     await responderFlyout.getByText('Body', { exact: true }).scrollIntoViewIfNeeded();
     const saveResponderButton = responderFlyout.getByRole('button', { name: 'Save' });
@@ -353,6 +354,7 @@ test.describe('CSP guide screenshots', () => {
     await editRow.getByRole('button', { name: 'Edit' }).click();
     const editFlyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Edit responder' }) });
     await expect(editFlyout).toBeVisible();
+    await expect(editFlyout.getByLabel('Name', { exact: true })).toBeEnabled();
 
     await editFlyout.getByText('Body', { exact: true }).scrollIntoViewIfNeeded();
     // Body is the first Monaco editor in the flyout; Script is the second.
@@ -511,6 +513,7 @@ test.describe('CSP guide screenshots', () => {
     await evalRow.getByRole('button', { name: 'Edit' }).click();
     const evalFlyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Edit responder' }) });
     await expect(evalFlyout).toBeVisible();
+    await expect(evalFlyout.getByLabel('Name', { exact: true })).toBeEnabled();
 
     await evalFlyout.getByText('Body', { exact: true }).scrollIntoViewIfNeeded();
     const saveEvalButton = evalFlyout.getByRole('button', { name: 'Save' });

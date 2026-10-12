@@ -79,13 +79,39 @@ test.describe('Responder summaries', () => {
     expect(responderGets).toEqual(['/api/webhooks/responders']);
     await dismissAllToasts(page);
 
-    // Edit receives the complete responder.
+    // Edit opens with the summary before the complete responder loads, then swaps it in without
+    // moving any field.
+    let releaseDetail = () => {};
+    const detailReleased = new Promise<void>((resolve) => (releaseDetail = resolve));
+    const detailUrl = `**/api/webhooks/responders/${large.id}`;
+    await page.route(detailUrl, async (route) => {
+      await detailReleased;
+      await route.continue();
+    });
     await largeRow.getByRole('button', { name: 'Edit' }).click();
     await expect(flyout).toBeVisible({ timeout: 15000 });
-    await expect(flyout.getByText('LARGE-BODY-MARKER')).toBeVisible();
+    const nameField = flyout.getByLabel('Name', { exact: true });
+    await expect(nameField).toHaveValue('large');
+    await expect(nameField).toBeDisabled();
     await expect(flyout.getByText('X-Marker: large')).toBeVisible();
-    await expect(flyout.getByText('LARGE-SCRIPT-MARKER')).toBeVisible();
+    await expect(flyout.getByText('LARGE_KEY')).toBeVisible();
     await expect(flyout.getByRole('button', { name: 'Save' })).toBeDisabled();
+    // Compare only vertical geometry: the flyout may still be sliding in horizontally.
+    const accessMode = flyout.getByLabel('Access mode');
+    const verticalBox = async () => {
+      const box = await accessMode.boundingBox();
+      return box && { y: box.y, height: box.height };
+    };
+    const loadingBox = await verticalBox();
+    expect(loadingBox).not.toBeNull();
+
+    releaseDetail();
+    await expect(flyout.getByText('LARGE-BODY-MARKER')).toBeVisible();
+    await expect(flyout.getByText('LARGE-SCRIPT-MARKER')).toBeVisible();
+    await expect(nameField).toBeEnabled();
+    expect(await verticalBox()).toEqual(loadingBox);
+    await expect(flyout.getByRole('button', { name: 'Save' })).toBeDisabled();
+    await page.unroute(detailUrl);
     await flyout.getByRole('button', { name: 'Close' }).click();
     await expect(flyout).toBeHidden();
 

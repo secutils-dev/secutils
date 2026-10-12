@@ -18,8 +18,8 @@ pub struct ResponderIdPath {
     pub responder_id: Uuid,
 }
 
-/// Lists responder summaries for the authenticated user (paginated). Summaries omit the body,
-/// headers, script, and secrets settings; use the responder detail endpoint to get them.
+/// Lists responder summaries for the authenticated user (paginated). Summaries omit the body and
+/// script settings; use the responder detail endpoint to get them.
 #[utoipa::path(
     tags = ["webhooks"],
     params(PaginationParams),

@@ -47,11 +47,6 @@ impl TryFrom<RawResponderSummary> for ResponderSummary {
     type Error = anyhow::Error;
 
     fn try_from(raw: RawResponderSummary) -> Result<Self, Self::Error> {
-        // ponytail: decodes the full settings blob (body included) only to read three flags, so
-        // Postgres still ships each visible row's settings to Rust. Ceiling: list cost grows with
-        // the bodies of the visible rows. Upgrade path: denormalize `has_script` and
-        // `requests_to_track` into columns (like `notifications_enabled`), backfill them, update
-        // every write path including import, and stop selecting `settings` here.
         let settings = deserialize_settings(&raw.settings)?;
         Ok(ResponderSummary {
             id: raw.id,
@@ -61,8 +56,13 @@ impl TryFrom<RawResponderSummary> for ResponderSummary {
             enabled: raw.enabled,
             settings: ResponderSummarySettings {
                 requests_to_track: settings.requests_to_track,
+                status_code: settings.status_code,
+                headers: settings.headers,
                 has_script: settings.script.is_some(),
-                has_notifications: settings.notifications.is_some(),
+                secrets: settings.secrets.into(),
+                notifications: settings
+                    .notifications
+                    .map(ResponderNotificationSettings::from),
             },
             settings_size: u64::try_from(raw.settings_size)?,
             stats: ResponderStats {

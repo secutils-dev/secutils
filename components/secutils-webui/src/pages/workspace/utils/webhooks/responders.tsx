@@ -53,9 +53,12 @@ export default function Responders() {
 
   const [initialized, setInitialized] = useState(false);
   const [responderToRemove, setResponderToRemove] = useState<ResponderSummary | null>(null);
-  const [responderToEdit, setResponderToEdit] = useState<ResponderEditFlyoutProps['responder'] | null>(null);
+  const [responderToEdit, setResponderToEdit] = useState<Pick<
+    ResponderEditFlyoutProps,
+    'responder' | 'preview'
+  > | null>(null);
   const { allTags } = useUserTags();
-  const { load: loadResponder, cancel: cancelResponderLoad, loading: responderLoading } = useEntityLoader(getResponder);
+  const { load: loadResponder, cancel: cancelResponderLoad } = useEntityLoader(getResponder);
 
   const createButton = useMemo(
     () => (
@@ -65,7 +68,7 @@ export default function Responders() {
         fill
         onClick={() => {
           cancelResponderLoad();
-          setResponderToEdit(undefined);
+          setResponderToEdit({});
         }}
       >
         Create responder
@@ -75,13 +78,15 @@ export default function Responders() {
   );
 
   const onLoadResponderError = useCallback(
-    (name: string, err: unknown) =>
+    (name: string, err: unknown) => {
+      setResponderToEdit(null);
       addToast({
         id: 'load-responder-error',
         iconType: 'warning',
         color: 'danger',
         title: `Failed to load responder "${name}": ${getErrorMessage(err)}`,
-      }),
+      });
+    },
     [addToast],
   );
 
@@ -165,9 +170,10 @@ export default function Responders() {
             if (success) {
               refresh();
             }
+            cancelResponderLoad();
             setResponderToEdit(null);
           }}
-          responder={responderToEdit}
+          {...responderToEdit}
         />
       </Suspense>
     ) : null;
@@ -256,7 +262,7 @@ export default function Responders() {
         </ItemsTableFilter>
         <EuiSpacer size="m" />
         <EuiBasicTable
-          loading={loading || responderLoading}
+          loading={loading}
           pagination={pagination}
           noItemsMessage={<FilteredEmptyState hasPageFilters={hasPageFilters} onClearFilters={clearPageFilters} />}
           sorting={sorting}
@@ -394,28 +400,36 @@ export default function Responders() {
                   icon: 'pencil',
                   type: 'icon',
                   isPrimary: true,
-                  onClick: ({ id, name }: ResponderSummary) =>
-                    loadResponder(id, setResponderToEdit, (err) => onLoadResponderError(name, err)),
+                  onClick: (preview: ResponderSummary) => {
+                    setResponderToEdit({ preview });
+                    loadResponder(
+                      preview.id,
+                      (responder) => setResponderToEdit({ preview, responder }),
+                      (err) => onLoadResponderError(preview.name, err),
+                    );
+                  },
                 },
                 {
                   name: 'Duplicate',
                   description: 'Duplicate responder',
                   icon: 'copy',
                   type: 'icon',
-                  onClick: ({ id, name }: ResponderSummary) =>
+                  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                  onClick: ({ id, createdAt, updatedAt, ...summary }: ResponderSummary) => {
+                    const name = getCopyName(
+                      summary.name,
+                      responders.map((r) => r.name),
+                    );
+                    const preview = { ...summary, name };
+                    setResponderToEdit({ preview });
                     loadResponder(
                       id,
                       // eslint-disable-next-line @typescript-eslint/no-unused-vars
                       ({ id: _id, createdAt, updatedAt, ...source }) =>
-                        setResponderToEdit({
-                          ...source,
-                          name: getCopyName(
-                            source.name,
-                            responders.map((r) => r.name),
-                          ),
-                        }),
-                      (err) => onLoadResponderError(name, err),
-                    ),
+                        setResponderToEdit({ preview, responder: { ...source, name } }),
+                      (err) => onLoadResponderError(summary.name, err),
+                    );
+                  },
                 },
                 {
                   name: 'Remove',

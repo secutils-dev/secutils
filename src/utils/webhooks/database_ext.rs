@@ -1519,6 +1519,7 @@ mod tests {
     async fn get_responders_page_returns_summaries(pool: PgPool) -> anyhow::Result<()> {
         use crate::{
             server::SortOrder,
+            users::SecretsAccess,
             utils::webhooks::{ResponderNotificationSettings, ResponderSummarySettings},
         };
 
@@ -1533,7 +1534,10 @@ mod tests {
             .with_body("rich body")
             .build();
         rich.settings.requests_to_track = 7;
+        rich.settings.status_code = 201;
+        rich.settings.headers = Some(vec![("x-rich".to_string(), "1".to_string())]);
         rich.settings.script = Some("return {};".to_string());
+        rich.settings.secrets = SecretsAccess::All;
         rich.settings.notifications = Some(ResponderNotificationSettings {
             throttle_seconds: 3600,
         });
@@ -1573,15 +1577,18 @@ mod tests {
         assert_eq!(total, 3);
         assert_eq!(
             page.iter()
-                .map(|r| (r.id, r.settings, r.stats))
+                .map(|r| (r.id, r.settings.clone(), r.stats))
                 .collect::<Vec<_>>(),
             vec![
                 (
                     plain_id,
                     ResponderSummarySettings {
                         requests_to_track: 0,
+                        status_code: 200,
+                        headers: None,
                         has_script: false,
-                        has_notifications: false,
+                        secrets: SecretsAccess::None,
+                        notifications: None,
                     },
                     ResponderStats {
                         request_count: 0,
@@ -1592,8 +1599,13 @@ mod tests {
                     rich_id,
                     ResponderSummarySettings {
                         requests_to_track: 7,
+                        status_code: 201,
+                        headers: Some(vec![("x-rich".to_string(), "1".to_string())]),
                         has_script: true,
-                        has_notifications: true,
+                        secrets: SecretsAccess::All,
+                        notifications: Some(ResponderNotificationSettings {
+                            throttle_seconds: 3600,
+                        }),
                     },
                     ResponderStats {
                         request_count: 1,
@@ -1604,8 +1616,11 @@ mod tests {
                     legacy_id,
                     ResponderSummarySettings {
                         requests_to_track: 3,
+                        status_code: 200,
+                        headers: Some(vec![("key".to_string(), "value".to_string())]),
                         has_script: true,
-                        has_notifications: false,
+                        secrets: SecretsAccess::None,
+                        notifications: None,
                     },
                     ResponderStats {
                         request_count: 0,

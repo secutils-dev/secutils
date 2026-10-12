@@ -835,12 +835,13 @@ test.describe('Unsaved changes confirmation', () => {
       await expect(duplicateButton).toBeVisible();
       await duplicateButton.click();
 
-      // Responder uses `responder ?` check so duplicate (object exists) shows "Edit responder".
+      // Responder uses a `source ?` check so duplicate (object exists) shows "Edit responder".
       const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Edit responder' }) });
       await expect(flyout).toBeVisible();
 
-      // Verify the duplicate flyout is pre-filled with the copy name.
+      // Verify the duplicate flyout is pre-filled with the copy name, and the full responder loaded.
       await expect(flyout.getByLabel('Name')).toHaveValue('existing-responder (Copy 1)');
+      await expect(flyout.getByLabel('Name')).toBeEnabled();
 
       await flyout.getByRole('button', { name: 'Close' }).click();
 

@@ -440,6 +440,8 @@ function FullScreenEditor({
   );
 }
 
+export const SCRIPT_EDITOR_HEIGHT = '25vh';
+
 export function ScriptEditor({
   onChange,
   defaultValue,
@@ -487,7 +489,7 @@ export function ScriptEditor({
       `}
     >
       <Editor
-        height="25vh"
+        height={SCRIPT_EDITOR_HEIGHT}
         language={language}
         options={EDITOR_OPTIONS}
         value={currentValue}

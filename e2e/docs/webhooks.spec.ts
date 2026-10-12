@@ -63,6 +63,7 @@ test.describe('Webhooks guide screenshots', () => {
     await responderRow.getByRole('button', { name: 'Edit' }).click();
     const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Edit responder' }) });
     await expect(flyout).toBeVisible();
+    await expect(flyout.getByLabel('Name', { exact: true })).toBeEnabled();
 
     await flyout.getByText('Body', { exact: true }).scrollIntoViewIfNeeded();
     const saveButton = flyout.getByRole('button', { name: 'Save' });
@@ -121,6 +122,7 @@ test.describe('Webhooks guide screenshots', () => {
     await responderRow.getByRole('button', { name: 'Edit' }).click();
     const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Edit responder' }) });
     await expect(flyout).toBeVisible();
+    await expect(flyout.getByLabel('Name', { exact: true })).toBeEnabled();
 
     await flyout.getByText('Body', { exact: true }).scrollIntoViewIfNeeded();
     const saveButton = flyout.getByRole('button', { name: 'Save' });
@@ -181,6 +183,7 @@ test.describe('Webhooks guide screenshots', () => {
     await responderRow.getByRole('button', { name: 'Edit' }).click();
     const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Edit responder' }) });
     await expect(flyout).toBeVisible();
+    await expect(flyout.getByLabel('Name', { exact: true })).toBeEnabled();
 
     await flyout.getByText('Body', { exact: true }).scrollIntoViewIfNeeded();
     const saveButton = flyout.getByRole('button', { name: 'Save' });
@@ -246,6 +249,7 @@ test.describe('Webhooks guide screenshots', () => {
     await responderRow.getByRole('button', { name: 'Edit' }).click();
     const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Edit responder' }) });
     await expect(flyout).toBeVisible();
+    await expect(flyout.getByLabel('Name', { exact: true })).toBeEnabled();
 
     const notificationsSwitch = flyout.getByRole('switch', { name: 'Notify me when this responder is hit' });
     await notificationsSwitch.scrollIntoViewIfNeeded();
@@ -301,6 +305,7 @@ test.describe('Webhooks guide screenshots', () => {
     await responderRow.getByRole('button', { name: 'Edit' }).click();
     const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Edit responder' }) });
     await expect(flyout).toBeVisible();
+    await expect(flyout.getByLabel('Name', { exact: true })).toBeEnabled();
 
     // Scroll the flyout so the Script editor is visible.
     await flyout.getByText('The script is executed').scrollIntoViewIfNeeded();

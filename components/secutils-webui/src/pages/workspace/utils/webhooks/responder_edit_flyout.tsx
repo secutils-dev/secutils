@@ -12,29 +12,89 @@ import {
   EuiLink,
   EuiRange,
   EuiSelect,
+  EuiSkeletonRectangle,
   EuiSwitch,
   EuiText,
   EuiTitle,
 } from '@elastic/eui';
 import { customAlphabet, urlAlphabet } from 'nanoid';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 
-import type { Responder } from './responder';
-import { useFormChanges, useRangeTicks, useUserTags } from '../../../../hooks';
+import type { Responder, ResponderSummary, SecretsAccess } from './responder';
+import { useRangeTicks, useUserTags } from '../../../../hooks';
 import type { AsyncData } from '../../../../model';
 import { apiFetch, getErrorMessage, getUserSecrets, isClientError, ResponseError } from '../../../../model';
 import { EditorFlyout } from '../../components/editor_flyout';
-import { ScriptEditor } from '../../components/script_editor';
+import { SCRIPT_EDITOR_HEIGHT, ScriptEditor } from '../../components/script_editor';
 import type { ImportAction, ScriptSnippet } from '../../components/script_editor';
 import { ScriptImportSelector } from '../../components/script_import_selector';
 import { TagsComboBox } from '../../components/tags_combo_box';
 import { useWorkspaceContext } from '../../hooks';
 
+type WithoutIdentity<T> = Omit<T, 'id' | 'createdAt' | 'updatedAt'> & { id?: never };
+
 export interface ResponderEditFlyoutProps {
   /** Full responder to edit, a full responder without identity to duplicate, or none to create. */
-  responder?: Responder | (Omit<Responder, 'id' | 'createdAt' | 'updatedAt'> & { id?: never });
+  responder?: Responder | WithoutIdentity<Responder>;
+  /** Summary to show while `responder` loads. The form stays read-only until `responder` is set. */
+  preview?: ResponderSummary | WithoutIdentity<ResponderSummary>;
   onClose: (success?: boolean) => void;
+}
+
+type FormSource = Pick<Responder, 'name' | 'location' | 'method' | 'enabled' | 'tags'> & {
+  id?: string;
+  settings: Responder['settings'] & { hasScript?: boolean };
+};
+
+interface ResponderForm {
+  name: string;
+  subdomainPrefix: string;
+  path: string;
+  pathType: string;
+  requestsToTrack: number;
+  statusCode: number;
+  method: string;
+  isEnabled: boolean;
+  headers: Array<{ label: string }>;
+  body: string;
+  script?: string;
+  secretsMode: SecretsAccess['type'];
+  selectedSecretNames: Array<{ label: string }>;
+  selectedTagIds: string[];
+  notifications: boolean;
+  throttleSeconds: number;
+}
+
+interface ResponderFormDefaults {
+  subdomainPrefix: string;
+  requestsToTrack: number;
+  throttleSeconds: number;
+}
+
+function toFormState(source: FormSource | undefined, defaults: ResponderFormDefaults): ResponderForm {
+  const settings = source?.settings;
+  const secrets = settings?.secrets;
+  return {
+    name: source?.name ?? '',
+    subdomainPrefix: source ? (source.location.subdomainPrefix ?? '') : defaults.subdomainPrefix,
+    path: source?.location.path ?? '/',
+    pathType: source?.location.pathType ?? '^',
+    requestsToTrack: settings?.requestsToTrack ?? defaults.requestsToTrack,
+    statusCode: settings?.statusCode ?? 200,
+    method: source?.method ?? 'ANY',
+    isEnabled: source?.enabled ?? true,
+    headers: settings?.headers?.map(([header, value]) => ({ label: `${header}: ${value}` })) ?? [
+      { label: 'Content-Type: text/html; charset=utf-8' },
+    ],
+    body: settings?.body ?? 'Hello from <a href="https://secutils.dev">Secutils.dev</a>!',
+    script: settings?.script,
+    secretsMode: secrets?.type ?? 'none',
+    selectedSecretNames: secrets?.type === 'selected' ? (secrets.secrets ?? []).map((s) => ({ label: s })) : [],
+    selectedTagIds: source?.tags?.map((t) => t.id) ?? [],
+    notifications: !!settings?.notifications,
+    throttleSeconds: settings?.notifications?.throttleSeconds ?? defaults.throttleSeconds,
+  };
 }
 
 const HTTP_METHODS = ['ANY', 'GET', 'POST', 'PUT', 'DELETE', 'HEAD', 'OPTIONS', 'CONNECT', 'TRACE', 'PATCH'];
@@ -88,6 +148,9 @@ const isSubdomainPrefixValid = (subdomainPrefix: string) => {
 
   return SUBDOMAIN_PREFIX_REGEX.test(subdomainPrefix) && !subdomainPrefix.includes('.') && subdomainPrefix.length < 45;
 };
+
+// Same height as `ScriptEditor`, so swapping in the editor doesn't shift the form.
+const EditorSkeleton = () => <EuiSkeletonRectangle width="100%" height={SCRIPT_EDITOR_HEIGHT} borderRadius="m" />;
 
 const nanoidCustom = customAlphabet(urlAlphabet.replace('_', '').replace('-', ''), 7);
 
@@ -425,47 +488,24 @@ button:hover { background:var(--primary-hover); }
   },
 ];
 
-export default function ResponderEditFlyout({ onClose, responder }: ResponderEditFlyoutProps) {
+export default function ResponderEditFlyout({ onClose, responder, preview }: ResponderEditFlyoutProps) {
   const { addToast, uiState } = useWorkspaceContext();
   const maxTicks = useRangeTicks();
 
-  const newResponder = !responder?.id;
+  const source: FormSource | undefined = responder ?? preview;
+  const isLoading = !responder && !!preview;
+  const isDuplicate = !!source && !source.id;
+  const existingResponder = responder?.id ? responder : undefined;
 
   const httpMethods = useMemo(() => HTTP_METHODS.map((method) => ({ value: method, text: method })), []);
 
   const [isAdvancedMode, setIsAdvancedMode] = useState(
-    !newResponder &&
-      (responder?.method !== 'ANY' ||
-        !!responder?.settings?.script ||
-        !!responder?.settings?.notifications ||
-        (!!responder?.settings?.secrets && responder.settings.secrets.type !== 'none')),
-  );
-
-  const [name, setName] = useState<string>(responder?.name ?? '');
-  const onNameChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
-    setName(e.target.value);
-  }, []);
-
-  const defaultRandom = useMemo(() => (!responder ? nanoidCustom().toLowerCase() : ''), [responder]);
-  const [subdomainPrefix, setSubdomainPrefix] = useState<string>(responder?.location?.subdomainPrefix ?? defaultRandom);
-  const onSubdomainPrefixChange = (e: ChangeEvent<HTMLInputElement>) => {
-    setSubdomainPrefix(e.target.value.toLowerCase());
-  };
-
-  const [path, setPath] = useState<string>(responder?.location?.path ?? '/');
-  const onPathChange = (e: ChangeEvent<HTMLInputElement>) => {
-    setPath(e.target.value.toLowerCase());
-  };
-  const isPathValid = path.startsWith('/') && (path.length === 1 || !path.endsWith('/'));
-
-  const [pathType, setPathType] = useState<string>(responder?.location?.pathType ?? '^');
-  const onPathTypeChange = (e: ChangeEvent<HTMLSelectElement>) => {
-    setPathType(e.target.value);
-  };
-
-  const [requestsToTrack, setRequestsToTrack] = useState<number>(
-    responder?.settings?.requestsToTrack ??
-      Math.min(uiState.subscription?.features?.webhooks.responderRequests ?? 0, 10),
+    !!source?.id &&
+      (source.method !== 'ANY' ||
+        !!source.settings.script ||
+        !!source.settings.hasScript ||
+        !!source.settings.notifications ||
+        (!!source.settings.secrets && source.settings.secrets.type !== 'none')),
   );
 
   const throttlePresets = useMemo(() => {
@@ -480,44 +520,89 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
     ? DEFAULT_NOTIFICATION_THROTTLE_SECONDS
     : throttlePresets[0];
 
-  const existingNotifications = responder?.settings?.notifications;
-  const [notifications, setNotifications] = useState<boolean>(!!existingNotifications);
-  const [throttleSeconds, setThrottleSeconds] = useState<number>(
-    existingNotifications?.throttleSeconds ?? defaultThrottleSeconds,
+  const [formDefaults] = useState<ResponderFormDefaults>(() => ({
+    subdomainPrefix: nanoidCustom().toLowerCase(),
+    requestsToTrack: Math.min(uiState.subscription?.features?.webhooks.responderRequests ?? 0, 10),
+    throttleSeconds: defaultThrottleSeconds,
+  }));
+  const [formSource, setFormSource] = useState(responder);
+  const [initialForm, setInitialForm] = useState(() => toFormState(source, formDefaults));
+  const [form, setForm] = useState(initialForm);
+  // The full responder replaces every preview value, including values that changed since the
+  // summary was loaded, because the update request diffs the form against `responder`.
+  if (formSource !== responder) {
+    const nextForm = toFormState(source, formDefaults);
+    setFormSource(responder);
+    setInitialForm(nextForm);
+    setForm(nextForm);
+  }
+  const updateForm = useCallback(
+    (patch: Partial<ResponderForm>) => setForm((current) => ({ ...current, ...patch })),
+    [],
   );
+  const {
+    name,
+    subdomainPrefix,
+    path,
+    pathType,
+    requestsToTrack,
+    statusCode,
+    method,
+    isEnabled,
+    headers,
+    body,
+    script,
+    secretsMode,
+    selectedSecretNames,
+    selectedTagIds,
+    notifications,
+    throttleSeconds,
+  } = form;
 
-  const [statusCode, setStatusCode] = useState<number>(responder?.settings?.statusCode ?? 200);
+  const nameRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!isLoading) {
+      nameRef.current?.focus();
+    }
+  }, [isLoading]);
+
+  const onNameChange = useCallback(
+    (e: ChangeEvent<HTMLInputElement>) => updateForm({ name: e.target.value }),
+    [updateForm],
+  );
+  const onSubdomainPrefixChange = (e: ChangeEvent<HTMLInputElement>) => {
+    updateForm({ subdomainPrefix: e.target.value.toLowerCase() });
+  };
+  const onPathChange = (e: ChangeEvent<HTMLInputElement>) => {
+    updateForm({ path: e.target.value.toLowerCase() });
+  };
+  const isPathValid = path.startsWith('/') && (path.length === 1 || !path.endsWith('/'));
+  const onPathTypeChange = (e: ChangeEvent<HTMLSelectElement>) => {
+    updateForm({ pathType: e.target.value });
+  };
   const onStatusCodeChange = (e: ChangeEvent<HTMLInputElement>) => {
-    setStatusCode(+e.target.value);
+    updateForm({ statusCode: +e.target.value });
   };
-
-  const [method, setMethod] = useState<string>(responder?.method ?? 'ANY');
   const onMethodChange = (e: ChangeEvent<HTMLSelectElement>) => {
-    setMethod(e.target.value);
+    updateForm({ method: e.target.value });
   };
-
-  const [isEnabled, setIsEnabled] = useState<boolean>(responder?.enabled ?? true);
-  const onIsEnabledChange = useCallback((e: EuiSwitchEvent) => {
-    setIsEnabled(e.target.checked);
-  }, []);
-
-  const [headers, setHeaders] = useState<Array<{ label: string }>>(
-    responder?.settings?.headers?.map(([header, value]) => ({ label: `${header}: ${value}` })) ?? [
-      { label: 'Content-Type: text/html; charset=utf-8' },
-    ],
+  const onIsEnabledChange = useCallback(
+    (e: EuiSwitchEvent) => updateForm({ isEnabled: e.target.checked }),
+    [updateForm],
   );
+
   const [areHeadersInvalid, setAreHeadersInvalid] = useState(false);
 
-  const [script, setScript] = useState<string | undefined>(responder?.settings?.script);
-  const onUserScriptChange = useCallback((value?: string) => {
-    setScript(value);
-  }, []);
+  const onUserScriptChange = useCallback((value?: string) => updateForm({ script: value }), [updateForm]);
 
   const [isImportModalVisible, setIsImportModalVisible] = useState(false);
-  const handleImportScript = useCallback((content: string) => {
-    setScript(content);
-    setIsImportModalVisible(false);
-  }, []);
+  const handleImportScript = useCallback(
+    (content: string) => {
+      updateForm({ script: content });
+      setIsImportModalVisible(false);
+    },
+    [updateForm],
+  );
 
   const scriptImportActions: ImportAction[] = useMemo(
     () => [
@@ -532,16 +617,10 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
     [],
   );
 
-  const existingSecrets = responder?.settings?.secrets;
-  const [secretsMode, setSecretsMode] = useState<'none' | 'all' | 'selected'>(existingSecrets?.type ?? 'none');
-  const [selectedSecretNames, setSelectedSecretNames] = useState<Array<{ label: string }>>(
-    existingSecrets?.type === 'selected' ? (existingSecrets.secrets ?? []).map((s) => ({ label: s })) : [],
-  );
   const [availableSecrets, setAvailableSecrets] = useState<Array<{ label: string }>>([]);
   const [secretsLoaded, setSecretsLoaded] = useState(false);
 
   const { allTags, setAllTags } = useUserTags();
-  const [selectedTagIds, setSelectedTagIds] = useState<string[]>(responder?.tags?.map((t) => t.id) ?? []);
 
   useEffect(() => {
     if (secretsMode !== 'selected' || secretsLoaded) {
@@ -560,7 +639,7 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
       return false;
     }
 
-    setHeaders([...headers, { label: headerValue }]);
+    updateForm({ headers: [...headers, { label: headerValue }] });
   };
 
   const onHeadersSearchChange = (headerValue: string) => {
@@ -573,37 +652,16 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
   };
 
   const onHeadersChange = (selectedHeaders: Array<{ label: string }>) => {
-    setHeaders(selectedHeaders);
+    updateForm({ headers: selectedHeaders });
     setAreHeadersInvalid(false);
   };
 
-  const [body, setBody] = useState<string>(
-    responder?.settings?.body ?? 'Hello from <a href="https://secutils.dev">Secutils.dev</a>!',
-  );
-  const isDuplicate = !!responder && !responder.id;
-  const hasFormChanges = useFormChanges({
-    name,
-    subdomainPrefix,
-    path,
-    pathType,
-    requestsToTrack,
-    statusCode,
-    method,
-    isEnabled,
-    headers,
-    body,
-    script,
-    secretsMode,
-    selectedSecretNames,
-    selectedTagIds,
-    notifications,
-    throttleSeconds,
-  });
-  const hasChanges = isDuplicate || hasFormChanges;
+  const hasFormChanges = JSON.stringify(form) !== JSON.stringify(initialForm);
+  const hasChanges = !isLoading && (isDuplicate || hasFormChanges);
 
   const [updatingStatus, setUpdatingStatus] = useState<AsyncData<void>>();
   const onSave = useCallback(() => {
-    if (updatingStatus?.status === 'pending') {
+    if (updatingStatus?.status === 'pending' || isLoading) {
       return;
     }
 
@@ -611,11 +669,11 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
 
     const locationSubdomainPrefix = subdomainPrefix || undefined;
     let location;
-    if (!newResponder) {
+    if (existingResponder) {
       location =
-        responder.location?.path !== path ||
-        responder.location?.pathType !== pathType ||
-        responder.location?.subdomainPrefix !== locationSubdomainPrefix
+        existingResponder.location?.path !== path ||
+        existingResponder.location?.pathType !== pathType ||
+        existingResponder.location?.subdomainPrefix !== locationSubdomainPrefix
           ? { pathType, path: path.trim(), subdomainPrefix: locationSubdomainPrefix }
           : null;
     } else {
@@ -623,10 +681,10 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
     }
 
     const responderToUpdate = {
-      name: newResponder ? name.trim() : responder.name !== name ? name.trim() : null,
+      name: !existingResponder ? name.trim() : existingResponder.name !== name ? name.trim() : null,
       location,
-      method: newResponder ? method : responder.method !== method ? method : null,
-      enabled: newResponder ? isEnabled : responder.enabled !== isEnabled ? isEnabled : null,
+      method: !existingResponder ? method : existingResponder.method !== method ? method : null,
+      enabled: !existingResponder ? isEnabled : existingResponder.enabled !== isEnabled ? isEnabled : null,
       settings: {
         requestsToTrack,
         statusCode,
@@ -653,9 +711,9 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
       tagIds: selectedTagIds,
     };
 
-    const [requestPromise, successMessage, errorMessage] = !newResponder
+    const [requestPromise, successMessage, errorMessage] = existingResponder
       ? [
-          apiFetch(`/api/webhooks/responders/${responder.id}`, {
+          apiFetch(`/api/webhooks/responders/${existingResponder.id}`, {
             method: 'PUT',
             body: JSON.stringify(responderToUpdate),
           }),
@@ -715,9 +773,9 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
     selectedTagIds,
     notifications,
     throttleSeconds,
-    responder,
+    existingResponder,
+    isLoading,
     updatingStatus,
-    newResponder,
     addToast,
     onClose,
   ]);
@@ -730,7 +788,7 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
         <EuiFlexGroup>
           <EuiFlexItem>
             <EuiTitle size="s">
-              <h1>{`${responder ? 'Edit' : 'Add'} responder`}</h1>
+              <h1>{`${source ? 'Edit' : 'Add'} responder`}</h1>
             </EuiTitle>
           </EuiFlexItem>
           <EuiFlexItem grow={false}>
@@ -749,7 +807,9 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
       onClose={() => onClose()}
       onSave={onSave}
       hasChanges={hasChanges}
+      isLoading={isLoading}
       canSave={
+        !isLoading &&
         name.trim().length > 0 &&
         !areHeadersInvalid &&
         isPathValid &&
@@ -762,22 +822,27 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
     >
       <EuiForm id="update-form" component="form" fullWidth>
         <EuiDescribedFormGroup title={<h3>General</h3>} description={'General properties of the responder'}>
-          <EuiFormRow label="Name" helpText="Arbitrary responder name." fullWidth>
-            <EuiFieldText autoFocus value={name} required type={'text'} onChange={onNameChange} />
+          <EuiFormRow label="Name" helpText="Arbitrary responder name." fullWidth isDisabled={isLoading}>
+            <EuiFieldText autoFocus inputRef={nameRef} value={name} required type={'text'} onChange={onNameChange} />
           </EuiFormRow>
           <TagsComboBox
             allTags={allTags}
             selectedTagIds={selectedTagIds}
-            onChange={setSelectedTagIds}
+            onChange={(tagIds) => updateForm({ selectedTagIds: tagIds })}
             onTagCreated={(tag) => setAllTags((prev) => [...prev, tag])}
+            isDisabled={isLoading}
           />
-          <EuiFormRow label="Tracking" helpText="Responder will track only specified number of incoming requests">
+          <EuiFormRow
+            label="Tracking"
+            helpText="Responder will track only specified number of incoming requests"
+            isDisabled={isLoading}
+          >
             <EuiRange
               min={0}
               max={maxResponderRequests}
               value={requestsToTrack}
               fullWidth
-              onChange={(e) => setRequestsToTrack(+e.currentTarget.value)}
+              onChange={(e) => updateForm({ requestsToTrack: +e.currentTarget.value })}
               showRange
               showTicks
               tickInterval={tickInterval > 1 ? Math.ceil(tickInterval / 5) * 5 : tickInterval}
@@ -787,6 +852,7 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
           <EuiFormRow
             label={'Enable'}
             helpText={'Instructs the responder whether it should process incoming requests or not.'}
+            isDisabled={isLoading}
           >
             <EuiSwitch showLabel={false} label="Enable" checked={isEnabled} onChange={onIsEnabledChange} />
           </EuiFormRow>
@@ -796,12 +862,13 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
               helpText={
                 'Send an email when this responder is hit. Hits are coalesced into a single email per the frequency below.'
               }
+              isDisabled={isLoading}
             >
               <EuiSwitch
                 showLabel={false}
                 label="Notify me when this responder is hit"
                 checked={notifications}
-                onChange={(e) => setNotifications(e.target.checked)}
+                onChange={(e) => updateForm({ notifications: e.target.checked })}
               />
             </EuiFormRow>
           ) : null}
@@ -811,11 +878,12 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
               helpText={
                 'Maximum frequency of notification emails. Hits within the window are coalesced into one email.'
               }
+              isDisabled={isLoading}
             >
               <EuiSelect
                 options={throttleOptions}
                 value={throttleSeconds}
-                onChange={(e) => setThrottleSeconds(+e.target.value)}
+                onChange={(e) => updateForm({ throttleSeconds: +e.target.value })}
               />
             </EuiFormRow>
           ) : null}
@@ -836,6 +904,7 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
                 &nbsp;domain
               </>
             }
+            isDisabled={isLoading}
           >
             <EuiFieldText
               value={subdomainPrefix}
@@ -848,12 +917,17 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
                   iconType="refresh"
                   title={'Generate random prefix'}
                   aria-label="Generate random prefix"
-                  onClick={() => setSubdomainPrefix(nanoidCustom().toLowerCase())}
+                  isDisabled={isLoading}
+                  onClick={() => updateForm({ subdomainPrefix: nanoidCustom().toLowerCase() })}
                 />
               }
             />
           </EuiFormRow>
-          <EuiFormRow label="Path" helpText="Responder path should start with a '/', and should not end with a '/'">
+          <EuiFormRow
+            label="Path"
+            helpText="Responder path should start with a '/', and should not end with a '/'"
+            isDisabled={isLoading}
+          >
             <EuiFieldText
               value={path}
               isInvalid={path.length > 0 && !isPathValid}
@@ -865,7 +939,8 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
                   iconType="refresh"
                   title={'Generate random path'}
                   aria-label="Generate random path"
-                  onClick={() => setPath(`/${nanoidCustom().toLowerCase()}`)}
+                  isDisabled={isLoading}
+                  onClick={() => updateForm({ path: `/${nanoidCustom().toLowerCase()}` })}
                 />
               }
             />
@@ -874,6 +949,7 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
             <EuiFormRow
               label="Path type"
               helpText="Responder will respond to requests with the path that either matches the specified `Path` exactly or starts with it"
+              isDisabled={isLoading}
             >
               <EuiSelect options={PATH_TYPES} value={pathType} onChange={onPathTypeChange} />
             </EuiFormRow>
@@ -882,6 +958,7 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
             <EuiFormRow
               label="Method"
               helpText="Responder will only respond to requests with the specified HTTP method"
+              isDisabled={isLoading}
             >
               <EuiSelect options={httpMethods} value={method} onChange={onMethodChange} />
             </EuiFormRow>
@@ -891,16 +968,22 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
           title={<h3>Response</h3>}
           description={'Properties of the responder related to the HTTP response it generates'}
         >
-          <EuiFormRow label="Status code" helpText="The HTTP status code to use for the response">
+          <EuiFormRow
+            label="Status code"
+            helpText="The HTTP status code to use for the response"
+            isDisabled={isLoading}
+          >
             <EuiFieldNumber fullWidth min={100} max={999} step={1} value={statusCode} onChange={onStatusCodeChange} />
           </EuiFormRow>
           <EuiFormRow
             label="Headers"
             helpText="Optional list of the HTTP response headers to use for the response, e.g `X-Header: X-Value`"
             fullWidth
+            isDisabled={isLoading}
           >
             <EuiComboBox
               fullWidth
+              isDisabled={isLoading}
               options={[
                 { label: 'Cache-Control: no-cache, no-store, max-age=0, must-revalidate' },
                 { label: 'Content-Type: application/javascript; charset=utf-8' },
@@ -916,12 +999,16 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
               isInvalid={areHeadersInvalid}
             />
           </EuiFormRow>
-          <EuiFormRow label="Body" isDisabled={method === 'HEAD'}>
-            <ScriptEditor
-              onChange={(value) => setBody(value ?? '')}
-              defaultValue={body}
-              language={getBodyLanguage(headers)}
-            />
+          <EuiFormRow label="Body" isDisabled={isLoading || method === 'HEAD'}>
+            {isLoading ? (
+              <EditorSkeleton />
+            ) : (
+              <ScriptEditor
+                onChange={(value) => updateForm({ body: value ?? '' })}
+                defaultValue={body}
+                language={getBodyLanguage(headers)}
+              />
+            )}
           </EuiFormRow>
           {isAdvancedMode ? (
             <EuiFormRow
@@ -943,13 +1030,18 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
                   <b>context.secrets.MY_KEY</b>. For static body and headers, use <b>{'${secrets.MY_KEY}'}</b> syntax.
                 </span>
               }
+              isDisabled={isLoading}
             >
-              <ScriptEditor
-                onChange={onUserScriptChange}
-                defaultValue={script}
-                snippets={SCRIPT_SNIPPETS}
-                importActions={scriptImportActions}
-              />
+              {isLoading ? (
+                <EditorSkeleton />
+              ) : (
+                <ScriptEditor
+                  onChange={onUserScriptChange}
+                  defaultValue={script}
+                  snippets={SCRIPT_SNIPPETS}
+                  importActions={scriptImportActions}
+                />
+              )}
             </EuiFormRow>
           ) : null}
         </EuiDescribedFormGroup>
@@ -965,7 +1057,12 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
             title={<h3>Secrets</h3>}
             description="Control which user secrets are available to this responder's script and template interpolation."
           >
-            <EuiFormRow label="Access mode" helpText="Choose which secrets to expose to this responder." fullWidth>
+            <EuiFormRow
+              label="Access mode"
+              helpText="Choose which secrets to expose to this responder."
+              fullWidth
+              isDisabled={isLoading}
+            >
               <EuiSelect
                 fullWidth
                 options={[
@@ -974,16 +1071,17 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
                   { value: 'selected', text: 'Selected secrets' },
                 ]}
                 value={secretsMode}
-                onChange={(e) => setSecretsMode(e.target.value as 'none' | 'all' | 'selected')}
+                onChange={(e) => updateForm({ secretsMode: e.target.value as SecretsAccess['type'] })}
               />
             </EuiFormRow>
             {secretsMode === 'selected' ? (
-              <EuiFormRow label="Secrets" helpText="Select the secrets to expose." fullWidth>
+              <EuiFormRow label="Secrets" helpText="Select the secrets to expose." fullWidth isDisabled={isLoading}>
                 <EuiComboBox
                   fullWidth
+                  isDisabled={isLoading}
                   options={availableSecrets}
                   selectedOptions={selectedSecretNames}
-                  onChange={setSelectedSecretNames}
+                  onChange={(secrets) => updateForm({ selectedSecretNames: secrets })}
                   isLoading={!secretsLoaded}
                 />
               </EuiFormRow>

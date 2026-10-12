@@ -8,6 +8,7 @@ import {
   EuiFlyoutBody,
   EuiFlyoutFooter,
   EuiFlyoutHeader,
+  EuiProgress,
   EuiTitle,
 } from '@elastic/eui';
 import type { ReactNode } from 'react';
@@ -22,6 +23,7 @@ export interface Props {
   canSave?: boolean;
   saveInProgress?: boolean;
   hasChanges?: boolean;
+  isLoading?: boolean;
   onDebug?: () => void;
   canDebug?: boolean;
   debugInProgress?: boolean;
@@ -35,6 +37,7 @@ export function EditorFlyout({
   canSave,
   saveInProgress,
   hasChanges,
+  isLoading,
   onDebug,
   canDebug,
   debugInProgress,
@@ -58,6 +61,7 @@ export function EditorFlyout({
 
   return (
     <EuiFlyout size="l" maxWidth onClose={handleClose} ownFocus hideCloseButton>
+      {isLoading ? <EuiProgress size="xs" color="accent" position="absolute" /> : null}
       <EuiFlyoutHeader hasBorder>
         {typeof title === 'string' ? (
           <EuiTitle size="s">

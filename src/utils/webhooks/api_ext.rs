@@ -1938,14 +1938,17 @@ mod tests {
             .await?;
         let json = serde_json::to_string(&page)?;
         assert!(json.len() < 4096, "list page is {} bytes", json.len());
-        for key in ["\"body\"", "\"headers\"", "\"script\"", "\"secrets\""] {
+        for key in ["\"body\"", "\"script\""] {
             assert!(!json.contains(key), "list page contains {key}: {json}");
         }
 
         let summary = &page.items[0];
         assert_eq!(summary.settings.requests_to_track, 5);
+        assert_eq!(summary.settings.status_code, settings.status_code);
+        assert_eq!(summary.settings.headers, settings.headers);
         assert!(summary.settings.has_script);
-        assert!(summary.settings.has_notifications);
+        assert_eq!(summary.settings.secrets, settings.secrets);
+        assert_eq!(summary.settings.notifications, settings.notifications);
         assert!(summary.settings_size > 1024 * 1024);
 
         assert_eq!(

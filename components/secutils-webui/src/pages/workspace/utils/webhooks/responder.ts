@@ -36,18 +36,14 @@ export interface Responder {
   updatedAt: number;
 }
 
-/** Lightweight responder representation returned by the responders list endpoint. */
+/** Lightweight responder representation returned by the responders list endpoint (no body or script). */
 export interface ResponderSummary {
   id: string;
   name: string;
   location: ResponderLocation;
   method: string;
   enabled: boolean;
-  settings: {
-    requestsToTrack: number;
-    hasScript: boolean;
-    hasNotifications: boolean;
-  };
+  settings: Omit<Responder['settings'], 'body' | 'script'> & { hasScript: boolean };
   /** Serialized settings size in bytes, including body, headers, script, and other settings. */
   settingsSize: number;
   /** Stats computed from the currently retained request history. */
