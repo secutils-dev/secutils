@@ -4,7 +4,7 @@ description: >-
   Render and read Markdown in the browser with the Secutils.dev Markdown
   Preview tool. Reading-first: the rendered preview is the default full-width
   view, with on-demand source editing and self-contained HTML/PDF export.
-  Supports GitHub-flavored Markdown, Mermaid diagrams, KaTeX math, GitHub
+  Supports GitHub-flavored Markdown, Mermaid diagrams, GeoJSON/TopoJSON maps, ASCII STL models, KaTeX math, GitHub
   alerts (`[!NOTE]` etc.), `==highlights==`, heading anchors, and
   find-in-page. Hand the user https://tools.secutils.dev/md (optionally with
   the Markdown encoded in the URL fragment for one-click preload, or a
@@ -28,6 +28,19 @@ available on demand.
   language label and copy button in exports.
 - **Mermaid diagrams** - fenced ```` ```mermaid ```` blocks render to inline
   SVG (pre-rendered, so identical in preview, HTML export, and PDF).
+- **GeoJSON and TopoJSON maps** - fenced `geojson` and `topojson` blocks display
+  interactive longitude/latitude maps. Drag to pan, use arrow keys, or use the zoom and reset buttons.
+  Feature properties appear in hover tooltips. Maps use an OpenStreetMap basemap with a Web Mercator projection.
+- **ASCII STL models** - fenced `stl` blocks display interactive 3D models.
+  Drag or use arrow keys to rotate. Controls provide zoom, reset, Solid, Wireframe, and Surface angle modes.
+  Binary STL is not supported in Markdown fences.
+  Solid and Surface angle modes hide facet edges. Overlay controls include rotation, zoom, reset, and fullscreen.
+  Pan controls sit beside zoom. Shift-drag or Shift + arrow keys also pan the model without rotation.
+- **Copy source** - each map and STL viewer has an overlay button that copies the original fenced source.
+- Maps and models retain their SVG view and controls in exported HTML without external runtime dependencies.
+  PDF exports use the initial static view. Invalid blocks display an error and preserve their source.
+- Map basemap tiles require a network connection. Geometry remains visible and interactive without tiles.
+  Tile requests go directly from the browser to OpenStreetMap and reveal the displayed geographic area.
 - **KaTeX math** - inline `$E = mc^2$` and display `$$ … $$` / `\[ … \]`.
   KaTeX is lazy-loaded from a CDN the first time math is detected.
 - **GitHub alerts** - `[!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`,
@@ -181,6 +194,8 @@ it from there in the browser. No follow-up encoding required.
   highlighted code block). Exported HTML/PDF with math link the KaTeX CSS
   (and fonts) from the CDN, so math rendering in exports is not byte-for-byte
   offline - same trade-off as the Google Fonts the export already links.
+- **TopoJSON** conversion lazy-loads `topojson-client` from a CDN.
+  If the CDN is unavailable, the map displays an error and its source. GeoJSON and STL need no external renderer.
 - Markdown emphasis inside math can interfere: because rendering runs after
   the Markdown parser, a formula containing `_` or `*` (e.g. `$a_b$`) may be
   partially consumed as emphasis. Wrap such formulas in display `$$ … $$` or

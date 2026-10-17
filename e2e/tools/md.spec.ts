@@ -296,6 +296,126 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     await expect(page.locator('#previewArticle figure.su-mermaid svg')).toBeVisible({ timeout: 15000 });
   });
 
+  test('GitHub maps and STL models remain interactive in offline HTML exports', async ({ page }) => {
+    await page.goto(tool.path);
+    await setMarkdown(
+      page,
+      `# Diagrams
+
+\`\`\`geojson
+{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"Region <script>alert(1)</script>"},"geometry":{"type":"Polygon","coordinates":[[[-90,35],[-90,30],[-85,30],[-85,35],[-90,35]]]}}]}
+\`\`\`
+
+\`\`\`topojson
+{"type":"Topology","transform":{"scale":[0.1,0.1],"translate":[100,0]},"objects":{"point":{"type":"Point","coordinates":[40,50]},"route":{"type":"LineString","arcs":[0]}} ,"arcs":[[[0,0],[10,10],[10,-10]]]}
+\`\`\`
+
+\`\`\`stl
+solid corner
+facet normal 0 0 1
+outer loop
+vertex 0 0 0
+vertex 1 0 0
+vertex 0 1 0
+endloop
+endfacet
+facet normal 0 1 0
+outer loop
+vertex 0 0 0
+vertex 0 0 1
+vertex 1 0 0
+endloop
+endfacet
+endsolid corner
+\`\`\``,
+    );
+    const figures = page.locator('#previewArticle figure.su-diagram');
+    await expect(figures).toHaveCount(3, { timeout: 15000 });
+    const map = figures.nth(0);
+    await expect(map.locator('svg g path')).toHaveCount(1);
+    await expect(map.locator('svg image').first()).toHaveAttribute('href', /tile\.openstreetmap\.org/);
+    await expect(map.locator('details')).toHaveCount(0);
+    const initialMap = await map.locator('svg g path').getAttribute('d');
+    await map.getByRole('button', { name: 'Zoom in', exact: true }).click();
+    expect(await map.locator('svg g path').getAttribute('d')).not.toBe(initialMap);
+    await map.getByRole('button', { name: 'Reset view' }).click();
+    await expect(map.locator('svg g path')).toHaveAttribute('d', initialMap!);
+    await expect(figures.nth(1).locator('svg circle')).toHaveCount(1);
+    await expect(figures.nth(1).locator('svg g path')).toHaveCount(1);
+    const model = figures.nth(2);
+    await expect(model.locator('svg polygon')).toHaveCount(2);
+    await expect(model.locator('svg polygon').first()).toHaveAttribute('stroke', 'none');
+    await model.getByRole('button', { name: 'Toggle viewer fullscreen' }).click();
+    await expect.poll(() => page.evaluate(() => document.fullscreenElement?.getAttribute('data-kind'))).toBe('stl');
+    await model.getByRole('button', { name: 'Toggle viewer fullscreen' }).click();
+    await expect.poll(() => page.evaluate(() => document.fullscreenElement === null)).toBe(true);
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await model.getByRole('button', { name: 'Copy source' }).click();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(/^solid corner/);
+    const initialModel = await model.locator('.su-diagram-view').innerHTML();
+    await model.locator('.su-diagram-view').focus();
+    await page.keyboard.press('ArrowRight');
+    expect(await model.locator('.su-diagram-view').innerHTML()).not.toBe(initialModel);
+    await model.getByRole('button', { name: 'Reset view' }).click();
+    const beforePan = await model.locator('svg polygon').first().getAttribute('points');
+    await model.getByRole('button', { name: 'Pan right', exact: true }).click();
+    const afterPan = await model.locator('svg polygon').first().getAttribute('points');
+    const points = (value: string) => value.split(' ').map((point) => point.split(',').map(Number));
+    expect(points(afterPan!)).toEqual(points(beforePan!).map(([x, y]) => [x + 20, y]));
+    await model.locator('.su-diagram-view').focus();
+    await page.keyboard.press('Shift+ArrowLeft');
+    await expect(model.locator('svg polygon').first()).toHaveAttribute('points', beforePan!);
+    const viewBox = await model.locator('.su-diagram-view').boundingBox();
+    await page.keyboard.down('Shift');
+    await page.mouse.move(viewBox!.x + viewBox!.width / 2, viewBox!.y + viewBox!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(viewBox!.x + viewBox!.width / 2 + 30, viewBox!.y + viewBox!.height / 2);
+    await page.mouse.up();
+    await page.keyboard.up('Shift');
+    expect(await model.locator('svg polygon').first().getAttribute('points')).not.toBe(beforePan);
+    await model.getByRole('button', { name: 'Reset view' }).click();
+    await expect(model.locator('svg polygon').first()).toHaveAttribute('points', beforePan!);
+    await model.getByRole('button', { name: 'Wireframe', exact: true }).click();
+    await expect(model.locator('svg polygon').first()).toHaveAttribute('fill', 'none');
+
+    const downloadPromise = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Export', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Download HTML' }).click();
+    const output = await readFile(await (await downloadPromise).path(), 'utf8');
+    await page.route('https://example.test/diagrams.html', (route) =>
+      route.fulfill({ contentType: 'text/html', body: output }),
+    );
+    await page.route(/https:\/\/(?!example\.test)/, (route) => route.abort());
+    await page.goto('https://example.test/diagrams.html');
+    await expect(page.locator('article figure.su-diagram .su-diagram-view')).toHaveCount(3);
+    const exportedModel = page.locator('figure[data-kind="stl"]');
+    await exportedModel.getByRole('button', { name: 'Surface angle', exact: true }).click();
+    await expect(exportedModel.getByRole('button', { name: 'Surface angle', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(exportedModel.locator('svg polygon').first()).not.toHaveAttribute('fill', 'none');
+    await expect(exportedModel.locator('svg polygon').first()).toHaveAttribute('stroke', 'none');
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+    await page.emulateMedia({ media: 'print' });
+    await expect(exportedModel.locator('.su-diagram-view')).toBeVisible();
+    await expect(exportedModel.locator('.su-diagram-controls')).toBeHidden();
+  });
+
+  test('invalid map and STL fences preserve source and later content', async ({ page }) => {
+    await page.goto(tool.path);
+    await setMarkdown(
+      page,
+      '```geojson\n{"type":"Point","coordinates":["bad",0]}\n```\n\n' +
+        '```topojson\n{"type":"Topology","objects":{}}\n```\n\n' +
+        '```stl\nsolid empty\nendsolid\n```\n\n## Still readable\n\nBody.',
+    );
+    await expect(page.locator('#previewArticle .su-mermaid-error')).toHaveCount(3);
+    await expect(page.locator('#previewArticle pre')).toHaveCount(3);
+    await expect(page.locator('#previewArticle h2')).toContainText('Still readable');
+  });
+
   test('find-in-page highlights matches', async ({ page }) => {
     await page.goto(tool.path);
     await setMarkdown(page, 'alpha beta alpha gamma alpha');

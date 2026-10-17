@@ -4,17 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Markdown Preview: Read, Render &amp; Export Markdown | Secutils.dev</title>
-    <meta name="description" content="Free reading-first Markdown previewer. Renders GFM, Mermaid diagrams, KaTeX math, GitHub alerts, and ==highlights== with find-in-page, source editing, and self-contained HTML/PDF export. Browser-only, no signup.">
+    <meta name="description" content="Preview Markdown with Mermaid diagrams, GeoJSON and TopoJSON maps, STL models, math, and alerts. Export HTML/PDF in your browser. Free, no signup.">
     <meta name="robots" content="index, follow, max-image-preview:large">
     <link rel="canonical" href="https://{{TOOLS_HOST}}/md">
     <meta name="su-tool-path" content="/md">
     <meta name="su-tool-name" content="Markdown Preview">
-    <meta name="su-tool-description" content="Reading-first Markdown previewer with Mermaid, KaTeX math, GitHub alerts, find-in-page, and self-contained HTML/PDF export. Shareable URL state, no signup.">
+    <meta name="su-tool-description" content="Markdown previewer with Mermaid diagrams, GeoJSON/TopoJSON maps, STL models, math, alerts, and self-contained HTML/PDF export. No signup.">
     <meta name="su-tool-promote" content="true">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Secutils.dev">
     <meta property="og:title" content="Markdown Preview: Read, Render &amp; Export Markdown">
-    <meta property="og:description" content="Free reading-first Markdown previewer. Mermaid, KaTeX math, GitHub alerts, find-in-page, source editing, self-contained HTML/PDF export. Browser-only.">
+    <meta property="og:description" content="Preview Markdown with Mermaid, GeoJSON/TopoJSON maps, STL models, math, and alerts. Export HTML/PDF. Browser-only, no signup.">
     <meta property="og:url" content="https://{{TOOLS_HOST}}/md">
     <meta property="og:image" content="https://secutils.dev/docs/img/og/og-md.png">
     <meta property="og:image:width" content="1200">
@@ -23,9 +23,9 @@
     <meta property="og:locale" content="en_US">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Markdown Preview: Read, Render &amp; Export Markdown">
-    <meta name="twitter:description" content="Free reading-first Markdown previewer. Mermaid, KaTeX math, GitHub alerts, find-in-page, HTML/PDF export. No signup.">
+    <meta name="twitter:description" content="Preview Markdown with Mermaid, GeoJSON/TopoJSON maps, STL models, math, and alerts. Export HTML/PDF. Browser-only, no signup.">
     <meta name="twitter:image" content="https://secutils.dev/docs/img/og/og-md.png">
-    <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"Markdown Preview","url":"https://{{TOOLS_HOST}}/md","applicationCategory":"DeveloperApplication","operatingSystem":"Any","browserRequirements":"Requires JavaScript","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"publisher":{"@type":"Organization","name":"Secutils.dev","url":"https://secutils.dev"},"sameAs":"https://github.com/secutils-dev/secutils/blob/main/dev/tools/md.html","description":"Free reading-first Markdown previewer with live rendering, Mermaid diagrams, KaTeX math, GitHub alerts, find-in-page, source editing, and self-contained HTML or print-ready PDF export. Browser-only, no signup."}</script>
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"Markdown Preview","url":"https://{{TOOLS_HOST}}/md","applicationCategory":"DeveloperApplication","operatingSystem":"Any","browserRequirements":"Requires JavaScript","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"publisher":{"@type":"Organization","name":"Secutils.dev","url":"https://secutils.dev"},"sameAs":"https://github.com/secutils-dev/secutils/blob/main/dev/tools/md.html","description":"Free Markdown previewer with Mermaid diagrams, GeoJSON and TopoJSON maps, ASCII STL models, KaTeX math, GitHub alerts, and self-contained HTML or print-ready PDF export. Browser-only, no signup."}</script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=Roboto+Mono:wght@400..700&display=swap" rel="stylesheet">
@@ -227,6 +227,44 @@ body.su-view-html #htmlPreview { display: block; }
 /* Mermaid: render into a light figure card so it stays legible in any theme. */
 .preview-article .su-mermaid { margin: 0 0 14px; padding: 16px; background: #fff; border: 1px solid var(--border); border-radius: 8px; text-align: center; overflow-x: auto; }
 .preview-article .su-mermaid svg { max-width: 100%; height: auto; }
+.su-diagram { position: relative; margin: 0 0 16px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: #fff; color: #343741; }
+.su-diagram .su-diagram-view { display: block; width: 100%; height: auto; aspect-ratio: 2; background: #eef3f8; touch-action: none; cursor: grab; }
+.su-diagram .su-diagram-view:active { cursor: grabbing; }
+.su-diagram .su-diagram-view:focus-visible { outline: 2px solid #2674bf; outline-offset: -3px; }
+.su-diagram:fullscreen { display: flex; flex-direction: column; border: none; border-radius: 0; }
+.su-diagram:fullscreen .su-diagram-view { flex: 1; min-height: 0; height: calc(100dvh - 34px); aspect-ratio: auto; }
+.su-diagram figcaption { padding: 8px 12px; font: 12px/1.5 var(--font, system-ui); }
+.su-diagram-controls { position: absolute; inset: 10px 10px 44px; pointer-events: none; }
+.su-diagram-controls button { display: inline-flex; align-items: center; justify-content: center; height: 30px; min-width: 30px; padding: 0 9px; border: 1px solid #58616e; border-radius: 5px; background: #242c37; color: #fff; font: 12px/1.4 system-ui; cursor: pointer; pointer-events: auto; box-shadow: 0 2px 5px #0002; }
+.su-diagram-controls button:hover, .su-diagram-controls button[aria-pressed="true"] { background: #43516a; }
+.su-diagram-controls button:focus-visible { outline: 2px solid #2674bf; outline-offset: 2px; }
+.su-diagram-controls button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+.su-diagram-actions, .su-diagram-modes, .su-diagram-navigation, .su-diagram-rotation { position: absolute; display: flex; gap: 4px; pointer-events: none; }
+.su-diagram-actions { top: 0; right: 0; }
+.su-diagram-modes { top: 0; left: 0; gap: 0; }
+.su-diagram-modes button { border-radius: 0; box-shadow: none; }
+.su-diagram-modes button + button { border-left: none; }
+.su-diagram-modes button:first-child { border-radius: 5px 0 0 5px; }
+.su-diagram-modes button:last-child { border-radius: 0 5px 5px 0; }
+.su-diagram-navigation { bottom: 0; right: 0; }
+.su-diagram-navigation:has(.su-diagram-pan), .su-diagram-rotation { display: grid; grid-template-columns: repeat(3, 30px); grid-template-rows: repeat(3, 30px); gap: 3px; }
+.su-diagram-pan { display: contents; }
+.su-diagram-navigation:has(.su-diagram-pan) > button, .su-diagram-rotation button, .su-diagram-pan button { width: 30px; min-width: 0; padding: 0; }
+.su-diagram-controls [aria-label="Pan up"], .su-diagram-controls [aria-label="Rotate up"] { grid-area: 1 / 2; }
+.su-diagram-controls [aria-label="Pan left"], .su-diagram-controls [aria-label="Rotate left"] { grid-area: 2 / 1; }
+.su-diagram-controls [aria-label="Pan right"], .su-diagram-controls [aria-label="Rotate right"] { grid-area: 2 / 3; }
+.su-diagram-controls [aria-label="Pan down"], .su-diagram-controls [aria-label="Rotate down"] { grid-area: 3 / 2; }
+.su-diagram-navigation:has(.su-diagram-pan) [aria-label="Reset view"], .su-diagram-controls [aria-label="Reset rotation"] { grid-area: 2 / 2; }
+.su-diagram-navigation:has(.su-diagram-pan) [aria-label="Zoom in"] { grid-area: 1 / 3; }
+.su-diagram-navigation:has(.su-diagram-pan) [aria-label="Zoom out"] { grid-area: 3 / 3; }
+.su-diagram-rotation { bottom: 0; left: 0; }
+.su-diagram-status { position: absolute; top: 48px; right: 10px; background: #242c37; color: #fff; padding: 5px 9px; border-radius: 5px; font: 12px system-ui; }
+.su-diagram-attribution { fill: #343741; font: 10px system-ui; }
+@media (max-width: 480px) { .su-diagram-modes button { font-size: 10px; padding: 0 5px; } .su-diagram-controls { inset: 6px 6px 44px; } }
+.su-diagram details { padding: 0 12px 8px; }
+.su-diagram summary { cursor: pointer; font: 12px/1.5 system-ui; }
+.su-diagram details pre { max-height: 240px; margin-top: 8px; }
+@media print { .su-diagram-controls, .su-diagram details { display: none !important; } }
 .preview-article .su-mermaid-error { margin: 0 0 14px; padding: 12px 16px; background: var(--bq-bg); border: 1px solid var(--bq-border); border-left-width: 4px; border-radius: 0 8px 8px 0; }
 .preview-article .su-mermaid-error-title { margin: 0 0 8px; font-weight: 600; color: var(--text); }
 .preview-article .su-mermaid-error pre { margin: 8px 0 0; padding: 8px 10px; }
@@ -340,7 +378,7 @@ html.su-loading #emptyState { display: none; }
 </head>
 <body>
     <noscript>
-        <p class="su-noscript"><strong>Markdown Preview</strong> &mdash; A reading-first Markdown previewer with Mermaid diagrams, KaTeX math, GitHub alerts, find-in-page, and self-contained HTML/PDF export. Requires JavaScript; please enable it. Source on <a href="https://github.com/secutils-dev/secutils/blob/main/dev/tools/md.html">GitHub</a>.</p>
+        <p class="su-noscript"><strong>Markdown Preview</strong> &mdash; Preview Markdown with Mermaid diagrams, GeoJSON/TopoJSON maps, ASCII STL models, math, alerts, and HTML/PDF export. Requires JavaScript; please enable it. Source on <a href="https://github.com/secutils-dev/secutils/blob/main/dev/tools/md.html">GitHub</a>.</p>
     </noscript>
     <header>
         <a class="logo" href="https://secutils.dev" target="_blank" rel="noopener">
@@ -504,7 +542,7 @@ html.su-loading #emptyState { display: none; }
     </main>
 
     <footer class="su-footer">
-        <p>A reading-first Markdown previewer with Mermaid, KaTeX math, GitHub alerts, and HTML/PDF export.</p>
+        <p>A Markdown previewer with Mermaid, GeoJSON/TopoJSON maps, STL models, math, alerts, and HTML/PDF export.</p>
         <p class="su-footer-fineprint">
             <button type="button" class="su-footer-link" id="privacyOpen">Privacy</button>
             <span aria-hidden="true"> &middot; </span>
@@ -522,6 +560,7 @@ html.su-loading #emptyState { display: none; }
         <div class="su-dialog-body">
             <p><strong>Your data stays in your browser.</strong> These tools run entirely client-side. Tokens, PEMs, SAML payloads, Markdown source, and mock-response bodies are never sent to the Secutils.dev server. State that needs to survive a reload (or be shared) lives in the URL fragment (<code>#&hellip;</code>), which browsers never transmit to the server.</p>
             <p><strong>Loading from a URL.</strong> When you use <code>?url=</code> or the "Load URL" box, your browser fetches that address directly; the Markdown is read into the page client-side and is never relayed through the Secutils.dev server.</p>
+            <p><strong>Map basemaps.</strong> GeoJSON and TopoJSON viewers fetch map tiles directly from OpenStreetMap. Tile requests reveal the displayed geographic area. Your Markdown source is not included.</p>
             <p><strong>Anonymous usage analytics.</strong> We use <a href="https://plausible.io/" target="_blank" rel="noopener noreferrer">Plausible Analytics</a>, a privacy-first, GDPR-compliant tool, to collect aggregate usage data. No cookies, no personal data, no individual tracking. The data is limited to top pages, referral sources, visit duration, and device-class metadata (device type, OS, country, browser). Full details in the <a href="https://plausible.io/data-policy" target="_blank" rel="noopener noreferrer">Plausible Data Policy</a>.</p>
             <p class="su-dialog-fineprint">See the full <a href="https://secutils.dev/privacy" target="_blank" rel="noopener noreferrer">Secutils.dev privacy policy</a> for details on the wider service.</p>
         </div>
@@ -541,6 +580,7 @@ html.su-loading #emptyState { display: none; }
                 <li><a href="https://github.com/highlightjs/highlight.js" target="_blank" rel="noopener noreferrer"><strong>highlight.js</strong></a> - syntax highlighter, used to colourise fenced code blocks.</li>
                 <li><a href="https://github.com/KaTeX/KaTeX" target="_blank" rel="noopener noreferrer"><strong>KaTeX</strong></a> - math typesetting, used to render <code>$&hellip;$</code> and <code>$$&hellip;$$</code> formulas.</li>
                 <li><a href="https://github.com/mermaid-js/mermaid" target="_blank" rel="noopener noreferrer"><strong>Mermaid</strong></a> - diagram renderer, used to turn <code>```mermaid</code> code blocks into inline SVG diagrams.</li>
+                <li><a href="https://github.com/topojson/topojson-client" target="_blank" rel="noopener noreferrer"><strong>topojson-client</strong></a> - converts TopoJSON objects into GeoJSON for map display.</li>
                 <li><a href="https://github.com/codemirror/dev" target="_blank" rel="noopener noreferrer"><strong>CodeMirror</strong></a> - extensible code editor, powers the source editing mode.</li>
                 <li><a href="https://github.com/pagedjs/pagedjs" target="_blank" rel="noopener noreferrer"><strong>Paged.js</strong></a> - CSS Paged Media polyfill, used to paginate the rendered HTML into a vector PDF on Export.</li>
             </ul>
@@ -611,6 +651,7 @@ html.su-loading #emptyState { display: none; }
     <script>
 const PAGEDJS_URL = 'https://cdn.jsdelivr.net/npm/pagedjs@0.4.3/dist/paged.polyfill.js';
 const MERMAID_URL = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+const TOPOJSON_URL = 'https://esm.sh/topojson-client@3.1.0?bundle';
 const KATEX_VERSION = '0.16.11';
 const KATEX_CSS_URL = `https://cdn.jsdelivr.net/npm/katex@${KATEX_VERSION}/dist/katex.min.css`;
 const KATEX_JS_URL = `https://cdn.jsdelivr.net/npm/katex@${KATEX_VERSION}/dist/katex.mjs`;
@@ -696,6 +737,7 @@ const EXAMPLE_MD = [
     '- ==Highlighted== text via `==marks==`',
     '- Math with KaTeX: inline $E = mc^2$ and display blocks',
     '- Mermaid diagrams rendered to inline SVG',
+    '- Interactive GeoJSON / TopoJSON maps and ASCII STL models',
     '- Find in page, source editing, and self-contained HTML / PDF export',
     '',
     '- [x] Render Markdown',
@@ -724,6 +766,39 @@ const EXAMPLE_MD = [
     '    B --> C{Need to tweak?}',
     '    C -->|Yes| D[Edit source]',
     '    C -->|No| E[Share or Export]',
+    '```',
+    '',
+    '## Map',
+    '',
+    '```geojson',
+    '{"type":"Feature","properties":{"name":"Example region"},"geometry":{"type":"Polygon","coordinates":[[[-90,35],[-90,30],[-85,30],[-85,35],[-90,35]]]}}',
+    '```',
+    '',
+    '## Topology',
+    '',
+    '```topojson',
+    '{"type":"Topology","objects":{"route":{"type":"LineString","arcs":[0]}},"arcs":[[[0,0],[5,10],[10,0]]]}',
+    '```',
+    '',
+    '## 3D model',
+    '',
+    '```stl',
+    'solid corner',
+    'facet normal 0 0 1',
+    'outer loop',
+    'vertex 0 0 0',
+    'vertex 1 0 0',
+    'vertex 0 1 0',
+    'endloop',
+    'endfacet',
+    'facet normal 0 1 0',
+    'outer loop',
+    'vertex 0 0 0',
+    'vertex 0 0 1',
+    'vertex 1 0 0',
+    'endloop',
+    'endfacet',
+    'endsolid corner',
     '```',
     '',
     '## Table',
@@ -978,6 +1053,260 @@ async function replaceMermaidBlock(codeEl) {
     }
 }
 
+// Maps and STL use inline SVG: exports keep both the view and interaction offline.
+let topojsonPromise;
+async function replaceDiagramBlock(codeEl, kind) {
+    const src = codeEl.textContent;
+    const pre = codeEl.parentElement;
+    try {
+        let data;
+        if (kind === 'stl') {
+            if (!/^\s*solid\b/i.test(src) || !/\bendsolid\b/i.test(src)) throw new Error('Expected an ASCII STL solid.');
+            const number = '[+-]?(?:\\d+\\.?\\d*|\\.\\d+)(?:[eE][+-]?\\d+)?';
+            const vertex = new RegExp(`vertex\\s+(${number})\\s+(${number})\\s+(${number})`, 'gi');
+            const facets = [...src.matchAll(/facet\s+normal\b([\s\S]*?)endfacet/gi)];
+            data = facets.map((facet) => {
+                const points = [...facet[1].matchAll(vertex)].map((m) => m.slice(1).map(Number));
+                if (points.length !== 3 || points.flat().some((n) => !Number.isFinite(n))) throw new Error('Each STL facet needs three finite vertices.');
+                return points;
+            });
+            if (!data.length) throw new Error('The STL solid has no triangular facets.');
+        } else {
+            data = JSON.parse(src);
+            if (kind === 'topojson') {
+                if (data.type !== 'Topology' || !data.objects || !Object.keys(data.objects).length) throw new Error('Expected a TopoJSON Topology with objects.');
+                topojsonPromise ??= import(TOPOJSON_URL).catch((err) => { topojsonPromise = undefined; throw err; });
+                const topojson = await topojsonPromise;
+                data = { type: 'FeatureCollection', features: Object.values(data.objects).flatMap((object) => {
+                    const converted = topojson.feature(data, object);
+                    return converted.type === 'FeatureCollection' ? converted.features : [converted];
+                }) };
+            }
+        }
+        const fig = document.createElement('figure');
+        fig.className = 'su-diagram';
+        fig.dataset.kind = kind;
+        const payload = document.createElement('script');
+        payload.type = 'application/json';
+        payload.textContent = JSON.stringify({ data, source: src }).replace(/</g, '\\u003c');
+        fig.appendChild(payload);
+        // Validate and draw while detached; the serialized SVG is also the print view.
+        initDiagrams(fig);
+        pre.replaceWith(fig);
+    } catch (err) {
+        const box = document.createElement('div');
+        box.className = 'su-mermaid-error';
+        const title = document.createElement('p');
+        title.className = 'su-mermaid-error-title';
+        title.textContent = `Unable to render ${kind === 'stl' ? 'STL model' : `${kind} map`}`;
+        const message = document.createElement('p');
+        message.textContent = err?.message ?? String(err);
+        box.append(title, message, pre.cloneNode(true));
+        pre.replaceWith(box);
+    }
+}
+
+// Kept closure-free so the same renderer can be embedded in downloaded HTML.
+function initDiagrams(root) {
+    const figures = root.matches?.('figure.su-diagram') ? [root] : root.querySelectorAll('figure.su-diagram');
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const makeSvg = (name, attrs) => {
+        const el = document.createElementNS(svgNS, name);
+        for (const [key, value] of Object.entries(attrs)) el.setAttribute(key, value);
+        return el;
+    };
+    for (const fig of figures) {
+        if (fig.__suDiagramReady) continue;
+        fig.__suDiagramReady = true;
+        const { data, source } = JSON.parse(fig.querySelector('script[type="application/json"]').textContent);
+        const stl = fig.dataset.kind === 'stl';
+        for (const el of fig.querySelectorAll(':scope > svg, :scope > figcaption, :scope > .su-diagram-controls')) el.remove();
+        const svg = makeSvg('svg', { class: 'su-diagram-view', viewBox: '0 0 800 400', tabindex: '0', role: 'img', 'aria-label': stl ? 'Interactive STL model. Arrow keys rotate. Shift and arrow keys pan. Plus and minus zoom.' : 'Interactive map. Arrow keys pan. Plus and minus zoom.' });
+        const caption = document.createElement('figcaption');
+        caption.textContent = stl ? `${data.length} triangles. Drag to rotate. Shift-drag or Shift + arrows to pan. + / − to zoom.` : 'Drag to pan; use + / − to zoom. Map tiles © OpenStreetMap contributors.';
+        if (!stl) {
+            const attribution = document.createElement('a');
+            attribution.href = 'https://www.openstreetmap.org/copyright'; attribution.target = '_blank'; attribution.rel = 'noopener';
+            attribution.textContent = '© OpenStreetMap contributors';
+            caption.textContent = 'Drag to pan; use + / − to zoom. ';
+            caption.appendChild(attribution);
+        }
+        const controls = document.createElement('div');
+        controls.className = 'su-diagram-controls';
+        controls.setAttribute('role', 'group');
+        controls.setAttribute('aria-label', stl ? 'Model controls' : 'Map controls');
+        const group = (name) => { const el = document.createElement('div'); el.className = `su-diagram-${name}`; controls.appendChild(el); return el; };
+        const actions = group('actions'), navigation = group('navigation'), modesGroup = group('modes'), rotation = group('rotation');
+        const mercator = (point) => {
+            const latitude = Math.max(-85.05112878, Math.min(85.05112878, point[1])) * Math.PI / 180;
+            return [(point[0] + 180) / 360, (1 - Math.log(Math.tan(Math.PI / 4 + latitude / 2)) / Math.PI) / 2];
+        };
+        let zoom = 1, panX = 0, panY = 0, yaw = -0.6, pitch = 0.5, mode = 'Solid';
+        const features = [];
+        const allPoints = [];
+        const collectGeometry = (geometry, properties = {}) => {
+            if (!geometry) return;
+            if (geometry.type === 'FeatureCollection') {
+                if (!Array.isArray(geometry.features)) throw new Error('Expected a GeoJSON features array.');
+                for (const feature of geometry.features) collectGeometry(feature);
+                return;
+            }
+            if (geometry.type === 'Feature') { collectGeometry(geometry.geometry, geometry.properties ?? {}); return; }
+            if (geometry.type === 'GeometryCollection') { for (const child of geometry.geometries) collectGeometry(child, properties); return; }
+            const depths = { Point: 0, MultiPoint: 1, LineString: 1, MultiLineString: 2, Polygon: 2, MultiPolygon: 3 };
+            if (!(geometry.type in depths)) throw new Error('Unsupported GeoJSON geometry type.');
+            const visit = (coords, depth) => {
+                if (!Array.isArray(coords)) throw new Error('Expected GeoJSON coordinates.');
+                if (depth) { for (const child of coords) visit(child, depth - 1); return; }
+                if (coords.length < 2 || !Number.isFinite(coords[0]) || !Number.isFinite(coords[1]) || Math.abs(coords[0]) > 180 || Math.abs(coords[1]) > 90) throw new Error('Expected longitude from −180 to 180 and latitude from −90 to 90.');
+                allPoints.push(mercator(coords));
+            };
+            visit(geometry.coordinates, depths[geometry.type]);
+            features.push({ ...geometry, properties });
+        };
+        if (stl) {
+            for (const triangle of data) allPoints.push(...triangle);
+        } else collectGeometry(data);
+        if (!allPoints.length) throw new Error('The map has no coordinates to display.');
+        const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+        for (const point of allPoints) for (let i = 0; i < (stl ? 3 : 2); i++) { min[i] = Math.min(min[i], point[i]); max[i] = Math.max(max[i], point[i]); }
+        const center = min.map((n, i) => (n + max[i]) / 2);
+        const span = Math.max(max[0] - min[0], max[1] - min[1], stl ? max[2] - min[2] : 0, stl ? 0.000001 : 0.0003);
+        const baseScale = 300 / span;
+        const project = (point) => {
+            let x = point[0] - center[0], y = point[1] - center[1], z = stl ? point[2] - center[2] : 0;
+            if (stl) {
+                [x, z] = [x * Math.cos(yaw) + z * Math.sin(yaw), -x * Math.sin(yaw) + z * Math.cos(yaw)];
+                [y, z] = [y * Math.cos(pitch) - z * Math.sin(pitch), y * Math.sin(pitch) + z * Math.cos(pitch)];
+                y = -y;
+            }
+            return [400 + panX + x * baseScale * zoom, 200 + panY + y * baseScale * zoom, z * baseScale * zoom];
+        };
+        const draw = () => {
+            svg.replaceChildren();
+            if (stl) {
+                const triangles = data.map((triangle) => triangle.map(project));
+                triangles.sort((a, b) => a.reduce((sum, p) => sum + p[2], 0) - b.reduce((sum, p) => sum + p[2], 0));
+                for (const triangle of triangles) {
+                    const [a, b, c] = triangle;
+                    const u = b.map((n, i) => n - a[i]), v = c.map((n, i) => n - a[i]);
+                    const normal = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+                    const light = Math.abs(normal[2]) / (Math.hypot(...normal) || 1);
+                    svg.appendChild(makeSvg('polygon', { points: triangle.map((p) => `${p[0]},${p[1]}`).join(' '), fill: mode === 'Wireframe' ? 'none' : `hsl(${mode === 'Surface angle' ? 240 - light * 200 : 210} 65% ${45 + light * 20}%)`, stroke: mode === 'Wireframe' ? '#2674bf' : 'none', 'stroke-width': '0.6' }));
+                }
+            } else {
+                const worldSize = baseScale * zoom;
+                const level = Math.max(0, Math.min(19, Math.floor(Math.log2(worldSize / 256))));
+                const count = 2 ** level, tileSize = worldSize / count;
+                const origin = project([0, 0]);
+                const startX = Math.floor(-origin[0] / tileSize), startY = Math.floor(-origin[1] / tileSize);
+                for (let x = startX; x <= startX + Math.ceil(800 / tileSize); x++) {
+                    for (let y = Math.max(0, startY); y <= Math.min(count - 1, startY + Math.ceil(400 / tileSize)); y++) {
+                        const tile = makeSvg('image', { x: origin[0] + x * tileSize, y: origin[1] + y * tileSize, width: tileSize + 0.5, height: tileSize + 0.5, href: `https://tile.openstreetmap.org/${level}/${((x % count) + count) % count}/${y}.png` });
+                        svg.appendChild(tile);
+                    }
+                }
+                const line = (coords) => coords.map((p, i) => { const q = project(mercator(p)); return `${i ? 'L' : 'M'}${q[0]},${q[1]}`; }).join('');
+                for (const feature of features) {
+                    const { type, coordinates, properties } = feature;
+                    const group = makeSvg('g', {});
+                    const title = makeSvg('title', {});
+                    title.textContent = JSON.stringify(properties);
+                    group.appendChild(title);
+                    const color = (value, fallback) => typeof value === 'string' && /^#[\da-f]{3}(?:[\da-f]{3})?$/i.test(value) ? value : fallback;
+                    if (type === 'Point' || type === 'MultiPoint') {
+                        for (const point of type === 'Point' ? [coordinates] : coordinates) {
+                            const p = project(mercator(point));
+                            group.appendChild(makeSvg('circle', { cx: p[0], cy: p[1], r: 5, fill: color(properties['marker-color'], '#2674bf'), stroke: '#fff' }));
+                        }
+                    } else {
+                        const polygon = type.includes('Polygon');
+                        const parts = type === 'LineString' ? [coordinates] : type === 'MultiPolygon' ? coordinates.flat() : coordinates;
+                        group.appendChild(makeSvg('path', { d: parts.map((part) => `${line(part)}${polygon ? 'Z' : ''}`).join(''), fill: polygon ? color(properties.fill, '#8957e5') : 'none', 'fill-opacity': '0.3', 'fill-rule': 'evenodd', stroke: color(properties.stroke, '#2674bf'), 'stroke-width': '2' }));
+                    }
+                    svg.appendChild(group);
+                }
+            }
+        };
+        const button = (label, action, parent = navigation, icon) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.textContent = label;
+            btn.setAttribute('aria-label', label);
+            btn.title = label;
+            if (icon) btn.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${icon}</svg>`;
+            btn.addEventListener('click', async () => { await action(); draw(); });
+            parent.appendChild(btn);
+            return btn;
+        };
+        const scale = (factor) => { zoom = Math.max(0.1, Math.min(20, zoom * factor)); };
+        button('Zoom in', () => scale(1.25), navigation, '<path d="M12 5v14M5 12h14"/>');
+        button('Zoom out', () => scale(0.8), navigation, '<path d="M5 12h14"/>');
+        button('Reset view', () => { zoom = 1; panX = panY = 0; yaw = -0.6; pitch = 0.5; }, navigation, '<path d="M4 10a8 8 0 1 1 1 8M4 4v6h6"/>');
+        const announce = (text) => {
+            fig.querySelector('.su-diagram-status')?.remove();
+            const status = document.createElement('span');
+            status.className = 'su-diagram-status'; status.setAttribute('role', 'status'); status.textContent = text;
+            fig.appendChild(status); setTimeout(() => status.remove(), 2200);
+        };
+        button('Copy source', async () => {
+            try { await navigator.clipboard.writeText(source); announce('Copied to clipboard'); }
+            catch { announce('Failed to copy'); }
+        }, actions, '<rect x="8" y="8" width="12" height="13" rx="2"/><path d="M5 16H4V3h12v2"/>');
+        button('Toggle viewer fullscreen', async () => {
+            try { if (document.fullscreenElement === fig) await document.exitFullscreen(); else await fig.requestFullscreen(); }
+            catch { announce('Fullscreen is unavailable'); }
+        }, actions, '<path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/>');
+        if (stl) {
+            const modes = [];
+            for (const label of ['Solid', 'Wireframe', 'Surface angle']) {
+                const btn = button(label, () => { mode = label; for (const item of modes) item.setAttribute('aria-pressed', String(item.textContent === mode)); }, modesGroup);
+                btn.setAttribute('aria-pressed', String(label === mode));
+                modes.push(btn);
+            }
+        }
+        const move = (dx, dy) => { if (stl) { yaw += dx / 100; pitch += dy / 100; } else { panX += dx; panY += dy; } draw(); };
+        const pan = (dx, dy) => { panX += dx; panY += dy; draw(); };
+        if (stl) {
+            const panControls = document.createElement('div');
+            panControls.className = 'su-diagram-pan';
+            panControls.setAttribute('role', 'group');
+            panControls.setAttribute('aria-label', 'Pan model');
+            navigation.prepend(panControls);
+            button('Pan up', () => pan(0, -20), panControls, '<path d="m5 14 7-7 7 7"/>');
+            button('Pan left', () => pan(-20, 0), panControls, '<path d="m14 5-7 7 7 7"/>');
+            button('Pan right', () => pan(20, 0), panControls, '<path d="m10 5 7 7-7 7"/>');
+            button('Pan down', () => pan(0, 20), panControls, '<path d="m5 10 7 7 7-7"/>');
+            button('Rotate left', () => move(-20, 0), rotation, '<path d="m14 5-7 7 7 7"/>');
+            button('Rotate right', () => move(20, 0), rotation, '<path d="m10 5 7 7-7 7"/>');
+            button('Rotate up', () => move(0, -20), rotation, '<path d="m5 14 7-7 7 7"/>');
+            button('Rotate down', () => move(0, 20), rotation, '<path d="m5 10 7 7 7-7"/>');
+            button('Reset rotation', () => { yaw = -0.6; pitch = 0.5; }, rotation, '<path d="M4 10a8 8 0 1 1 1 8M4 4v6h6"/>');
+        }
+        let pointer;
+        svg.addEventListener('pointerdown', (event) => { if (event.button !== 0) return; pointer = [event.clientX, event.clientY]; svg.setPointerCapture(event.pointerId); });
+        svg.addEventListener('pointermove', (event) => {
+            if (!pointer) return;
+            const bounds = svg.getBoundingClientRect();
+            const ratio = Math.max(800 / bounds.width, 400 / bounds.height);
+            const change = stl && event.shiftKey ? pan : move;
+            change((event.clientX - pointer[0]) * ratio, (event.clientY - pointer[1]) * ratio);
+            pointer = [event.clientX, event.clientY];
+        });
+        svg.addEventListener('lostpointercapture', () => { pointer = null; });
+        svg.addEventListener('keydown', (event) => {
+            const arrows = { ArrowLeft: [-20, 0], ArrowRight: [20, 0], ArrowUp: [0, -20], ArrowDown: [0, 20] };
+            if (arrows[event.key]) { event.preventDefault(); const change = stl && event.shiftKey ? pan : move; change(...arrows[event.key]); }
+            else if (['+', '=', '-'].includes(event.key)) { event.preventDefault(); scale(event.key === '-' ? 0.8 : 1.25); draw(); }
+        });
+        fig.prepend(svg);
+        const details = fig.querySelector('details');
+        fig.insertBefore(caption, details);
+        fig.insertBefore(controls, details);
+        draw();
+    }
+}
+
 // ---- KaTeX (lazy-loaded ESM; delimiter scanner ported from md-preview) ----
 let _katexPromise;
 function injectKatexCss() {
@@ -1020,7 +1349,7 @@ function shouldSkipTextNode(node) {
     if (tag === 'CODE' || tag === 'PRE' || tag === 'KBD' || tag === 'SAMP'
         || tag === 'SCRIPT' || tag === 'STYLE' || tag === 'TEXTAREA' || tag === 'A') return true;
     return hasClassInTree(el, 'katex') || hasClassInTree(el, 'su-hl')
-        || hasClassInTree(el, 'su-mermaid') || hasClassInTree(el, 'su-mermaid-error');
+        || hasClassInTree(el, 'su-mermaid') || hasClassInTree(el, 'su-mermaid-error') || hasClassInTree(el, 'su-diagram');
 }
 function isEscaped(text, index) {
     let count = 0;
@@ -1162,6 +1491,11 @@ async function render(md) {
             await replaceMermaidBlock(block);
             continue;
         }
+        const diagramKind = langCls?.slice('language-'.length).toLowerCase();
+        if (['geojson', 'topojson', 'stl'].includes(diagramKind)) {
+            await replaceDiagramBlock(block, diagramKind);
+            continue;
+        }
         try { hljs.highlightElement(block); } catch {}
         if (langCls) block.parentElement.setAttribute('data-lang', langCls.replace('language-', ''));
         if (performance.now() >= deadline) {
@@ -1203,7 +1537,9 @@ function updatePanes() {
     els.previewArticle.style.display = hasContent ? '' : 'none';
 }
 
+let previewGeneration = 0;
 async function updatePreview() {
+    const generation = ++previewGeneration;
     pendingHydration = false;
     if (!markdown.trim()) {
         els.previewArticle.innerHTML = '';
@@ -1213,7 +1549,10 @@ async function updatePreview() {
         setExportEnabled(false);
         return;
     }
-    els.previewArticle.innerHTML = await render(markdown);
+    const content = await render(markdown);
+    if (generation !== previewGeneration) return;
+    els.previewArticle.innerHTML = content;
+    initDiagrams(els.previewArticle);
     updatePanes();
     const wordCount = markdown.trim().split(/\s+/).length;
     els.docStats.textContent = `${wordCount} word${wordCount === 1 ? '' : 's'}`;
@@ -1354,7 +1693,7 @@ function runSearch(query) {
         acceptNode: (node) => {
             if (!node.nodeValue || node.nodeValue.toLowerCase().indexOf(needle) < 0) return NodeFilter.FILTER_REJECT;
             const parent = node.parentElement;
-            if (!parent || parent.closest('script,style,svg,mark.find-hit,.katex,.su-mermaid,.su-anchor')) return NodeFilter.FILTER_REJECT;
+            if (!parent || parent.closest('script,style,svg,mark.find-hit,.katex,.su-mermaid,.su-diagram,.su-anchor')) return NodeFilter.FILTER_REJECT;
             return NodeFilter.FILTER_ACCEPT;
         },
     });
@@ -1816,6 +2155,8 @@ ${content}
 ${watermarkFooter('Powered by')}
 <script>
 ${outputJS({ toc: o.toc, pdf: o.pdf, find: o.find, readingWidth })}
+${initDiagrams.toString()}
+initDiagrams(document);
 <\/script>
 ${sourceTag}
 </body>
@@ -1893,7 +2234,9 @@ function printCSS() {
 }
 
 function outputCSS() {
-    return `*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    const diagramCSS = [...document.styleSheets].filter((sheet) => !sheet.href).flatMap((sheet) => [...sheet.cssRules]).filter((rule) => rule.cssText.includes('.su-diagram')).map((rule) => rule.cssText).join('\n');
+    return `${diagramCSS}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root, [data-theme="light"] {
   --bg: #ffffff; --bg-alt: #f6f8fa; --text: #1f2937; --text-muted: #6b7280;
   --heading: #111827; --link: #2674bf; --link-hover: #1b5b99;
@@ -2200,7 +2543,7 @@ function outputJS(opts) {
         acceptNode: function(n){
           if (!n.nodeValue || n.nodeValue.toLowerCase().indexOf(needle) < 0) return NodeFilter.FILTER_REJECT;
           const p = n.parentElement;
-          if (!p || p.closest("script,style,svg,mark.su-find-hit,.katex")) return NodeFilter.FILTER_REJECT;
+          if (!p || p.closest("script,style,svg,mark.su-find-hit,.katex,.su-diagram")) return NodeFilter.FILTER_REJECT;
           return NodeFilter.FILTER_ACCEPT;
         }
       });
