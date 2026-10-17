@@ -403,6 +403,78 @@ endsolid corner
     await expect(exportedModel.locator('.su-diagram-controls')).toBeHidden();
   });
 
+  test('opens binary and ASCII STL files as editable Markdown', async ({ page }) => {
+    await page.goto(tool.path);
+    const binary = Buffer.alloc(134);
+    binary.write('solid binary header');
+    binary.writeUInt32LE(1, 80);
+    const values = [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0];
+    values.forEach((value, index) => binary.writeFloatLE(value, 84 + index * 4));
+    await page.locator('#fileInput').setInputFiles({ name: 'triangle.stl', mimeType: 'model/stl', buffer: binary });
+    const model = page.locator('#previewArticle figure[data-kind="stl"]');
+    await expect(model.locator('polygon')).toHaveCount(1);
+    await expect(page.locator('#docTitle')).toHaveText('triangle');
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.waitForFunction(() => typeof (window as { __suEditorAPI?: unknown }).__suEditorAPI !== 'undefined');
+    const source = await page.evaluate(() =>
+      (window as { __suEditorAPI: { getText(): string } }).__suEditorAPI.getText(),
+    );
+    expect(source).toContain('```stl\nsolid model');
+    expect(source).toContain('vertex 1 0 0');
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'HTML', exact: true }).click();
+    await expect(page.frameLocator('#htmlPreview').locator('figure[data-kind="stl"] polygon')).toHaveCount(1);
+    await page.getByRole('button', { name: 'Preview', exact: true }).click();
+    const ascii = source.slice(source.indexOf('\n') + 1, source.lastIndexOf('```')).trim();
+    await page.locator('#fileInput').setInputFiles({
+      name: 'ascii.STL',
+      mimeType: 'model/stl',
+      buffer: Buffer.from(ascii),
+    });
+    await expect(page.locator('#docTitle')).toHaveText('ascii');
+    await expect(model.locator('polygon')).toHaveCount(1);
+    await page.locator('#fileInput').setInputFiles({
+      name: 'truncated.stl',
+      mimeType: 'model/stl',
+      buffer: binary.subarray(0, 120),
+    });
+    await expect(page.locator('#toast')).toContainText('Invalid or truncated STL file');
+    await expect(page.locator('#docTitle')).toHaveText('ascii');
+    await expect(model.locator('polygon')).toHaveCount(1);
+  });
+
+  test('large STL meshes use a bounded DOM and retain interactive HTML exports', async ({ page }) => {
+    await page.goto(tool.path);
+    const count = 12000;
+    const binary = Buffer.alloc(84 + count * 50);
+    binary.writeUInt32LE(count, 80);
+    for (let i = 0; i < count; i++) {
+      const x = (i % 100) / 100;
+      const y = Math.floor(i / 100) / 120;
+      [0, 0, 1, x, y, 0, x + 0.01, y, 0, x, y + 0.01, 0].forEach((value, index) =>
+        binary.writeFloatLE(value, 84 + i * 50 + index * 4),
+      );
+    }
+    await page.locator('#fileInput').setInputFiles({ name: 'large.stl', mimeType: 'model/stl', buffer: binary });
+    const model = page.locator('figure[data-kind="stl"]');
+    await expect(model.locator('canvas')).toBeVisible({ timeout: 15000 });
+    await expect(model.locator('figcaption')).toContainText('12000 triangles');
+    expect(await model.locator('*').count()).toBeLessThan(100);
+    await model.getByRole('button', { name: 'Wireframe', exact: true }).click();
+    await model.getByRole('button', { name: 'Pan right', exact: true }).click();
+    await model.getByRole('button', { name: 'Reset view' }).click();
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await expect(page.locator('.editor-fallback')).toBeVisible();
+    await page.getByRole('button', { name: 'Preview', exact: true }).click();
+    await page.getByRole('button', { name: 'HTML', exact: true }).click();
+    const exported = page.frameLocator('#htmlPreview');
+    await expect(exported.locator('figure canvas')).toBeVisible({ timeout: 15000 });
+    await expect(exported.locator('.su-stl-snapshot')).toHaveAttribute('src', /^data:image\/png/);
+    await exported.getByRole('button', { name: 'Surface angle', exact: true }).click();
+    await page.emulateMedia({ media: 'print' });
+    await expect(exported.locator('.su-stl-snapshot')).toBeVisible();
+  });
+
   test('invalid map and STL fences preserve source and later content', async ({ page }) => {
     await page.goto(tool.path);
     await setMarkdown(

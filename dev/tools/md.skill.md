@@ -67,6 +67,11 @@ name used for the page title and downloaded filenames.
   `Esc` returns to the preview.
 - **Open** - the **Open** button (or `Ctrl/Cmd+O`), drag-and-drop a file
   onto the page, or just paste (`Ctrl/Cmd+V`) into the empty preview.
+  Open or drop an ASCII or binary `.stl` file to create a Markdown `stl` fence.
+  Binary STL converts to ASCII STL in the browser. Source editing, sharing, and exports use this converted Markdown.
+  Binary color attributes are not retained. Large models can exceed the share URL limit.
+  Models with more than 2,000 triangles use WebGL instead of individual SVG triangles.
+  Large sources use a plain-text editor to avoid syntax-parser delays. HTML exports retain GPU controls and a static print image.
 - **Share** - copies a `tools.secutils.dev/md#<encoded>` URL with the whole
   Markdown round-tripped through the fragment.
 - **Export** - **Download HTML** (single self-contained file), **Download

@@ -231,6 +231,8 @@ body.su-view-html #htmlPreview { display: block; }
 .su-diagram .su-diagram-view { display: block; width: 100%; height: auto; aspect-ratio: 2; background: #eef3f8; touch-action: none; cursor: grab; }
 .su-diagram .su-diagram-view:active { cursor: grabbing; }
 .su-diagram .su-diagram-view:focus-visible { outline: 2px solid #2674bf; outline-offset: -3px; }
+.su-diagram .su-stl-snapshot { display: none; }
+@media print { .su-diagram canvas.su-diagram-view { display: none; } .su-diagram .su-stl-snapshot { display: block; width: 100%; } }
 .su-diagram:fullscreen { display: flex; flex-direction: column; border: none; border-radius: 0; }
 .su-diagram:fullscreen .su-diagram-view { flex: 1; min-height: 0; height: calc(100dvh - 34px); aspect-ratio: auto; }
 .su-diagram figcaption { padding: 8px 12px; font: 12px/1.5 var(--font, system-ui); }
@@ -413,7 +415,7 @@ html.su-loading #emptyState { display: none; }
                 <span id="docStats" class="stats-text">empty</span>
             </div>
             <div class="toolbar-actions">
-                <button id="openBtn" class="btn btn-sm" title="Open a Markdown file (Ctrl/Cmd+O)">
+                <button id="openBtn" class="btn btn-sm" title="Open a Markdown or STL file (Ctrl/Cmd+O)">
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 14 1.45-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.55 6A2 2 0 0 1 18.45 20H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>
                     <span class="btn-label">Open</span>
                 </button>
@@ -505,7 +507,7 @@ html.su-loading #emptyState { display: none; }
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6"/><path d="M9 17h6"/></svg>
                         </div>
                         <div class="empty-state-title">Preview any Markdown</div>
-                        <div class="empty-state-sub">Open a file, paste (Ctrl/Cmd+V), drop one here, load the example, or fetch from a public URL.</div>
+                        <div class="empty-state-sub">Open or drop a Markdown or STL file, paste (Ctrl/Cmd+V), load the example, or fetch from a public URL.</div>
                         <div class="empty-actions">
                             <button id="emptyOpenBtn" class="btn btn-primary btn-sm">Open file</button>
                             <button id="emptyWriteBtn" class="btn btn-sm">Start writing</button>
@@ -588,7 +590,7 @@ html.su-loading #emptyState { display: none; }
         </div>
     </dialog>
 
-    <input type="file" id="fileInput" accept=".md,.markdown,.txt,.mdx">
+    <input type="file" id="fileInput" accept=".md,.markdown,.txt,.mdx,.html,.htm,.stl">
 
     <div id="toast" class="toast" style="display:none">
         <span id="toastMsg"></span>
@@ -624,7 +626,17 @@ html.su-loading #emptyState { display: none; }
             });
             window.__suEditorAPI = {
                 kind: 'codemirror',
-                setText: (t) => view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: t } }),
+                setText: (t) => {
+                    if (t.length > 1000000) {
+                        view.destroy();
+                        const ta = document.createElement('textarea');
+                        ta.className = 'editor-fallback'; ta.spellcheck = false; ta.value = t;
+                        ta.addEventListener('input', () => window.__suOnEditorChange?.(ta.value));
+                        mount.replaceChildren(ta);
+                        window.__suEditorAPI = { kind: 'textarea', setText: (text) => { ta.value = text; window.__suOnEditorChange?.(text); }, getText: () => ta.value, focus: () => ta.focus() };
+                        window.__suOnEditorChange?.(t);
+                    } else view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: t } });
+                },
                 getText: () => view.state.doc.toString(),
                 focus: () => view.focus(),
             };
@@ -1055,22 +1067,54 @@ async function replaceMermaidBlock(codeEl) {
 
 // Maps and STL use inline SVG: exports keep both the view and interaction offline.
 let topojsonPromise;
-async function replaceDiagramBlock(codeEl, kind) {
+let stlParseCache;
+async function parseStlMesh(src) {
+    if (stlParseCache?.source === src) return stlParseCache.data;
+    if (!/^\s*solid\b/i.test(src) || !/\bendsolid\b/i.test(src)) throw new Error('Expected an ASCII STL solid.');
+    const number = '[+-]?(?:\\d+\\.?\\d*|\\.\\d+)(?:[eE][+-]?\\d+)?';
+    const vertex = new RegExp(`vertex\\s+(${number})\\s+(${number})\\s+(${number})`, 'gi');
+    const count = (src.match(/\bendfacet\b/gi) ?? []).length;
+    const positions = new Float32Array(count * 9);
+    const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+    let index = 0, deadline = performance.now() + 20;
+    for (const facet of src.matchAll(/facet\s+normal\b([\s\S]*?)endfacet/gi)) {
+        let vertices = 0;
+        for (const match of facet[1].matchAll(vertex)) {
+            for (let axis = 0; axis < 3; axis++) {
+                const value = Number(match[axis + 1]);
+                if (!Number.isFinite(value) || !Number.isFinite(Math.fround(value))) throw new Error('STL vertices must be finite.');
+                positions[index++] = value;
+                min[axis] = Math.min(min[axis], value); max[axis] = Math.max(max[axis], value);
+            }
+            vertices++;
+        }
+        if (vertices !== 3) throw new Error('Each STL facet needs three vertices.');
+        if (performance.now() >= deadline) { await yieldToMain(); deadline = performance.now() + 20; }
+    }
+    if (!index || index !== positions.length) throw new Error('The STL solid has no valid triangular facets.');
+    let data;
+    if (count > 2000) {
+        const bytes = new Uint8Array(positions.buffer);
+        const chunks = [];
+        for (let i = 0; i < bytes.length; i += 24576) {
+            chunks.push(btoa(String.fromCharCode(...bytes.subarray(i, i + 24576))));
+            if (performance.now() >= deadline) { await yieldToMain(); deadline = performance.now() + 20; }
+        }
+        data = { positions: chunks.join(''), count, min, max };
+    } else {
+        data = [];
+        for (let i = 0; i < positions.length; i += 9) data.push([Array.from(positions.subarray(i, i + 3)), Array.from(positions.subarray(i + 3, i + 6)), Array.from(positions.subarray(i + 6, i + 9))]);
+    }
+    stlParseCache = { source: src, data };
+    return data;
+}
+async function replaceDiagramBlock(codeEl, kind, forExport = true) {
     const src = codeEl.textContent;
     const pre = codeEl.parentElement;
     try {
         let data;
         if (kind === 'stl') {
-            if (!/^\s*solid\b/i.test(src) || !/\bendsolid\b/i.test(src)) throw new Error('Expected an ASCII STL solid.');
-            const number = '[+-]?(?:\\d+\\.?\\d*|\\.\\d+)(?:[eE][+-]?\\d+)?';
-            const vertex = new RegExp(`vertex\\s+(${number})\\s+(${number})\\s+(${number})`, 'gi');
-            const facets = [...src.matchAll(/facet\s+normal\b([\s\S]*?)endfacet/gi)];
-            data = facets.map((facet) => {
-                const points = [...facet[1].matchAll(vertex)].map((m) => m.slice(1).map(Number));
-                if (points.length !== 3 || points.flat().some((n) => !Number.isFinite(n))) throw new Error('Each STL facet needs three finite vertices.');
-                return points;
-            });
-            if (!data.length) throw new Error('The STL solid has no triangular facets.');
+            data = await parseStlMesh(src);
         } else {
             data = JSON.parse(src);
             if (kind === 'topojson') {
@@ -1088,10 +1132,11 @@ async function replaceDiagramBlock(codeEl, kind) {
         fig.dataset.kind = kind;
         const payload = document.createElement('script');
         payload.type = 'application/json';
-        payload.textContent = JSON.stringify({ data, source: src }).replace(/</g, '\\u003c');
+        if (forExport || !data.positions) payload.textContent = JSON.stringify({ data, source: src }).replace(/</g, '\\u003c');
+        else fig.__suPayload = { data, source: src };
         fig.appendChild(payload);
         // Validate and draw while detached; the serialized SVG is also the print view.
-        initDiagrams(fig);
+        if (!data.positions) initDiagrams(fig);
         pre.replaceWith(fig);
     } catch (err) {
         const box = document.createElement('div');
@@ -1106,6 +1151,60 @@ async function replaceDiagramBlock(codeEl, kind) {
     }
 }
 
+// A single GPU buffer replaces thousands of SVG nodes for large meshes.
+function createStlGpu(canvas, mesh) {
+    const gl = canvas.getContext('webgl', { antialias: true, preserveDrawingBuffer: true });
+    if (!gl) throw new Error('WebGL is required to display this large STL model.');
+    const binary = atob(mesh.positions);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const positions = new Float32Array(bytes.buffer);
+    const center = mesh.min.map((value, axis) => (value + mesh.max[axis]) / 2);
+    const span = Math.max(...mesh.max.map((value, axis) => value - mesh.min[axis]), 0.000001);
+    for (let i = 0; i < positions.length; i++) positions[i] = (positions[i] - center[i % 3]) / span;
+    const shader = (type, source) => {
+        const result = gl.createShader(type); gl.shaderSource(result, source); gl.compileShader(result);
+        if (!gl.getShaderParameter(result, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(result));
+        return result;
+    };
+    const program = gl.createProgram();
+    gl.attachShader(program, shader(gl.VERTEX_SHADER, `attribute vec3 position; uniform vec4 view; uniform vec2 pan; varying vec3 point;
+        void main() { float cy=cos(view.x), sy=sin(view.x), cp=cos(view.y), sp=sin(view.y);
+        vec3 p=vec3(position.x*cy+position.z*sy,position.y,-position.x*sy+position.z*cy);
+        p=vec3(p.x,p.y*cp-p.z*sp,p.y*sp+p.z*cp); point=p;
+        gl_Position=vec4(p.x*view.z+pan.x,p.y*view.w+pan.y,-p.z*0.5,1.0); }`));
+    const derivatives = gl.getExtension('OES_standard_derivatives');
+    gl.attachShader(program, shader(gl.FRAGMENT_SHADER, `${derivatives ? '#extension GL_OES_standard_derivatives : enable\n' : ''}precision mediump float; varying vec3 point; uniform float mode;
+        void main(){ float light=${derivatives ? 'abs(normalize(cross(dFdx(point),dFdy(point))).z)' : '0.7'};
+        vec3 color=mix(vec3(0.12,0.42,0.72),vec3(0.42,0.72,0.94),light);
+        if(mode>0.5) color=mix(vec3(0.3,0.2,0.85),vec3(0.9,0.65,0.1),light);
+        gl_FragColor=vec4(color,1.0); }`));
+    gl.linkProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
+    gl.useProgram(program);
+    const upload = (values) => { const buffer = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buffer); gl.bufferData(gl.ARRAY_BUFFER, values, gl.STATIC_DRAW); return buffer; };
+    const solid = upload(positions);
+    let wire;
+    const location = gl.getAttribLocation(program, 'position'); gl.enableVertexAttribArray(location);
+    const view = gl.getUniformLocation(program, 'view'), pan = gl.getUniformLocation(program, 'pan'), mode = gl.getUniformLocation(program, 'mode');
+    gl.enable(gl.DEPTH_TEST);
+    return (yaw, pitch, zoom, panX, panY, display) => {
+        const width = Math.min(1600, Math.round((canvas.clientWidth || 800) * Math.min(devicePixelRatio || 1, 2)));
+        const height = Math.round(width / ((canvas.clientWidth || 800) / (canvas.clientHeight || 400)));
+        if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
+        gl.viewport(0, 0, width, height); gl.clearColor(0.933, 0.953, 0.973, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        if (display === 'Wireframe' && !wire) {
+            const edges = new Float32Array(positions.length * 2);
+            for (let i = 0, j = 0; i < positions.length; i += 9) for (const vertex of [0, 1, 1, 2, 2, 0]) for (let axis = 0; axis < 3; axis++) edges[j++] = positions[i + vertex * 3 + axis];
+            wire = upload(edges);
+        }
+        gl.bindBuffer(gl.ARRAY_BUFFER, display === 'Wireframe' ? wire : solid); gl.vertexAttribPointer(location, 3, gl.FLOAT, false, 0, 0);
+        gl.uniform4f(view, yaw, pitch, 0.75 * zoom, 1.5 * zoom);
+        gl.uniform2f(pan, panX / 400, -panY / 200); gl.uniform1f(mode, display === 'Surface angle' ? 1 : 0);
+        gl.drawArrays(display === 'Wireframe' ? gl.LINES : gl.TRIANGLES, 0, positions.length / 3 * (display === 'Wireframe' ? 2 : 1));
+    };
+}
+
 // Kept closure-free so the same renderer can be embedded in downloaded HTML.
 function initDiagrams(root) {
     const figures = root.matches?.('figure.su-diagram') ? [root] : root.querySelectorAll('figure.su-diagram');
@@ -1118,12 +1217,16 @@ function initDiagrams(root) {
     for (const fig of figures) {
         if (fig.__suDiagramReady) continue;
         fig.__suDiagramReady = true;
-        const { data, source } = JSON.parse(fig.querySelector('script[type="application/json"]').textContent);
+        const { data, source } = fig.__suPayload ?? JSON.parse(fig.querySelector('script[type="application/json"]').textContent);
         const stl = fig.dataset.kind === 'stl';
-        for (const el of fig.querySelectorAll(':scope > svg, :scope > figcaption, :scope > .su-diagram-controls')) el.remove();
-        const svg = makeSvg('svg', { class: 'su-diagram-view', viewBox: '0 0 800 400', tabindex: '0', role: 'img', 'aria-label': stl ? 'Interactive STL model. Arrow keys rotate. Shift and arrow keys pan. Plus and minus zoom.' : 'Interactive map. Arrow keys pan. Plus and minus zoom.' });
+        const large = stl && !!data.positions;
+        for (const el of fig.querySelectorAll(':scope > svg, :scope > canvas, :scope > figcaption, :scope > .su-diagram-controls')) el.remove();
+        const svg = large ? document.createElement('canvas') : makeSvg('svg', { viewBox: '0 0 800 400' });
+        svg.classList.add('su-diagram-view'); svg.tabIndex = 0; svg.setAttribute('role', 'img');
+        svg.setAttribute('aria-label', stl ? 'Interactive STL model. Arrow keys rotate. Shift and arrow keys pan. Plus and minus zoom.' : 'Interactive map. Arrow keys pan. Plus and minus zoom.');
+        const gpu = large ? createStlGpu(svg, data) : null;
         const caption = document.createElement('figcaption');
-        caption.textContent = stl ? `${data.length} triangles. Drag to rotate. Shift-drag or Shift + arrows to pan. + / − to zoom.` : 'Drag to pan; use + / − to zoom. Map tiles © OpenStreetMap contributors.';
+        caption.textContent = stl ? `${large ? data.count : data.length} triangles. Drag to rotate. Shift-drag or Shift + arrows to pan. + / − to zoom.` : 'Drag to pan; use + / − to zoom. Map tiles © OpenStreetMap contributors.';
         if (!stl) {
             const attribution = document.createElement('a');
             attribution.href = 'https://www.openstreetmap.org/copyright'; attribution.target = '_blank'; attribution.rel = 'noopener';
@@ -1164,7 +1267,9 @@ function initDiagrams(root) {
             visit(geometry.coordinates, depths[geometry.type]);
             features.push({ ...geometry, properties });
         };
-        if (stl) {
+        if (large) {
+            allPoints.push(data.min, data.max);
+        } else if (stl) {
             for (const triangle of data) allPoints.push(...triangle);
         } else collectGeometry(data);
         if (!allPoints.length) throw new Error('The map has no coordinates to display.');
@@ -1183,6 +1288,7 @@ function initDiagrams(root) {
             return [400 + panX + x * baseScale * zoom, 200 + panY + y * baseScale * zoom, z * baseScale * zoom];
         };
         const draw = () => {
+            if (gpu) { gpu(yaw, pitch, zoom, panX, panY, mode); return; }
             svg.replaceChildren();
             if (stl) {
                 const triangles = data.map((triangle) => triangle.map(project));
@@ -1304,6 +1410,21 @@ function initDiagrams(root) {
         fig.insertBefore(caption, details);
         fig.insertBefore(controls, details);
         draw();
+        if (large && !fig.isConnected) {
+            const snapshot = document.createElement('img'); snapshot.className = 'su-stl-snapshot'; snapshot.alt = 'STL model';
+            snapshot.src = svg.toDataURL('image/png'); fig.appendChild(snapshot);
+        }
+        if (large) {
+            let frame, resize;
+            if (fig.isConnected) {
+                resize = new ResizeObserver(() => { cancelAnimationFrame(frame); frame = requestAnimationFrame(draw); });
+                resize.observe(svg);
+            }
+            fig.__suDispose = () => {
+                cancelAnimationFrame(frame); resize?.disconnect();
+                svg.getContext('webgl')?.getExtension('WEBGL_lose_context')?.loseContext();
+            };
+        }
     }
 }
 
@@ -1481,9 +1602,15 @@ function enhanceHeadingAnchors(root) {
     }
 }
 
-async function render(md) {
+async function render(md, forExport = true) {
     const el = document.createElement('div');
-    el.innerHTML = marked.parse(md);
+    // Direct STL imports are one fence. Avoid escaping and reparsing tens of
+    // megabytes through marked and the HTML parser just to recover the source.
+    const standaloneStl = md.length > 1000000 && md.match(/^(`{3,})stl\r?\n([\s\S]*)\r?\n\1\s*$/);
+    if (standaloneStl) {
+        const pre = document.createElement('pre'), code = document.createElement('code');
+        code.className = 'language-stl'; code.textContent = standaloneStl[2]; pre.appendChild(code); el.appendChild(pre);
+    } else el.innerHTML = marked.parse(md);
     let deadline = performance.now() + 50;
     for (const block of el.querySelectorAll('pre code')) {
         const langCls = [...block.classList].find((c) => c.startsWith('language-'));
@@ -1493,7 +1620,7 @@ async function render(md) {
         }
         const diagramKind = langCls?.slice('language-'.length).toLowerCase();
         if (['geojson', 'topojson', 'stl'].includes(diagramKind)) {
-            await replaceDiagramBlock(block, diagramKind);
+            await replaceDiagramBlock(block, diagramKind, forExport);
             continue;
         }
         try { hljs.highlightElement(block); } catch {}
@@ -1507,7 +1634,11 @@ async function render(md) {
     if (needsMath(md)) { try { await enhanceMath(el); } catch {} }
     enhanceWideTables(el);
     enhanceHeadingAnchors(el);
-    return el.innerHTML;
+    if (!forExport) return el;
+    initDiagrams(el);
+    const html = el.innerHTML;
+    for (const fig of el.querySelectorAll('.su-diagram')) fig.__suDispose?.();
+    return html;
 }
 
 function stripFrontmatter(md) {
@@ -1542,6 +1673,7 @@ async function updatePreview() {
     const generation = ++previewGeneration;
     pendingHydration = false;
     if (!markdown.trim()) {
+        for (const fig of els.previewArticle.querySelectorAll('.su-diagram')) fig.__suDispose?.();
         els.previewArticle.innerHTML = '';
         updatePanes();
         els.docStats.textContent = 'empty';
@@ -1549,13 +1681,16 @@ async function updatePreview() {
         setExportEnabled(false);
         return;
     }
-    const content = await render(markdown);
+    const content = await render(markdown, false);
     if (generation !== previewGeneration) return;
-    els.previewArticle.innerHTML = content;
+    if (markdown.length > 1000000) await yieldToMain();
+    if (generation !== previewGeneration) return;
+    for (const fig of els.previewArticle.querySelectorAll('.su-diagram')) fig.__suDispose?.();
+    els.previewArticle.replaceChildren(...content.childNodes);
     initDiagrams(els.previewArticle);
     updatePanes();
-    const wordCount = markdown.trim().split(/\s+/).length;
-    els.docStats.textContent = `${wordCount} word${wordCount === 1 ? '' : 's'}`;
+    const wordCount = markdown.length > 1000000 ? null : markdown.trim().split(/\s+/).length;
+    els.docStats.textContent = wordCount === null ? `${(markdown.length / 1000000).toFixed(1)} MB` : `${wordCount} word${wordCount === 1 ? '' : 's'}`;
     setDocTitle();
     setExportEnabled(true);
     if (els.findBar && !els.findBar.hidden) runSearch(els.findInput.value);
@@ -1576,7 +1711,15 @@ function scheduleRender() {
     renderTimer = setTimeout(updatePreview, 150);
 }
 
+let pendingEditorText = null;
 function setMarkdown(text) {
+    if (text.length > 1000000 && viewMode !== 'edit') {
+        pendingEditorText = text;
+        markdown = text;
+        updatePreview();
+        return;
+    }
+    pendingEditorText = null;
     if (window.__suEditorAPI) {
         window.__suEditorAPI.setText(text);   // triggers __suOnEditorChange -> render
     } else {
@@ -1592,6 +1735,7 @@ window.__suOnEditorChange = (text) => {
 };
 
 window.__suEditorReady = () => {
+    if (pendingEditorText !== null) return;
     if (window.__suInitialDoc) {
         markdown = window.__suInitialDoc;
         updatePreview();
@@ -1610,7 +1754,13 @@ function setViewMode(mode) {
         b.setAttribute('aria-pressed', on ? 'true' : 'false');
     }
     if (mode !== 'preview') closeFind();
-    if (mode === 'edit') window.__suEditorAPI?.focus();
+    if (mode === 'edit') {
+        if (pendingEditorText !== null && window.__suEditorAPI) {
+            const text = pendingEditorText; pendingEditorText = null;
+            window.__suEditorAPI.setText(text);
+        }
+        window.__suEditorAPI?.focus();
+    }
     if (mode === 'html') renderHtmlPreview();
 }
 
@@ -1819,16 +1969,55 @@ for (const opt of [els.optToc, els.optPdf, els.optFind, els.optSource]) {
 }
 
 // ---- File open / drop / paste / URL ----
-function handleFile(file) {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        const raw = e.target.result;
-        const embedded = extractEmbeddedMarkdown(raw);
-        filename = file.name.replace(/\.html?$/i, '').replace(MD_FILE_EXT, '');
-        setMarkdown(stripFrontmatter(embedded ?? raw));
+async function stlFileToAscii(buffer) {
+    const view = new DataView(buffer);
+    // Binary headers can start with "solid" too. The count and record size
+    // distinguish those files from ASCII without decoding the binary payload.
+    const count = buffer.byteLength >= 84 ? view.getUint32(80, true) : 0;
+    if (buffer.byteLength >= 84 && 84 + count * 50 === buffer.byteLength) {
+        if (!count) throw new Error('The STL file has no triangular facets.');
+        const facets = ['solid model\n'];
+        let deadline = performance.now() + 50;
+        for (let i = 0; i < count; i++) {
+            const values = [];
+            for (let j = 0; j < 12; j++) {
+                const value = view.getFloat32(84 + i * 50 + j * 4, true);
+                if (!Number.isFinite(value)) throw new Error('The STL file contains a non-finite normal or vertex.');
+                values.push(value);
+            }
+            facets.push(`  facet normal ${values.slice(0, 3).join(' ')}\n    outer loop\n      vertex ${values.slice(3, 6).join(' ')}\n      vertex ${values.slice(6, 9).join(' ')}\n      vertex ${values.slice(9, 12).join(' ')}\n    endloop\n  endfacet\n`);
+            if (performance.now() >= deadline) { await yieldToMain(); deadline = performance.now() + 50; }
+        }
+        facets.push('endsolid model');
+        return facets.join('');
+    }
+    const text = new TextDecoder().decode(buffer).replace(/^\uFEFF/, '').trim();
+    if (!/^solid\b/i.test(text) || !/\bendsolid\b/i.test(text) || text.includes('\0')) {
+        throw new Error('Invalid or truncated STL file.');
+    }
+    return text;
+}
+
+let fileImportGeneration = 0;
+async function handleFile(file) {
+    const generation = ++fileImportGeneration;
+    try {
+        const stl = /\.stl$/i.test(file.name);
+        const raw = stl ? await stlFileToAscii(await file.arrayBuffer()) : await file.text();
+        if (generation !== fileImportGeneration) return;
+        filename = file.name.replace(/\.(?:html?|stl)$/i, '').replace(MD_FILE_EXT, '');
+        if (stl) {
+            let fenceLength = 3;
+            for (const match of raw.matchAll(/`+/g)) fenceLength = Math.max(fenceLength, match[0].length + 1);
+            const fence = '`'.repeat(fenceLength);
+            setMarkdown(`${fence}stl\n${raw}\n${fence}\n`);
+        } else {
+            setMarkdown(stripFrontmatter(extractEmbeddedMarkdown(raw) ?? raw));
+        }
         setViewMode('preview');
-    };
-    reader.readAsText(file);
+    } catch (err) {
+        if (generation === fileImportGeneration) toast(`Failed to open file: ${err?.message ?? err}`);
+    }
 }
 
 const openFile = () => els.fileInput.click();
@@ -2156,6 +2345,7 @@ ${watermarkFooter('Powered by')}
 <script>
 ${outputJS({ toc: o.toc, pdf: o.pdf, find: o.find, readingWidth })}
 ${initDiagrams.toString()}
+${createStlGpu.toString()}
 initDiagrams(document);
 <\/script>
 ${sourceTag}
