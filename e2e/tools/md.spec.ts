@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
@@ -6,6 +7,26 @@ import { expect, test } from '@playwright/test';
 import { assertSeoBasics, assertSkillMd, getTool } from './_helpers';
 
 const tool = getTool('md');
+const modelFixture = (name: string) => resolve(__dirname, `fixtures/3mf/${name}.3mf`);
+
+// Read the actual GPU output, rather than inferring appearance from the DOM.
+async function modelPixels(page: Page): Promise<{ red: number; green: number; blue: number; mixed: number }> {
+  return page.locator('figure[data-kind="su-mesh"] canvas').evaluate((element) => {
+    const canvas = element as HTMLCanvasElement;
+    const gl = canvas.getContext('webgl')!;
+    const pixels = new Uint8Array(canvas.width * canvas.height * 4);
+    gl.readPixels(0, 0, canvas.width, canvas.height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    const counts = { red: 0, green: 0, blue: 0, mixed: 0 };
+    for (let i = 0; i < pixels.length; i += 4) {
+      const [r, g, b] = pixels.subarray(i, i + 3);
+      if (r > 80 && r > g * 1.8 && r > b * 1.8) counts.red++;
+      if (g > 80 && g > r * 1.8 && g > b * 1.8) counts.green++;
+      if (b > 80 && b > r * 1.8 && b > g * 1.8) counts.blue++;
+      if (r > 30 && g > 30 && b < 100 && Math.abs(r - g) < 30) counts.mixed++;
+    }
+    return counts;
+  });
+}
 
 // Drives the imperative editor API the page exposes once the editor mounts
 // (CodeMirror from esm.sh, or a <textarea> fallback). This keeps tests
@@ -13,7 +34,7 @@ const tool = getTool('md');
 async function setMarkdown(page: Page, md: string): Promise<void> {
   await page.waitForFunction(() => typeof (window as { __suEditorAPI?: unknown }).__suEditorAPI !== 'undefined');
   await page.evaluate((text) => {
-    (window as { __suEditorAPI: { setText(t: string): void } }).__suEditorAPI.setText(text);
+    (window as unknown as { __suEditorAPI: { setText(t: string): void } }).__suEditorAPI.setText(text);
   }, md);
 }
 
@@ -417,7 +438,7 @@ endsolid corner
     await page.getByRole('button', { name: 'Source', exact: true }).click();
     await page.waitForFunction(() => typeof (window as { __suEditorAPI?: unknown }).__suEditorAPI !== 'undefined');
     const source = await page.evaluate(() =>
-      (window as { __suEditorAPI: { getText(): string } }).__suEditorAPI.getText(),
+      (window as unknown as { __suEditorAPI: { getText(): string } }).__suEditorAPI.getText(),
     );
     expect(source).toContain('```stl\nsolid model');
     expect(source).toContain('vertex 1 0 0');
@@ -458,7 +479,7 @@ endsolid corner
     await page.locator('#fileInput').setInputFiles({ name: 'large.stl', mimeType: 'model/stl', buffer: binary });
     const model = page.locator('figure[data-kind="stl"]');
     await expect(model.locator('canvas')).toBeVisible({ timeout: 15000 });
-    await expect(model.locator('figcaption')).toContainText('12000 triangles');
+    await expect(model.locator('figcaption')).toHaveCount(0);
     expect(await model.locator('*').count()).toBeLessThan(100);
     await model.getByRole('button', { name: 'Wireframe', exact: true }).click();
     await model.getByRole('button', { name: 'Pan right', exact: true }).click();
@@ -473,6 +494,179 @@ endsolid corner
     await exported.getByRole('button', { name: 'Surface angle', exact: true }).click();
     await page.emulateMedia({ media: 'print' });
     await expect(exported.locator('.su-stl-snapshot')).toBeVisible();
+  });
+
+  test('3MF imports preserve face colors, source, share state, and offline HTML/print output', async ({ page }) => {
+    await page.goto(tool.path);
+    await page.locator('#fileInput').setInputFiles(modelFixture('face-colors'));
+    const model = page.locator('#previewArticle figure[data-kind="su-mesh"]');
+    await expect(model.locator('canvas')).toBeVisible({ timeout: 15000 });
+    await expect(model.locator('figcaption')).toHaveCount(0);
+    const pixels = await modelPixels(page);
+    expect(pixels.red).toBeGreaterThan(100);
+    expect(pixels.green).toBeGreaterThan(100);
+    expect(pixels.blue).toBeGreaterThan(100);
+    await model.getByRole('button', { name: 'Toggle viewer fullscreen' }).click();
+    await expect.poll(() => page.evaluate(() => document.fullscreenElement?.getAttribute('data-kind'))).toBe('su-mesh');
+    await model.getByRole('button', { name: 'Toggle viewer fullscreen' }).click();
+    await model.getByRole('button', { name: 'Wireframe', exact: true }).click();
+    await model.getByRole('button', { name: 'Surface angle', exact: true }).click();
+    await model.getByRole('button', { name: 'Solid', exact: true }).click();
+    expect(await modelPixels(page)).toEqual(pixels);
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await model.getByRole('button', { name: 'Copy source' }).click();
+    const copied = await page.evaluate(() => navigator.clipboard.readText());
+    expect(JSON.parse(copied)).toMatchObject({ version: 1, count: 44 });
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.waitForFunction(() => typeof (window as { __suEditorAPI?: unknown }).__suEditorAPI !== 'undefined');
+    const source = await page.evaluate(() =>
+      (window as unknown as { __suEditorAPI: { getText(): string } }).__suEditorAPI.getText(),
+    );
+    expect(source).toContain(`\`\`\`su-mesh\n${copied.trim()}`);
+    await page.getByRole('button', { name: 'Preview', exact: true }).click();
+    await page.getByRole('button', { name: 'Share', exact: true }).click();
+    await expect(page.locator('#toast')).toContainText('Share link copied');
+    const share = await page.evaluate(() => navigator.clipboard.readText());
+    expect(share).toContain('/md#');
+    await page.goto(share);
+    await expect(model.locator('canvas')).toBeVisible({ timeout: 15000 });
+    expect(await modelPixels(page)).toEqual(pixels);
+    const downloadPromise = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Export', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Download HTML' }).click();
+    const output = await readFile(await (await downloadPromise).path(), 'utf8');
+    expect(output).not.toContain('data-su-bundle');
+    await page.route('https://example.test/colored.html', (route) =>
+      route.fulfill({ contentType: 'text/html', body: output }),
+    );
+    await page.route(/https:\/\/(?!example\.test)/, (route) => route.abort());
+    await page.goto('https://example.test/colored.html');
+    const exported = page.locator('figure[data-kind="su-mesh"]');
+    await expect(exported.locator('canvas')).toBeVisible();
+    await expect(exported.locator('figcaption')).toHaveCount(0);
+    expect(await modelPixels(page)).toEqual(pixels);
+    await exported.getByRole('button', { name: 'Pan right', exact: true }).click();
+    await exported.getByRole('button', { name: 'Reset view' }).click();
+    expect(await modelPixels(page)).toEqual(pixels);
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+    await page.emulateMedia({ media: 'print' });
+    await expect(exported.locator('canvas')).toBeHidden();
+    await expect(exported.locator('.su-stl-snapshot')).toBeVisible();
+    await expect(exported.locator('.su-stl-snapshot')).toHaveAttribute('src', /^data:image\/png/);
+    const printColors = await exported.locator('.su-stl-snapshot').evaluate(async (element) => {
+      const image = element as HTMLImageElement;
+      await image.decode();
+      const canvas = document.createElement('canvas');
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(image, 0, 0);
+      const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      let red = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i] > 80 && data[i] > data[i + 1] * 1.8 && data[i] > data[i + 2] * 1.8) red++;
+      }
+      return red;
+    });
+    expect(printColors).toBeGreaterThan(100);
+    await expect(exported.locator('.su-diagram-controls')).toBeHidden();
+  });
+
+  test('3MF vertex colors interpolate, and uncolored/component/slicer files import', async ({ page }) => {
+    await page.goto(tool.path);
+    await page.locator('#fileInput').setInputFiles(modelFixture('vertex-colors'));
+    const model = page.locator('figure[data-kind="su-mesh"]');
+    await expect(model.locator('canvas')).toBeVisible({ timeout: 15000 });
+    const pixels = await modelPixels(page);
+    expect(pixels.red).toBeGreaterThan(100);
+    expect(pixels.green).toBeGreaterThan(100);
+    expect(pixels.blue).toBeGreaterThan(100);
+    expect(pixels.mixed).toBeGreaterThan(100);
+    for (const name of ['box', 'multiple-cylinders', 'prusaslicer']) {
+      await page.locator('#fileInput').setInputFiles(modelFixture(name));
+      await expect(page.locator('#docTitle')).toHaveText(name);
+      await expect(model.locator('canvas')).toBeVisible();
+      await expect(model.locator('figcaption')).toHaveCount(0);
+    }
+    await expect(page.locator('#toast')).toContainText('Slicer-specific paint metadata is unsupported');
+    await page
+      .locator('#fileInput')
+      .setInputFiles({ name: 'broken.3mf', mimeType: 'model/3mf', buffer: Buffer.from('bad') });
+    await expect(page.locator('#toast')).toContainText('Failed to open file');
+    await expect(page.locator('#docTitle')).toHaveText('prusaslicer');
+    await expect(model.locator('canvas')).toBeVisible();
+  });
+
+  test('ZIP64-packaged 3MF files preserve object defaults and triangle colors in HTML exports', async ({ page }) => {
+    await page.goto(tool.path);
+    await page.locator('#fileInput').setInputFiles(modelFixture('zip64-colors'));
+    const model = page.locator('figure[data-kind="su-mesh"]');
+    await expect(model.locator('canvas')).toBeVisible({ timeout: 15000 });
+    await expect(model.locator('figcaption')).toHaveCount(0);
+    const colors = await modelPixels(page);
+    expect(colors.red).toBeGreaterThan(100);
+    expect(colors.blue).toBeGreaterThan(100);
+    await page.getByRole('button', { name: 'HTML', exact: true }).click();
+    const exported = page.frameLocator('#htmlPreview').locator('figure[data-kind="su-mesh"]');
+    await expect(exported.locator('canvas')).toBeVisible();
+    const outputColors = await exported.locator('canvas').evaluate((element) => {
+      const canvas = element as HTMLCanvasElement;
+      const gl = canvas.getContext('webgl')!;
+      const pixels = new Uint8Array(canvas.width * canvas.height * 4);
+      gl.readPixels(0, 0, canvas.width, canvas.height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+      let red = 0;
+      let blue = 0;
+      for (let i = 0; i < pixels.length; i += 4) {
+        if (pixels[i] > 80 && pixels[i] > pixels[i + 2] * 1.8) red++;
+        if (pixels[i + 2] > 80 && pixels[i + 2] > pixels[i] * 1.8) blue++;
+      }
+      return { red, blue };
+    });
+    expect(outputColors.red).toBeGreaterThan(100);
+    expect(outputColors.blue).toBeGreaterThan(100);
+  });
+
+  test('3MF import cancellation, replacement, and editing prevent stale results', async ({ page }) => {
+    // Hold expensive work to make cancellation deterministic across machines.
+    await page.addInitScript(() => {
+      const OriginalWorker = window.Worker;
+      window.Worker = class extends OriginalWorker {
+        timer?: ReturnType<typeof setTimeout>;
+        postMessage(message: unknown, transferOrOptions?: Transferable[] | StructuredSerializeOptions) {
+          this.timer = setTimeout(() => {
+            if (Array.isArray(transferOrOptions)) super.postMessage(message, transferOrOptions);
+            else super.postMessage(message, transferOrOptions);
+          }, 800);
+        }
+        terminate() {
+          clearTimeout(this.timer);
+          super.terminate();
+        }
+      };
+    });
+    await page.goto(tool.path);
+    await setMarkdown(page, '# Keep this');
+    await expect(page.locator('#previewArticle h1')).toContainText('Keep this');
+    await page.locator('#fileInput').setInputFiles(modelFixture('face-colors'));
+    await expect(page.getByRole('button', { name: 'Cancel import' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Export', exact: true })).toBeDisabled();
+    await page.getByRole('button', { name: 'Cancel import' }).click();
+    await expect(page.locator('#previewArticle h1')).toContainText('Keep this');
+    await page.locator('#fileInput').setInputFiles(modelFixture('face-colors'));
+    await expect(page.getByRole('button', { name: 'Cancel import' })).toBeVisible();
+    await page
+      .locator('#fileInput')
+      .setInputFiles({ name: 'new.md', mimeType: 'text/markdown', buffer: Buffer.from('# New file') });
+    await expect(page.locator('#previewArticle h1')).toContainText('New file');
+    await page.locator('#fileInput').setInputFiles(modelFixture('face-colors'));
+    await expect(page.getByRole('button', { name: 'Cancel import' })).toBeVisible();
+    await setMarkdown(page, '# Edited during import');
+    await expect(page.getByRole('button', { name: 'Cancel import' })).toBeHidden();
+    // Wait beyond the held worker dispatch, then establish that no stale result won.
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 1000)));
+    await expect(page.locator('#previewArticle h1')).toContainText('Edited during import');
+    await expect(page.locator('figure[data-kind="su-mesh"]')).toHaveCount(0);
   });
 
   test('invalid map and STL fences preserve source and later content', async ({ page }) => {

@@ -4,7 +4,7 @@ description: >-
   Render and read Markdown in the browser with the Secutils.dev Markdown
   Preview tool. Reading-first: the rendered preview is the default full-width
   view, with on-demand source editing and self-contained HTML/PDF export.
-  Supports GitHub-flavored Markdown, Mermaid diagrams, GeoJSON/TopoJSON maps, ASCII STL models, KaTeX math, GitHub
+  Supports GitHub-flavored Markdown, Mermaid diagrams, GeoJSON/TopoJSON maps, STL and colored 3MF models, KaTeX math, GitHub
   alerts (`[!NOTE]` etc.), `==highlights==`, heading anchors, and
   find-in-page. Hand the user https://tools.secutils.dev/md (optionally with
   the Markdown encoded in the URL fragment for one-click preload, or a
@@ -37,7 +37,7 @@ available on demand.
   Solid and Surface angle modes hide facet edges. Overlay controls include rotation, zoom, reset, and fullscreen.
   Pan controls sit beside zoom. Shift-drag or Shift + arrow keys also pan the model without rotation.
 - **Copy source** - each map and STL viewer has an overlay button that copies the original fenced source.
-- Maps and models retain their SVG view and controls in exported HTML without external runtime dependencies.
+- Maps and models retain their SVG or WebGL view and controls in exported HTML without external runtime dependencies.
   PDF exports use the initial static view. Invalid blocks display an error and preserve their source.
 - Map basemap tiles require a network connection. Geometry remains visible and interactive without tiles.
   Tile requests go directly from the browser to OpenStreetMap and reveal the displayed geographic area.
@@ -72,6 +72,24 @@ name used for the page title and downloaded filenames.
   Binary color attributes are not retained. Large models can exceed the share URL limit.
   Models with more than 2,000 triangles use WebGL instead of individual SVG triangles.
   Large sources use a plain-text editor to avoid syntax-parser delays. HTML exports retain GPU controls and a static print image.
+- **3MF import** - Open or drop a `.3mf` file. A cancellable worker extracts and processes the package locally.
+  Core meshes, nested components, repeated instances, build transforms, and declared units are supported.
+  Core base-material colors and Materials color groups preserve object defaults and triangle overrides.
+  Per-vertex color groups interpolate in sRGB. Standalone surface colors are opaque.
+  All 3MF models use WebGL, including small models.
+  Optional textures, advanced materials, and slicer-specific paint metadata use the default blue material.
+  ZIP and ZIP64 packages are supported within the same size limits.
+  Unsupported required extensions, cross-part components, and external relationships produce an error.
+  Archive and expanded content are limited to 128 MiB. Rendered geometry is limited to 1,000,000 triangles.
+  Worker processing stops after 30 seconds.
+  Opening another file or editing the source cancels an earlier import. The **Cancel import** button preserves the current document.
+- **3MF source** - Imports create a tool-specific `su-mesh` fence, not an STL fence or a GitHub-compatible model block.
+  The JSON body has `version: 1`, base64 Float32 `positions` and `colors`, `count`, bounds, units, instance identities, and warnings.
+  Positions contain three separate XYZ vertices per triangle. Colors contain matching sRGB triplets.
+  Positions use millimeters in Y-up viewer coordinates. Instance metadata retains the original transform chains.
+  The original archive is discarded. Source editing, Markdown downloads, sharing, and Copy source use this representation.
+  Copy source copies the JSON fence body. HTML exports preserve interactive colors offline. PDF/print uses a static color image.
+  Large models remain available through HTML export even when a share URL is too long.
 - **Share** - copies a `tools.secutils.dev/md#<encoded>` URL with the whole
   Markdown round-tripped through the fragment.
 - **Export** - **Download HTML** (single self-contained file), **Download
@@ -207,4 +225,4 @@ it from there in the browser. No follow-up encoding required.
   escape the characters if a formula renders wrong.
 - The CodeMirror editor lazy-loads from `esm.sh`; if the CDN is unreachable
   it falls back to a plain `<textarea>` and all core features still work.
-- PDF is a true vector PDF (Paged.js, ~150 KB lazy-loaded), not a screenshot.
+- PDF retains vector text. WebGL models use static PNG images in PDF and print output.

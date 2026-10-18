@@ -4,12 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Markdown Preview: Read, Render &amp; Export Markdown | Secutils.dev</title>
-    <meta name="description" content="Preview Markdown with Mermaid diagrams, GeoJSON and TopoJSON maps, STL models, math, and alerts. Export HTML/PDF in your browser. Free, no signup.">
+    <meta name="description" content="Preview Markdown with Mermaid, GeoJSON/TopoJSON maps, STL and colored 3MF models, math, and alerts. Export HTML/PDF in your browser. Free, no signup.">
     <meta name="robots" content="index, follow, max-image-preview:large">
     <link rel="canonical" href="https://{{TOOLS_HOST}}/md">
     <meta name="su-tool-path" content="/md">
     <meta name="su-tool-name" content="Markdown Preview">
-    <meta name="su-tool-description" content="Markdown previewer with Mermaid diagrams, GeoJSON/TopoJSON maps, STL models, math, alerts, and self-contained HTML/PDF export. No signup.">
+    <meta name="su-tool-description" content="Markdown previewer with Mermaid diagrams, GeoJSON/TopoJSON maps, STL and colored 3MF models, math, alerts, and self-contained HTML/PDF export. No signup.">
     <meta name="su-tool-promote" content="true">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Secutils.dev">
@@ -237,6 +237,7 @@ body.su-view-html #htmlPreview { display: block; }
 .su-diagram:fullscreen .su-diagram-view { flex: 1; min-height: 0; height: calc(100dvh - 34px); aspect-ratio: auto; }
 .su-diagram figcaption { padding: 8px 12px; font: 12px/1.5 var(--font, system-ui); }
 .su-diagram-controls { position: absolute; inset: 10px 10px 44px; pointer-events: none; }
+.su-diagram:is([data-kind="stl"], [data-kind="su-mesh"]) .su-diagram-controls { bottom: 10px; }
 .su-diagram-controls button { display: inline-flex; align-items: center; justify-content: center; height: 30px; min-width: 30px; padding: 0 9px; border: 1px solid #58616e; border-radius: 5px; background: #242c37; color: #fff; font: 12px/1.4 system-ui; cursor: pointer; pointer-events: auto; box-shadow: 0 2px 5px #0002; }
 .su-diagram-controls button:hover, .su-diagram-controls button[aria-pressed="true"] { background: #43516a; }
 .su-diagram-controls button:focus-visible { outline: 2px solid #2674bf; outline-offset: 2px; }
@@ -263,6 +264,7 @@ body.su-view-html #htmlPreview { display: block; }
 .su-diagram-status { position: absolute; top: 48px; right: 10px; background: #242c37; color: #fff; padding: 5px 9px; border-radius: 5px; font: 12px system-ui; }
 .su-diagram-attribution { fill: #343741; font: 10px system-ui; }
 @media (max-width: 480px) { .su-diagram-modes button { font-size: 10px; padding: 0 5px; } .su-diagram-controls { inset: 6px 6px 44px; } }
+@media (max-width: 480px) { .su-diagram:is([data-kind="stl"], [data-kind="su-mesh"]) .su-diagram-controls { bottom: 6px; } }
 .su-diagram details { padding: 0 12px 8px; }
 .su-diagram summary { cursor: pointer; font: 12px/1.5 system-ui; }
 .su-diagram details pre { max-height: 240px; margin-top: 8px; }
@@ -322,7 +324,7 @@ html.su-loading #emptyState { display: none; }
 @keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes su-spin-edit { to { transform: rotate(360deg); } }
 
-#fileInput { display: none; }
+#fileInput, #modelImportStatus[hidden] { display: none; }
 
 .su-footer { text-align: center; padding: 16px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.8rem; transition: border-color .25s, color .25s; }
 .su-footer p { margin: 0; }
@@ -415,7 +417,7 @@ html.su-loading #emptyState { display: none; }
                 <span id="docStats" class="stats-text">empty</span>
             </div>
             <div class="toolbar-actions">
-                <button id="openBtn" class="btn btn-sm" title="Open a Markdown or STL file (Ctrl/Cmd+O)">
+                <button id="openBtn" class="btn btn-sm" title="Open a Markdown, STL, or 3MF file (Ctrl/Cmd+O)">
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 14 1.45-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.55 6A2 2 0 0 1 18.45 20H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>
                     <span class="btn-label">Open</span>
                 </button>
@@ -507,7 +509,7 @@ html.su-loading #emptyState { display: none; }
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6"/><path d="M9 17h6"/></svg>
                         </div>
                         <div class="empty-state-title">Preview any Markdown</div>
-                        <div class="empty-state-sub">Open or drop a Markdown or STL file, paste (Ctrl/Cmd+V), load the example, or fetch from a public URL.</div>
+                        <div class="empty-state-sub">Open or drop a Markdown, STL, or 3MF file, paste (Ctrl/Cmd+V), load the example, or fetch from a public URL.</div>
                         <div class="empty-actions">
                             <button id="emptyOpenBtn" class="btn btn-primary btn-sm">Open file</button>
                             <button id="emptyWriteBtn" class="btn btn-sm">Start writing</button>
@@ -544,7 +546,7 @@ html.su-loading #emptyState { display: none; }
     </main>
 
     <footer class="su-footer">
-        <p>A Markdown previewer with Mermaid, GeoJSON/TopoJSON maps, STL models, math, alerts, and HTML/PDF export.</p>
+        <p>A Markdown previewer with Mermaid, GeoJSON/TopoJSON maps, STL and colored 3MF models, math, alerts, and HTML/PDF export.</p>
         <p class="su-footer-fineprint">
             <button type="button" class="su-footer-link" id="privacyOpen">Privacy</button>
             <span aria-hidden="true"> &middot; </span>
@@ -585,12 +587,18 @@ html.su-loading #emptyState { display: none; }
                 <li><a href="https://github.com/topojson/topojson-client" target="_blank" rel="noopener noreferrer"><strong>topojson-client</strong></a> - converts TopoJSON objects into GeoJSON for map display.</li>
                 <li><a href="https://github.com/codemirror/dev" target="_blank" rel="noopener noreferrer"><strong>CodeMirror</strong></a> - extensible code editor, powers the source editing mode.</li>
                 <li><a href="https://github.com/pagedjs/pagedjs" target="_blank" rel="noopener noreferrer"><strong>Paged.js</strong></a> - CSS Paged Media polyfill, used to paginate the rendered HTML into a vector PDF on Export.</li>
+                <li><a href="https://github.com/101arrowz/fflate" target="_blank" rel="noopener noreferrer"><strong>fflate</strong></a> - extracts local 3MF ZIP packages in a worker (MIT).</li>
+                <li><a href="https://github.com/lddubeau/saxes" target="_blank" rel="noopener noreferrer"><strong>saxes</strong></a> - parses namespace-aware 3MF XML in a worker (ISC).</li>
             </ul>
             <p class="su-dialog-fineprint">All trademarks are property of their respective owners.</p>
         </div>
     </dialog>
 
-    <input type="file" id="fileInput" accept=".md,.markdown,.txt,.mdx,.html,.htm,.stl">
+    <input type="file" id="fileInput" accept=".md,.markdown,.txt,.mdx,.html,.htm,.stl,.3mf">
+    <div id="modelImportStatus" class="toast" role="status" aria-live="polite" hidden>
+        <span>Importing 3MF model&hellip;</span><button id="cancelModelImport" class="btn btn-sm" type="button">Cancel import</button>
+    </div>
+    <script id="su-bundle-three-mf" type="text/plain" data-su-bundle="three-mf" data-su-bundle-encoding="gzip-base64"></script>
 
     <div id="toast" class="toast" style="display:none">
         <span id="toastMsg"></span>
@@ -1065,9 +1073,51 @@ async function replaceMermaidBlock(codeEl) {
     }
 }
 
-// Maps and STL use inline SVG: exports keep both the view and interaction offline.
+// Maps use SVG; models use SVG or WebGL. Exported renderers work offline.
 let topojsonPromise;
 let stlParseCache;
+let meshParseCache, modelWorkerSourcePromise;
+const modelJobs = new Set();
+async function modelWorkerSource() {
+    modelWorkerSourcePromise ??= (async () => {
+        const el = $('su-bundle-three-mf');
+        if (!el.textContent) throw new Error('The 3MF importer bundle is not loaded.');
+        let source = el.textContent.trim();
+        if (el.dataset.suBundleEncoding === 'gzip-base64') {
+            const bytes = Uint8Array.from(atob(source), (c) => c.charCodeAt(0));
+            source = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+        }
+        const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+        try { return (await import(url)).workerSource; }
+        finally { URL.revokeObjectURL(url); }
+    })().catch((error) => { modelWorkerSourcePromise = undefined; throw error; });
+    return modelWorkerSourcePromise;
+}
+async function runModelJob(input, signal) {
+    const source = await modelWorkerSource();
+    if (signal?.aborted) throw new DOMException('Import cancelled', 'AbortError');
+    const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+    const worker = new Worker(url);
+    URL.revokeObjectURL(url);
+    return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => { cleanup(); reject(new Error('Model processing exceeded 30 seconds.')); }, 30000);
+        const cleanup = () => { clearTimeout(timeout); worker.terminate(); signal?.removeEventListener('abort', cancel); modelJobs.delete(cancel); };
+        const cancel = () => { cleanup(); reject(new DOMException('Import cancelled', 'AbortError')); };
+        modelJobs.add(cancel);
+        signal?.addEventListener('abort', cancel, { once: true });
+        worker.onmessage = ({ data }) => { cleanup(); if (data.error) reject(new Error(data.error)); else resolve(data); };
+        worker.onerror = () => { cleanup(); reject(new Error('The 3MF worker failed.')); };
+        worker.postMessage(input, input.buffer ? [input.buffer] : []);
+    });
+}
+async function parseColoredMesh(source) {
+    if (meshParseCache?.source === source.trim()) return meshParseCache.mesh;
+    const result = await runModelJob({ source });
+    Object.defineProperty(result.mesh, '__buffers', { value: { positions: result.positions, colors: result.colors } });
+    meshParseCache = { source: source.trim(), mesh: result.mesh };
+    return result.mesh;
+}
+window.addEventListener('pagehide', () => { for (const cancel of modelJobs) cancel(); });
 async function parseStlMesh(src) {
     if (stlParseCache?.source === src) return stlParseCache.data;
     if (!/^\s*solid\b/i.test(src) || !/\bendsolid\b/i.test(src)) throw new Error('Expected an ASCII STL solid.');
@@ -1115,6 +1165,8 @@ async function replaceDiagramBlock(codeEl, kind, forExport = true) {
         let data;
         if (kind === 'stl') {
             data = await parseStlMesh(src);
+        } else if (kind === 'su-mesh') {
+            data = await parseColoredMesh(src);
         } else {
             data = JSON.parse(src);
             if (kind === 'topojson') {
@@ -1143,7 +1195,7 @@ async function replaceDiagramBlock(codeEl, kind, forExport = true) {
         box.className = 'su-mermaid-error';
         const title = document.createElement('p');
         title.className = 'su-mermaid-error-title';
-        title.textContent = `Unable to render ${kind === 'stl' ? 'STL model' : `${kind} map`}`;
+        title.textContent = `Unable to render ${kind === 'stl' ? 'STL model' : kind === 'su-mesh' ? '3MF model' : `${kind} map`}`;
         const message = document.createElement('p');
         message.textContent = err?.message ?? String(err);
         box.append(title, message, pre.cloneNode(true));
@@ -1154,11 +1206,13 @@ async function replaceDiagramBlock(codeEl, kind, forExport = true) {
 // A single GPU buffer replaces thousands of SVG nodes for large meshes.
 function createStlGpu(canvas, mesh) {
     const gl = canvas.getContext('webgl', { antialias: true, preserveDrawingBuffer: true });
-    if (!gl) throw new Error('WebGL is required to display this large STL model.');
-    const binary = atob(mesh.positions);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    const positions = new Float32Array(bytes.buffer);
+    if (!gl) throw new Error('WebGL is required to display this model.');
+    const decode = (encoded) => {
+        const binary = atob(encoded), bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        return new Float32Array(bytes.buffer);
+    };
+    const positions = mesh.__buffers ? mesh.__buffers.positions.slice() : decode(mesh.positions);
     const center = mesh.min.map((value, axis) => (value + mesh.max[axis]) / 2);
     const span = Math.max(...mesh.max.map((value, axis) => value - mesh.min[axis]), 0.000001);
     for (let i = 0; i < positions.length; i++) positions[i] = (positions[i] - center[i % 3]) / span;
@@ -1168,15 +1222,16 @@ function createStlGpu(canvas, mesh) {
         return result;
     };
     const program = gl.createProgram();
-    gl.attachShader(program, shader(gl.VERTEX_SHADER, `attribute vec3 position; uniform vec4 view; uniform vec2 pan; varying vec3 point;
+    gl.attachShader(program, shader(gl.VERTEX_SHADER, `attribute vec3 position; attribute vec3 vertexColor; uniform vec4 view; uniform vec2 pan; varying vec3 point; varying vec3 surfaceColor;
         void main() { float cy=cos(view.x), sy=sin(view.x), cp=cos(view.y), sp=sin(view.y);
         vec3 p=vec3(position.x*cy+position.z*sy,position.y,-position.x*sy+position.z*cy);
-        p=vec3(p.x,p.y*cp-p.z*sp,p.y*sp+p.z*cp); point=p;
+        p=vec3(p.x,p.y*cp-p.z*sp,p.y*sp+p.z*cp); point=p; surfaceColor=vertexColor;
         gl_Position=vec4(p.x*view.z+pan.x,p.y*view.w+pan.y,-p.z*0.5,1.0); }`));
     const derivatives = gl.getExtension('OES_standard_derivatives');
-    gl.attachShader(program, shader(gl.FRAGMENT_SHADER, `${derivatives ? '#extension GL_OES_standard_derivatives : enable\n' : ''}precision mediump float; varying vec3 point; uniform float mode;
+    gl.attachShader(program, shader(gl.FRAGMENT_SHADER, `${derivatives ? '#extension GL_OES_standard_derivatives : enable\n' : ''}precision mediump float; varying vec3 point; varying vec3 surfaceColor; uniform float mode; uniform float colored;
         void main(){ float light=${derivatives ? 'abs(normalize(cross(dFdx(point),dFdy(point))).z)' : '0.7'};
         vec3 color=mix(vec3(0.12,0.42,0.72),vec3(0.42,0.72,0.94),light);
+        if(colored>0.5) color=surfaceColor*(0.65+0.35*light);
         if(mode>0.5) color=mix(vec3(0.3,0.2,0.85),vec3(0.9,0.65,0.1),light);
         gl_FragColor=vec4(color,1.0); }`));
     gl.linkProgram(program);
@@ -1184,6 +1239,12 @@ function createStlGpu(canvas, mesh) {
     gl.useProgram(program);
     const upload = (values) => { const buffer = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buffer); gl.bufferData(gl.ARRAY_BUFFER, values, gl.STATIC_DRAW); return buffer; };
     const solid = upload(positions);
+    const colorLocation = gl.getAttribLocation(program, 'vertexColor');
+    const colored = gl.getUniformLocation(program, 'colored');
+    let colorBuffer;
+    if (mesh.colors) {
+        colorBuffer = upload(mesh.__buffers?.colors ?? decode(mesh.colors));
+    }
     let wire;
     const location = gl.getAttribLocation(program, 'position'); gl.enableVertexAttribArray(location);
     const view = gl.getUniformLocation(program, 'view'), pan = gl.getUniformLocation(program, 'pan'), mode = gl.getUniformLocation(program, 'mode');
@@ -1199,6 +1260,10 @@ function createStlGpu(canvas, mesh) {
             wire = upload(edges);
         }
         gl.bindBuffer(gl.ARRAY_BUFFER, display === 'Wireframe' ? wire : solid); gl.vertexAttribPointer(location, 3, gl.FLOAT, false, 0, 0);
+        if (colorBuffer && display !== 'Wireframe') {
+            gl.enableVertexAttribArray(colorLocation); gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer); gl.vertexAttribPointer(colorLocation, 3, gl.FLOAT, false, 0, 0);
+        } else { gl.disableVertexAttribArray(colorLocation); gl.vertexAttrib3f(colorLocation, 0.15, 0.45, 0.75); }
+        gl.uniform1f(colored, colorBuffer ? 1 : 0);
         gl.uniform4f(view, yaw, pitch, 0.75 * zoom, 1.5 * zoom);
         gl.uniform2f(pan, panX / 400, -panY / 200); gl.uniform1f(mode, display === 'Surface angle' ? 1 : 0);
         gl.drawArrays(display === 'Wireframe' ? gl.LINES : gl.TRIANGLES, 0, positions.length / 3 * (display === 'Wireframe' ? 2 : 1));
@@ -1218,15 +1283,21 @@ function initDiagrams(root) {
         if (fig.__suDiagramReady) continue;
         fig.__suDiagramReady = true;
         const { data, source } = fig.__suPayload ?? JSON.parse(fig.querySelector('script[type="application/json"]').textContent);
-        const stl = fig.dataset.kind === 'stl';
+        const colored = fig.dataset.kind === 'su-mesh';
+        const stl = fig.dataset.kind === 'stl' || colored;
         const large = stl && !!data.positions;
         for (const el of fig.querySelectorAll(':scope > svg, :scope > canvas, :scope > figcaption, :scope > .su-diagram-controls')) el.remove();
         const svg = large ? document.createElement('canvas') : makeSvg('svg', { viewBox: '0 0 800 400' });
         svg.classList.add('su-diagram-view'); svg.tabIndex = 0; svg.setAttribute('role', 'img');
-        svg.setAttribute('aria-label', stl ? 'Interactive STL model. Arrow keys rotate. Shift and arrow keys pan. Plus and minus zoom.' : 'Interactive map. Arrow keys pan. Plus and minus zoom.');
-        const gpu = large ? createStlGpu(svg, data) : null;
+        svg.setAttribute('aria-label', stl ? `Interactive ${colored ? '3MF' : 'STL'} model. Arrow keys rotate. Shift and arrow keys pan. Plus and minus zoom.` : 'Interactive map. Arrow keys pan. Plus and minus zoom.');
+        let gpu;
+        try { gpu = large ? createStlGpu(svg, data) : null; }
+        catch (error) {
+            svg.getContext('webgl')?.getExtension('WEBGL_lose_context')?.loseContext();
+            const message = document.createElement('p'); message.textContent = error.message;
+            fig.appendChild(message); continue;
+        }
         const caption = document.createElement('figcaption');
-        caption.textContent = stl ? `${large ? data.count : data.length} triangles. Drag to rotate. Shift-drag or Shift + arrows to pan. + / − to zoom.` : 'Drag to pan; use + / − to zoom. Map tiles © OpenStreetMap contributors.';
         if (!stl) {
             const attribution = document.createElement('a');
             attribution.href = 'https://www.openstreetmap.org/copyright'; attribution.target = '_blank'; attribution.rel = 'noopener';
@@ -1407,20 +1478,29 @@ function initDiagrams(root) {
         });
         fig.prepend(svg);
         const details = fig.querySelector('details');
-        fig.insertBefore(caption, details);
+        if (!stl) fig.insertBefore(caption, details);
         fig.insertBefore(controls, details);
         draw();
         if (large && !fig.isConnected) {
+            fig.querySelector('.su-stl-snapshot')?.remove();
             const snapshot = document.createElement('img'); snapshot.className = 'su-stl-snapshot'; snapshot.alt = 'STL model';
             snapshot.src = svg.toDataURL('image/png'); fig.appendChild(snapshot);
         }
         if (large) {
             let frame, resize;
+            const printSnapshot = () => {
+                draw();
+                let snapshot = fig.querySelector('.su-stl-snapshot');
+                if (!snapshot) { snapshot = document.createElement('img'); snapshot.className = 'su-stl-snapshot'; snapshot.alt = colored ? '3MF model' : 'STL model'; fig.appendChild(snapshot); }
+                snapshot.src = svg.toDataURL('image/png');
+            };
+            window.addEventListener('beforeprint', printSnapshot);
             if (fig.isConnected) {
                 resize = new ResizeObserver(() => { cancelAnimationFrame(frame); frame = requestAnimationFrame(draw); });
                 resize.observe(svg);
             }
             fig.__suDispose = () => {
+                window.removeEventListener('beforeprint', printSnapshot);
                 cancelAnimationFrame(frame); resize?.disconnect();
                 svg.getContext('webgl')?.getExtension('WEBGL_lose_context')?.loseContext();
             };
@@ -1604,12 +1684,12 @@ function enhanceHeadingAnchors(root) {
 
 async function render(md, forExport = true) {
     const el = document.createElement('div');
-    // Direct STL imports are one fence. Avoid escaping and reparsing tens of
+    // Direct model imports are one fence. Avoid escaping and reparsing tens of
     // megabytes through marked and the HTML parser just to recover the source.
-    const standaloneStl = md.length > 1000000 && md.match(/^(`{3,})stl\r?\n([\s\S]*)\r?\n\1\s*$/);
-    if (standaloneStl) {
+    const standaloneModel = md.length > 1000000 && md.match(/^(`{3,})(stl|su-mesh)\r?\n([\s\S]*)\r?\n\1\s*$/);
+    if (standaloneModel) {
         const pre = document.createElement('pre'), code = document.createElement('code');
-        code.className = 'language-stl'; code.textContent = standaloneStl[2]; pre.appendChild(code); el.appendChild(pre);
+        code.className = `language-${standaloneModel[2]}`; code.textContent = standaloneModel[3]; pre.appendChild(code); el.appendChild(pre);
     } else el.innerHTML = marked.parse(md);
     let deadline = performance.now() + 50;
     for (const block of el.querySelectorAll('pre code')) {
@@ -1619,7 +1699,7 @@ async function render(md, forExport = true) {
             continue;
         }
         const diagramKind = langCls?.slice('language-'.length).toLowerCase();
-        if (['geojson', 'topojson', 'stl'].includes(diagramKind)) {
+        if (['geojson', 'topojson', 'stl', 'su-mesh'].includes(diagramKind)) {
             await replaceDiagramBlock(block, diagramKind, forExport);
             continue;
         }
@@ -1713,6 +1793,7 @@ function scheduleRender() {
 
 let pendingEditorText = null;
 function setMarkdown(text) {
+    cancelFileImport();
     if (text.length > 1000000 && viewMode !== 'edit') {
         pendingEditorText = text;
         markdown = text;
@@ -1730,6 +1811,7 @@ function setMarkdown(text) {
 }
 
 window.__suOnEditorChange = (text) => {
+    cancelFileImport();
     markdown = text;
     scheduleRender();
 };
@@ -1999,10 +2081,37 @@ async function stlFileToAscii(buffer) {
 }
 
 let fileImportGeneration = 0;
+let fileImportAbort;
+function cancelFileImport() {
+    fileImportGeneration++;
+    fileImportAbort?.abort(); fileImportAbort = null;
+    $('modelImportStatus').hidden = true;
+    els.previewPane.removeAttribute('aria-busy');
+}
+$('cancelModelImport').addEventListener('click', () => { cancelFileImport(); setExportEnabled(!!markdown.trim()); });
 async function handleFile(file) {
+    cancelFileImport();
     const generation = ++fileImportGeneration;
+    const abort = new AbortController(); fileImportAbort = abort;
     try {
         const stl = /\.stl$/i.test(file.name);
+        if (/\.3mf$/i.test(file.name)) {
+            $('modelImportStatus').hidden = false;
+            els.previewPane.setAttribute('aria-busy', 'true');
+            setExportEnabled(false);
+            if (file.size > 128 * 1024 * 1024) throw new Error('3MF archive exceeds 128 MiB.');
+            const buffer = await file.arrayBuffer();
+            if (generation !== fileImportGeneration) return;
+            const result = await runModelJob({ buffer }, abort.signal);
+            if (generation !== fileImportGeneration) return;
+            Object.defineProperty(result.mesh, '__buffers', { value: { positions: result.positions, colors: result.colors } });
+            meshParseCache = { source: result.source, mesh: result.mesh };
+            filename = file.name.replace(/\.3mf$/i, '');
+            setMarkdown(`\`\`\`su-mesh\n${result.source}\n\`\`\`\n`);
+            setViewMode('preview');
+            if (result.mesh.warnings.length) toast(result.mesh.warnings.join(' '));
+            return;
+        }
         const raw = stl ? await stlFileToAscii(await file.arrayBuffer()) : await file.text();
         if (generation !== fileImportGeneration) return;
         filename = file.name.replace(/\.(?:html?|stl)$/i, '').replace(MD_FILE_EXT, '');
@@ -2017,6 +2126,8 @@ async function handleFile(file) {
         setViewMode('preview');
     } catch (err) {
         if (generation === fileImportGeneration) toast(`Failed to open file: ${err?.message ?? err}`);
+    } finally {
+        if (fileImportAbort === abort) { cancelFileImport(); setExportEnabled(!!markdown.trim()); }
     }
 }
 
@@ -2031,6 +2142,7 @@ els.fileInput.addEventListener('change', (e) => {
 
 els.emptyWriteBtn.addEventListener('click', () => setViewMode('edit'));
 els.emptyExampleBtn.addEventListener('click', () => {
+    cancelFileImport();
     filename = 'Markdown Preview';
     setMarkdown(EXAMPLE_MD);
 });
@@ -2051,6 +2163,7 @@ function extractEmbeddedMarkdown(text) {
 }
 
 async function loadFromUrl(url) {
+    cancelFileImport();
     // Clear the hydration loading state if a load fails without producing content.
     const fail = (msg) => {
         toast(msg);

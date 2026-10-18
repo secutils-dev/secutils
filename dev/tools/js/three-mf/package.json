@@ -1,0 +1,9 @@
+{
+  "name": "@secutils-dev/three-mf-browser",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "node build.mjs", "test": "node --test src/import.test.mjs" },
+  "dependencies": { "fflate": "0.8.3", "saxes": "6.0.0" },
+  "devDependencies": { "esbuild": "0.25.12" }
+}
