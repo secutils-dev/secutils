@@ -38,7 +38,7 @@ available on demand.
   Pan controls sit beside zoom. Shift-drag or Shift + arrow keys also pan the model without rotation.
 - **Copy source** - each map and STL viewer has an overlay button that copies the original fenced source.
 - Maps and models retain their SVG or WebGL view and controls in exported HTML without external runtime dependencies.
-  PDF exports use the initial static view. Invalid blocks display an error and preserve their source.
+  PDF exports use the saved static view. Invalid blocks display an error and preserve their source.
 - Map basemap tiles require a network connection. Geometry remains visible and interactive without tiles.
   Tile requests go directly from the browser to OpenStreetMap and reveal the displayed geographic area.
 - **KaTeX math** - inline `$E = mc^2$` and display `$$ … $$` / `\[ … \]`.
@@ -101,6 +101,40 @@ name used for the page title and downloaded filenames.
 - **Reading settings in exported HTML** - readers can change the width or
   restore the document default from the toolbar. Their choice lasts for the
   current page visit; reloading restores the width selected at export time.
+
+## Saved model views
+
+STL and 3MF viewers have a **Save current view to source** button (disk icon).
+Rotate, pan, zoom, or select a display mode. Then click this button before export.
+Preview, HTML, PDF, Markdown downloads, and share links use the saved view.
+Later navigation changes the current view until you save again. Reset view restores the saved rotation, pan, and zoom.
+
+View settings are optional JSON metadata on the opening fence:
+
+````markdown
+```stl view={"yaw":-0.6,"pitch":0.5,"zoom":1,"panX":0,"panY":0,"mode":"Solid"}
+solid model
+...
+endsolid model
+```
+````
+
+The same syntax works with `su-mesh` instead of `stl`. The mesh JSON body remains unchanged.
+This metadata is specific to Secutils.dev. It controls the viewer, not the model geometry or imported component transforms.
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `yaw` | `-0.6` | Rotation around the viewer Y-axis, in radians |
+| `pitch` | `0.5` | Rotation around the viewer X-axis, in radians, after yaw |
+| `zoom` | `1` | Scale multiplier, from `0.1` to `20` |
+| `panX` | `0` | Horizontal offset in an 800×400 reference viewport, positive right |
+| `panY` | `0` | Vertical offset in the reference viewport, positive down |
+| `mode` | `Solid` | `Solid`, `Wireframe`, or `Surface angle` |
+
+Partial settings use defaults for omitted fields. Rotation and pan values must be finite and within ±1,000,000.
+Invalid settings display an error and preserve the source.
+The save button updates only its model fence and appears in the editable tool preview.
+Exported HTML readers can navigate but cannot modify the original Markdown.
 
 ## Open paths
 

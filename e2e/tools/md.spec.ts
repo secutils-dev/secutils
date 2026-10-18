@@ -484,12 +484,17 @@ endsolid corner
     await model.getByRole('button', { name: 'Wireframe', exact: true }).click();
     await model.getByRole('button', { name: 'Pan right', exact: true }).click();
     await model.getByRole('button', { name: 'Reset view' }).click();
+    await model.getByRole('button', { name: 'Rotate right', exact: true }).click();
+    const savedView = await model.getAttribute('data-current-view');
+    await model.getByRole('button', { name: 'Save current view to source' }).click();
+    await expect(model).toHaveAttribute('data-view', savedView!);
     await page.getByRole('button', { name: 'Source', exact: true }).click();
     await expect(page.locator('.editor-fallback')).toBeVisible();
     await page.getByRole('button', { name: 'Preview', exact: true }).click();
     await page.getByRole('button', { name: 'HTML', exact: true }).click();
     const exported = page.frameLocator('#htmlPreview');
     await expect(exported.locator('figure canvas')).toBeVisible({ timeout: 15000 });
+    await expect(exported.locator('figure')).toHaveAttribute('data-view', savedView!);
     await expect(exported.locator('.su-stl-snapshot')).toHaveAttribute('src', /^data:image\/png/);
     await exported.getByRole('button', { name: 'Surface angle', exact: true }).click();
     await page.emulateMedia({ media: 'print' });
@@ -667,6 +672,90 @@ endsolid corner
     await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 1000)));
     await expect(page.locator('#previewArticle h1')).toContainText('Edited during import');
     await expect(page.locator('figure[data-kind="su-mesh"]')).toHaveCount(0);
+  });
+
+  test('saved STL and 3MF views persist in source, HTML, and PDF', async ({ page }) => {
+    await page.goto(tool.path);
+    const stl =
+      'solid triangle\nfacet normal 0 0 1\nouter loop\nvertex 0 0 0\nvertex 1 0 0\nvertex 0 1 0\nendloop\nendfacet\nendsolid triangle';
+    await setMarkdown(page, `# Models\n\n\`\`\`stl\n${stl}\n\`\`\`\n\n\`\`\`stl\n${stl}\n\`\`\`\n`);
+    const models = page.locator('#previewArticle figure[data-kind="stl"]');
+    await expect(models).toHaveCount(2);
+    const second = models.nth(1);
+    await second.getByRole('button', { name: 'Rotate right', exact: true }).click();
+    await second.getByRole('button', { name: 'Pan right', exact: true }).click();
+    await second.getByRole('button', { name: 'Zoom in', exact: true }).click();
+    await second.getByRole('button', { name: 'Wireframe', exact: true }).click();
+    const rotated = await second.locator('polygon').getAttribute('points');
+    await second.getByRole('button', { name: 'Save current view to source' }).click();
+    await expect(page.locator('#toast')).toContainText('Current view saved to source');
+    await expect(second.locator('polygon')).toHaveAttribute('points', rotated!);
+    await expect(second.getByRole('button', { name: 'Wireframe', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    const source = await page.evaluate(() =>
+      (window as unknown as { __suEditorAPI: { getText(): string } }).__suEditorAPI.getText(),
+    );
+    expect(source).toContain(`\`\`\`stl\n${stl}`);
+    expect(source).toContain(
+      'stl view={"yaw":-0.39999999999999997,"pitch":0.5,"zoom":1.25,"panX":20,"panY":0,"mode":"Wireframe"}',
+    );
+    expect(source.match(/view=/g)).toHaveLength(1);
+    await page.getByRole('button', { name: 'HTML', exact: true }).click();
+    const htmlModels = page.frameLocator('#htmlPreview').locator('figure[data-kind="stl"]');
+    await expect(htmlModels.nth(1).locator('polygon')).toHaveAttribute('points', rotated!);
+    await expect(htmlModels.getByRole('button', { name: 'Save current view to source' })).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Preview', exact: true }).click();
+    await page.locator('#fileInput').setInputFiles(modelFixture('face-colors'));
+    const colored = page.locator('#previewArticle figure[data-kind="su-mesh"]');
+    await expect(colored.locator('canvas')).toBeVisible();
+    await colored.getByRole('button', { name: 'Rotate right', exact: true }).click();
+    await colored.getByRole('button', { name: 'Pan down', exact: true }).click();
+    await colored.getByRole('button', { name: 'Zoom in', exact: true }).click();
+    await colored.getByRole('button', { name: 'Surface angle', exact: true }).click();
+    const view = await colored.getAttribute('data-current-view');
+    await colored.getByRole('button', { name: 'Save current view to source' }).click();
+    await expect(colored).toHaveAttribute('data-view', view!);
+    await page.getByRole('button', { name: 'HTML', exact: true }).click();
+    const exported = page.frameLocator('#htmlPreview').locator('figure[data-kind="su-mesh"]');
+    await expect(exported).toHaveAttribute('data-current-view', view!);
+    const snapshot = await exported.locator('.su-stl-snapshot').getAttribute('src');
+    await page.getByRole('button', { name: 'Preview', exact: true }).click();
+    // Stub pagination/printing only; exercise the real PDF document generation.
+    await page.route('**/paged.polyfill.js', (route) =>
+      route.fulfill({
+        contentType: 'text/javascript',
+        body: 'window.__suPdfReady = true; window.print = () => {};',
+      }),
+    );
+    await page.getByRole('button', { name: 'Export', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Download PDF' }).click();
+    const pdf = page.frameLocator('iframe[aria-hidden="true"]');
+    await expect(pdf.locator('figure .su-stl-snapshot')).toHaveAttribute('src', snapshot!);
+    await expect(pdf.locator('figure')).toHaveAttribute('data-view', view!);
+    await expect(pdf.locator('figure figcaption')).toHaveCount(0);
+  });
+
+  test('source view metadata accepts partial settings and rejects invalid model views', async ({ page }) => {
+    await page.goto(tool.path);
+    const stl =
+      'solid triangle\nfacet normal 0 0 1\nouter loop\nvertex 0 0 0\nvertex 1 0 0\nvertex 0 1 0\nendloop\nendfacet\nendsolid triangle';
+    await setMarkdown(page, `~~~stl view={"yaw":1,"panY":25}\n${stl}\n~~~`);
+    const model = page.locator('#previewArticle figure[data-kind="stl"]');
+    await expect(model).toHaveAttribute('data-view', /"yaw":1/);
+    await model.getByRole('button', { name: 'Save current view to source' }).click();
+    await expect(page.locator('#toast')).toContainText('Current view saved to source');
+    const source = await page.evaluate(() =>
+      (window as unknown as { __suEditorAPI: { getText(): string } }).__suEditorAPI.getText(),
+    );
+    expect(source).toMatch(/^~~~stl view=/);
+    for (const view of ['{"zoom":0}', '{"yaw":"bad"}', '{"mode":"unknown"}', '{"other":1}', 'broken']) {
+      await setMarkdown(page, `\`\`\`stl view=${view}\n${stl}\n\`\`\`\n\n## Later`);
+      await expect(page.locator('#previewArticle .su-mermaid-error')).toBeVisible();
+      await expect(page.locator('#previewArticle h2')).toContainText('Later');
+    }
   });
 
   test('invalid map and STL fences preserve source and later content', async ({ page }) => {

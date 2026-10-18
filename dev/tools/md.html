@@ -1118,6 +1118,27 @@ async function parseColoredMesh(source) {
     return result.mesh;
 }
 window.addEventListener('pagehide', () => { for (const cancel of modelJobs) cancel(); });
+
+// Fence metadata is tool-specific; geometry remains unchanged in the fence body.
+function normalizeModelView(value = {}) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Model view must be a JSON object.');
+    const defaults = { yaw: -0.6, pitch: 0.5, zoom: 1, panX: 0, panY: 0, mode: 'Solid' };
+    const view = { ...defaults, ...value };
+    if (Object.keys(value).some((key) => !(key in defaults))) throw new Error('Unknown model view setting.');
+    for (const key of ['yaw', 'pitch', 'zoom', 'panX', 'panY']) {
+        if (!Number.isFinite(view[key])) throw new Error(`Model view ${key} must be a finite number.`);
+    }
+    if (view.zoom < 0.1 || view.zoom > 20) throw new Error('Model view zoom must be from 0.1 to 20.');
+    if (Math.abs(view.yaw) > 1000000 || Math.abs(view.pitch) > 1000000 || Math.abs(view.panX) > 1000000 || Math.abs(view.panY) > 1000000) throw new Error('Model view rotation or pan exceeds the supported range.');
+    if (!['Solid', 'Wireframe', 'Surface angle'].includes(view.mode)) throw new Error('Unknown model view mode.');
+    return view;
+}
+function parseModelView(info) {
+    const metadata = info.trim().replace(/^(?:stl|su-mesh)\b/i, '').trim();
+    if (!metadata) return normalizeModelView();
+    if (!metadata.startsWith('view=')) throw new Error('Expected model fence metadata: view={...}');
+    return normalizeModelView(JSON.parse(metadata.slice(5)));
+}
 async function parseStlMesh(src) {
     if (stlParseCache?.source === src) return stlParseCache.data;
     if (!/^\s*solid\b/i.test(src) || !/\bendsolid\b/i.test(src)) throw new Error('Expected an ASCII STL solid.');
@@ -1182,6 +1203,10 @@ async function replaceDiagramBlock(codeEl, kind, forExport = true) {
         const fig = document.createElement('figure');
         fig.className = 'su-diagram';
         fig.dataset.kind = kind;
+        if (kind === 'stl' || kind === 'su-mesh') {
+            fig.dataset.view = JSON.stringify(parseModelView(codeEl.dataset.modelInfo ?? kind));
+            if (codeEl.__suSourceRange) fig.__suSourceRange = codeEl.__suSourceRange;
+        }
         const payload = document.createElement('script');
         payload.type = 'application/json';
         if (forExport || !data.positions) payload.textContent = JSON.stringify({ data, source: src }).replace(/</g, '\\u003c');
@@ -1315,7 +1340,10 @@ function initDiagrams(root) {
             const latitude = Math.max(-85.05112878, Math.min(85.05112878, point[1])) * Math.PI / 180;
             return [(point[0] + 180) / 360, (1 - Math.log(Math.tan(Math.PI / 4 + latitude / 2)) / Math.PI) / 2];
         };
-        let zoom = 1, panX = 0, panY = 0, yaw = -0.6, pitch = 0.5, mode = 'Solid';
+        const initial = { yaw: -0.6, pitch: 0.5, zoom: 1, panX: 0, panY: 0, mode: 'Solid', ...(stl && fig.dataset.view ? JSON.parse(fig.dataset.view) : {}) };
+        let { zoom, panX, panY, yaw, pitch, mode } = initial;
+        const currentView = () => ({ yaw, pitch, zoom, panX, panY, mode });
+        fig.__suGetView = currentView;
         const features = [];
         const allPoints = [];
         const collectGeometry = (geometry, properties = {}) => {
@@ -1359,6 +1387,7 @@ function initDiagrams(root) {
             return [400 + panX + x * baseScale * zoom, 200 + panY + y * baseScale * zoom, z * baseScale * zoom];
         };
         const draw = () => {
+            if (stl) fig.dataset.currentView = JSON.stringify(currentView());
             if (gpu) { gpu(yaw, pitch, zoom, panX, panY, mode); return; }
             svg.replaceChildren();
             if (stl) {
@@ -1419,13 +1448,18 @@ function initDiagrams(root) {
         const scale = (factor) => { zoom = Math.max(0.1, Math.min(20, zoom * factor)); };
         button('Zoom in', () => scale(1.25), navigation, '<path d="M12 5v14M5 12h14"/>');
         button('Zoom out', () => scale(0.8), navigation, '<path d="M5 12h14"/>');
-        button('Reset view', () => { zoom = 1; panX = panY = 0; yaw = -0.6; pitch = 0.5; }, navigation, '<path d="M4 10a8 8 0 1 1 1 8M4 4v6h6"/>');
+        button('Reset view', () => { ({ zoom, panX, panY, yaw, pitch } = initial); }, navigation, '<path d="M4 10a8 8 0 1 1 1 8M4 4v6h6"/>');
         const announce = (text) => {
             fig.querySelector('.su-diagram-status')?.remove();
             const status = document.createElement('span');
             status.className = 'su-diagram-status'; status.setAttribute('role', 'status'); status.textContent = text;
             fig.appendChild(status); setTimeout(() => status.remove(), 2200);
         };
+        if (stl && fig.__suSourceRange) {
+            button('Save current view to source', () => {
+                fig.dispatchEvent(new CustomEvent('su-save-model-view', { bubbles: true, detail: currentView() }));
+            }, actions, '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M7 3v6h10V4M7 21v-8h10v8"/>');
+        }
         button('Copy source', async () => {
             try { await navigator.clipboard.writeText(source); announce('Copied to clipboard'); }
             catch { announce('Failed to copy'); }
@@ -1458,7 +1492,7 @@ function initDiagrams(root) {
             button('Rotate right', () => move(20, 0), rotation, '<path d="m10 5 7 7-7 7"/>');
             button('Rotate up', () => move(0, -20), rotation, '<path d="m5 14 7-7 7 7"/>');
             button('Rotate down', () => move(0, 20), rotation, '<path d="m5 10 7 7 7-7"/>');
-            button('Reset rotation', () => { yaw = -0.6; pitch = 0.5; }, rotation, '<path d="M4 10a8 8 0 1 1 1 8M4 4v6h6"/>');
+            button('Reset rotation', () => { yaw = initial.yaw; pitch = initial.pitch; }, rotation, '<path d="M4 10a8 8 0 1 1 1 8M4 4v6h6"/>');
         }
         let pointer;
         svg.addEventListener('pointerdown', (event) => { if (event.button !== 0) return; pointer = [event.clientX, event.clientY]; svg.setPointerCapture(event.pointerId); });
@@ -1686,11 +1720,34 @@ async function render(md, forExport = true) {
     const el = document.createElement('div');
     // Direct model imports are one fence. Avoid escaping and reparsing tens of
     // megabytes through marked and the HTML parser just to recover the source.
-    const standaloneModel = md.length > 1000000 && md.match(/^(`{3,})(stl|su-mesh)\r?\n([\s\S]*)\r?\n\1\s*$/);
+    const standaloneModel = md.length > 1000000 && md.match(/^(`{3,})(stl|su-mesh)([^\r\n]*)\r?\n([\s\S]*)\r?\n\1\s*$/);
     if (standaloneModel) {
         const pre = document.createElement('pre'), code = document.createElement('code');
-        code.className = `language-${standaloneModel[2]}`; code.textContent = standaloneModel[3]; pre.appendChild(code); el.appendChild(pre);
-    } else el.innerHTML = marked.parse(md);
+        code.className = `language-${standaloneModel[2]}`; code.textContent = standaloneModel[4];
+        code.dataset.modelInfo = `${standaloneModel[2]}${standaloneModel[3]}`;
+        if (!forExport) code.__suSourceRange = { start: standaloneModel[1].length, end: md.indexOf('\n'), fence: standaloneModel[1] };
+        pre.appendChild(code); el.appendChild(pre);
+    } else {
+        let sourceCursor = 0;
+        const renderer = new marked.Renderer();
+        const defaultCode = renderer.code;
+        renderer.code = function (token) {
+            if (!/^(?:stl|su-mesh)(?:\s|$)/i.test(token.lang ?? '')) return defaultCode.call(this, token);
+            const start = md.indexOf(token.raw, sourceCursor);
+            const opening = token.raw.match(/^ {0,3}(`{3,}|~{3,})([^\r\n]*)\r?\n/);
+            let range = '';
+            if (start >= 0 && opening) {
+                sourceCursor = start + token.raw.length;
+                const infoStart = start + opening[0].indexOf(opening[1]) + opening[1].length;
+                if (!forExport) range = ` data-model-range="${escHTML(JSON.stringify({ start: infoStart, end: start + opening[0].length - (opening[0].endsWith('\r\n') ? 2 : 1), fence: opening[1] })).replace(/"/g, '&quot;')}"`;
+            }
+            return `<pre><code class="language-${token.lang.split(/\s/)[0].toLowerCase()}" data-model-info="${escHTML(token.lang).replace(/"/g, '&quot;')}"${range}>${escHTML(token.text)}</code></pre>`;
+        };
+        el.innerHTML = marked.parse(md, { renderer });
+        for (const code of el.querySelectorAll('code[data-model-range]')) {
+            code.__suSourceRange = JSON.parse(code.dataset.modelRange); delete code.dataset.modelRange;
+        }
+    }
     let deadline = performance.now() + 50;
     for (const block of el.querySelectorAll('pre code')) {
         const langCls = [...block.classList].find((c) => c.startsWith('language-'));
@@ -1720,6 +1777,18 @@ async function render(md, forExport = true) {
     for (const fig of el.querySelectorAll('.su-diagram')) fig.__suDispose?.();
     return html;
 }
+
+els.previewArticle.addEventListener('su-save-model-view', (event) => {
+    const fig = event.target.closest('figure.su-diagram');
+    const range = fig?.__suSourceRange;
+    if (!range || fig.__suDocument !== markdown) { toast('The document changed. Save the view after the preview updates.'); return; }
+    try {
+        const view = normalizeModelView(event.detail);
+        const info = `${fig.dataset.kind} view=${JSON.stringify(view)}`;
+        setMarkdown(`${markdown.slice(0, range.start)}${info}${markdown.slice(range.end)}`);
+        toast('Current view saved to source');
+    } catch (error) { toast(error.message); }
+});
 
 function stripFrontmatter(md) {
     const m = md.match(FRONTMATTER_RE);
@@ -1766,6 +1835,7 @@ async function updatePreview() {
     if (markdown.length > 1000000) await yieldToMain();
     if (generation !== previewGeneration) return;
     for (const fig of els.previewArticle.querySelectorAll('.su-diagram')) fig.__suDispose?.();
+    for (const fig of content.querySelectorAll('figure.su-diagram')) fig.__suDocument = markdown;
     els.previewArticle.replaceChildren(...content.childNodes);
     initDiagrams(els.previewArticle);
     updatePanes();

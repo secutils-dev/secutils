@@ -70,6 +70,8 @@ Source and Copy source expose the fence body. Markdown downloads retain the comp
 HTML exports embed mesh data, the renderer, and a static color image for print.
 They do not embed the importer. PDF uses that static image.
 The fence is specific to Secutils.dev and is not GitHub-compatible.
+Optional `view={...}` metadata on the opening `su-mesh` fence stores the viewer settings independently of the geometry JSON.
+The same metadata works with `stl` fences. The full schema is in [`md.skill.md`](../../md.skill.md#saved-model-views).
 
 ## Local performance check
 
