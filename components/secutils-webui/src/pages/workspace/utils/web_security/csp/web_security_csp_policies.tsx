@@ -267,8 +267,8 @@ export default function WebSecurityContentSecurityPolicies() {
               render: (_, item: ContentSecurityPolicy) => (
                 <EntityName
                   name={item.name}
-                  href={getWorkspaceEntityLink(UTIL_HANDLES.webSecurityCsp, item.id)}
                   tags={item.tags}
+                  href={getWorkspaceEntityLink(UTIL_HANDLES.webSecurityCsp, item.id)}
                 />
               ),
             },

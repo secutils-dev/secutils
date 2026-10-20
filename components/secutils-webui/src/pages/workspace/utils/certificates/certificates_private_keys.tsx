@@ -263,8 +263,8 @@ export default function CertificatesPrivateKeys() {
               render: (_, privateKey: PrivateKey) => (
                 <EntityName
                   name={privateKey.name}
-                  href={getWorkspaceEntityLink(UTIL_HANDLES.certificatesPrivateKeys, privateKey.id)}
                   tags={privateKey.tags}
+                  href={getWorkspaceEntityLink(UTIL_HANDLES.certificatesPrivateKeys, privateKey.id)}
                 />
               ),
             },

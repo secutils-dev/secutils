@@ -1,8 +1,9 @@
-import { EuiBadge, EuiButtonIcon, EuiNotificationBadge, EuiPopover, EuiSelectable, useEuiTheme } from '@elastic/eui';
+import { EuiButtonIcon, EuiNotificationBadge, EuiPopover, EuiSelectable, useEuiTheme } from '@elastic/eui';
 import type { EuiSelectableOption } from '@elastic/eui';
 import { css } from '@emotion/react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { TagDot } from './tag_dot';
 import { useUserTags } from '../../../hooks';
 
 export interface TagScopeSelectorProps {
@@ -27,7 +28,7 @@ export function TagScopeSelector({ selectedTagIds, onChange }: TagScopeSelectorP
         label: tag.name,
         key: tag.id,
         checked: selectedTagIds.includes(tag.id) ? 'on' : undefined,
-        prepend: <EuiBadge color={tag.color}>{'\u00A0'}</EuiBadge>,
+        prepend: <TagDot color={tag.color} size={10} />,
       })),
     [allTags, selectedTagIds],
   );

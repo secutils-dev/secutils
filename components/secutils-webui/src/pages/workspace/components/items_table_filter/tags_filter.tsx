@@ -1,8 +1,9 @@
-import { EuiBadge, EuiFilterButton, EuiFilterGroup, EuiFlexItem, EuiPopover, EuiSelectable } from '@elastic/eui';
+import { EuiFilterButton, EuiFilterGroup, EuiFlexItem, EuiPopover, EuiSelectable } from '@elastic/eui';
 import type { EuiSelectableOption } from '@elastic/eui';
 import { useCallback, useMemo, useState } from 'react';
 
 import type { EntityTag } from '../../../../model';
+import { TagDot } from '../tag_dot';
 
 export interface TagsFilterProps {
   tags: EntityTag[];
@@ -19,7 +20,7 @@ export function TagsFilter({ tags, selectedTagIds, onSelectedTagIdsChange }: Tag
         label: tag.name,
         key: tag.id,
         checked: selectedTagIds.includes(tag.id) ? 'on' : undefined,
-        prepend: <EuiBadge color={tag.color}>{'\u00A0'}</EuiBadge>,
+        prepend: <TagDot color={tag.color} size={10} />,
       })),
     [tags, selectedTagIds],
   );

@@ -291,8 +291,8 @@ export default function CertificatesCertificateTemplates() {
               render: (_, template) => (
                 <EntityName
                   name={template.name}
-                  href={getWorkspaceEntityLink(UTIL_HANDLES.certificatesCertificateTemplates, template.id)}
                   tags={template.tags}
+                  href={getWorkspaceEntityLink(UTIL_HANDLES.certificatesCertificateTemplates, template.id)}
                 />
               ),
             },
