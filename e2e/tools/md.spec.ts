@@ -92,8 +92,8 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     await expect(preview.locator('button')).toHaveText(['Click']);
     await expect(preview.locator('em')).toHaveText(['HTML']);
     await expect(preview.locator('br')).toHaveCount(1);
-    await expect(preview.locator(':scope > h2')).toContainText('Next section');
-    await expect(preview.locator(':scope > ul > li')).toHaveText(['A later item']);
+    await expect(preview.locator(':scope > .su-block > h2')).toContainText('Next section');
+    await expect(preview.locator(':scope > .su-block > ul > li')).toHaveText(['A later item']);
 
     await page.getByRole('button', { name: 'HTML', exact: true }).click();
     const exported = page.frameLocator('#htmlPreview').locator('article');
@@ -489,7 +489,7 @@ endsolid corner
     await model.getByRole('button', { name: 'Save current view to source' }).click();
     await expect(model).toHaveAttribute('data-view', savedView!);
     await page.getByRole('button', { name: 'Source', exact: true }).click();
-    await expect(page.locator('.editor-fallback')).toBeVisible();
+    await expect(page.locator('#editorMount :is(.cm-editor, .editor-fallback)')).toBeVisible();
     await page.getByRole('button', { name: 'Preview', exact: true }).click();
     await page.getByRole('button', { name: 'HTML', exact: true }).click();
     const exported = page.frameLocator('#htmlPreview');
@@ -769,6 +769,154 @@ endsolid corner
     await expect(page.locator('#previewArticle .su-mermaid-error')).toHaveCount(3);
     await expect(page.locator('#previewArticle pre')).toHaveCount(3);
     await expect(page.locator('#previewArticle h2')).toContainText('Still readable');
+  });
+
+  test('preview block edits splice the source, undo, and survive a reload', async ({ page }) => {
+    const md = [
+      '# Review',
+      '',
+      '## 1. First',
+      '',
+      'Keep this paragraph.',
+      '',
+      '- [ ] Task A',
+      '- [ ] Task B',
+      '',
+      '## 2. Second',
+      '',
+      'Second body.',
+      '',
+      '## 3. Third',
+      '',
+      'Third body.',
+      '',
+    ].join('\n');
+    await page.goto(tool.path);
+    await setMarkdown(page, md);
+    const source = () => page.evaluate(() => (window as unknown as { __suEditorAPI: { getText(): string } }).__suEditorAPI.getText());
+    const article = page.locator('#previewArticle');
+    const blockAction = async (block: ReturnType<typeof article.locator>, name: string) => {
+      await block.hover();
+      await page.locator('#blockGripBtn').click();
+      await page.getByRole('menuitem', { name, exact: true }).click();
+    };
+
+    // Toggling a checkbox changes exactly one character.
+    await article.locator('li', { hasText: 'Task A' }).locator('input[type="checkbox"]').click();
+    let expected = md.replace('- [ ] Task A', '- [x] Task A');
+    await expect.poll(source).toBe(expected);
+    await expect(page.locator('#docStats')).toContainText('4 of 5 left');
+
+    // Done on a heading strikes it through and collapses its section.
+    await blockAction(article.locator('h2', { hasText: '2. Second' }), 'Mark done');
+    expected = expected.replace('## 2. Second', '## ~~2. Second~~');
+    await expect.poll(source).toBe(expected);
+    await expect(article.getByText('Second body.')).toBeHidden();
+    await expect(page.locator('#docStats')).toContainText('3 of 5 left');
+
+    // Deleting a section leaves every other byte untouched, and undo restores it.
+    await blockAction(article.locator('h2', { hasText: '3. Third' }), 'Delete section');
+    await expect.poll(source).toBe(expected.replace('\n## 3. Third\n\nThird body.\n', ''));
+    await page.locator('#docTitle').click();
+    await page.keyboard.press('ControlOrMeta+z');
+    await expect.poll(source).toBe(expected);
+
+    // Double-click edits a block as Markdown; Escape commits and re-renders it.
+    await article.getByText('Keep this paragraph.').dblclick();
+    await expect(page.locator('.su-block-editor')).toBeVisible();
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.type('Edited **paragraph**.');
+    await page.keyboard.press('Escape');
+    expected = expected.replace('Keep this paragraph.', 'Edited **paragraph**.');
+    await expect.poll(source).toBe(expected);
+    await expect(article.locator('strong')).toHaveText('paragraph');
+
+    // "+" on a task item adds a sibling task with a prefilled marker.
+    await article.locator('li', { hasText: 'Task B' }).hover();
+    await page.locator('#blockAddBtn').click();
+    await page.keyboard.type('Task C');
+    await page.keyboard.press('Escape');
+    expected = expected.replace('- [ ] Task B', '- [ ] Task B\n- [ ] Task C');
+    await expect.poll(source).toBe(expected);
+
+    // Edits are autosaved to the URL fragment, so a reload keeps them.
+    await expect.poll(() => page.evaluate('decodeState(location.hash.slice(1))')).toBe(expected);
+    await page.reload();
+    await expect(article.locator('li', { hasText: 'Task C' })).toBeVisible();
+    await expect.poll(source).toBe(expected);
+  });
+
+  test('block handle stays on its list item, drags to reorder, and selections format', async ({ page }) => {
+    const md = '# Doc\n\nPlain words here.\n\n- [ ] Task A\n- [ ] Task B\n- [ ] Task C\n';
+    await page.goto(tool.path);
+    await setMarkdown(page, md);
+    const source = () => page.evaluate(() => (window as unknown as { __suEditorAPI: { getText(): string } }).__suEditorAPI.getText());
+    const article = page.locator('#previewArticle');
+    const grip = page.locator('#blockGripBtn');
+
+    // Reaching for the handle across the list's left padding keeps it on Task C.
+    const taskC = article.locator('li', { hasText: 'Task C' });
+    await taskC.hover();
+    const itemBox = (await taskC.boundingBox())!;
+    const gripBox = (await grip.boundingBox())!;
+    await page.mouse.move(gripBox.x + gripBox.width / 2, gripBox.y + gripBox.height / 2, { steps: 10 });
+    expect(Math.abs((await grip.boundingBox())!.y - gripBox.y)).toBeLessThan(1);
+    expect(gripBox.y).toBeGreaterThanOrEqual(itemBox.y - 4);
+
+    // Dragging the grip above Task A moves Task C to the top of the list.
+    const taskA = (await article.locator('li', { hasText: 'Task A' }).boundingBox())!;
+    await page.mouse.down();
+    await page.mouse.move(gripBox.x + 40, taskA.y + 2, { steps: 8 });
+    await page.mouse.up();
+    let expected = md.replace('- [ ] Task A\n- [ ] Task B\n- [ ] Task C\n', '- [ ] Task C\n- [ ] Task A\n- [ ] Task B\n');
+    await expect.poll(source).toBe(expected);
+    await expect(article.locator('li').first()).toContainText('Task C');
+
+    // Selecting text shows the toolbar; a format wraps the selection and toggles back off.
+    const formatText = async (needle: string, name: string, result: string) => {
+      await page.evaluate((text) => {
+        const p = document.querySelector('#previewArticle p')!;
+        const from = p.textContent!.indexOf(text);
+        const to = from + text.length;
+        const walker = document.createTreeWalker(p, NodeFilter.SHOW_TEXT);
+        const range = document.createRange();
+        let pos = 0;
+        let started = false;
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          const len = (node as Text).length;
+          if (!started && from <= pos + len) { range.setStart(node, from - pos); started = true; }
+          if (to <= pos + len) { range.setEnd(node, to - pos); break; }
+          pos += len;
+        }
+        getSelection()!.removeAllRanges();
+        getSelection()!.addRange(range);
+      }, needle);
+      await page.locator('#formatBar').getByRole('button', { name }).click();
+      expected = expected.replace(/^.*here\..*$/m, result);
+      await expect.poll(source).toBe(expected);
+      await expect.poll(() => page.evaluate('renderedMarkdown === markdown')).toBe(true);
+    };
+    await formatText('words', 'Bold', 'Plain **words** here.');
+    await formatText('words', 'Bold', 'Plain words here.');
+    // A selection across an already struck run strikes it as one run, then clears it.
+    await formatText('words', 'Strikethrough', 'Plain ~~words~~ here.');
+    await formatText('Plain words here.', 'Strikethrough', '~~Plain words here.~~');
+    await formatText('Plain words here.', 'Strikethrough', 'Plain words here.');
+    await formatText('Plain words here.', 'Highlight', '==Plain words here.==');
+    await formatText('words', 'Highlight', '==Plain== words ==here.==');
+  });
+
+  test('block edits keep CRLF line endings', async ({ page }) => {
+    const md = '---\r\ntitle: Win\r\n---\r\n# Win\r\n\r\n- [ ] Task A\r\n- [ ] Task B\r\n';
+    await page.goto(tool.path);
+    const encoded = await page.evaluate(`encodeState(${JSON.stringify(md)})`);
+    await page.goto(`${tool.path}#${encoded}`);
+    await page.reload();
+
+    await page.locator('#previewArticle li', { hasText: 'Task A' }).locator('input[type="checkbox"]').click();
+    await expect
+      .poll(() => page.evaluate('decodeState(location.hash.slice(1))'))
+      .toBe(md.replace('- [ ] Task A', '- [x] Task A'));
   });
 
   test('find-in-page highlights matches', async ({ page }) => {

@@ -174,7 +174,7 @@ body.su-view-html #htmlPreview { display: block; }
 /* Preview article */
 .preview-article { width: 100%; max-width: var(--su-reading-width, 800px); margin: 0 auto; line-height: 1.7; font-size: 15px; color: var(--text); }
 .preview-article h1, .preview-article h2, .preview-article h3, .preview-article h4, .preview-article h5, .preview-article h6 { color: var(--text); line-height: 1.3; margin-top: 1.4em; margin-bottom: .5em; position: relative; }
-.preview-article h1:first-child, .preview-article h2:first-child, .preview-article h3:first-child { margin-top: 0; }
+.preview-article > :is(h1, h2, h3):first-child, .preview-article :not(.su-block) > :is(h1, h2, h3):first-child, .preview-article > .su-block:first-child > :is(h1, h2, h3) { margin-top: 0; }
 .preview-article h1 { font-size: 1.9em; border-bottom: 1px solid var(--border); padding-bottom: .3em; }
 .preview-article h2 { font-size: 1.45em; border-bottom: 1px solid var(--border); padding-bottom: .25em; }
 .preview-article h3 { font-size: 1.2em; }
@@ -207,6 +207,37 @@ body.su-view-html #htmlPreview { display: block; }
 /* ==highlight== */
 .preview-article .su-hl { background: var(--hl-bg); color: var(--hl-text); padding: 0 3px; border-radius: 3px; }
 .preview-article .su-hl code { background: transparent; color: inherit; }
+/* Block editing */
+#previewScroll { position: relative; }
+.preview-article li input[type="checkbox"]:enabled { cursor: pointer; accent-color: var(--primary); }
+.preview-article li.su-checked > :is(p, input) ~ *:not(ul, ol), .preview-article li.su-checked { color: var(--text-muted); }
+.preview-article .su-done > :is(h1, h2, h3, h4, h5, h6) { cursor: pointer; color: var(--text-muted); }
+.preview-article .su-done > :is(h1, h2, h3, h4, h5, h6)::before { content: '\25B8\00A0'; font-size: .8em; }
+.preview-article .su-done.su-expanded > :is(h1, h2, h3, h4, h5, h6)::before { content: '\25BE\00A0'; }
+.preview-article .su-collapsed, .preview-article.su-hide-done :is(.su-done-section, li.su-checked), .su-copying .su-anchor { display: none; }
+.block-handle { position: absolute; z-index: 5; display: flex; gap: 2px; padding-top: 2px; }
+.block-handle[hidden], .block-menu[hidden], .block-menu [hidden], .block-drop-line[hidden], .format-bar[hidden], #toastAction[hidden] { display: none; }
+#blockGripBtn { cursor: grab; touch-action: none; }
+.block-drop-line { position: absolute; z-index: 5; height: 2px; border-radius: 1px; background: var(--primary); pointer-events: none; }
+.preview-article .su-dragging { opacity: .4; }
+.format-bar { position: fixed; z-index: 150; display: flex; gap: 2px; min-width: 0; padding: 4px; }
+.format-bar button { min-width: 28px; height: 28px; padding: 0 6px; border: none; border-radius: 6px; background: none; color: var(--text); font: 14px var(--font); cursor: pointer; }
+.format-bar button:hover { background: var(--surface-hover); }
+.format-bar mark { background: var(--hl-bg); color: var(--hl-text); padding: 0 3px; border-radius: 3px; }
+.format-bar code { font: 12px var(--mono); }
+.block-handle button { width: 22px; height: 22px; padding: 3px; border: none; border-radius: 4px; background: none; color: var(--text-muted); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.block-handle button:hover, .block-handle button[aria-expanded="true"] { background: var(--surface-hover); color: var(--text); }
+.block-handle button:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.block-handle svg { width: 16px; height: 16px; }
+.block-menu { position: fixed; z-index: 150; min-width: 170px; }
+.block-menu .block-menu-danger { color: #ff7b72; }
+[data-theme="light"] .block-menu .block-menu-danger { color: #cf222e; }
+.su-block-editor { margin: 0 0 14px; border: 1px solid var(--primary); border-radius: 8px; overflow: hidden; background: var(--code-bg); }
+.su-block-editor .cm-editor { height: auto; }
+.su-block-editor .cm-gutters { display: none; }
+.su-block-editor .editor-fallback { display: block; height: auto; min-height: 3em; background: var(--code-bg); }
+.save-state { font: 11px var(--mono); color: var(--text-muted); white-space: nowrap; }
+.save-state.su-warn { color: #d29922; }
 /* find-in-page hits */
 .preview-article .find-hit { background: rgba(254, 208, 71, 0.35); border-radius: 2px; }
 .preview-article .find-hit.current { background: var(--primary); color: var(--primary-text); }
@@ -415,6 +446,7 @@ html.su-loading #emptyState { display: none; }
             <div class="toolbar-left">
                 <span id="docTitle" class="doc-title">Markdown Preview</span>
                 <span id="docStats" class="stats-text">empty</span>
+                <span id="saveState" class="save-state" role="status" aria-live="polite"></span>
             </div>
             <div class="toolbar-actions">
                 <button id="openBtn" class="btn btn-sm" title="Open a Markdown, STL, or 3MF file (Ctrl/Cmd+O)">
@@ -445,6 +477,13 @@ html.su-loading #emptyState { display: none; }
                         </select>
                         <label class="width-custom" id="optReadingCustomWrap" for="optReadingCustom" hidden>Custom width (px)
                             <input type="number" id="optReadingCustom" min="320" max="2400" step="1" value="800" inputmode="numeric">
+                        </label>
+                        <h4>Editing</h4>
+                        <label>
+                            <input type="checkbox" id="optHideDone">
+                            <span>Hide done items
+                                <span class="opt-desc">Hides checked tasks and sections whose heading is struck through.</span>
+                            </span>
                         </label>
                         <h4>Exported HTML features</h4>
                         <label>
@@ -500,6 +539,15 @@ html.su-loading #emptyState { display: none; }
             <div class="output-panel" id="previewWrap">
                 <div id="previewScroll" class="output-scroll">
                     <article id="previewArticle" class="preview-article"></article>
+                    <div id="blockHandle" class="block-handle" hidden>
+                        <button id="blockAddBtn" type="button" title="Add a block below" aria-label="Add a block below">
+                            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>
+                        </button>
+                        <button id="blockGripBtn" type="button" title="Block actions (double-click a block to edit)" aria-label="Block actions" aria-haspopup="menu" aria-expanded="false">
+                            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="6" cy="4" r="1.2"/><circle cx="10" cy="4" r="1.2"/><circle cx="6" cy="8" r="1.2"/><circle cx="10" cy="8" r="1.2"/><circle cx="6" cy="12" r="1.2"/><circle cx="10" cy="12" r="1.2"/></svg>
+                        </button>
+                    </div>
+                    <div id="blockDropLine" class="block-drop-line" hidden></div>
                     <div id="loadingState" class="loading-state" aria-live="polite">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="9" opacity=".25"/><path d="M21 12a9 9 0 0 1-9 9" stroke-linecap="round"/></svg>
                         <span class="loading-text">Loading Markdown&hellip;</span>
@@ -594,6 +642,22 @@ html.su-loading #emptyState { display: none; }
         </div>
     </dialog>
 
+    <div id="blockMenu" class="export-menu block-menu" role="menu" aria-label="Block actions" hidden>
+        <button class="export-item" role="menuitem" data-action="edit">Edit</button>
+        <button class="export-item" role="menuitem" data-action="done">Mark done</button>
+        <button class="export-item" role="menuitem" data-action="copy">Copy text</button>
+        <button class="export-item" role="menuitem" data-action="up">Move up</button>
+        <button class="export-item" role="menuitem" data-action="down">Move down</button>
+        <button class="export-item block-menu-danger" role="menuitem" data-action="delete">Delete</button>
+    </div>
+    <div id="formatBar" class="export-menu format-bar" role="toolbar" aria-label="Format selection" hidden>
+        <button type="button" data-format="bold" title="Bold (Ctrl/Cmd+B)" aria-label="Bold"><b>B</b></button>
+        <button type="button" data-format="italic" title="Italic (Ctrl/Cmd+I)" aria-label="Italic"><i>I</i></button>
+        <button type="button" data-format="strike" title="Strikethrough" aria-label="Strikethrough"><s>S</s></button>
+        <button type="button" data-format="highlight" title="Highlight" aria-label="Highlight"><mark>H</mark></button>
+        <button type="button" data-format="code" title="Inline code" aria-label="Inline code"><code>&lt;/&gt;</code></button>
+    </div>
+
     <input type="file" id="fileInput" accept=".md,.markdown,.txt,.mdx,.html,.htm,.stl,.3mf">
     <div id="modelImportStatus" class="toast" role="status" aria-live="polite" hidden>
         <span>Importing 3MF model&hellip;</span><button id="cancelModelImport" class="btn btn-sm" type="button">Cancel import</button>
@@ -602,6 +666,7 @@ html.su-loading #emptyState { display: none; }
 
     <div id="toast" class="toast" style="display:none">
         <span id="toastMsg"></span>
+        <button id="toastAction" class="btn btn-sm" type="button" hidden></button>
     </div>
 
     <!-- marked / highlight.js are used at top-level inline-script execution (marked.use(...))
@@ -613,25 +678,32 @@ html.su-loading #emptyState { display: none; }
     <script type="module">
         const mount = document.getElementById('editorMount');
         try {
-            const [cm, cmMd, cmState] = await Promise.all([
-                import('https://esm.sh/codemirror@6.0.1?bundle'),
-                import('https://esm.sh/@codemirror/lang-markdown@6.3.0?bundle'),
-                import('https://esm.sh/@codemirror/state@6.4.1?bundle'),
+            // Unbundled, so both packages share one @codemirror/state instance;
+            // separate ?bundle builds each inline their own and fail instanceof checks.
+            const [cm, cmMd] = await Promise.all([
+                import('https://esm.sh/codemirror@6.0.1'),
+                import('https://esm.sh/@codemirror/lang-markdown@6.3.0'),
             ]);
             const view = new cm.EditorView({
-                state: cmState.EditorState.create({
-                    doc: window.__suInitialDoc || '',
-                    extensions: [
-                        cm.basicSetup,
-                        cmMd.markdown(),
-                        cm.EditorView.lineWrapping,
-                        cm.EditorView.updateListener.of((u) => {
-                            if (u.docChanged) window.__suOnEditorChange?.(u.state.doc.toString());
-                        }),
-                    ],
-                }),
+                doc: window.__suInitialDoc || '',
+                extensions: [
+                    cm.basicSetup,
+                    cmMd.markdown(),
+                    cm.EditorView.lineWrapping,
+                    cm.EditorView.updateListener.of((u) => {
+                        if (u.docChanged) window.__suOnEditorChange?.(u.state.doc.toString());
+                    }),
+                ],
                 parent: mount,
             });
+            window.__suCreateBlockEditor = (parent, doc) => {
+                const editor = new cm.EditorView({ doc, extensions: [cm.minimalSetup, cmMd.markdown(), cm.EditorView.lineWrapping], parent });
+                return {
+                    getText: () => editor.state.doc.toString(),
+                    focus: () => { editor.focus(); editor.dispatch({ selection: { anchor: editor.state.doc.length } }); },
+                    destroy: () => editor.destroy(),
+                };
+            };
             window.__suEditorAPI = {
                 kind: 'codemirror',
                 setText: (t) => {
@@ -729,10 +801,26 @@ const els = {
     findClose: $('findClose'),
     toast: $('toast'),
     toastMsg: $('toastMsg'),
+    toastAction: $('toastAction'),
+    saveState: $('saveState'),
+    optHideDone: $('optHideDone'),
+    blockHandle: $('blockHandle'),
+    blockAddBtn: $('blockAddBtn'),
+    blockGripBtn: $('blockGripBtn'),
+    blockDropLine: $('blockDropLine'),
+    formatBar: $('formatBar'),
+    blockMenu: $('blockMenu'),
 };
 
 let markdown = '';
+let frontmatter = ''; // Stripped before rendering, restored when saving.
 let filename = 'Untitled';
+let renderedMarkdown = ''; // Source of the current preview DOM; block ranges are only valid for it.
+let savedMarkdown = ''; // Last loaded or saved content, for the dirty indicator.
+let fragmentMarkdown = ''; // Content currently encoded in the URL fragment.
+let fileHandle = null; // File System Access handle (Chromium) for in-place saves.
+let fileStamp = 0; // `lastModified` of the file at the last read or write.
+let fileConflict = false; // The file changed on disk; autosave stops until an explicit save.
 let renderTimer;
 let toastTimer;
 let viewMode = 'preview'; // 'preview' | 'edit' | 'html'
@@ -1716,6 +1804,49 @@ function enhanceHeadingAnchors(root) {
     }
 }
 
+// ---- Source-mapped preview blocks ----
+// The preview wraps every top-level block in an element that carries its exact
+// source range, so edits splice the Markdown instead of re-serializing it.
+const LIST_ITEM_RE = /^([ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]+)(\[[ xX]\])?/;
+function renderSourceBlocks(md, renderer) {
+    const tokens = marked.lexer(md);
+    escapeUnmatchedInlineHtml(tokens);
+    const options = { ...marked.defaults, renderer };
+    const defaultListitem = renderer.listitem;
+    let cursor = 0, itemCursor = 0;
+    renderer.listitem = function (item) {
+        const firstLine = item.raw.split('\n', 1)[0];
+        const pos = md.indexOf(firstLine, itemCursor);
+        if (pos < 0) return defaultListitem.call(this, item);
+        itemCursor = pos + firstLine.length;
+        const exact = md.startsWith(item.raw, pos);
+        const lineStart = md.lastIndexOf('\n', pos - 1) + 1;
+        const marker = firstLine.match(LIST_ITEM_RE);
+        const attrs = [];
+        if (item.task && marker?.[2]) attrs.push(`data-check="${pos + marker[1].length}"`);
+        // Whole-item ranges need an exact match and a whitespace-only indent. Items
+        // in blockquotes or with dedented nested continuations stay checkbox-only.
+        if (exact && !md.slice(lineStart, pos).trim()) attrs.push(`data-start="${lineStart}" data-end="${pos + item.raw.length}"`);
+        const html = defaultListitem.call(this, item);
+        if (exact) itemCursor = Math.max(itemCursor, pos + item.raw.length);
+        return attrs.length ? html.replace(/^<li/, `<li ${attrs.join(' ')}`) : html;
+    };
+    let html = '';
+    for (const token of tokens) {
+        if (token.type === 'space') continue;
+        // Link definitions are dropped from the token list, so locate each block
+        // instead of summing raw lengths. Unlocatable blocks render read-only.
+        const start = md.indexOf(token.raw, cursor);
+        itemCursor = start < 0 ? cursor : start;
+        const out = marked.parser(Object.assign([token], { links: tokens.links }), options);
+        if (start < 0) { html += out; continue; }
+        cursor = start + token.raw.length;
+        const depth = token.type === 'heading' ? ` data-depth="${token.depth}"` : '';
+        html += `<div class="su-block" data-start="${start}" data-end="${cursor}"${depth}>${out}</div>`;
+    }
+    return html;
+}
+
 async function render(md, forExport = true) {
     const el = document.createElement('div');
     // Direct model imports are one fence. Avoid escaping and reparsing tens of
@@ -1743,7 +1874,10 @@ async function render(md, forExport = true) {
             }
             return `<pre><code class="language-${token.lang.split(/\s/)[0].toLowerCase()}" data-model-info="${escHTML(token.lang).replace(/"/g, '&quot;')}"${range}>${escHTML(token.text)}</code></pre>`;
         };
-        el.innerHTML = marked.parse(md, { renderer });
+        // marked normalizes CRLF, so source offsets only hold for LF text (see loadDocument).
+        el.innerHTML = forExport || md.length > 10000000 || md.includes('\r')
+            ? marked.parse(md, { renderer })
+            : renderSourceBlocks(md, renderer);
         for (const code of el.querySelectorAll('code[data-model-range]')) {
             code.__suSourceRange = JSON.parse(code.dataset.modelRange); delete code.dataset.modelRange;
         }
@@ -1792,6 +1926,7 @@ els.previewArticle.addEventListener('su-save-model-view', (event) => {
 
 function stripFrontmatter(md) {
     const m = md.match(FRONTMATTER_RE);
+    frontmatter = m?.[0] ?? '';
     if (!m) return md;
     const t = m[1].match(FRONTMATTER_TITLE_RE);
     if (t) filename = t[1];
@@ -1824,26 +1959,38 @@ async function updatePreview() {
     if (!markdown.trim()) {
         for (const fig of els.previewArticle.querySelectorAll('.su-diagram')) fig.__suDispose?.();
         els.previewArticle.innerHTML = '';
+        renderedMarkdown = markdown;
+        blockEditor = null;
         updatePanes();
         els.docStats.textContent = 'empty';
         setDocTitle();
         setExportEnabled(false);
+        persistSoon();
         return;
     }
-    const content = await render(markdown, false);
+    const source = markdown;
+    const content = await render(source, false);
     if (generation !== previewGeneration) return;
-    if (markdown.length > 1000000) await yieldToMain();
+    if (source.length > 1000000) await yieldToMain();
     if (generation !== previewGeneration) return;
     for (const fig of els.previewArticle.querySelectorAll('.su-diagram')) fig.__suDispose?.();
-    for (const fig of content.querySelectorAll('figure.su-diagram')) fig.__suDocument = markdown;
+    for (const fig of content.querySelectorAll('figure.su-diagram')) fig.__suDocument = source;
+    const hovered = hoverTarget && `${hoverTarget.matches('li') ? 'li' : '.su-block'}[data-start="${hoverTarget.dataset.start}"]`;
     els.previewArticle.replaceChildren(...content.childNodes);
+    renderedMarkdown = source;
+    if (blockEditor && !blockEditor.wrap.isConnected) blockEditor = null;
     initDiagrams(els.previewArticle);
+    decorateBlocks();
+    restoreScrollAnchor();
     updatePanes();
-    const wordCount = markdown.length > 1000000 ? null : markdown.trim().split(/\s+/).length;
-    els.docStats.textContent = wordCount === null ? `${(markdown.length / 1000000).toFixed(1)} MB` : `${wordCount} word${wordCount === 1 ? '' : 's'}`;
+    const target = hovered && els.previewArticle.querySelector(hovered);
+    if (target) showHandle(target); else hideHandle();
+    const wordCount = source.length > 1000000 ? null : source.trim().split(/\s+/).length;
+    els.docStats.textContent = wordCount === null ? `${(source.length / 1000000).toFixed(1)} MB` : `${wordCount} word${wordCount === 1 ? '' : 's'}${progressSummary()}`;
     setDocTitle();
     setExportEnabled(true);
     if (els.findBar && !els.findBar.hidden) runSearch(els.findInput.value);
+    persistSoon();
 }
 
 function setExportEnabled(on) {
@@ -1897,6 +2044,7 @@ window.__suEditorReady = () => {
 // ---- View mode (preview / html / source) ----
 function setViewMode(mode) {
     if (mode === 'html' && !markdown.trim()) mode = 'preview';
+    if (mode !== 'preview') { commitBlockEditor(); closeBlockMenu(); hideHandle(); hideFormatBar(); }
     viewMode = mode;
     document.body.classList.toggle('su-view-edit', mode === 'edit');
     document.body.classList.toggle('su-view-html', mode === 'html');
@@ -1953,11 +2101,610 @@ els.previewArticle.addEventListener('click', (e) => {
     const id = decodeURIComponent(a.getAttribute('href').slice(1));
     const target = document.getElementById(id) || document.getElementById(a.getAttribute('href').slice(1));
     if (target) target.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    // The URL fragment holds the document itself, so anchors only scroll.
     const url = `${location.origin}${location.pathname}#${id}`;
-    history.replaceState(null, '', url);
     if (a.classList.contains('su-anchor')) {
         navigator.clipboard?.writeText(url).then(() => toast('Anchor link copied')).catch(() => {});
     }
+});
+
+// ---- Block editing in the preview ----
+// Edits splice `markdown` at a block's source range (data-start/data-end from
+// renderSourceBlocks), so untouched bytes stay identical. Headings act on their section.
+const UNDO_LIMIT = 100;
+const BLOCK_TARGET = 'li[data-start], .su-block[data-start]';
+const undoStack = [];
+const redoStack = [];
+const expandedDone = new Set();
+let hoverTarget = null;
+let menuTarget = null;
+let blockEditor = null;
+let scrollAnchor = null;
+
+const isHeadingBlock = (el) => !!el?.matches?.('.su-block[data-depth]');
+const blockRange = (el) => [Number(el.dataset.start), Number(el.dataset.end)];
+const headingKey = (block) => [...block.firstElementChild.childNodes]
+    .filter((n) => !n.classList?.contains('su-anchor')).map((n) => n.textContent).join('').trim();
+const isEditable = (el) => !!el?.closest?.('input, textarea, select, [contenteditable="true"], .cm-editor');
+
+// The heading's next heading at the same or a higher level, or null at the end.
+function sectionBoundary(heading) {
+    const depth = Number(heading.dataset.depth);
+    for (let el = heading.nextElementSibling; el; el = el.nextElementSibling) {
+        if (isHeadingBlock(el) && Number(el.dataset.depth) <= depth) return el;
+    }
+    return null;
+}
+const sectionRange = (heading) => [Number(heading.dataset.start), Number(sectionBoundary(heading)?.dataset.start ?? markdown.length)];
+const targetRange = (el) => (isHeadingBlock(el) ? sectionRange(el) : blockRange(el));
+
+function previewInSync() {
+    if (markdown === renderedMarkdown) return true;
+    toast('The preview is updating. Try again in a moment.');
+    return false;
+}
+
+function editSource(start, end, text, anchor) {
+    undoStack.push(markdown);
+    // ponytail: undo keeps full snapshots, so large documents keep fewer (~50M chars total).
+    while (undoStack.length > Math.min(UNDO_LIMIT, Math.ceil(5e7 / markdown.length))) undoStack.shift();
+    redoStack.length = 0;
+    applyEdit(`${markdown.slice(0, start)}${text}${markdown.slice(end)}`, anchor);
+}
+
+function applyEdit(text, anchor) {
+    const block = anchor?.closest?.('.su-block') ?? anchor;
+    scrollAnchor = block?.isConnected ? { start: Number(block.dataset.start), top: block.getBoundingClientRect().top } : null;
+    // Edits run inside user gestures, which lets Chromium show its write-permission prompt.
+    fileHandle?.requestPermission?.({ mode: 'readwrite' }).then((state) => { if (state === 'granted') persistSoon(); }).catch(() => {});
+    setMarkdown(text);
+}
+
+function restoreScrollAnchor() {
+    if (!scrollAnchor) return;
+    const { start, top } = scrollAnchor;
+    scrollAnchor = null;
+    const block = [...els.previewArticle.querySelectorAll(':scope > .su-block')].find((b) => Number(b.dataset.start) >= start);
+    if (block) els.previewScroll.scrollTop += block.getBoundingClientRect().top - top;
+}
+
+// ponytail: full-string snapshots (capped, so ~100x document size in memory).
+// Switch to CodeMirror change sets if large documents need deep history.
+function undoEdit(redo = false) {
+    const [from, to] = redo ? [redoStack, undoStack] : [undoStack, redoStack];
+    if (!from.length) { toast(redo ? 'Nothing to redo' : 'Nothing to undo'); return; }
+    to.push(markdown);
+    applyEdit(from.pop());
+    toast(redo ? 'Redone' : 'Undone');
+}
+
+// Removes [start, end) and collapses the blank lines left at the seam.
+function deleteSource(start, end, anchor) {
+    const lead = markdown.slice(0, start).match(/\n*$/)[0].length;
+    const trail = markdown.slice(end).match(/^\n*/)[0].length;
+    const from = start - lead, to = end + trail;
+    const seam = from === 0 ? 0 : to === markdown.length ? 1 : Math.min(lead + trail, 2);
+    editSource(from, to, '\n'.repeat(seam), anchor);
+}
+
+function deleteTarget(el) {
+    const [start, end] = targetRange(el);
+    deleteSource(start, end, el);
+    toast(isHeadingBlock(el) ? 'Section deleted' : 'Block deleted', { label: 'Undo', run: () => undoEdit() });
+}
+
+function toggleDone(el) {
+    if (el.matches('li[data-check]')) {
+        const at = Number(el.dataset.check) + 1;
+        editSource(at, at + 1, markdown[at] === ' ' ? 'x' : ' ', el);
+        return;
+    }
+    if (!isHeadingBlock(el)) return;
+    const [start, end] = blockRange(el);
+    const raw = markdown.slice(start, end);
+    const lineEnd = raw.includes('\n') ? raw.indexOf('\n') : raw.length;
+    const line = raw.slice(0, lineEnd);
+    // ATX headings keep their markers; a setext heading's first line is its text.
+    const [, prefix = '', text = line, suffix = ''] = line.match(/^( {0,3}#{1,6}[ \t]+)(.*?)([ \t]+#+[ \t]*)?$/) ?? [];
+    const struck = text.match(/^~~(.*)~~$/);
+    expandedDone.delete(struck ? struck[1] : text);
+    editSource(start, start + lineEnd, `${prefix}${struck ? struck[1] : `~~${text}~~`}${suffix}`, el);
+}
+
+// Headings swap whole sections with a sibling section of the same level; other
+// blocks and list items swap with their neighbour.
+function siblingTarget(el, dir) {
+    if (isHeadingBlock(el)) {
+        const depth = Number(el.dataset.depth);
+        if (dir > 0) {
+            const next = sectionBoundary(el);
+            return next && Number(next.dataset.depth) === depth ? next : null;
+        }
+        for (let prev = el.previousElementSibling; prev; prev = prev.previousElementSibling) {
+            if (!isHeadingBlock(prev) || Number(prev.dataset.depth) > depth) continue;
+            return Number(prev.dataset.depth) === depth ? prev : null;
+        }
+        return null;
+    }
+    const sibling = dir > 0 ? el.nextElementSibling : el.previousElementSibling;
+    return sibling?.matches(el.matches('li') ? 'li[data-start]' : '.su-block[data-start]') ? sibling : null;
+}
+
+// Moves `el` past `count` siblings with chained swaps. A swap keeps the length of
+// the span it touches, so sibling ranges read from the DOM stay valid throughout.
+function moveTarget(el, dir, count = 1) {
+    if (!siblingTarget(el, dir)) { toast(dir < 0 ? 'Already at the top' : 'Already at the bottom'); return; }
+    const range = isHeadingBlock(el) ? sectionRange : blockRange;
+    // Trailing newlines stay in place so separators survive the swap.
+    const split = (s) => { const tail = s.match(/\n*$/)[0]; return [s.slice(0, s.length - tail.length), tail]; };
+    let text = markdown, [s0, s1] = range(el), lo = s0, hi = s1;
+    for (let other = el; count-- > 0 && (other = siblingTarget(other, dir));) {
+        const [x0, x1, y0, y1] = dir < 0 ? [...range(other), s0, s1] : [s0, s1, ...range(other)];
+        const [xCore, xTail] = split(text.slice(x0, x1)), [yCore, yTail] = split(text.slice(y0, y1));
+        text = `${text.slice(0, x0)}${yCore}${xTail}${text.slice(x1, y0)}${xCore}${yTail}${text.slice(y1)}`;
+        [s0, s1] = dir < 0 ? [x0, x0 + yCore.length + xTail.length] : [y1 - xCore.length - yTail.length, y1];
+        lo = Math.min(lo, x0);
+        hi = Math.max(hi, y1);
+    }
+    editSource(lo, hi, text.slice(lo, hi), el);
+}
+
+async function copyTarget(el) {
+    els.previewArticle.classList.add('su-copying');
+    const text = el.innerText.trim();
+    els.previewArticle.classList.remove('su-copying');
+    try { await navigator.clipboard.writeText(text); toast('Copied text'); } catch { toast('Failed to copy'); }
+}
+
+// Checkbox state, done sections (struck-through headings), and collapsing.
+function decorateBlocks() {
+    const root = els.previewArticle;
+    for (const box of root.querySelectorAll('li[data-check] input[type="checkbox"]')) {
+        const li = box.closest('li');
+        if (!li.hasAttribute('data-check')) continue;
+        box.disabled = false;
+        box.title = 'Toggle done';
+        li.classList.toggle('su-checked', box.checked);
+    }
+    let doneDepth = 0, collapsed = false;
+    for (const el of root.children) {
+        el.classList.remove('su-done', 'su-done-section', 'su-collapsed', 'su-expanded');
+        const depth = isHeadingBlock(el) ? Number(el.dataset.depth) : 0;
+        if (doneDepth && (!depth || depth > doneDepth)) {
+            el.classList.add('su-done-section');
+            el.classList.toggle('su-collapsed', collapsed);
+            continue;
+        }
+        doneDepth = 0;
+        if (!depth) continue;
+        const key = headingKey(el);
+        const del = el.firstElementChild.querySelector(':scope > del');
+        if (!del || del.textContent.trim() !== key) continue;
+        doneDepth = depth;
+        collapsed = !expandedDone.has(key);
+        el.classList.add('su-done', 'su-done-section');
+        el.classList.toggle('su-expanded', !collapsed);
+    }
+}
+
+// "N of M left" counts task items plus top-level sections (shallowest heading
+// below h1). Shown once the document has tasks or a section is marked done.
+function progressSummary() {
+    const root = els.previewArticle;
+    const tasks = [...root.querySelectorAll('li[data-check]')];
+    const headings = [...root.querySelectorAll(':scope > .su-block[data-depth]')].filter((h) => h.dataset.depth !== '1');
+    const depth = Math.min(...headings.map((h) => Number(h.dataset.depth)));
+    const sections = headings.filter((h) => Number(h.dataset.depth) === depth);
+    const doneSections = sections.filter((h) => h.classList.contains('su-done')).length;
+    if (!tasks.length && !doneSections) return '';
+    const left = tasks.filter((li) => !li.classList.contains('su-checked')).length + sections.length - doneSections;
+    return ` · ${left} of ${tasks.length + sections.length} left`;
+}
+
+// ---- Block handle (+ and grip) and actions menu ----
+function showHandle(target) {
+    hoverTarget = target;
+    const scroll = els.previewScroll.getBoundingClientRect();
+    const rect = target.getBoundingClientRect();
+    const indent = target.matches('li') ? 20 : 0; // clear the list marker
+    els.blockHandle.style.top = `${rect.top - scroll.top + els.previewScroll.scrollTop}px`;
+    els.blockHandle.style.left = `${Math.max(0, rect.left - scroll.left - indent - 50)}px`;
+    els.blockHandle.hidden = false;
+}
+function hideHandle() {
+    hoverTarget = null;
+    els.blockHandle.hidden = true;
+}
+function closeBlockMenu() {
+    els.blockMenu.hidden = true;
+    els.blockGripBtn.setAttribute('aria-expanded', 'false');
+    menuTarget = null;
+}
+function openBlockMenu() {
+    if (!hoverTarget || !previewInSync()) return;
+    menuTarget = hoverTarget;
+    const heading = isHeadingBlock(menuTarget);
+    const task = menuTarget.matches('li[data-check]');
+    const done = heading ? menuTarget.classList.contains('su-done') : menuTarget.classList.contains('su-checked');
+    const item = (action) => els.blockMenu.querySelector(`[data-action="${action}"]`);
+    item('done').hidden = !heading && !task;
+    item('done').textContent = done ? 'Mark not done' : 'Mark done';
+    item('delete').textContent = heading ? 'Delete section' : 'Delete';
+    item('up').textContent = heading ? 'Move section up' : 'Move up';
+    item('down').textContent = heading ? 'Move section down' : 'Move down';
+    const r = els.blockGripBtn.getBoundingClientRect();
+    els.blockMenu.style.top = `${Math.round(Math.min(r.bottom + 4, window.innerHeight - 260))}px`;
+    els.blockMenu.style.left = `${Math.round(r.left)}px`;
+    els.blockMenu.hidden = false;
+    els.blockGripBtn.setAttribute('aria-expanded', 'true');
+    els.blockMenu.querySelector('button:not([hidden])')?.focus();
+}
+
+const blockActions = {
+    edit: (el) => openBlockEditor(el),
+    done: toggleDone,
+    copy: copyTarget,
+    up: (el) => moveTarget(el, -1),
+    down: (el) => moveTarget(el, 1),
+    delete: deleteTarget,
+};
+
+// A list's left padding (where the handle sits) belongs to the list block, so
+// the item at the pointer's height wins; otherwise reaching for the handle
+// would retarget it to the whole list.
+function blockTargetAt(el, y) {
+    const target = el.closest?.(BLOCK_TARGET);
+    if (!target || !els.previewArticle.contains(target)) return null;
+    const items = [target, ...target.querySelectorAll('li[data-start]')].filter((item) => {
+        const r = item.getBoundingClientRect();
+        return item.matches('li') && y >= r.top && y < r.bottom;
+    });
+    return items.at(-1) ?? (target.contains(hoverTarget) ? hoverTarget : target);
+}
+els.previewArticle.addEventListener('mousemove', (e) => {
+    if (blockEditor || !els.blockMenu.hidden || drag) return;
+    const target = blockTargetAt(e.target, e.clientY);
+    if (target && target !== hoverTarget) showHandle(target);
+});
+els.previewScroll.addEventListener('mouseleave', (e) => {
+    if (els.blockMenu.hidden && !drag && !els.blockHandle.contains(e.relatedTarget)) hideHandle();
+});
+
+// Dragging the grip reorders the block among the siblings Move up/down would
+// visit; a plain click opens the menu.
+let drag = null;
+let gripDragged = false;
+function dropPosition(source, y) {
+    const list = [source];
+    for (let s = siblingTarget(source, -1); s; s = siblingTarget(s, -1)) list.unshift(s);
+    for (let s = siblingTarget(source, 1); s; s = siblingTarget(s, 1)) list.push(s);
+    const visible = (el) => el.getClientRects().length > 0;
+    let index = list.findIndex((el) => { if (!visible(el)) return false; const r = el.getBoundingClientRect(); return y < r.top + r.height / 2; });
+    if (index < 0) index = list.length;
+    const last = list.findLast(visible);
+    const boundary = isHeadingBlock(last) && sectionBoundary(last);
+    const lineY = index < list.length ? list[index].getBoundingClientRect().top
+        : boundary ? boundary.getBoundingClientRect().top
+        : (isHeadingBlock(last) ? [...els.previewArticle.children].findLast(visible) : last).getBoundingClientRect().bottom;
+    const from = list.indexOf(source);
+    return index > from ? { dir: 1, count: index - from - 1, lineY } : { dir: -1, count: from - index, lineY };
+}
+function endDrag() {
+    drag?.source.classList.remove('su-dragging');
+    els.blockDropLine.hidden = true;
+    drag = null;
+}
+els.blockGripBtn.addEventListener('pointerdown', (e) => {
+    gripDragged = false;
+    if (e.button !== 0 || !hoverTarget) return;
+    drag = { source: hoverTarget, x: e.clientX, y: e.clientY, active: false, drop: null };
+    els.blockGripBtn.setPointerCapture(e.pointerId);
+});
+els.blockGripBtn.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    if (!drag.active) {
+        if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 4 || !previewInSync()) return;
+        drag.active = true;
+        closeBlockMenu();
+        drag.source.classList.add('su-dragging');
+    }
+    const scroll = els.previewScroll.getBoundingClientRect();
+    // ponytail: edge scrolling only advances while the pointer moves.
+    if (e.clientY < scroll.top + 40) els.previewScroll.scrollTop -= 20;
+    else if (e.clientY > scroll.bottom - 40) els.previewScroll.scrollTop += 20;
+    drag.drop = dropPosition(drag.source, e.clientY);
+    const rect = drag.source.getBoundingClientRect();
+    Object.assign(els.blockDropLine.style, {
+        top: `${drag.drop.lineY - scroll.top + els.previewScroll.scrollTop - 1}px`,
+        left: `${rect.left - scroll.left}px`,
+        width: `${rect.width}px`,
+    });
+    els.blockDropLine.hidden = false;
+});
+els.blockGripBtn.addEventListener('pointerup', () => {
+    const { active, source, drop } = drag ?? {};
+    endDrag();
+    if (!active) return;
+    gripDragged = true;
+    if (drop?.count && source.isConnected && previewInSync()) moveTarget(source, drop.dir, drop.count);
+});
+els.blockGripBtn.addEventListener('pointercancel', endDrag);
+els.blockGripBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (gripDragged) { gripDragged = false; return; }
+    if (els.blockMenu.hidden) openBlockMenu(); else closeBlockMenu();
+});
+els.blockAddBtn.addEventListener('click', () => { if (hoverTarget && previewInSync()) openBlockEditor(hoverTarget, true); });
+els.blockMenu.addEventListener('click', (e) => {
+    const action = e.target.closest('[data-action]')?.dataset.action;
+    const target = menuTarget;
+    closeBlockMenu();
+    if (action && target?.isConnected && previewInSync()) blockActions[action](target);
+});
+document.addEventListener('click', (e) => {
+    if (!els.blockMenu.hidden && !els.blockMenu.contains(e.target)) closeBlockMenu();
+});
+els.previewScroll.addEventListener('scroll', () => { if (!els.blockMenu.hidden) closeBlockMenu(); }, { passive: true });
+
+els.previewArticle.addEventListener('click', (e) => {
+    if (e.target.matches?.('input[type="checkbox"]')) {
+        const li = e.target.closest('li');
+        if (!li?.hasAttribute('data-check')) return;
+        if (!previewInSync()) { e.preventDefault(); return; }
+        toggleDone(li);
+        return;
+    }
+    const heading = e.target.closest?.('.su-done > :is(h1, h2, h3, h4, h5, h6)');
+    if (!heading || e.target.closest('a')) return;
+    const key = headingKey(heading.parentElement);
+    if (!expandedDone.delete(key)) expandedDone.add(key);
+    decorateBlocks();
+});
+
+els.previewArticle.addEventListener('dblclick', (e) => {
+    if (e.target.closest('a, input, button, .su-diagram, .su-mermaid, .su-block-editor')) return;
+    const target = e.target.closest(BLOCK_TARGET);
+    if (!target || !previewInSync()) return;
+    window.getSelection()?.removeAllRanges();
+    openBlockEditor(target);
+});
+
+// ---- Selection formatting toolbar ----
+// A format wraps (or unwraps) exactly the selected characters in the block source.
+const FORMATS = {
+    bold: { tag: 'strong', markers: ['**', '__'] },
+    italic: { tag: 'em', markers: ['*', '_'] },
+    strike: { tag: 'del', markers: ['~~', '~'] },
+    highlight: { tag: 'mark.su-hl', markers: ['=='] },
+    code: { tag: 'code', markers: ['`'] },
+};
+let selectingWithMouse = false;
+let formatTimer;
+
+function selectionTarget() {
+    const sel = window.getSelection();
+    if (viewMode !== 'preview' || blockEditor || !sel?.rangeCount || sel.isCollapsed) return null;
+    const range = sel.getRangeAt(0);
+    const node = range.commonAncestorContainer;
+    const el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+    const block = el?.closest(BLOCK_TARGET);
+    if (!block || !els.previewArticle.contains(block) || el.closest('pre, .katex, .su-diagram, .su-mermaid, .su-anchor')) return null;
+    const text = range.toString().trim();
+    return text ? { range, el, block, text } : null;
+}
+
+// Rendered text of `block` up to a boundary point, without heading anchors.
+function renderedText(block, container = block, offset = block.childNodes.length) {
+    const range = document.createRange();
+    range.setStart(block, 0);
+    range.setEnd(container, offset);
+    const frag = range.cloneContents();
+    for (const anchor of frag.querySelectorAll('.su-anchor')) anchor.remove();
+    return frag.textContent;
+}
+
+function inlineText(md) {
+    const tpl = document.createElement('template');
+    tpl.innerHTML = marked.parseInline(md);
+    return tpl.content.textContent;
+}
+
+// Rendered characters are matched in order against the block source (skipping
+// markup), then the span grows until it renders to exactly the text it covers,
+// so markers inside it stay balanced. A selection that starts or ends inside a
+// formatted run grows to cover the whole run.
+function selectionSourceRange({ range, block }) {
+    const [start, end] = blockRange(block);
+    const raw = markdown.slice(start, end);
+    const text = renderedText(block);
+    let rs = renderedText(block, range.startContainer, range.startOffset).length;
+    let re = renderedText(block, range.endContainer, range.endOffset).length;
+    while (rs < re && /\s/.test(text[rs])) rs++;
+    while (re > rs && /\s/.test(text[re - 1])) re--;
+    // ponytail: greedy matching can land on markup that repeats the next character
+    // (a link URL, say); the render check below rejects most such misses.
+    const map = [];
+    const space = /\s/g;
+    for (let i = 0, j = 0; i < text.length; i++) {
+        space.lastIndex = j;
+        const k = /\s/.test(text[i]) ? (space.exec(raw)?.index ?? -1) : raw.indexOf(text[i], j);
+        map.push(k);
+        if (k >= 0) j = k + 1;
+    }
+    const a = map[rs], b = map[re - 1] + 1;
+    if (re <= rs || a < 0 || b <= 0) return null;
+    const covered = (s, e) => map.reduce((t, k, i) => (k >= s && k < e ? t + text[i] : t), '');
+    // ponytail: growth stops at 64 characters; a longer miss shows the toast.
+    for (let grow = 0; grow <= 64; grow++) {
+        for (let before = Math.min(grow, a); before >= 0; before--) {
+            const s = a - before, e = b + grow - before;
+            if (e <= raw.length && inlineText(raw.slice(s, e)).trim() === covered(s, e).trim()) return [start + s, start + e];
+        }
+    }
+    return null;
+}
+
+// Wraps text in a marker, keeping edge whitespace outside it (`~~ a~~` is not strikethrough).
+function wrapMarker(text, marker) {
+    const core = text.trim();
+    return core ? `${text.match(/^\s*/)[0]}${marker}${core}${marker}${text.match(/\s*$/)[0]}` : text;
+}
+
+// Runs that already have the format and touch the selection, with the source
+// span of their contents and the marker around it.
+function formatRuns(sel, format) {
+    return [...sel.block.querySelectorAll(format.tag)].filter((el) => sel.range.intersectsNode(el)).flatMap((el) => {
+        const contents = document.createRange();
+        contents.selectNodeContents(el);
+        const span = selectionSourceRange({ range: contents, block: sel.block });
+        const marker = span && format.markers.find((m) => markdown.slice(span[0] - m.length, span[0]) === m && markdown.startsWith(m, span[1]));
+        return marker ? [{ start: span[0], end: span[1], marker }] : [];
+    });
+}
+
+function applyFormat(kind) {
+    const sel = selectionTarget();
+    hideFormatBar();
+    if (!sel || !previewInSync()) return;
+    const span = selectionSourceRange(sel);
+    if (!span) { toast('Could not find the selected text in the source. Double-click the block to edit it.'); return; }
+    const [at, end] = span;
+    const text = markdown.slice(at, end);
+    const format = FORMATS[kind];
+    const runs = formatRuns(sel, format);
+    window.getSelection().removeAllRanges();
+    // Inside a run that already has the format: remove it from the selection,
+    // re-wrapping whatever is left of the run on either side.
+    const outer = runs.find((r) => at >= r.start && end <= r.end);
+    if (outer) {
+        const m = outer.marker;
+        editSource(outer.start - m.length, outer.end + m.length, `${wrapMarker(markdown.slice(outer.start, at), m)}${text}${wrapMarker(markdown.slice(end, outer.end), m)}`, sel.block);
+        return;
+    }
+    // Runs inside the selection lose their markers, so the result is one run.
+    const cuts = runs.filter((r) => r.start - r.marker.length >= at && r.end + r.marker.length <= end)
+        .flatMap((r) => [[r.start - r.marker.length, r.start], [r.end, r.end + r.marker.length]])
+        .sort((x, y) => x[0] - y[0]);
+    let inner = '', pos = at;
+    for (const [s, e] of cuts) { inner += markdown.slice(pos, s); pos = e; }
+    inner += markdown.slice(pos, end);
+    // ponytail: rendered text containing a backtick needs a longer code fence.
+    editSource(at, end, wrapMarker(kind === 'code' ? inlineText(text) : inner, format.markers[0]), sel.block);
+}
+
+function hideFormatBar() { els.formatBar.hidden = true; }
+function updateFormatBar() {
+    const sel = selectionTarget();
+    if (!sel) { hideFormatBar(); return; }
+    const r = sel.range.getBoundingClientRect();
+    els.formatBar.hidden = false;
+    const { width, height } = els.formatBar.getBoundingClientRect();
+    els.formatBar.style.top = `${Math.round(r.top - height - 8 < 8 ? r.bottom + 8 : r.top - height - 8)}px`;
+    els.formatBar.style.left = `${Math.round(Math.min(Math.max(8, r.left + r.width / 2 - width / 2), window.innerWidth - width - 8))}px`;
+}
+document.addEventListener('selectionchange', () => {
+    clearTimeout(formatTimer);
+    if (!selectingWithMouse) formatTimer = setTimeout(updateFormatBar, 100);
+});
+els.previewArticle.addEventListener('pointerdown', () => { selectingWithMouse = true; hideFormatBar(); });
+document.addEventListener('pointerup', () => {
+    if (!selectingWithMouse) return;
+    selectingWithMouse = false;
+    formatTimer = setTimeout(updateFormatBar, 0);
+});
+els.previewScroll.addEventListener('scroll', () => { if (!els.formatBar.hidden) updateFormatBar(); }, { passive: true });
+els.formatBar.addEventListener('mousedown', (e) => e.preventDefault());
+els.formatBar.addEventListener('click', (e) => {
+    const kind = e.target.closest('[data-format]')?.dataset.format;
+    if (kind) applyFormat(kind);
+});
+
+// Clicking the empty space below the last block starts a new block at the end.
+els.previewScroll.addEventListener('click', (e) => {
+    if (e.target !== els.previewScroll && e.target !== els.previewArticle) return;
+    const last = els.previewArticle.lastElementChild;
+    if (!markdown.trim() || viewMode !== 'preview' || !last || e.clientY < last.getBoundingClientRect().bottom) return;
+    if (previewInSync()) openBlockEditor(null, true);
+});
+
+// ---- Inline block editor ----
+function createTextareaEditor(parent, text) {
+    const ta = document.createElement('textarea');
+    ta.className = 'editor-fallback';
+    ta.spellcheck = false;
+    ta.value = text;
+    const fit = () => { ta.style.height = 'auto'; ta.style.height = `${ta.scrollHeight}px`; };
+    ta.addEventListener('input', fit);
+    parent.append(ta);
+    requestAnimationFrame(fit);
+    return {
+        getText: () => ta.value,
+        focus: () => { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); },
+        destroy: () => {},
+    };
+}
+
+// Insert mode places new text after `target` (or at the end of the document).
+// List items prefill a sibling marker; other blocks start empty.
+function openBlockEditor(target, insert = false) {
+    commitBlockEditor();
+    closeBlockMenu();
+    hideHandle();
+    let start, end, text = '', tail = '';
+    if (insert) {
+        start = end = target ? Number(target.dataset.end) : markdown.length;
+        const marker = target?.matches('li') && markdown.slice(...blockRange(target)).match(LIST_ITEM_RE);
+        if (marker) text = `${marker[1].replace(/\d+/, (n) => Number(n) + 1)}${marker[2] ? '[ ] ' : ''}`;
+    } else {
+        [start, end] = blockRange(target);
+        const raw = markdown.slice(start, end);
+        text = raw.replace(/\n+$/, '');
+        tail = raw.slice(text.length);
+    }
+    const wrap = document.createElement('div');
+    wrap.className = 'su-block-editor';
+    if (target) target.after(wrap); else els.previewArticle.append(wrap);
+    if (target && !insert) target.hidden = true;
+    const editor = window.__suCreateBlockEditor?.(wrap, text) ?? createTextareaEditor(wrap, text);
+    blockEditor = { wrap, target, insert, start, end, text, tail, editor, listItem: !!target?.matches('li') };
+    wrap.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape' && !(e.key === 'Enter' && (e.metaKey || e.ctrlKey))) return;
+        e.preventDefault();
+        e.stopPropagation();
+        commitBlockEditor();
+    }, true);
+    wrap.addEventListener('focusout', (e) => { if (!wrap.contains(e.relatedTarget)) commitBlockEditor(); });
+    wrap.scrollIntoView({ block: 'nearest' });
+    editor.focus();
+}
+
+// Separates inserted text from its neighbours: list items join the list, other
+// blocks get blank lines on both sides.
+function insertionText(pos, value, listItem) {
+    const before = markdown.slice(0, pos), after = markdown.slice(pos);
+    if (listItem) return before.endsWith('\n') ? `${value}\n` : `\n${value}`;
+    const lead = !before || before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n';
+    const trail = !after || after.startsWith('\n') ? '\n' : '\n\n';
+    return `${lead}${value}${trail}`;
+}
+
+function commitBlockEditor() {
+    const ed = blockEditor;
+    if (!ed) return;
+    blockEditor = null;
+    const value = ed.editor.getText();
+    ed.editor.destroy();
+    ed.wrap.remove();
+    if (ed.target) ed.target.hidden = false;
+    // Unchanged or emptied blocks are no-ops; Delete in the menu removes a block.
+    if (!value.trim() || value === ed.text || markdown !== renderedMarkdown) return;
+    if (ed.insert) editSource(ed.start, ed.start, insertionText(ed.start, value, ed.listItem), ed.target);
+    else editSource(ed.start, ed.end, `${value}${ed.tail}`, ed.target);
+}
+
+els.optHideDone.addEventListener('change', () => {
+    els.previewArticle.classList.toggle('su-hide-done', els.optHideDone.checked);
+    hideHandle();
 });
 
 // ---- Find in document ----
@@ -2159,7 +2906,9 @@ function cancelFileImport() {
     els.previewPane.removeAttribute('aria-busy');
 }
 $('cancelModelImport').addEventListener('click', () => { cancelFileImport(); setExportEnabled(!!markdown.trim()); });
-async function handleFile(file) {
+// `handle` (File System Access) enables in-place saves for Markdown files only;
+// HTML, STL, and 3MF sources are converted, so saving never overwrites them.
+async function handleFile(file, handle = null) {
     cancelFileImport();
     const generation = ++fileImportGeneration;
     const abort = new AbortController(); fileImportAbort = abort;
@@ -2177,7 +2926,8 @@ async function handleFile(file) {
             Object.defineProperty(result.mesh, '__buffers', { value: { positions: result.positions, colors: result.colors } });
             meshParseCache = { source: result.source, mesh: result.mesh };
             filename = file.name.replace(/\.3mf$/i, '');
-            setMarkdown(`\`\`\`su-mesh\n${result.source}\n\`\`\`\n`);
+            frontmatter = '';
+            loadDocument(`\`\`\`su-mesh\n${result.source}\n\`\`\`\n`);
             setViewMode('preview');
             if (result.mesh.warnings.length) toast(result.mesh.warnings.join(' '));
             return;
@@ -2189,9 +2939,12 @@ async function handleFile(file) {
             let fenceLength = 3;
             for (const match of raw.matchAll(/`+/g)) fenceLength = Math.max(fenceLength, match[0].length + 1);
             const fence = '`'.repeat(fenceLength);
-            setMarkdown(`${fence}stl\n${raw}\n${fence}\n`);
+            frontmatter = '';
+            loadDocument(`${fence}stl\n${raw}\n${fence}\n`);
         } else {
-            setMarkdown(stripFrontmatter(extractEmbeddedMarkdown(raw) ?? raw));
+            const embedded = extractEmbeddedMarkdown(raw);
+            const editable = embedded === null && MD_FILE_EXT.test(file.name);
+            loadDocument(stripFrontmatter(embedded ?? raw), editable ? handle : null, file.lastModified);
         }
         setViewMode('preview');
     } catch (err) {
@@ -2201,7 +2954,18 @@ async function handleFile(file) {
     }
 }
 
-const openFile = () => els.fileInput.click();
+// Chromium's picker returns a handle for in-place saves; elsewhere use the input.
+async function openFile() {
+    if (!('showOpenFilePicker' in window)) { els.fileInput.click(); return; }
+    try {
+        const [handle] = await showOpenFilePicker({
+            types: [...MD_PICKER_TYPES, { description: 'HTML, STL, or 3MF', accept: { 'text/html': ['.html', '.htm'], 'model/stl': ['.stl'], 'model/3mf': ['.3mf'] } }],
+        });
+        handleFile(await handle.getFile(), handle);
+    } catch (err) {
+        if (err?.name !== 'AbortError') els.fileInput.click();
+    }
+}
 els.openBtn.addEventListener('click', openFile);
 els.emptyOpenBtn.addEventListener('click', openFile);
 els.fileInput.addEventListener('change', (e) => {
@@ -2214,7 +2978,8 @@ els.emptyWriteBtn.addEventListener('click', () => setViewMode('edit'));
 els.emptyExampleBtn.addEventListener('click', () => {
     cancelFileImport();
     filename = 'Markdown Preview';
-    setMarkdown(EXAMPLE_MD);
+    frontmatter = '';
+    loadDocument(EXAMPLE_MD);
 });
 
 // If `text` is an HTML document carrying our embedded source
@@ -2250,7 +3015,7 @@ async function loadFromUrl(url) {
         const embedded = extractEmbeddedMarkdown(text);
         filename = decodeURIComponent(target.pathname.split('/').pop() || 'document')
             .replace(/\.html?$/i, '').replace(MD_FILE_EXT, '') || 'document';
-        setMarkdown(stripFrontmatter(embedded ?? text));
+        loadDocument(stripFrontmatter(embedded ?? text));
         setViewMode('preview');
         toast('Loaded from URL');
     } catch {
@@ -2273,7 +3038,12 @@ for (const zone of [els.previewWrap, els.editorMount]) {
         e.preventDefault();
         zone.classList.remove('dragover');
         const file = e.dataTransfer?.files?.[0];
-        if (file) handleFile(file);
+        if (!file) return;
+        // The handle must be requested synchronously, while the drop data is readable.
+        const item = [...e.dataTransfer.items].find((i) => i.kind === 'file');
+        const pending = item?.getAsFileSystemHandle?.();
+        if (!pending) { handleFile(file); return; }
+        pending.then((handle) => handleFile(file, handle?.kind === 'file' ? handle : null), () => handleFile(file));
     });
 }
 
@@ -2287,15 +3057,16 @@ document.addEventListener('paste', (e) => {
     if (!text || !text.trim()) return;
     e.preventDefault();
     filename = 'Pasted';
-    setMarkdown(stripFrontmatter(text));
+    loadDocument(stripFrontmatter(text));
 });
 
 // ---- Share ----
 els.shareBtn.addEventListener('click', async () => {
     if (!markdown.trim()) return;
     try {
-        const encoded = await encodeState(markdown);
+        const encoded = await encodeState(withEol(frontmatter + markdown));
         const url = `${location.origin}${location.pathname}#${encoded}`;
+        fragmentMarkdown = markdown;
         history.replaceState({}, '', url);
         await navigator.clipboard.writeText(url);
         toast('Share link copied');
@@ -2376,32 +3147,45 @@ function waitForPagedReady(win, timeoutMs) {
     });
 }
 
-function toast(msg) {
+function toast(msg, action) {
     clearTimeout(toastTimer);
     els.toastMsg.textContent = msg;
+    els.toastAction.hidden = !action;
+    els.toastAction.textContent = action?.label ?? '';
+    els.toastAction.onclick = action ? () => { els.toast.style.display = 'none'; action.run(); } : null;
     els.toast.style.display = 'flex';
-    toastTimer = setTimeout(() => { els.toast.style.display = 'none'; }, 2200);
+    toastTimer = setTimeout(() => { els.toast.style.display = 'none'; }, action ? 6000 : 2200);
 }
 
 // ---- Keyboard shortcuts ----
 document.addEventListener('keydown', (e) => {
     const mod = e.metaKey || e.ctrlKey;
     if (e.key === 'Escape') {
+        if (!els.blockMenu.hidden) { closeBlockMenu(); return; }
+        if (!els.formatBar.hidden) { window.getSelection()?.removeAllRanges(); return; }
         if (!els.findBar.hidden) { closeFind(); return; }
         if (viewMode !== 'preview') { setViewMode('preview'); return; }
     }
+    const previewKeys = viewMode === 'preview' && !blockEditor && !isEditable(e.target);
+    if (previewKeys && e.altKey && !mod && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+        const target = menuTarget ?? hoverTarget;
+        if (target && previewInSync()) { e.preventDefault(); closeBlockMenu(); moveTarget(target, e.key === 'ArrowUp' ? -1 : 1); }
+        return;
+    }
     if (!mod) return;
     const k = e.key.toLowerCase();
-    if (k === 'o') { e.preventDefault(); openFile(); }
+    if (k === 'z' && previewKeys) { e.preventDefault(); undoEdit(e.shiftKey); }
+    else if ((k === 'b' || k === 'i') && previewKeys && selectionTarget()) { e.preventDefault(); applyFormat(k === 'b' ? 'bold' : 'italic'); }
+    else if (k === 'o') { e.preventDefault(); openFile(); }
     else if (k === 'f') { e.preventDefault(); openFind(); }
     else if (k === 'e') { e.preventDefault(); setViewMode(isEdit() ? 'preview' : 'edit'); }
-    else if (k === 's') { if (isEdit()) { e.preventDefault(); saveMarkdown(); } }
+    else if (k === 's') { e.preventDefault(); commitBlockEditor(); saveDocument(); }
     else if (k === 'p') { if (markdown.trim()) { e.preventDefault(); exportPdf(); } }
 });
 
 function saveMarkdown() {
     if (!markdown) return;
-    const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+    const blob = new Blob([withEol(frontmatter + markdown)], { type: 'text/markdown;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -2409,6 +3193,124 @@ function saveMarkdown() {
     a.click();
     URL.revokeObjectURL(url);
     toast(`Saved ${filename}.md`);
+}
+
+// ---- Persistence: URL fragment autosave + File System Access saves ----
+// The fragment keeps edits across reloads in every browser. Chromium can also
+// write back to the opened file; elsewhere Ctrl/Cmd+S downloads a copy.
+const MD_PICKER_TYPES = [{ description: 'Markdown', accept: { 'text/markdown': ['.md', '.markdown', '.mdx', '.txt'] } }];
+let persistTimer;
+let writeQueue = Promise.resolve();
+let eol = '\n';
+// ponytail: a file with mixed line endings is saved with CRLF throughout.
+const withEol = (text) => (eol === '\n' ? text : text.replaceAll('\n', eol));
+
+// Edits work on LF text; CRLF documents get their line endings back on save.
+function adoptEol(text) {
+    eol = (frontmatter + text).includes('\r\n') ? '\r\n' : '\n';
+    frontmatter = frontmatter.replace(/\r\n?/g, '\n');
+    return text.replace(/\r\n?/g, '\n');
+}
+
+// Starts a new document: resets history and binds (or unbinds) the source file.
+function loadDocument(text, handle = null, stamp = 0) {
+    commitBlockEditor();
+    text = adoptEol(text);
+    fileHandle = handle;
+    fileStamp = stamp;
+    fileConflict = false;
+    undoStack.length = 0;
+    redoStack.length = 0;
+    expandedDone.clear();
+    setMarkdown(text);
+    savedMarkdown = markdown;
+    updateSaveState();
+}
+
+function updateSaveState() {
+    const dirty = markdown !== savedMarkdown;
+    let label = '', title = '';
+    if (fileConflict) [label, title] = ['Changed on disk', `${fileHandle.name} changed outside this tab. Press Ctrl/Cmd+S to overwrite it.`];
+    else if (fileHandle) [label, title] = dirty ? ['Unsaved', `Press Ctrl/Cmd+S to save to ${fileHandle.name}`] : ['Saved', `Changes are saved to ${fileHandle.name}`];
+    else if (dirty) [label, title] = ['Edited', 'Edits are kept in the page URL. Press Ctrl/Cmd+S to save a file.'];
+    els.saveState.textContent = label;
+    els.saveState.title = title;
+    els.saveState.classList.toggle('su-warn', fileConflict);
+}
+
+function persistSoon() {
+    updateSaveState();
+    clearTimeout(persistTimer);
+    persistTimer = setTimeout(persistNow, 500);
+}
+
+async function persistNow() {
+    const text = markdown;
+    if (text !== fragmentMarkdown && text.length <= 1000000) {
+        const hash = text.trim() ? `#${await encodeState(withEol(frontmatter + text))}` : '';
+        if (text === markdown) {
+            history.replaceState(history.state, '', `${location.pathname}${location.search}${hash}`);
+            fragmentMarkdown = text;
+        }
+    }
+    if (fileHandle && !fileConflict && markdown !== savedMarkdown
+        && (await fileHandle.queryPermission?.({ mode: 'readwrite' })) === 'granted') await writeToHandle();
+}
+
+// Writes are serialized. Unless `force` is set, a file modified on disk since our
+// last read or write is never overwritten.
+function writeToHandle(force = false) {
+    writeQueue = writeQueue.then(async () => {
+        const handle = fileHandle, text = markdown;
+        if (!handle) return;
+        try {
+            if (!force && fileStamp && (await handle.getFile()).lastModified !== fileStamp) {
+                fileConflict = true;
+                toast(`${handle.name} changed on disk. Autosave paused; Ctrl/Cmd+S overwrites it.`);
+                return;
+            }
+            const writable = await handle.createWritable();
+            await writable.write(withEol(frontmatter + text));
+            await writable.close();
+            fileStamp = (await handle.getFile()).lastModified;
+            savedMarkdown = text;
+            fileConflict = false;
+        } catch (err) {
+            toast(`Save failed: ${err?.message ?? err}`);
+        } finally {
+            updateSaveState();
+        }
+    });
+    return writeQueue;
+}
+
+async function saveDocument() {
+    if (!markdown.trim()) return;
+    if (!fileHandle && 'showSaveFilePicker' in window) {
+        try {
+            fileHandle = await showSaveFilePicker({ suggestedName: `${filename}.md`, types: MD_PICKER_TYPES });
+            fileStamp = 0;
+            fileConflict = false;
+        } catch (err) {
+            if (err?.name === 'AbortError') return;
+        }
+    }
+    if (!fileHandle) {
+        saveMarkdown();
+        savedMarkdown = markdown;
+        updateSaveState();
+        return;
+    }
+    try {
+        if ((await fileHandle.requestPermission({ mode: 'readwrite' })) !== 'granted') { toast('Write permission was not granted'); return; }
+        const changed = fileStamp && (await fileHandle.getFile()).lastModified !== fileStamp;
+        if (changed && !confirm(`${fileHandle.name} changed on disk since it was opened. Overwrite it with this version?`)) return;
+    } catch (err) {
+        toast(`Save failed: ${err?.message ?? err}`);
+        return;
+    }
+    await writeToHandle(true);
+    if (markdown === savedMarkdown) toast(`Saved ${fileHandle.name}`);
 }
 
 // ---- Hydrate from URL fragment or ?url= on load ----
@@ -2419,7 +3321,8 @@ function saveMarkdown() {
     if (location.hash.length > 1) {
         const initial = await decodeState(location.hash.slice(1));
         if (initial) {
-            window.__suInitialDoc = stripFrontmatter(initial);
+            window.__suInitialDoc = adoptEol(stripFrontmatter(initial));
+            savedMarkdown = fragmentMarkdown = window.__suInitialDoc;
             if (window.__suEditorAPI) window.__suEditorAPI.setText(window.__suInitialDoc);
             return;
         }

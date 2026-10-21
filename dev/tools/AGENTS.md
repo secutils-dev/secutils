@@ -38,6 +38,14 @@ no `scroll-timeline-polyfill`); the tools are intentionally dependency-free.
 Safari) are out of scope. Scroll-driven animations, view transitions, and similar
 showcase-only APIs may be reconsidered when they reach Newly Baseline status.
 
+**Exception: File System Access API in `md.html`.** `showOpenFilePicker`,
+`showSaveFilePicker`, `DataTransferItem.getAsFileSystemHandle`, and
+`FileSystemFileHandle.createWritable` are Chromium-only. `md.html` uses them only as an
+opt-in enhancement that saves edits back to the opened file. Feature-detect each call.
+Without the API, the tool keeps the `<input type="file">` open path and the `.md`
+download, and the URL fragment still keeps edits across reloads. Do not add other
+Limited Availability APIs under this exception.
+
 This policy is consumed by the Modern Web Guidance skill at install time
 (<https://developer.chrome.com/docs/modern-web-guidance>) and by any agent that asks
 "should I add a fallback for this Baseline feature?" — the answer is the four bullets

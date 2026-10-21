@@ -62,9 +62,10 @@ name used for the page title and downloaded filenames.
 - **Read** - the rendered preview fills the page. Use **Find** (the search
   icon, or `Ctrl/Cmd+F`) to search within the document; Enter / Shift+Enter
   cycle matches.
-- **Edit** - click **Source** (or `Ctrl/Cmd+E`) to swap to a CodeMirror
-  pane; edits update the preview live. `Ctrl/Cmd+S` downloads the `.md`;
-  `Esc` returns to the preview.
+- **Edit** - edit blocks directly in the preview (see "Editing in the
+  preview"), or click **Source** (or `Ctrl/Cmd+E`) to swap to a CodeMirror
+  pane; edits update the preview live. `Esc` returns to the preview.
+  `Ctrl/Cmd+S` saves in either view (see "Saving").
 - **Open** - the **Open** button (or `Ctrl/Cmd+O`), drag-and-drop a file
   onto the page, or just paste (`Ctrl/Cmd+V`) into the empty preview.
   Open or drop an ASCII or binary `.stl` file to create a Markdown `stl` fence.
@@ -101,6 +102,54 @@ name used for the page title and downloaded filenames.
 - **Reading settings in exported HTML** - readers can change the width or
   restore the document default from the toolbar. Their choice lasts for the
   current page visit; reloading restores the width selected at export time.
+
+## Editing in the preview
+
+The rendered preview is editable one block at a time, as in Notion. Every edit
+replaces only that block's source text, so the rest of the file stays byte-identical.
+
+- **Task checkboxes** - click to toggle `[ ]` and `[x]` in the source.
+- **Block handle** - hover a block or list item to show `+` and a grip in the left margin.
+  - `+` adds a block below. On a list item, it adds a sibling item with the same marker.
+  - Click the grip to open the actions: **Edit**, **Mark done**, **Copy text**, **Move up**,
+    **Move down**, and **Delete**.
+  - Drag the grip to move the block. A line shows where it lands. List items move within
+    their list. Headings move their whole section past sections of the same level.
+- **Format selected text** - select words in one block to show a toolbar: **Bold**, **Italic**,
+  **Strikethrough**, **Highlight** (`==text==`), and **Inline code**. Applying a format to text
+  that already has it removes the format from the selection. A selection that partly covers
+  text with the same format gets one combined run. `Ctrl/Cmd+B` and `Ctrl/Cmd+I` also work.
+- **Edit a block** - double-click it, or use **Edit**. The block becomes a small Markdown
+  editor. `Esc`, `Ctrl/Cmd+Enter`, or clicking elsewhere commits it and renders it again.
+  An unchanged or empty result changes nothing.
+- **Add at the end** - click the empty space below the last block.
+- **Headings act on sections** - a section runs to the next heading of the same or a higher level.
+  - **Mark done** wraps the heading text in `~~...~~` and collapses the section.
+    Click a done heading to expand or collapse it. **Mark not done** removes the strikethrough.
+  - **Delete section** and **Move section up/down** act on the whole section.
+- **Copy text** - copies the rendered text of a block, for example a reply to paste elsewhere.
+- **Undo** - `Ctrl/Cmd+Z` and `Ctrl/Cmd+Shift+Z` in the preview undo and redo block edits.
+  A deleted block also shows an **Undo** button.
+- **Move with the keyboard** - `Alt+Up` and `Alt+Down` move the block under the pointer.
+- **Progress** - when the document has task items or a done section, the toolbar shows
+  `N of M left`. This counts task items plus the top-level sections (the shallowest heading below `h1`).
+- **Hide done items** (Options) - hides checked tasks and done sections.
+
+Block editing is not available for documents over 10 MB.
+Those documents still render, and the **Source** view still edits them.
+
+## Saving
+
+- **URL fragment** - after each edit, the page URL fragment is updated with the
+  document. A reload keeps your edits, including in tabs opened by `mdpreview`.
+- **Save to the file (Chromium browsers)** - open a `.md` file with **Open** or drag and drop.
+  The tool then saves edits back to that file automatically after the browser grants write permission.
+  The toolbar shows **Saved** or **Unsaved**. Without an open file, `Ctrl/Cmd+S` asks where to save,
+  then keeps saving to that file.
+- **Conflicts** - if the file changes on disk after the tool read or wrote it, autosave stops
+  and the toolbar shows **Changed on disk**. `Ctrl/Cmd+S` asks before it overwrites the file.
+- **Other browsers** - `Ctrl/Cmd+S` downloads the `.md`.
+- YAML frontmatter and CRLF line endings are kept in saved files, downloads, and the URL fragment.
 
 ## Saved model views
 
