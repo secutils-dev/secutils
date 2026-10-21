@@ -817,7 +817,7 @@ endsolid corner
     // Deleting a section leaves every other byte untouched, and undo restores it.
     await blockAction(article.locator('h2', { hasText: '3. Third' }), 'Delete section');
     await expect.poll(source).toBe(expected.replace('\n## 3. Third\n\nThird body.\n', ''));
-    await page.locator('#docTitle').click();
+    await page.locator('#docStats').click();
     await page.keyboard.press('ControlOrMeta+z');
     await expect.poll(source).toBe(expected);
 
@@ -917,6 +917,109 @@ endsolid corner
     await expect
       .poll(() => page.evaluate('decodeState(location.hash.slice(1))'))
       .toBe(md.replace('- [ ] Task A', '- [x] Task A'));
+  });
+
+  test('comments anchor to selections, thread replies, and persist with the file name', async ({ page }) => {
+    const md = '# Review\n\nI disagree with warnings as the final behavior.\n\nSecond paragraph.\n';
+    await page.goto(tool.path);
+    const encoded = await page.evaluate(`encodeState(${JSON.stringify(md)})`);
+    await page.goto(`${tool.path}#name=review.replies.md&md=${encoded}`);
+    await page.reload();
+    await expect(page.locator('#docTitle')).toHaveText('review.replies');
+    const state = async () =>
+      (await page.evaluate(
+        `(async () => { const p = new URLSearchParams(location.hash.slice(1)); return { name: p.get('name'), md: await decodeState(p.get('md') ?? '') }; })()`,
+      )) as { name: string | null; md: string | null };
+    const highlighted = () =>
+      page.evaluate(() =>
+        ['su-comment', 'su-comment-active'].reduce((n, name) => n + (CSS.highlights.get(name)?.size ?? 0), 0),
+      );
+
+    // A selection opens a draft beside it; Markdown in the comment renders.
+    await page.evaluate((needle) => {
+      const p = [...document.querySelectorAll('#previewArticle p')].find((el) => el.textContent!.includes(needle))!;
+      const text = p.firstChild as Text;
+      const from = text.data.indexOf(needle);
+      const range = document.createRange();
+      range.setStart(text, from);
+      range.setEnd(text, from + needle.length);
+      getSelection()!.removeAllRanges();
+      getSelection()!.addRange(range);
+    }, 'warnings as the final behavior');
+    await page.locator('#formatBar').getByRole('button', { name: 'Comment' }).click();
+    const draft = page.locator('.cm-card.draft');
+    await draft.getByLabel('Your name').fill('Oleg Zasypkin');
+    await draft.getByRole('textbox', { name: 'Comment' }).fill('Too **strong**?');
+    await page.keyboard.press('ControlOrMeta+Enter');
+    const card = page.locator('.cm-card');
+    await expect(card.locator('.cm-body strong')).toHaveText('strong');
+    await expect(card.locator('.cm-avatar').first()).toHaveText('OZ');
+    await expect.poll(highlighted).toBe(1);
+
+    // Comments use the document renderer, diagrams included.
+    const reply = 'Keep it.\n\n```mermaid\ngraph TD; A-->B\n```';
+    await card.getByRole('textbox', { name: 'Reply' }).fill(reply);
+    await card.getByRole('button', { name: 'Reply' }).click();
+    await expect(card.locator('.cm-comment')).toHaveCount(2);
+    await expect(card.locator('figure.su-mermaid svg')).toBeVisible({ timeout: 15000 });
+
+    // The body stays byte-identical; threads follow it in one trailing block.
+    await expect.poll(async () => (await state()).md).toContain('Keep it.');
+    const saved = (await state()).md!;
+    expect(saved.startsWith(md)).toBe(true);
+    const threads = JSON.parse(saved.match(/\n<!-- su-comments\n([\s\S]*)\n-->\n$/)![1]);
+    expect(threads).toHaveLength(1);
+    expect(threads[0]).toMatchObject({
+      quote: 'warnings as the final behavior',
+      prefix: expect.stringMatching(/I disagree with $/),
+    });
+    expect(threads[0].comments.map((c: { body: string; author: string }) => [c.author, c.body])).toEqual([
+      ['Oleg Zasypkin', 'Too **strong**?'],
+      ['Oleg Zasypkin', reply],
+    ]);
+
+    // A reload restores the name and threads; clicking the highlight opens the thread.
+    await page.reload();
+    await expect(page.locator('#docTitle')).toHaveText('review.replies');
+    await expect(card.locator('.cm-comment')).toHaveCount(2);
+    await expect.poll(highlighted).toBe(1);
+    const point = await page.evaluate(
+      '(() => { const r = [...anchors.values()][0].getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()',
+    );
+    const { x, y } = point as { x: number; y: number };
+    await page.mouse.click(x, y);
+    await expect(card).toHaveClass(/active/);
+
+    // The title toggles a thread; collapsed mode folds every inactive thread to one line.
+    const title = card.locator('.cm-quote');
+    await title.click();
+    await expect(title).toHaveAttribute('aria-expanded', 'false');
+    await title.click();
+    await expect(title).toHaveAttribute('aria-expanded', 'true');
+    const modeButton = page.locator('#commentsBtn');
+    await modeButton.click();
+    await expect(modeButton).toHaveAttribute('data-mode', 'collapsed');
+    await expect(title).toHaveAttribute('aria-expanded', 'true');
+    await page.keyboard.press('Escape');
+    await expect(title).toHaveAttribute('aria-expanded', 'false');
+    await expect(card.locator('.cm-count')).toHaveText('2');
+    await modeButton.click();
+    await expect(page.locator('#commentsRail')).toBeHidden();
+    await expect.poll(highlighted).toBe(0);
+    await modeButton.click();
+    await expect(modeButton).toHaveAttribute('data-mode', 'expanded');
+    await expect(title).toHaveAttribute('aria-expanded', 'true');
+
+    await card.getByRole('button', { name: 'Resolve thread' }).click();
+    await expect(card).toHaveClass(/resolved/);
+    await expect.poll(highlighted).toBe(0);
+
+    // Renaming the title updates the name recorded in the URL.
+    await page.locator('#docTitle').click();
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.type('Final notes');
+    await page.keyboard.press('Enter');
+    await expect.poll(async () => (await state()).name).toBe('Final notes');
   });
 
   test('find-in-page highlights matches', async ({ page }) => {

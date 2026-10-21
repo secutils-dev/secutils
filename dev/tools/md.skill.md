@@ -3,7 +3,8 @@ name: markdown-preview
 description: >-
   Render and read Markdown in the browser with the Secutils.dev Markdown
   Preview tool. Reading-first: the rendered preview is the default full-width
-  view, with on-demand source editing and self-contained HTML/PDF export.
+  view, with on-demand source editing, threaded review comments stored in the
+  Markdown, and self-contained HTML/PDF export.
   Supports GitHub-flavored Markdown, Mermaid diagrams, GeoJSON/TopoJSON maps, STL and colored 3MF models, KaTeX math, GitHub
   alerts (`[!NOTE]` etc.), `==highlights==`, heading anchors, and
   find-in-page. Hand the user https://tools.secutils.dev/md (optionally with
@@ -51,7 +52,8 @@ available on demand.
 - **Wide tables** - tables with ≥ 4 columns get a horizontal-scroll wrapper.
 
 YAML frontmatter (`title: …`) is honoured: the `title` becomes the document
-name used for the page title and downloaded filenames.
+name used for the page title and downloaded filenames. Click the name in the
+toolbar to rename the document. The URL fragment records the new name.
 
 ## How to use it
 
@@ -138,6 +140,53 @@ replaces only that block's source text, so the rest of the file stays byte-ident
 Block editing is not available for documents over 10 MB.
 Those documents still render, and the **Source** view still edits them.
 
+## Review comments
+
+- **Comment** - select text in the preview, then click the speech-bubble button in the selection
+  toolbar or press `Ctrl/Cmd+Alt+M`. Selections can span blocks and code.
+  Write the comment in Markdown. `Ctrl/Cmd+Enter` posts it, and `Esc` cancels.
+  Comments render like the document: code highlighting, tables, math, GitHub alerts, Mermaid,
+  and STL/3MF/GeoJSON/TopoJSON fences. Raw HTML in a comment shows as text.
+- **Threads** - cards sit in the right margin beside their highlighted text. Click a highlight or a card
+  to focus the thread. Reply, edit, delete, resolve, or reopen it from the card.
+  Resolved threads collapse and lose their highlight. Click a card's quote to collapse or expand it.
+- **Width** - drag the margin's left edge to resize the comments column, which the browser remembers.
+  The widen button on a card, or a double-click on that edge, toggles a wide column.
+  Below 900px, the cards stack under the document.
+- **Names** - your name is set in the comment box and kept in this browser's local storage only.
+  Each comment stores its author's name. The avatar shows initials on a color derived from the name.
+  The tool does not load avatars from a network service.
+- **Toolbar** - the speech-bubble button shows the open-thread count and cycles the comments through
+  three modes: expanded, collapsed, and hidden. In collapsed mode, each inactive thread is one line with
+  its quote, participants, and comment count. The browser remembers expanded or collapsed. Hidden lasts
+  until you click the button again or start a new comment.
+- **Storage** - the document body stays byte-identical. Threads are stored as one HTML comment at the end of
+  the file, which GitHub and other renderers hide:
+
+  ```markdown
+  <!-- su-comments
+  [
+    {
+      "id": "1f3a9c2e",
+      "quote": "warnings as the final behavior",
+      "prefix": "I disagree with ",
+      "suffix": " for a protected query.",
+      "comments": [
+        { "author": "Oleg", "at": "2026-10-21T09:41:00.000Z", "body": "Too **strong**?" }
+      ]
+    }
+  ]
+  -->
+  ```
+
+  A thread attaches to the rendered text that equals `quote`. When the quote appears more than once,
+  `prefix` and `suffix` (up to 32 characters of surrounding text) pick the occurrence. Formatting the quoted
+  words keeps the thread attached. Changing those words detaches it, and its quote is struck through.
+  Optional fields: `resolved: true` on a thread, and `edited` (an ISO timestamp) on a comment.
+  `<` and `>` inside the JSON are written as `\u003c` and `\u003e`.
+  The Source view hides this block, as it hides frontmatter. Saves, downloads, and the URL fragment include it.
+  HTML and PDF exports omit comments.
+
 ## Saving
 
 - **URL fragment** - after each edit, the page URL fragment is updated with the
@@ -209,6 +258,13 @@ Same canonical format every Secutils.dev tool uses:
 Pipeline: UTF-8 bytes of the raw Markdown → `deflate-raw` → prepend the
 4-byte LE u32 of the **uncompressed** length → base64url (`+`→`-`, `/`→`_`,
 strip `=`). The state is just the Markdown text itself - no JSON wrapper.
+Review comments are part of that text (see "Review comments").
+
+To also set the document name, use URL-encoded fragment parameters:
+`#name=<file name>&md=<encoded>`. A trailing `.md` in the name is dropped.
+The plain `#<encoded>` form remains valid; base64url never contains `=`, so the two
+forms cannot collide. The tool writes `name=` only when frontmatter `title:` does not
+already imply the name.
 
 ## Directing the user
 
@@ -248,12 +304,12 @@ mdpreview() {
   local file="${1:?usage: mdpreview <file.md>}"
   local url
   url=$(node -e '
-    const fs = require("node:fs"), zlib = require("node:zlib");
+    const fs = require("node:fs"), path = require("node:path"), zlib = require("node:zlib");
     const utf8 = fs.readFileSync(process.argv[1]);
     const out = Buffer.concat([Buffer.alloc(4), zlib.deflateRawSync(utf8)]);
     out.writeUInt32LE(utf8.length, 0);
-    const enc = out.toString("base64").replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
-    console.log("https://tools.secutils.dev/md#" + enc);
+    const md = out.toString("base64url");
+    console.log("https://tools.secutils.dev/md#" + new URLSearchParams({ name: path.basename(process.argv[1]), md }));
   ' "$file") || return 1
   case "$(uname)" in
     Darwin) open "$url" ;;
@@ -263,8 +319,8 @@ mdpreview() {
 }
 ```
 
-Then `mdpreview README.md` opens the rendered file in your browser. The file
-never leaves your machine: the fragment (everything after `#`) is **never**
+Then `mdpreview README.md` opens the rendered file in your browser, named
+after the file. The file never leaves your machine: the fragment (everything after `#`) is **never**
 sent to the Secutils.dev server.
 
 For a public file already on the web, skip the encoding and just open the

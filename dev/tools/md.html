@@ -225,6 +225,9 @@ body.su-view-html #htmlPreview { display: block; }
 .format-bar button:hover { background: var(--surface-hover); }
 .format-bar mark { background: var(--hl-bg); color: var(--hl-text); padding: 0 3px; border-radius: 3px; }
 .format-bar code { font: 12px var(--mono); }
+.format-bar button svg { vertical-align: middle; }
+.format-sep { width: 1px; margin: 4px 2px; background: var(--border); }
+.format-sep[hidden] { display: none; }
 .block-handle button { width: 22px; height: 22px; padding: 3px; border: none; border-radius: 4px; background: none; color: var(--text-muted); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
 .block-handle button:hover, .block-handle button[aria-expanded="true"] { background: var(--surface-hover); color: var(--text); }
 .block-handle button:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
@@ -238,6 +241,82 @@ body.su-view-html #htmlPreview { display: block; }
 .su-block-editor .editor-fallback { display: block; height: auto; min-height: 3em; background: var(--code-bg); }
 .save-state { font: 11px var(--mono); color: var(--text-muted); white-space: nowrap; }
 .save-state.su-warn { color: #d29922; }
+.doc-title[contenteditable="plaintext-only"] { cursor: text; padding: 1px 5px; margin: 0 -5px; border-radius: 4px; }
+.doc-title[contenteditable="plaintext-only"]:hover { background: var(--surface-hover); }
+.doc-title:focus { outline: 1px solid var(--primary); text-overflow: clip; }
+/* Review comments */
+::highlight(su-comment) { background-color: rgba(254, 208, 71, 0.2); }
+::highlight(su-comment-active) { background-color: rgba(254, 208, 71, 0.42); }
+[data-theme="light"] ::highlight(su-comment) { background-color: rgba(234, 179, 8, 0.22); }
+[data-theme="light"] ::highlight(su-comment-active) { background-color: rgba(234, 179, 8, 0.48); }
+.icon-btn[hidden] { display: none; }
+.comments-btn { gap: 4px; font: 11px var(--mono); }
+.comments-btn svg { display: none; }
+.comments-btn[data-mode="expanded"] .i-expanded, .comments-btn[data-mode="collapsed"] .i-collapsed, .comments-btn[data-mode="hidden"] .i-hidden { display: block; }
+#previewArticle { grid-area: 1 / 1; }
+#commentsRail { display: none; grid-area: 1 / 2; align-self: stretch; position: relative; }
+body.su-has-comments:not(.su-rail-hidden) #previewScroll { display: grid; grid-template-columns: minmax(0, var(--su-reading-track, 800px)) var(--su-rail-w, 320px); justify-content: center; column-gap: 48px; align-items: start; }
+body.su-has-comments:not(.su-rail-hidden) #commentsRail { display: block; }
+body.su-rail-wide { --su-rail-w: min(62vw, 1000px); }
+.cm-resizer { position: absolute; top: 0; bottom: 0; left: -30px; width: 12px; cursor: col-resize; touch-action: none; }
+.cm-resizer::after { content: ''; position: absolute; inset: 0 5px; border-radius: 1px; background: var(--primary); opacity: 0; transition: opacity .15s; }
+.cm-resizer:hover::after, .cm-resizer:active::after { opacity: .7; }
+.cm-card { position: absolute; left: 0; right: 0; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; font-size: 13px; line-height: 1.5; transition: top .18s ease, transform .18s ease, box-shadow .18s ease, border-color .15s; }
+.cm-card:hover { border-color: var(--text-muted); }
+.cm-card.active { z-index: 1; transform: translateX(-10px); border-color: var(--primary); box-shadow: 0 10px 28px rgba(0,0,0,0.3); }
+.cm-card.resolved:not(.active) { opacity: .7; }
+.cm-card.collapsed { padding-block: 6px; }
+.cm-card.collapsed > :not(.cm-head) { display: none; }
+.cm-head { display: flex; align-items: center; gap: 2px; margin-bottom: 8px; }
+.cm-card.collapsed .cm-head { margin-bottom: 0; }
+.cm-summary { display: none; flex: none; align-items: center; }
+.cm-card.collapsed .cm-summary { display: flex; }
+.cm-card.collapsed:not(:hover, :focus-within) .cm-head :is(.icon-btn, .cm-tag), .cm-card.collapsed:is(:hover, :focus-within) .cm-summary { display: none; }
+.cm-summary .cm-avatar { width: 18px; height: 18px; font-size: 8px; box-shadow: 0 0 0 2px var(--surface); }
+.cm-summary .cm-avatar + .cm-avatar { margin-left: -5px; }
+.cm-count { margin-left: 5px; color: var(--text-muted); font: 11px var(--mono); }
+.cm-quote { flex: 1; min-width: 0; margin-right: 4px; padding: 0 0 0 8px; border: none; border-left: 2px solid var(--primary); background: none; color: var(--text-muted); font: italic 12px/1.5 var(--font); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.cm-quote:hover { color: var(--text); }
+.cm-card.orphan .cm-quote { border-left-color: var(--border); text-decoration: line-through; }
+.cm-tag { font: 600 10px/1 var(--font); text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); margin-right: 4px; }
+.cm-head .icon-btn svg { width: 14px; height: 14px; }
+.cm-head .icon-btn { opacity: 0; }
+.cm-card:is(:hover, .active, :focus-within) .cm-head .icon-btn { opacity: 1; }
+.cm-widen .i-narrow, body.su-rail-wide .cm-widen .i-widen { display: none; }
+body.su-rail-wide .cm-widen .i-narrow { display: block; }
+.cm-comment + .cm-comment { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.cm-meta { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.cm-avatar { flex: none; width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: hsl(var(--hue) 55% 42%); color: #fff; font: 600 10px/1 var(--font); }
+.cm-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cm-time { flex: none; color: var(--text-muted); font-size: 11px; }
+.cm-actions { margin-left: auto; display: flex; opacity: 0; }
+.cm-comment:is(:hover, :focus-within) .cm-actions { opacity: 1; }
+.cm-actions button { padding: 2px 5px; border: none; border-radius: 4px; background: none; color: var(--text-muted); font: 11px var(--font); cursor: pointer; }
+.cm-actions button:hover { color: var(--text); background: var(--surface-hover); }
+.cm-body.preview-article { margin-top: 6px; font-size: 13.5px; line-height: 1.55; overflow-wrap: anywhere; }
+.cm-body.preview-article :is(p, ul, ol, pre, blockquote, table, .markdown-alert, .su-diagram, .su-mermaid) { margin-bottom: 8px; }
+.cm-body.preview-article > :last-child { margin-bottom: 0 !important; }
+.cm-body.preview-article :is(h1, h2, h3, h4, h5, h6) { margin: .6em 0 .3em; padding: 0; border: none; font-size: 1.05em; }
+.cm-body .su-diagram .su-diagram-view { aspect-ratio: 4 / 3; }
+.cm-body .su-diagram:not(:hover, :focus-within, :fullscreen) .su-diagram-controls { visibility: hidden; }
+.cm-body .su-diagram-modes button { padding: 0 6px; font-size: 11px; }
+.cm-composer { margin-top: 10px; }
+.cm-head + .cm-composer { margin-top: 0; }
+.cm-comment .cm-composer { margin-top: 6px; }
+.cm-composer textarea { display: block; width: 100%; min-height: 34px; padding: 7px 9px; resize: none; overflow: hidden; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font: 13px/1.5 var(--font); outline: none; }
+.cm-composer textarea:focus { border-color: var(--primary); }
+.cm-foot { display: flex; align-items: center; gap: 6px; margin-top: 10px; }
+.cm-card:not(.draft) .cm-composer:not(:focus-within):has(textarea:placeholder-shown) .cm-foot { display: none; }
+.cm-composer[data-edit] .cm-foot > :is(.cm-avatar, .cm-author) { visibility: hidden; }
+.cm-author { flex: 1; min-width: 0; padding: 3px 5px; border: none; border-radius: 4px; background: none; color: var(--text-muted); font: 12px var(--font); outline: none; }
+.cm-author:is(:hover, :focus) { background: var(--surface-hover); color: var(--text); }
+@media (max-width: 900px) {
+    body.su-has-comments:not(.su-rail-hidden) #previewScroll { grid-template-columns: minmax(0, 1fr); }
+    #commentsRail { grid-area: 2 / 1; margin-top: 24px; }
+    .cm-card { position: static; margin-bottom: 10px; }
+    .cm-card.active { transform: none; }
+    .cm-resizer { display: none; }
+}
 /* find-in-page hits */
 .preview-article .find-hit { background: rgba(254, 208, 71, 0.35); border-radius: 2px; }
 .preview-article .find-hit.current { background: var(--primary); color: var(--primary-text); }
@@ -444,7 +523,7 @@ html.su-loading #emptyState { display: none; }
     <main>
         <div class="toolbar">
             <div class="toolbar-left">
-                <span id="docTitle" class="doc-title">Markdown Preview</span>
+                <span id="docTitle" class="doc-title" spellcheck="false" title="Rename">Markdown Preview</span>
                 <span id="docStats" class="stats-text">empty</span>
                 <span id="saveState" class="save-state" role="status" aria-live="polite"></span>
             </div>
@@ -458,6 +537,12 @@ html.su-loading #emptyState { display: none; }
                     <button type="button" class="view-btn" id="viewHtmlBtn" data-view="html" aria-pressed="false" disabled title="Preview the exported self-contained HTML">HTML</button>
                     <button type="button" class="view-btn" id="viewEditBtn" data-view="edit" aria-pressed="false" title="Edit the Markdown source (Ctrl/Cmd+E)">Source</button>
                 </div>
+                <button id="commentsBtn" class="icon-btn comments-btn" hidden data-mode="expanded" aria-label="Comments">
+                    <svg class="i-expanded" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M7 8h10M7 12h6"/></svg>
+                    <svg class="i-collapsed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                    <svg class="i-hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15V5a2 2 0 0 0-2-2H9"/><path d="m2 2 20 20"/><path d="M3.6 3.6A2 2 0 0 0 3 5v16l4-4h10"/></svg>
+                    <span id="commentsCount"></span>
+                </button>
                 <button id="findBtn" class="icon-btn" title="Find in document (Ctrl/Cmd+F)" aria-label="Find in document">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
                 </button>
@@ -539,6 +624,9 @@ html.su-loading #emptyState { display: none; }
             <div class="output-panel" id="previewWrap">
                 <div id="previewScroll" class="output-scroll">
                     <article id="previewArticle" class="preview-article"></article>
+                    <aside id="commentsRail" aria-label="Comments">
+                        <div id="railResizer" class="cm-resizer" role="separator" aria-orientation="vertical" title="Drag to resize comments. Double-click to widen."></div>
+                    </aside>
                     <div id="blockHandle" class="block-handle" hidden>
                         <button id="blockAddBtn" type="button" title="Add a block below" aria-label="Add a block below">
                             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>
@@ -656,6 +744,8 @@ html.su-loading #emptyState { display: none; }
         <button type="button" data-format="strike" title="Strikethrough" aria-label="Strikethrough"><s>S</s></button>
         <button type="button" data-format="highlight" title="Highlight" aria-label="Highlight"><mark>H</mark></button>
         <button type="button" data-format="code" title="Inline code" aria-label="Inline code"><code>&lt;/&gt;</code></button>
+        <span class="format-sep" data-format-sep aria-hidden="true"></span>
+        <button type="button" data-comment title="Comment (Ctrl/Cmd+Alt+M)" aria-label="Comment"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M12 7v6M9 10h6"/></svg></button>
     </div>
 
     <input type="file" id="fileInput" accept=".md,.markdown,.txt,.mdx,.html,.htm,.stl,.3mf">
@@ -810,6 +900,10 @@ const els = {
     blockDropLine: $('blockDropLine'),
     formatBar: $('formatBar'),
     blockMenu: $('blockMenu'),
+    commentsRail: $('commentsRail'),
+    railResizer: $('railResizer'),
+    commentsBtn: $('commentsBtn'),
+    commentsCount: $('commentsCount'),
 };
 
 let markdown = '';
@@ -818,6 +912,10 @@ let filename = 'Untitled';
 let renderedMarkdown = ''; // Source of the current preview DOM; block ranges are only valid for it.
 let savedMarkdown = ''; // Last loaded or saved content, for the dirty indicator.
 let fragmentMarkdown = ''; // Content currently encoded in the URL fragment.
+let threads = []; // Review comment threads, stored as a trailing `<!-- su-comments -->` block.
+let commentsState = ''; // Serialized `threads`, refreshed by setThreads.
+let savedComments = '';
+let fragmentMeta = ''; // Name and comments currently encoded in the URL fragment.
 let fileHandle = null; // File System Access handle (Chromium) for in-place saves.
 let fileStamp = 0; // `lastModified` of the file at the last read or write.
 let fileConflict = false; // The file changed on disk; autosave stops until an explicit save.
@@ -1847,7 +1945,8 @@ function renderSourceBlocks(md, renderer) {
     return html;
 }
 
-async function render(md, forExport = true) {
+// `comment` escapes raw HTML and skips heading ids, which would collide with the document's.
+async function render(md, forExport = true, comment = false) {
     const el = document.createElement('div');
     // Direct model imports are one fence. Avoid escaping and reparsing tens of
     // megabytes through marked and the HTML parser just to recover the source.
@@ -1861,6 +1960,7 @@ async function render(md, forExport = true) {
     } else {
         let sourceCursor = 0;
         const renderer = new marked.Renderer();
+        if (comment) renderer.html = ({ text }) => escHTML(text);
         const defaultCode = renderer.code;
         renderer.code = function (token) {
             if (!/^(?:stl|su-mesh)(?:\s|$)/i.test(token.lang ?? '')) return defaultCode.call(this, token);
@@ -1904,7 +2004,7 @@ async function render(md, forExport = true) {
     enhanceAlerts(el);
     if (needsMath(md)) { try { await enhanceMath(el); } catch {} }
     enhanceWideTables(el);
-    enhanceHeadingAnchors(el);
+    if (!comment) enhanceHeadingAnchors(el);
     if (!forExport) return el;
     initDiagrams(el);
     const html = el.innerHTML;
@@ -1924,13 +2024,19 @@ els.previewArticle.addEventListener('su-save-model-view', (event) => {
     } catch (error) { toast(error.message); }
 });
 
-function stripFrontmatter(md) {
+// Splits off what the preview doesn't render: YAML frontmatter and the comments block.
+function parseSource(md) {
     const m = md.match(FRONTMATTER_RE);
     frontmatter = m?.[0] ?? '';
-    if (!m) return md;
-    const t = m[1].match(FRONTMATTER_TITLE_RE);
+    const t = m?.[1].match(FRONTMATTER_TITLE_RE);
     if (t) filename = t[1];
-    return md.slice(m[0].length);
+    const body = m ? md.slice(m[0].length) : md;
+    const c = body.match(COMMENTS_RE);
+    let parsed = null;
+    try { parsed = c && JSON.parse(c[1]); } catch {}
+    // A malformed block stays in the body, where Source view can repair it.
+    setThreads(Array.isArray(parsed) ? parsed.filter(isThread) : []);
+    return Array.isArray(parsed) ? body.slice(0, c.index) : body;
 }
 
 function extractTitle(html) {
@@ -1942,8 +2048,20 @@ function extractTitle(html) {
 }
 
 function setDocTitle() {
-    els.docTitle.textContent = markdown.trim() ? filename : 'Markdown Preview';
+    if (document.activeElement === els.docTitle) return;
+    const named = !!markdown.trim();
+    els.docTitle.textContent = named ? filename : 'Markdown Preview';
+    els.docTitle.contentEditable = named ? 'plaintext-only' : 'false';
 }
+els.docTitle.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); els.docTitle.blur(); }
+    else if (e.key === 'Escape') { e.stopPropagation(); els.docTitle.textContent = filename; els.docTitle.blur(); }
+});
+els.docTitle.addEventListener('blur', () => {
+    const name = els.docTitle.textContent.trim().replace(MD_FILE_EXT, '');
+    if (name && name !== filename) { filename = name; persistSoon(); }
+    setDocTitle();
+});
 
 function updatePanes() {
     const hasContent = !!markdown.trim();
@@ -1962,6 +2080,8 @@ async function updatePreview() {
         renderedMarkdown = markdown;
         blockEditor = null;
         updatePanes();
+        anchorThreads();
+        renderRail();
         els.docStats.textContent = 'empty';
         setDocTitle();
         setExportEnabled(false);
@@ -1983,6 +2103,8 @@ async function updatePreview() {
     decorateBlocks();
     restoreScrollAnchor();
     updatePanes();
+    anchorThreads();
+    renderRail();
     const target = hovered && els.previewArticle.querySelector(hovered);
     if (target) showHandle(target); else hideHandle();
     const wordCount = source.length > 1000000 ? null : source.trim().split(/\s+/).length;
@@ -2125,7 +2247,7 @@ const isHeadingBlock = (el) => !!el?.matches?.('.su-block[data-depth]');
 const blockRange = (el) => [Number(el.dataset.start), Number(el.dataset.end)];
 const headingKey = (block) => [...block.firstElementChild.childNodes]
     .filter((n) => !n.classList?.contains('su-anchor')).map((n) => n.textContent).join('').trim();
-const isEditable = (el) => !!el?.closest?.('input, textarea, select, [contenteditable="true"], .cm-editor');
+const isEditable = (el) => !!el?.closest?.('input, textarea, select, [contenteditable]:not([contenteditable="false"]), .cm-editor');
 
 // The heading's next heading at the same or a higher level, or null at the end.
 function sectionBoundary(heading) {
@@ -2595,8 +2717,11 @@ function applyFormat(kind) {
 function hideFormatBar() { els.formatBar.hidden = true; }
 function updateFormatBar() {
     const sel = selectionTarget();
-    if (!sel) { hideFormatBar(); return; }
-    const r = sel.range.getBoundingClientRect();
+    const range = sel?.range ?? commentableRange();
+    if (!range) { hideFormatBar(); return; }
+    // Selections across blocks or inside code can be commented on, not formatted.
+    for (const el of els.formatBar.querySelectorAll('[data-format], [data-format-sep]')) el.hidden = !sel;
+    const r = range.getBoundingClientRect();
     els.formatBar.hidden = false;
     const { width, height } = els.formatBar.getBoundingClientRect();
     els.formatBar.style.top = `${Math.round(r.top - height - 8 < 8 ? r.bottom + 8 : r.top - height - 8)}px`;
@@ -2615,8 +2740,471 @@ document.addEventListener('pointerup', () => {
 els.previewScroll.addEventListener('scroll', () => { if (!els.formatBar.hidden) updateFormatBar(); }, { passive: true });
 els.formatBar.addEventListener('mousedown', (e) => e.preventDefault());
 els.formatBar.addEventListener('click', (e) => {
+    if (e.target.closest('[data-comment]')) { startDraft(); return; }
     const kind = e.target.closest('[data-format]')?.dataset.format;
     if (kind) applyFormat(kind);
+});
+
+// ---- Review comments ----
+// Threads anchor to the rendered text by quote plus surrounding context (like the
+// W3C TextQuoteSelector), so the Markdown body stays byte-identical and formatting
+// the quoted words keeps the anchor. Threads persist as one trailing HTML comment,
+// which other Markdown renderers hide.
+const COMMENTS_RE = /(?:^|\r?\n)<!-- su-comments\r?\n([\s\S]*?)\r?\n-->\s*$/;
+const COMMENT_CONTEXT = 32;
+const COMMENT_QUOTE_MAX = 2000;
+const AUTHOR_KEY = 'su-md-author';
+const RAIL_WIDTH_KEY = 'su-md-rail-width';
+const RAIL_MODE_KEY = 'su-md-rail-mode';
+const RAIL_MODES = ['expanded', 'collapsed', 'hidden'];
+const RAIL_MODE_VERBS = { expanded: 'expand', collapsed: 'collapse', hidden: 'hide' };
+const RAIL_NARROW = matchMedia('(max-width: 900px)');
+const ICON = (paths) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+const RESOLVE_SVG = ICON('<path d="M20 6 9 17l-5-5"/>');
+const REOPEN_SVG = ICON('<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>');
+const WIDEN_SVG = ICON('<path class="i-widen" d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/><path class="i-narrow" d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/>');
+const TRASH_SVG = ICON('<path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>');
+const commentRenderer = new marked.Renderer();
+commentRenderer.html = ({ text }) => escHTML(text);
+const relativeTime = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+const escAttr = (s) => escHTML(String(s)).replace(/"/g, '&quot;');
+const anchors = new Map(); // thread id -> Range in the preview, or null when the quote is gone
+const highlights = 'highlights' in CSS
+    ? Object.fromEntries(['su-comment', 'su-comment-active'].map((name) => { const h = new Highlight(); CSS.highlights.set(name, h); return [name, h]; }))
+    : null;
+let activeThread = null;
+let draft = null; // A thread being composed: { id: 'draft', quote, prefix, suffix, comments: [] }
+let railMode = 'expanded';
+const collapsedOverrides = new Map(); // thread id -> collapsed, toggled from the card title
+const isCollapsed = (t) => collapsedOverrides.get(t.id) ?? (t.id !== activeThread && (!!t.resolved || railMode === 'collapsed'));
+
+const isThread = (t) => typeof t?.id === 'string' && typeof t.quote === 'string' && !!t.quote
+    && Array.isArray(t.comments) && t.comments.length > 0 && t.comments.every((c) => typeof c?.body === 'string');
+
+function setThreads(next) {
+    threads = next;
+    // `<` and `>` only occur inside JSON strings, so escaping them keeps `-->` out of the comment.
+    commentsState = next.length ? JSON.stringify(next, null, 2).replace(/[<>]/g, (ch) => (ch === '<' ? '\\u003c' : '\\u003e')) : '';
+}
+
+function documentText(text = markdown) {
+    const block = commentsState ? `${text.endsWith('\n') ? '' : '\n'}\n<!-- su-comments\n${commentsState}\n-->\n` : '';
+    return withEol(`${frontmatter}${text}${block}`);
+}
+
+const authorName = (name) => (typeof name === 'string' && name.trim()) || 'Anonymous';
+const savedAuthor = () => { try { return localStorage.getItem(AUTHOR_KEY) ?? ''; } catch { return ''; } };
+
+function avatarHtml(name) {
+    const full = authorName(name);
+    const words = full.split(/\s+/);
+    const initials = [...new Set([words[0], words.at(-1)])].map((w) => [...w][0]).join('').toUpperCase();
+    let hue = 0;
+    for (const ch of full) hue = (hue * 31 + ch.codePointAt(0)) % 360;
+    return `<span class="cm-avatar" style="--hue:${hue}" aria-hidden="true">${escHTML(initials)}</span>`;
+}
+
+function timeAgo(date) {
+    const ms = date - Date.now();
+    for (const [unit, size] of [['year', 31536e6], ['month', 2592e6], ['week', 6048e5], ['day', 864e5], ['hour', 36e5], ['minute', 6e4]]) {
+        if (Math.abs(ms) >= size) return relativeTime.format(Math.round(ms / size), unit);
+    }
+    return 'just now';
+}
+
+// Flattened preview text with the text node that starts at each offset.
+function textIndex() {
+    const nodes = [], starts = new Map();
+    let text = '';
+    const walker = document.createTreeWalker(els.previewArticle, NodeFilter.SHOW_TEXT, {
+        acceptNode: (node) => (node.parentElement.closest('.su-anchor, .su-block-editor, .katex-mathml, style, script') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
+    });
+    for (let node; (node = walker.nextNode());) { starts.set(node, text.length); nodes.push(node); text += node.data; }
+    return { text, nodes, starts };
+}
+
+function textOffset(index, node, offset) {
+    if (index.starts.has(node)) return index.starts.get(node) + offset;
+    // An element boundary (or skipped text): the next indexed text node starts there.
+    const point = document.createRange();
+    point.setStart(node, offset);
+    const next = index.nodes.find((n) => point.comparePoint(n, 0) >= 0);
+    return next ? index.starts.get(next) : index.text.length;
+}
+
+function textPoint(index, pos, end = false) {
+    const node = index.nodes.findLast((n) => (end ? index.starts.get(n) < pos : index.starts.get(n) <= pos)) ?? index.nodes[0];
+    return [node, pos - index.starts.get(node)];
+}
+
+const sharedLength = (a, b, fromEnd = false) => {
+    let n = 0;
+    while (n < a.length && n < b.length && (fromEnd ? a[a.length - 1 - n] === b[b.length - 1 - n] : a[n] === b[n])) n++;
+    return n;
+};
+
+// ponytail: exact quote match only; any edit inside the quoted text detaches the
+// thread (shown struck through). Add fuzzy matching if detaching becomes common.
+function locate(index, thread) {
+    const { text } = index, { quote, prefix = '', suffix = '' } = thread;
+    let best = -1, bestScore = -1;
+    for (let i = text.indexOf(quote); i >= 0; i = text.indexOf(quote, i + 1)) {
+        const end = i + quote.length;
+        const score = sharedLength(text.slice(Math.max(0, i - COMMENT_CONTEXT), i), prefix, true) + sharedLength(text.slice(end, end + COMMENT_CONTEXT), suffix);
+        if (score > bestScore) [best, bestScore] = [i, score];
+    }
+    if (best < 0) return null;
+    const range = document.createRange();
+    range.setStart(...textPoint(index, best));
+    range.setEnd(...textPoint(index, best + quote.length, true));
+    return range;
+}
+
+const allThreads = () => (draft ? [...threads, draft] : threads);
+const railHidden = () => document.body.classList.contains('su-rail-hidden');
+const threadCard = (id) => els.commentsRail.querySelector(`.cm-card[data-id="${CSS.escape(id)}"]`);
+
+function anchorThreads() {
+    anchors.clear();
+    if (allThreads().length && renderedMarkdown.trim()) {
+        const index = textIndex();
+        for (const t of allThreads()) anchors.set(t.id, locate(index, t));
+    }
+    updateHighlights();
+}
+
+function updateHighlights() {
+    if (!highlights) return;
+    for (const h of Object.values(highlights)) h.clear();
+    if (railHidden()) return;
+    for (const t of allThreads()) {
+        const range = anchors.get(t.id);
+        if (range && !t.resolved) highlights[t.id === activeThread ? 'su-comment-active' : 'su-comment'].add(range);
+    }
+}
+
+function commentableRange() {
+    const sel = window.getSelection();
+    if (viewMode !== 'preview' || blockEditor || !sel?.rangeCount || sel.isCollapsed) return null;
+    const range = sel.getRangeAt(0);
+    return els.previewArticle.contains(range.commonAncestorContainer) && range.toString().trim() ? range : null;
+}
+
+function startDraft() {
+    const range = commentableRange();
+    if (!range || !previewInSync()) return;
+    const index = textIndex();
+    let start = textOffset(index, range.startContainer, range.startOffset);
+    let end = textOffset(index, range.endContainer, range.endOffset);
+    while (start < end && /\s/.test(index.text[start])) start++;
+    while (end > start && /\s/.test(index.text[end - 1])) end--;
+    if (end <= start) return;
+    if (end - start > COMMENT_QUOTE_MAX) { toast('Select a shorter passage to comment on'); return; }
+    window.getSelection().removeAllRanges();
+    hideFormatBar();
+    draft = {
+        id: 'draft',
+        quote: index.text.slice(start, end),
+        prefix: index.text.slice(Math.max(0, start - COMMENT_CONTEXT), start),
+        suffix: index.text.slice(end, end + COMMENT_CONTEXT),
+        comments: [],
+    };
+    activeThread = draft.id;
+    if (railMode === 'hidden') setRailMode(savedRailMode());
+    anchorThreads();
+    renderRail();
+    const card = threadCard(draft.id);
+    card?.querySelector('textarea').focus({ preventScroll: true });
+    if (RAIL_NARROW.matches) card?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+function discardDraft() {
+    draft = null;
+    if (activeThread === 'draft') activeThread = null;
+    anchorThreads();
+    renderRail();
+}
+
+const commentHtml = (c, i) => {
+    const date = new Date(c.at);
+    const dated = Number.isFinite(date.getTime());
+    return `<div class="cm-comment" data-index="${i}">
+<div class="cm-meta">${avatarHtml(c.author)}<span class="cm-name">${escHTML(authorName(c.author))}</span>${dated ? `<time class="cm-time" datetime="${date.toISOString()}" title="${escAttr(date.toLocaleString())}">${timeAgo(date)}${c.edited ? ' · edited' : ''}</time>` : ''}<span class="cm-actions"><button type="button" data-act="edit">Edit</button>${i ? '<button type="button" data-act="delete">Delete</button>' : ''}</span></div>
+<div class="cm-body preview-article"></div>
+</div>`;
+};
+
+const composerHtml = (label, text = '') => `<form class="cm-composer">
+<textarea rows="1" placeholder="${label === 'Reply' ? 'Reply…' : 'Comment… Markdown works'}" aria-label="${label}">${escHTML(text)}</textarea>
+<div class="cm-foot">${avatarHtml(savedAuthor())}<input class="cm-author" value="${escAttr(savedAuthor())}" placeholder="Your name" aria-label="Your name" maxlength="60" autocomplete="nickname"><button type="button" class="btn btn-sm" data-act="cancel">Cancel</button><button type="submit" class="btn btn-primary btn-sm">${label}</button></div>
+</form>`;
+
+// Comments use the document pipeline (Mermaid, models, maps, math, alerts) through its
+// static export output, which renders once per body and rehydrates on every rebuild.
+// ponytail: unbounded cache keyed by comment text; fine for a review session.
+const renderedComments = new Map(); // comment Markdown -> HTML, or a Promise while rendering
+function fillCommentBody(body, md) {
+    const cached = renderedComments.get(md);
+    if (typeof cached === 'string') {
+        body.innerHTML = cached;
+        initDiagrams(body);
+    } else {
+        body.innerHTML = marked.parse(md, { renderer: commentRenderer });
+        for (const code of body.querySelectorAll('pre code')) { try { hljs.highlightElement(code); } catch {} }
+        const pending = cached ?? render(md, true, true).then((html) => { renderedComments.set(md, html); return html; });
+        renderedComments.set(md, pending);
+        pending.then(() => { if (body.isConnected) fillCommentBody(body, md); }, () => renderedComments.delete(md));
+    }
+    for (const a of body.querySelectorAll('a[href]')) {
+        if (!/^(?:https?:|mailto:|#)/i.test(a.getAttribute('href'))) a.removeAttribute('href');
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+    }
+}
+
+function buildCard(t) {
+    const card = document.createElement('section');
+    const isDraft = t === draft, anchored = !!anchors.get(t.id);
+    card.className = `cm-card${isDraft ? ' draft' : ''}${t.resolved ? ' resolved' : ''}${anchored ? '' : ' orphan'}`;
+    card.dataset.id = t.id;
+    card.setAttribute('aria-label', `Comments on “${t.quote.slice(0, 80)}”`);
+    const actions = isDraft ? '' : `${t.resolved ? '<span class="cm-tag">Resolved</span>' : ''}
+<button type="button" class="icon-btn" data-act="resolve" title="${t.resolved ? 'Reopen' : 'Resolve'}" aria-label="${t.resolved ? 'Reopen thread' : 'Resolve thread'}">${t.resolved ? REOPEN_SVG : RESOLVE_SVG}</button>
+<button type="button" class="icon-btn cm-widen" data-act="widen" title="Widen or narrow comments" aria-label="Widen or narrow comments">${WIDEN_SVG}</button>
+<button type="button" class="icon-btn" data-act="delete-thread" title="Delete thread" aria-label="Delete thread">${TRASH_SVG}</button>`;
+    const authors = [...new Set(t.comments.map((c) => authorName(c.author)))];
+    const summary = `<span class="cm-summary" aria-hidden="true">${authors.slice(0, 3).map(avatarHtml).join('')}${t.comments.length > 1 ? `<span class="cm-count">${t.comments.length}</span>` : ''}</span>`;
+    card.innerHTML = `<div class="cm-head"><button type="button" class="cm-quote" data-act="toggle" title="${anchored ? 'Collapse or expand' : 'The commented text was changed or removed'}">${escHTML(t.quote)}</button>${summary}${actions}</div>
+${t.comments.map(commentHtml).join('')}
+${composerHtml(isDraft ? 'Comment' : 'Reply')}`;
+    for (const [i, body] of card.querySelectorAll('.cm-body').entries()) fillCommentBody(body, t.comments[i].body);
+    syncCard(card, t);
+    return card;
+}
+
+function syncCard(card, t = allThreads().find((x) => x.id === card.dataset.id)) {
+    const collapsed = !!t && isCollapsed(t);
+    card.classList.toggle('active', card.dataset.id === activeThread);
+    card.classList.toggle('collapsed', collapsed);
+    card.querySelector('.cm-quote').setAttribute('aria-expanded', String(!collapsed));
+}
+
+const fitTextarea = (ta) => { ta.style.height = 'auto'; ta.style.height = `${ta.scrollHeight + 2}px`; };
+
+function renderRail() {
+    const all = allThreads();
+    document.body.classList.toggle('su-has-comments', all.length > 0 && !!markdown.trim());
+    const open = threads.filter((t) => !t.resolved).length;
+    els.commentsBtn.hidden = !threads.length;
+    els.commentsCount.textContent = open || '';
+    const next = RAIL_MODES[(RAIL_MODES.indexOf(railMode) + 1) % RAIL_MODES.length];
+    els.commentsBtn.dataset.mode = railMode;
+    els.commentsBtn.title = `Comments ${railMode} (${open} open). Click to ${RAIL_MODE_VERBS[next]}.`;
+    els.commentsBtn.setAttribute('aria-label', els.commentsBtn.title);
+    // Unsent replies survive rebuilds triggered elsewhere.
+    const pending = [...els.commentsRail.querySelectorAll('.cm-composer:not([data-edit]) textarea')]
+        .filter((ta) => ta.value).map((ta) => [ta.closest('.cm-card').dataset.id, ta.value]);
+    for (const fig of els.commentsRail.querySelectorAll('.su-diagram')) fig.__suDispose?.();
+    els.commentsRail.replaceChildren(els.railResizer, ...all.map(buildCard));
+    for (const [id, value] of pending) {
+        const ta = threadCard(id)?.querySelector('.cm-composer textarea');
+        if (ta) ta.value = value;
+    }
+    railObserver.disconnect();
+    railObserver.observe(els.previewArticle);
+    for (const card of els.commentsRail.querySelectorAll('.cm-card')) railObserver.observe(card);
+    for (const ta of els.commentsRail.querySelectorAll('textarea')) if (ta.value) fitTextarea(ta);
+    layoutRail();
+}
+
+// Cards sit beside their highlighted text. The active card stays level with its
+// text and the others move out of its way; detached threads go last.
+function layoutRail() {
+    const cards = [...els.commentsRail.querySelectorAll('.cm-card')];
+    if (RAIL_NARROW.matches || !cards.length || railHidden()) {
+        for (const card of cards) card.style.top = '';
+        els.commentsRail.style.minHeight = '';
+        return;
+    }
+    const base = els.commentsRail.getBoundingClientRect().top;
+    const items = cards.map((card) => {
+        const rect = anchors.get(card.dataset.id)?.getClientRects()[0];
+        return { card, y: rect ? rect.top - base : Infinity, h: card.offsetHeight };
+    }).sort((a, b) => a.y - b.y);
+    const pos = items.map((item) => (Number.isFinite(item.y) ? item.y : 0));
+    const active = items.findIndex((item) => item.card.dataset.id === activeThread);
+    for (let i = active - 1; i >= 0; i--) pos[i] = Math.min(pos[i], pos[i + 1] - items[i].h - 10);
+    let floor = 0;
+    for (const [i, item] of items.entries()) {
+        pos[i] = Math.max(pos[i], floor);
+        item.card.style.top = `${pos[i]}px`;
+        floor = pos[i] + item.h + 10;
+    }
+    els.commentsRail.style.minHeight = `${floor}px`;
+}
+let railFrame = 0;
+const railObserver = new ResizeObserver(() => { cancelAnimationFrame(railFrame); railFrame = requestAnimationFrame(layoutRail); });
+
+function activateThread(id) {
+    const emptyDraft = draft && id !== draft.id && !threadCard(draft.id)?.querySelector('textarea').value.trim();
+    activeThread = id;
+    collapsedOverrides.delete(id);
+    if (emptyDraft) { discardDraft(); return; }
+    for (const card of els.commentsRail.querySelectorAll('.cm-card')) syncCard(card);
+    updateHighlights();
+    layoutRail();
+}
+
+function commentsChanged() {
+    setThreads(threads);
+    anchorThreads();
+    renderRail();
+    persistSoon();
+}
+
+function changeThreads(change, message) {
+    const before = structuredClone(threads);
+    change();
+    commentsChanged();
+    if (message) toast(message, { label: 'Undo', run: () => { threads = before; commentsChanged(); } });
+}
+
+function setRailWidth(px) {
+    const width = Math.round(Math.min(Math.max(px, 240), window.innerWidth * 0.75));
+    document.documentElement.style.setProperty('--su-rail-w', `${width}px`);
+    return width;
+}
+try { const width = Number(localStorage.getItem(RAIL_WIDTH_KEY)); if (width) setRailWidth(width); } catch {}
+
+function toggleRailWide() {
+    document.body.classList.toggle('su-rail-wide');
+    layoutRail();
+}
+
+els.railResizer.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    els.railResizer.setPointerCapture(e.pointerId);
+    const startX = e.clientX, startWidth = els.commentsRail.offsetWidth;
+    document.body.classList.remove('su-rail-wide');
+    els.railResizer.onpointermove = (ev) => {
+        const width = setRailWidth(startWidth + startX - ev.clientX);
+        try { localStorage.setItem(RAIL_WIDTH_KEY, String(width)); } catch {}
+    };
+});
+els.railResizer.addEventListener('pointerup', () => { els.railResizer.onpointermove = null; });
+els.railResizer.addEventListener('dblclick', toggleRailWide);
+
+// Hidden is a momentary choice; only expanded/collapsed are remembered.
+const savedRailMode = () => { try { return localStorage.getItem(RAIL_MODE_KEY) === 'collapsed' ? 'collapsed' : 'expanded'; } catch { return 'expanded'; } };
+function setRailMode(mode) {
+    railMode = mode;
+    collapsedOverrides.clear();
+    document.body.classList.toggle('su-rail-hidden', mode === 'hidden');
+    if (mode !== 'hidden') try { localStorage.setItem(RAIL_MODE_KEY, mode); } catch {}
+}
+railMode = savedRailMode();
+
+els.commentsBtn.addEventListener('click', () => {
+    setRailMode(RAIL_MODES[(RAIL_MODES.indexOf(railMode) + 1) % RAIL_MODES.length]);
+    renderRail();
+    updateHighlights();
+});
+
+// Clicking highlighted text opens its thread; the shortest match wins when threads overlap.
+els.previewArticle.addEventListener('click', (e) => {
+    if (!allThreads().length || railHidden() || !window.getSelection()?.isCollapsed || e.target.closest('a, input, button')) return;
+    const caret = document.caretPositionFromPoint?.(e.clientX, e.clientY);
+    const range = caret ? null : document.caretRangeFromPoint?.(e.clientX, e.clientY);
+    const [node, offset] = caret ? [caret.offsetNode, caret.offset] : [range?.startContainer, range?.startOffset];
+    let hit = null, hitLength = Infinity;
+    for (const t of threads) {
+        const r = anchors.get(t.id);
+        if (t.resolved || !r || !node || !r.isPointInRange(node, offset)) continue;
+        const length = r.toString().length;
+        if (length < hitLength) [hit, hitLength] = [t.id, length];
+    }
+    if (hit === activeThread) return;
+    activateThread(hit);
+    if (hit && RAIL_NARROW.matches) threadCard(hit)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+});
+
+els.commentsRail.addEventListener('click', (e) => {
+    const card = e.target.closest('.cm-card');
+    if (!card) return;
+    const id = card.dataset.id;
+    const thread = threads.find((t) => t.id === id);
+    const act = e.target.closest('[data-act]')?.dataset.act;
+    const wasCollapsed = card.classList.contains('collapsed');
+    if (id !== activeThread && act !== 'cancel') activateThread(id);
+    if (!card.isConnected) return; // Activating discarded an empty draft and rebuilt the rail.
+    const comment = e.target.closest('.cm-comment');
+    const index = Number(comment?.dataset.index);
+    if (!act && card.classList.contains('collapsed')) { collapsedOverrides.delete(id); syncCard(card); }
+    if (act === 'toggle') {
+        if (id !== 'draft') { collapsedOverrides.set(id, !wasCollapsed); syncCard(card); }
+        if (!card.classList.contains('collapsed')) anchors.get(id)?.startContainer.parentElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    } else if (act === 'widen') toggleRailWide();
+    else if (act === 'resolve') {
+        changeThreads(() => { if (thread.resolved) delete thread.resolved; else thread.resolved = true; }, thread.resolved ? null : 'Thread resolved');
+        if (thread.resolved) activateThread(null);
+    } else if (act === 'delete-thread') changeThreads(() => threads.splice(threads.indexOf(thread), 1), 'Thread deleted');
+    else if (act === 'delete') changeThreads(() => thread.comments.splice(index, 1), 'Comment deleted');
+    else if (act === 'edit') {
+        const tpl = document.createElement('template');
+        tpl.innerHTML = composerHtml('Save', thread.comments[index].body);
+        const form = tpl.content.firstElementChild;
+        form.dataset.edit = String(index);
+        comment.querySelector('.cm-body').replaceWith(form);
+        const ta = form.querySelector('textarea');
+        fitTextarea(ta);
+        ta.focus();
+    } else if (act === 'cancel') {
+        const form = e.target.closest('form');
+        if (id === 'draft') discardDraft();
+        else if (form.dataset.edit) renderRail();
+        else { form.querySelector('textarea').value = ''; e.target.blur(); }
+    }
+});
+
+els.commentsRail.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const form = e.target, ta = form.querySelector('textarea');
+    const body = ta.value.trim();
+    if (!body) { ta.focus(); return; }
+    const author = form.querySelector('.cm-author').value.trim();
+    try { if (author) localStorage.setItem(AUTHOR_KEY, author); } catch {}
+    const at = new Date().toISOString();
+    const id = form.closest('.cm-card').dataset.id;
+    const thread = threads.find((t) => t.id === id);
+    ta.value = '';
+    if (form.dataset.edit) {
+        Object.assign(thread.comments[Number(form.dataset.edit)], { body, edited: at });
+    } else if (id === 'draft') {
+        const { quote, prefix, suffix } = draft;
+        const created = { id: crypto.randomUUID().slice(0, 8), quote, prefix, suffix, comments: [{ author: authorName(author), at, body }] };
+        // Keep threads in document order, so the stored block reads top to bottom.
+        const range = anchors.get('draft');
+        const next = range ? threads.findIndex((t) => anchors.get(t.id)?.compareBoundaryPoints(Range.START_TO_START, range) > 0) : -1;
+        threads.splice(next < 0 ? threads.length : next, 0, created);
+        draft = null;
+        activeThread = created.id;
+    } else {
+        thread.comments.push({ author: authorName(author), at, body });
+    }
+    commentsChanged();
+});
+
+els.commentsRail.addEventListener('input', (e) => {
+    if (e.target.matches('textarea')) fitTextarea(e.target);
+    else if (e.target.matches('.cm-author')) e.target.previousElementSibling.outerHTML = avatarHtml(e.target.value);
+});
+
+els.commentsRail.addEventListener('keydown', (e) => {
+    const form = e.target.closest?.('.cm-composer');
+    if (!form) return;
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); form.requestSubmit(); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); form.querySelector('[data-act="cancel"]').click(); }
 });
 
 // Clicking the empty space below the last block starts a new block at the end.
@@ -2720,6 +3308,8 @@ function clearSearch() {
     searchHits = [];
     currentHit = -1;
     updateSearchCount();
+    // Rewrapping text nodes collapses the comment ranges inside them.
+    anchorThreads();
 }
 function updateSearchCount() {
     els.findCount.textContent = searchHits.length ? `${currentHit + 1}/${searchHits.length}` : '0/0';
@@ -2765,6 +3355,7 @@ function runSearch(query) {
         if (start < text.length) frag.appendChild(document.createTextNode(text.slice(start)));
         node.parentNode.replaceChild(frag, node);
     }
+    anchorThreads();
     selectHit(0);
 }
 function openFind() {
@@ -2841,6 +3432,7 @@ function readReadingWidth() {
 function applyReadingWidth() {
     const width = readReadingWidth();
     document.documentElement.style.setProperty('--su-reading-width', width === 'full' ? 'none' : `${width}px`);
+    document.documentElement.style.setProperty('--su-reading-track', width === 'full' ? '1fr' : `${width}px`);
     if (viewMode === 'html') renderHtmlPreview();
 }
 
@@ -2927,6 +3519,7 @@ async function handleFile(file, handle = null) {
             meshParseCache = { source: result.source, mesh: result.mesh };
             filename = file.name.replace(/\.3mf$/i, '');
             frontmatter = '';
+            setThreads([]);
             loadDocument(`\`\`\`su-mesh\n${result.source}\n\`\`\`\n`);
             setViewMode('preview');
             if (result.mesh.warnings.length) toast(result.mesh.warnings.join(' '));
@@ -2940,11 +3533,12 @@ async function handleFile(file, handle = null) {
             for (const match of raw.matchAll(/`+/g)) fenceLength = Math.max(fenceLength, match[0].length + 1);
             const fence = '`'.repeat(fenceLength);
             frontmatter = '';
+            setThreads([]);
             loadDocument(`${fence}stl\n${raw}\n${fence}\n`);
         } else {
             const embedded = extractEmbeddedMarkdown(raw);
             const editable = embedded === null && MD_FILE_EXT.test(file.name);
-            loadDocument(stripFrontmatter(embedded ?? raw), editable ? handle : null, file.lastModified);
+            loadDocument(parseSource(embedded ?? raw), editable ? handle : null, file.lastModified);
         }
         setViewMode('preview');
     } catch (err) {
@@ -2979,6 +3573,7 @@ els.emptyExampleBtn.addEventListener('click', () => {
     cancelFileImport();
     filename = 'Markdown Preview';
     frontmatter = '';
+    setThreads([]);
     loadDocument(EXAMPLE_MD);
 });
 
@@ -3015,7 +3610,7 @@ async function loadFromUrl(url) {
         const embedded = extractEmbeddedMarkdown(text);
         filename = decodeURIComponent(target.pathname.split('/').pop() || 'document')
             .replace(/\.html?$/i, '').replace(MD_FILE_EXT, '') || 'document';
-        loadDocument(stripFrontmatter(embedded ?? text));
+        loadDocument(parseSource(embedded ?? text));
         setViewMode('preview');
         toast('Loaded from URL');
     } catch {
@@ -3057,16 +3652,16 @@ document.addEventListener('paste', (e) => {
     if (!text || !text.trim()) return;
     e.preventDefault();
     filename = 'Pasted';
-    loadDocument(stripFrontmatter(text));
+    loadDocument(parseSource(text));
 });
 
 // ---- Share ----
 els.shareBtn.addEventListener('click', async () => {
     if (!markdown.trim()) return;
     try {
-        const encoded = await encodeState(withEol(frontmatter + markdown));
-        const url = `${location.origin}${location.pathname}#${encoded}`;
+        const url = `${location.origin}${location.pathname}${await stateHash()}`;
         fragmentMarkdown = markdown;
+        fragmentMeta = metaState();
         history.replaceState({}, '', url);
         await navigator.clipboard.writeText(url);
         toast('Share link copied');
@@ -3163,6 +3758,7 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
         if (!els.blockMenu.hidden) { closeBlockMenu(); return; }
         if (!els.formatBar.hidden) { window.getSelection()?.removeAllRanges(); return; }
+        if (activeThread) { activateThread(null); return; }
         if (!els.findBar.hidden) { closeFind(); return; }
         if (viewMode !== 'preview') { setViewMode('preview'); return; }
     }
@@ -3173,6 +3769,7 @@ document.addEventListener('keydown', (e) => {
         return;
     }
     if (!mod) return;
+    if (e.altKey && e.code === 'KeyM') { if (commentableRange()) { e.preventDefault(); startDraft(); } return; }
     const k = e.key.toLowerCase();
     if (k === 'z' && previewKeys) { e.preventDefault(); undoEdit(e.shiftKey); }
     else if ((k === 'b' || k === 'i') && previewKeys && selectionTarget()) { e.preventDefault(); applyFormat(k === 'b' ? 'bold' : 'italic'); }
@@ -3185,7 +3782,7 @@ document.addEventListener('keydown', (e) => {
 
 function saveMarkdown() {
     if (!markdown) return;
-    const blob = new Blob([withEol(frontmatter + markdown)], { type: 'text/markdown;charset=utf-8' });
+    const blob = new Blob([documentText()], { type: 'text/markdown;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -3222,13 +3819,27 @@ function loadDocument(text, handle = null, stamp = 0) {
     undoStack.length = 0;
     redoStack.length = 0;
     expandedDone.clear();
+    draft = null;
+    activeThread = null;
     setMarkdown(text);
     savedMarkdown = markdown;
+    savedComments = commentsState;
     updateSaveState();
 }
 
+const isDirty = () => markdown !== savedMarkdown || commentsState !== savedComments;
+const metaState = () => `${filename}\n${commentsState}`;
+
+// The fragment holds the document, plus its name when frontmatter doesn't imply it:
+// `#<encoded>` or `#name=<name>&md=<encoded>` (base64url never contains `=`).
+async function stateHash() {
+    const encoded = await encodeState(documentText());
+    const implied = frontmatter.match(FRONTMATTER_TITLE_RE)?.[1] ?? 'Untitled';
+    return `#${filename === implied ? encoded : new URLSearchParams({ name: filename, md: encoded })}`;
+}
+
 function updateSaveState() {
-    const dirty = markdown !== savedMarkdown;
+    const dirty = isDirty();
     let label = '', title = '';
     if (fileConflict) [label, title] = ['Changed on disk', `${fileHandle.name} changed outside this tab. Press Ctrl/Cmd+S to overwrite it.`];
     else if (fileHandle) [label, title] = dirty ? ['Unsaved', `Press Ctrl/Cmd+S to save to ${fileHandle.name}`] : ['Saved', `Changes are saved to ${fileHandle.name}`];
@@ -3245,15 +3856,16 @@ function persistSoon() {
 }
 
 async function persistNow() {
-    const text = markdown;
-    if (text !== fragmentMarkdown && text.length <= 1000000) {
-        const hash = text.trim() ? `#${await encodeState(withEol(frontmatter + text))}` : '';
-        if (text === markdown) {
+    const text = markdown, meta = metaState();
+    if ((text !== fragmentMarkdown || meta !== fragmentMeta) && text.length <= 1000000) {
+        const hash = text.trim() ? await stateHash() : '';
+        if (text === markdown && meta === metaState()) {
             history.replaceState(history.state, '', `${location.pathname}${location.search}${hash}`);
             fragmentMarkdown = text;
+            fragmentMeta = meta;
         }
     }
-    if (fileHandle && !fileConflict && markdown !== savedMarkdown
+    if (fileHandle && !fileConflict && isDirty()
         && (await fileHandle.queryPermission?.({ mode: 'readwrite' })) === 'granted') await writeToHandle();
 }
 
@@ -3261,7 +3873,7 @@ async function persistNow() {
 // last read or write is never overwritten.
 function writeToHandle(force = false) {
     writeQueue = writeQueue.then(async () => {
-        const handle = fileHandle, text = markdown;
+        const handle = fileHandle, text = markdown, comments = commentsState, content = documentText();
         if (!handle) return;
         try {
             if (!force && fileStamp && (await handle.getFile()).lastModified !== fileStamp) {
@@ -3270,10 +3882,11 @@ function writeToHandle(force = false) {
                 return;
             }
             const writable = await handle.createWritable();
-            await writable.write(withEol(frontmatter + text));
+            await writable.write(content);
             await writable.close();
             fileStamp = (await handle.getFile()).lastModified;
             savedMarkdown = text;
+            savedComments = comments;
             fileConflict = false;
         } catch (err) {
             toast(`Save failed: ${err?.message ?? err}`);
@@ -3298,6 +3911,7 @@ async function saveDocument() {
     if (!fileHandle) {
         saveMarkdown();
         savedMarkdown = markdown;
+        savedComments = commentsState;
         updateSaveState();
         return;
     }
@@ -3310,7 +3924,7 @@ async function saveDocument() {
         return;
     }
     await writeToHandle(true);
-    if (markdown === savedMarkdown) toast(`Saved ${fileHandle.name}`);
+    if (!isDirty()) toast(`Saved ${fileHandle.name}`);
 }
 
 // ---- Hydrate from URL fragment or ?url= on load ----
@@ -3319,10 +3933,16 @@ async function saveDocument() {
 // nothing to load / the load failed.
 (async () => {
     if (location.hash.length > 1) {
-        const initial = await decodeState(location.hash.slice(1));
+        const fragment = location.hash.slice(1);
+        const params = fragment.includes('=') ? new URLSearchParams(fragment) : null;
+        const initial = await decodeState(params ? params.get('md') ?? '' : fragment);
         if (initial) {
-            window.__suInitialDoc = adoptEol(stripFrontmatter(initial));
+            window.__suInitialDoc = adoptEol(parseSource(initial));
+            const name = params?.get('name')?.trim();
+            if (name) filename = name.replace(MD_FILE_EXT, '');
             savedMarkdown = fragmentMarkdown = window.__suInitialDoc;
+            savedComments = commentsState;
+            fragmentMeta = metaState();
             if (window.__suEditorAPI) window.__suEditorAPI.setText(window.__suInitialDoc);
             return;
         }
