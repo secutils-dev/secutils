@@ -67,6 +67,72 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     await expect(page.locator('#emptyState')).toBeHidden();
   });
 
+  test('Share menu offers a full link and an expiring short link', async ({ page }) => {
+    await page.goto(tool.path);
+    await setMarkdown(page, '# Menu');
+    await page.getByRole('button', { name: 'Share', exact: true }).click();
+    await expect(page.getByRole('menuitem', { name: /^Copy full link/ })).toContainText(/Never expires.*\d+ B/);
+    const short = page.getByRole('menuitem', { name: /^Copy short link/ });
+    await expect(short).toBeEnabled();
+    await expect(short).toContainText('Expires in 7 days');
+    await page.getByRole('button', { name: '14 days', exact: true }).click();
+    await expect(short).toContainText('Expires in 14 days');
+    await page.getByRole('button', { name: '7 days', exact: true }).click();
+    await expect(page.getByRole('menuitem', { name: /^Delete short link/ })).toBeHidden();
+  });
+
+  test('short link round trip, then delete makes it show the expired warning', async ({ page, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.goto(tool.path);
+    const doc = `# Short link ${Date.now()}\n\nEncrypted *round trip*.`;
+    await setMarkdown(page, doc);
+    await expect(page.locator('#docTitle')).toHaveAttribute('contenteditable', 'plaintext-only');
+    await page.locator('#docTitle').click();
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.type('Plan notes');
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#docTitle')).toHaveText('Plan notes');
+    await page.getByRole('button', { name: 'Share', exact: true }).click();
+    await page.getByRole('menuitem', { name: /^Copy short link/ }).click();
+    await expect(page.locator('#toast')).toContainText(/Short link copied · expires .* \(7 days\)/);
+    const url = await page.evaluate(() => navigator.clipboard.readText());
+    // The name travels inside the ciphertext, never as a fragment parameter.
+    expect(url).toMatch(/\/md#s=[A-Za-z0-9_-]{16}$/);
+
+    // Copying again for the unchanged document reuses the same link.
+    await page.getByRole('button', { name: 'Share', exact: true }).click();
+    await page.getByRole('menuitem', { name: /^Copy short link/ }).click();
+    await expect(page.locator('#toast')).toContainText('Short link copied');
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(url);
+
+    const recipient = await context.newPage();
+    await recipient.goto(url);
+    await expect(recipient.locator('#previewArticle h1')).toContainText(doc.split('\n')[0].slice(2));
+    await expect(recipient.locator('#previewArticle em')).toHaveText('round trip');
+    await expect(recipient.locator('#docTitle')).toHaveText('Plan notes');
+    await expect(recipient.locator('#toast')).toContainText(/Shared link · expires in (7 days|6 days)/);
+    expect(new URL(recipient.url()).hash).toMatch(/^#s=/);
+
+    await page.getByRole('button', { name: 'Share', exact: true }).click();
+    await page.getByRole('menuitem', { name: /^Delete short link · expires/ }).click();
+    await expect(page.locator('#toast')).toContainText('Short link deleted');
+
+    await recipient.goto('about:blank');
+    await recipient.goto(url);
+    await expect(recipient.locator('#shortLinkAlert')).toContainText("This short link has expired or doesn't exist");
+    await expect(recipient.locator('#emptyState')).toBeVisible();
+    expect(new URL(recipient.url()).hash).toBe('');
+  });
+
+  test('an unknown short link shows a warning and clears the URL fragment', async ({ page }) => {
+    await page.goto(`${tool.path}#s=AAAAAAAAAAAAAAAA`);
+    await expect(page.locator('#shortLinkAlert')).toContainText("This short link has expired or doesn't exist");
+    await expect(page.locator('#emptyState')).toBeVisible();
+    expect(new URL(page.url()).hash).toBe('');
+    await setMarkdown(page, '# Fresh');
+    await expect(page.locator('#shortLinkAlert')).toBeHidden();
+  });
+
   test('unmatched inline HTML stays literal without swallowing the rest of the document', async ({ page }) => {
     await page.goto(tool.path);
     await setMarkdown(
@@ -530,7 +596,8 @@ endsolid corner
     expect(source).toContain(`\`\`\`su-mesh\n${copied.trim()}`);
     await page.getByRole('button', { name: 'Preview', exact: true }).click();
     await page.getByRole('button', { name: 'Share', exact: true }).click();
-    await expect(page.locator('#toast')).toContainText('Share link copied');
+    await page.getByRole('menuitem', { name: /^Copy full link/ }).click();
+    await expect(page.locator('#toast')).toContainText('Full link copied');
     const share = await page.evaluate(() => navigator.clipboard.readText());
     expect(share).toContain('/md#');
     await page.goto(share);
@@ -793,7 +860,8 @@ endsolid corner
     ].join('\n');
     await page.goto(tool.path);
     await setMarkdown(page, md);
-    const source = () => page.evaluate(() => (window as unknown as { __suEditorAPI: { getText(): string } }).__suEditorAPI.getText());
+    const source = () =>
+      page.evaluate(() => (window as unknown as { __suEditorAPI: { getText(): string } }).__suEditorAPI.getText());
     const article = page.locator('#previewArticle');
     const blockAction = async (block: ReturnType<typeof article.locator>, name: string) => {
       await block.hover();
@@ -850,7 +918,8 @@ endsolid corner
     const md = '# Doc\n\nPlain words here.\n\n- [ ] Task A\n- [ ] Task B\n- [ ] Task C\n';
     await page.goto(tool.path);
     await setMarkdown(page, md);
-    const source = () => page.evaluate(() => (window as unknown as { __suEditorAPI: { getText(): string } }).__suEditorAPI.getText());
+    const source = () =>
+      page.evaluate(() => (window as unknown as { __suEditorAPI: { getText(): string } }).__suEditorAPI.getText());
     const article = page.locator('#previewArticle');
     const grip = page.locator('#blockGripBtn');
 
@@ -868,7 +937,10 @@ endsolid corner
     await page.mouse.down();
     await page.mouse.move(gripBox.x + 40, taskA.y + 2, { steps: 8 });
     await page.mouse.up();
-    let expected = md.replace('- [ ] Task A\n- [ ] Task B\n- [ ] Task C\n', '- [ ] Task C\n- [ ] Task A\n- [ ] Task B\n');
+    let expected = md.replace(
+      '- [ ] Task A\n- [ ] Task B\n- [ ] Task C\n',
+      '- [ ] Task C\n- [ ] Task A\n- [ ] Task B\n',
+    );
     await expect.poll(source).toBe(expected);
     await expect(article.locator('li').first()).toContainText('Task C');
 
@@ -884,8 +956,14 @@ endsolid corner
         let started = false;
         for (let node = walker.nextNode(); node; node = walker.nextNode()) {
           const len = (node as Text).length;
-          if (!started && from <= pos + len) { range.setStart(node, from - pos); started = true; }
-          if (to <= pos + len) { range.setEnd(node, to - pos); break; }
+          if (!started && from <= pos + len) {
+            range.setStart(node, from - pos);
+            started = true;
+          }
+          if (to <= pos + len) {
+            range.setEnd(node, to - pos);
+            break;
+          }
           pos += len;
         }
         getSelection()!.removeAllRanges();

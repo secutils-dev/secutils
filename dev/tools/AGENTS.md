@@ -256,6 +256,13 @@ Rules and caveats:
   that 302-redirects `Accept: text/markdown` requests to the `<slug>.md` sibling. Your
   `@su:responder-script` body becomes the inner expression and runs only when the
   prelude does not redirect. See **"Markdown content negotiation"** below.
+- **Never let the request history record user data.** Every non-null response from a
+  tool script returns `skipRequest: true`; route responses through one `json()` helper so
+  none is missed. `deploy.ts` also sends `requestsToTrack: 0` for every tool responder, so
+  a value set by hand for debugging is reset on the next deploy. A script that throws is
+  still tracked when tracking is on, so keep error paths as explicit responses.
+- **`context.body` is a `Uint8Array` outside the V8 heap.** Pass it to `Deno.core.decode`
+  directly; `Array.from(context.body)` costs about 8 B per body byte of the 10 MiB heap.
 
 ## Embedded JS bundles (`data-su-bundle`)
 
@@ -514,6 +521,40 @@ const decodeState = async (str) => {
 - When a responder needs to read the state, mirror `echo.html`'s pattern: vendored
   `tiny-inflate` + a `ulen` cap (1 MiB is plenty) + bounds-checked source pointer to
   turn malformed input into a clean error response instead of an infinite loop.
+
+### Short links (`md.html`)
+
+`md.html` can also share an expiring, end-to-end-encrypted copy of the state through
+its own responder KV store. The URL is `/md#s=<secret>`. Base64url never contains `=`,
+so this form can't collide with `#<encoded>`. Unlike full links, the document name is
+not a fragment parameter: it travels inside the ciphertext, so the URL reveals nothing.
+
+- **Keys**: `secret` is 12 random bytes (16 base64url characters).
+  `id` is the first 12 bytes of `SHA-256("id" || secret)`.
+  The AES-256-GCM key is `SHA-256("key" || secret)`.
+  The server sees only `id`. The key never leaves the fragment.
+- **Envelope**: `base64url(IV(12) || AES-GCM(u16le(nameLen) || UTF-8 name || encodeState bytes))`.
+  The name is empty when frontmatter implies it (the same rule as `stateHash()`). The canonical
+  `encodeState`/`decodeState` snippet stays verbatim; bytes are bridged with
+  `toBase64Url`/`fromBase64Url`. The cap is 1,398,100 characters (`SHORT_MAX_CHARS`
+  in the page, `MAX_CHARS` in the script; keep them in sync), just under the 1 MiB KV
+  value limit.
+- **API** (the `@su:responder-script` in `md.html`, bare mount):
+  - `POST ?s=<id>&ttl=<86400|604800|1209600>`, with the blob as the body and an
+    `x-su-delete-token` header. It returns `201 {exp}`. Other `ttl` values fall back to
+    7 days. Both `s/<id>` and `d/<id>` (SHA-256 hex of the token) are written with
+    `ifAbsent`.
+  - `GET ?s=<id>` returns `200 {v, exp}` or `404`.
+  - `DELETE ?s=<id>` with the token header returns `204`, `403`, or `404`.
+  - Errors: `400`, `405`, `413`, `429` (per-IP throttle, 20 links or 16 MiB per hour,
+    tracked under `rl/<ip>/<id>.<bytes>`), `507` (KV quota).
+  - Every response sets `Cache-Control: no-store` and `skipRequest: true`.
+- **Client state**: `localStorage["md.shortLinks"]` maps `id` to
+  `{token, exp, secret, ttl, docHash}`. Expired entries are pruned on read. Copying
+  again reuses a link with the same document, name, and ttl while at least half of
+  its lifetime remains. `localStorage["md.shortTtl"]` remembers the lifetime choice.
+- **Tests**: `e2e/standalone/md_responder_script_smoke.spec.ts` (check 4) and the
+  short-link cases in `e2e/tools/md.spec.ts`.
 
 ## AI-agent surface (`<slug>.skill.md` and `llms.txt`)
 

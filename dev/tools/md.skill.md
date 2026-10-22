@@ -93,8 +93,16 @@ toolbar to rename the document. The URL fragment records the new name.
   The original archive is discarded. Source editing, Markdown downloads, sharing, and Copy source use this representation.
   Copy source copies the JSON fence body. HTML exports preserve interactive colors offline. PDF/print uses a static color image.
   Large models remain available through HTML export even when a share URL is too long.
-- **Share** - copies a `tools.secutils.dev/md#<encoded>` URL with the whole
-  Markdown round-tripped through the fragment.
+- **Share** - a menu with two link types:
+  - **Copy full link** copies a `tools.secutils.dev/md#<encoded>` URL with the whole
+    Markdown in the fragment. It never expires, but long documents make long URLs.
+  - **Copy short link** copies `tools.secutils.dev/md#s=<16 chars>`. The browser encrypts
+    the document, and Secutils.dev stores only the ciphertext, for 1, 7 (default), or
+    14 days. The toast shows the exact expiry. A short link is a snapshot: later edits
+    need a new link. Copying again for an unchanged document reuses the same link. The
+    stored copy is limited to 1 MiB after compression, about 3 MB of prose.
+  - **Delete short link** appears when this browser created a live short link for the
+    current document. Only that browser holds the delete token.
 - **Export** - **Download HTML** (single self-contained file), **Download
   PDF** (`Ctrl/Cmd+P`, paginated via Paged.js), or **Copy HTML**.
 - **Options** (gear) - set the reading width for Preview and exported HTML:
@@ -238,7 +246,11 @@ Exported HTML readers can navigate but cannot modify the original Markdown.
 
 1. **Fragment** - `https://tools.secutils.dev/md#<encoded>` preloads the
    encoded Markdown (see Wire format). This stays entirely client-side.
-2. **Remote URL** - `https://tools.secutils.dev/md?url=<public-md-url>`
+2. **Short link** - `https://tools.secutils.dev/md#s=<secret>` fetches the encrypted
+   copy and decrypts it in the browser. The page shows when the link expires. An expired,
+   deleted, or unknown link shows a warning and clears the fragment. You can't create
+   short links by hand; use the Share menu.
+3. **Remote URL** - `https://tools.secutils.dev/md?url=<public-md-url>`
    fetches and renders a public Markdown file. The fetch happens in the
    user's browser; the URL must be CORS-enabled (e.g.
    `https://raw.githubusercontent.com/…/README.md`). If the URL (or an
@@ -340,11 +352,14 @@ it from there in the browser. No follow-up encoding required.
 - The Markdown only ever exists **client-side** - the URL fragment is
   **never** sent to the Secutils.dev server. The share link is safe for
   content the user wouldn't want logged, but anyone who receives the link
-  can read the source.
-- The fragment is bounded by browser/server URL limits (~8 KB practical
-  ceiling). Very large (book-length) documents won't fit - have the user
-  **Download HTML** and share the file instead, or host the `.md` and use
-  `?url=`.
+  can read the source. **Short links are the exception:** the server stores an
+  encrypted copy until it expires or the creator deletes it. The key exists only
+  in the link, so the server can't read it. Link creation is rate-limited per IP
+  (20 links or 16 MiB per hour), and the IP is kept for one hour.
+- Full links are bounded by browser and chat-app URL limits (~8 KB practical
+  ceiling). For larger documents use a **short link**. For book-length documents,
+  have the user **Download HTML** and share the file instead, or host the `.md`
+  and use `?url=`.
 - `?url=` needs a **CORS-enabled** source; `raw.githubusercontent.com` works,
   many web pages do not. On a CORS/network failure the tool shows an error
   toast and stays empty.

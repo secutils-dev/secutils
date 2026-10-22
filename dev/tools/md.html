@@ -1,4 +1,118 @@
 <!DOCTYPE html>
+<!-- @su:responder-script
+// =============================================================================
+// RESPONDER SCRIPT - paired with md.html, auto-deployed to the responder's
+// `script` setting by dev/tools/deploy.ts. This HTML comment is stripped from
+// the served body by html-minifier-terser (`removeComments: true`).
+// See dev/tools/AGENTS.md -> "Short links (md.html)".
+//
+// Short-link store on the bare mount, keyed by `?s=<id>`:
+//   POST   ?s=<id>[&ttl=<sec>]  body: base64url blob, x-su-delete-token -> 201 {exp}
+//   GET    ?s=<id>                                                     -> 200 {v, exp} | 404
+//   DELETE ?s=<id>              x-su-delete-token                      -> 204 | 403 | 404
+// The blob is an IV plus AES-GCM ciphertext. The key exists only in the link
+// fragment, so this script stores and serves opaque bytes. Requests without
+// `s` return null, and the static HTML body is served.
+// =============================================================================
+(() => {
+  const id = (context.query || {}).s;
+  if (!id) return null;
+
+  const TTLS = [86400, 604800, 1209600]; // 1, 7, and 14 days.
+  const DEFAULT_TTL = 604800;
+  // base64url length of 1 MiB, the KV value cap. Keep in sync with SHORT_MAX_CHARS in the page.
+  const MAX_CHARS = 1398100;
+  const MIN_CHARS = 43; // 12 B IV + 16 B GCM tag + 4 B length prefix.
+  const RL_WINDOW_SEC = 3600;
+  const RL_MAX_LINKS = 20;
+  const RL_MAX_BYTES = 16 * 1024 * 1024;
+  const TOKEN_RE = /^[A-Za-z0-9_-]{22}$/;
+
+  const json = (statusCode, obj) => ({
+    statusCode,
+    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
+    body: obj === undefined ? '' : JSON.stringify(obj),
+    skipRequest: true,
+  });
+
+  if (!/^[A-Za-z0-9_-]{16}$/.test(id)) return json(400, { error: 'invalid-id' });
+  const method = (context.method || 'GET').toUpperCase();
+  const token = (context.headers || {})['x-su-delete-token'] || '';
+
+  if (method === 'GET') {
+    return (async () => {
+      const entry = await secutils.kv.getEntry('s/' + id);
+      return entry && entry.value
+        ? json(200, { v: entry.value, exp: entry.expiresAt })
+        : json(404, { error: 'not-found' });
+    })();
+  }
+
+  if (method === 'POST') {
+    const bytes = context.body;
+    if (bytes.length > MAX_CHARS) return json(413, { error: 'too-large', max: MAX_CHARS });
+    const blob = Deno.core.decode(bytes);
+    if (blob.length < MIN_CHARS || blob.length % 4 === 1 || !/^[A-Za-z0-9_-]+$/.test(blob)) {
+      return json(400, { error: 'invalid-body' });
+    }
+    if (!TOKEN_RE.test(token)) return json(400, { error: 'invalid-token' });
+    const ttl = TTLS.includes(Number(context.query.ttl)) ? Number(context.query.ttl) : DEFAULT_TTL;
+    const ip = String(context.clientAddress || 'unknown').replace(/:\d+$/, '');
+    return (async () => {
+      // ponytail: approximate sliding window (list + set is not atomic); concurrent bursts can
+      // overshoot by a few links. Per-tier KV quotas remain the hard backstop.
+      const rlPrefix = 'rl/' + ip + '/';
+      const recent = await secutils.kv.list({ prefix: rlPrefix, valuesIncluded: false, limit: RL_MAX_LINKS });
+      const usedBytes = recent.entries.reduce((sum, e) => sum + (Number(e.key.split('.').pop()) || 0), 0);
+      if (recent.entries.length >= RL_MAX_LINKS || usedBytes + blob.length > RL_MAX_BYTES) {
+        return json(429, { error: 'rate-limited', retryAfter: RL_WINDOW_SEC });
+      }
+      let tokenHash;
+      try {
+        tokenHash = await secutils.crypto.sha256(token);
+      } catch (_e) {
+        return json(400, { error: 'invalid-token' });
+      }
+      // ponytail: ids are 96-bit hashes of client-side random secrets, so `ifAbsent` never
+      // meets a live row in practice. When it does, the original link is preserved.
+      try {
+        await secutils.kv.set('s/' + id, blob, { ifAbsent: true, ttlSec: ttl });
+        await secutils.kv.set('d/' + id, tokenHash, { ifAbsent: true, ttlSec: ttl });
+      } catch (e) {
+        return /base64url/.test(String(e && e.message))
+          ? json(400, { error: 'invalid-body' })
+          : json(507, { error: 'storage-full' });
+      }
+      try {
+        await secutils.kv.set(rlPrefix + id + '.' + blob.length, 'AA', { ttlSec: RL_WINDOW_SEC });
+      } catch (_e) {
+        // The link is stored; a missed throttle mark only loosens the limit.
+      }
+      return json(201, { exp: Math.floor(Date.now() / 1000) + ttl });
+    })();
+  }
+
+  if (method === 'DELETE') {
+    if (!TOKEN_RE.test(token)) return json(403, { error: 'forbidden' });
+    return (async () => {
+      const stored = await secutils.kv.get('d/' + id);
+      if (!stored) return json(404, { error: 'not-found' });
+      let tokenHash;
+      try {
+        tokenHash = await secutils.crypto.sha256(token);
+      } catch (_e) {
+        return json(403, { error: 'forbidden' });
+      }
+      if (stored !== tokenHash) return json(403, { error: 'forbidden' });
+      await secutils.kv.delete('s/' + id);
+      await secutils.kv.delete('d/' + id);
+      return json(204);
+    })();
+  }
+
+  return json(405, { error: 'method-not-allowed' });
+})();
+-->
 <html lang="en" data-theme="dark">
 <head>
     <meta charset="UTF-8">
@@ -408,11 +522,25 @@ html.su-loading #emptyState { display: none; }
 .export-anchor { position: relative; display: inline-flex; }
 .export-anchor .chevron { margin-left: 2px; transition: transform .15s; }
 .export-anchor:has(.export-menu:popover-open) .chevron,
-#exportBtn[aria-expanded="true"] .chevron { transform: rotate(180deg); }
+#exportBtn[aria-expanded="true"] .chevron,
+#shareBtn[aria-expanded="true"] .chevron { transform: rotate(180deg); }
 .export-menu { margin: 0; min-width: 130px; max-width: calc(100vw - 24px); padding: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.35); }
 .export-item { display: block; width: 100%; padding: 7px 14px; border: none; background: transparent; color: var(--text); font: 13px var(--font); font-weight: 500; cursor: pointer; border-radius: 6px; text-align: left; transition: background .15s; }
 .export-item + .export-item { margin-top: 2px; }
 .export-item:hover, .export-item:focus-visible { background: var(--surface-hover); outline: none; }
+.share-menu { min-width: 290px; }
+.export-item .item-sub { display: block; margin-top: 2px; font-size: 11px; font-weight: 400; color: var(--text-muted); }
+.export-item:disabled { cursor: not-allowed; opacity: .55; background: transparent; }
+.export-item[hidden] { display: none; }
+.share-danger { color: #ff7b72; }
+[data-theme="light"] .share-danger { color: #cf222e; }
+.share-ttl { display: flex; gap: 6px; margin: 8px 0 6px; padding: 0 14px; }
+.share-ttl[hidden] { display: none; }
+.share-ttl button { flex: 1; padding: 3px 0; border: 1px solid var(--border); border-radius: 6px; background: transparent; color: var(--text-muted); font: 12px var(--font); cursor: pointer; }
+.share-ttl button[aria-pressed="true"] { background: var(--surface-hover); border-color: var(--text-muted); color: var(--text); }
+.share-ttl button:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.short-link-alert { max-width: 460px; margin-bottom: 18px; padding: 10px 14px; border: 1px solid #d29922; border-radius: 8px; background: rgba(210,153,34,0.1); color: var(--text); font-size: 13px; }
+.short-link-alert[hidden] { display: none; }
 
 /* Options popover */
 .options-anchor { position: relative; display: inline-flex; }
@@ -609,10 +737,23 @@ html.su-loading #emptyState { display: none; }
                         <button class="export-item" role="menuitem" id="copyHtmlBtn">Copy HTML</button>
                     </div>
                 </div>
-                <button id="shareBtn" class="btn btn-primary btn-sm" disabled title="Copy a shareable link with your Markdown encoded in the URL">
-                    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="3.5" r="2"/><circle cx="4" cy="8" r="2"/><circle cx="12" cy="12.5" r="2"/><path d="M5.7 7 10.3 4.5M5.7 9l4.6 2.5"/></svg>
-                    <span class="btn-label">Share</span>
-                </button>
+                <div class="export-anchor">
+                    <button id="shareBtn" class="btn btn-primary btn-sm" disabled commandfor="shareMenu" command="toggle-popover" aria-haspopup="menu" title="Copy a link to this document">
+                        <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="3.5" r="2"/><circle cx="4" cy="8" r="2"/><circle cx="12" cy="12.5" r="2"/><path d="M5.7 7 10.3 4.5M5.7 9l4.6 2.5"/></svg>
+                        <span class="btn-label">Share</span>
+                        <svg class="chevron" viewBox="0 0 12 12" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 5 3 3 3-3"/></svg>
+                    </button>
+                    <div id="shareMenu" popover class="export-menu share-menu" role="menu" aria-label="Share menu">
+                        <button class="export-item" role="menuitem" id="copyFullLinkBtn">Copy full link<span class="item-sub" id="fullLinkSub">Never expires &middot; whole document in the URL</span></button>
+                        <button class="export-item" role="menuitem" id="copyShortLinkBtn">Copy short link<span class="item-sub" id="shortLinkSub">Encrypted copy stored on Secutils.dev</span></button>
+                        <div class="share-ttl" id="shortTtl" role="group" aria-label="Short link lifetime">
+                            <button type="button" data-ttl="86400" aria-pressed="false">1 day</button>
+                            <button type="button" data-ttl="604800" aria-pressed="true">7 days</button>
+                            <button type="button" data-ttl="1209600" aria-pressed="false">14 days</button>
+                        </div>
+                        <button class="export-item share-danger" role="menuitem" id="deleteShortLinkBtn" hidden>Delete short link</button>
+                    </div>
+                </div>
                 <button id="fullscreenBtn" class="icon-btn" title="Toggle fullscreen" aria-label="Toggle fullscreen">
                     <svg id="fullscreenEnterIcon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
                     <svg id="fullscreenExitIcon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>
@@ -641,6 +782,7 @@ html.su-loading #emptyState { display: none; }
                         <span class="loading-text">Loading Markdown&hellip;</span>
                     </div>
                     <div id="emptyState" class="empty-state">
+                        <div id="shortLinkAlert" class="short-link-alert" role="alert" hidden>This short link has expired or doesn't exist. Ask the sender for a new one.</div>
                         <div class="empty-state-icon">
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6"/><path d="M9 17h6"/></svg>
                         </div>
@@ -698,7 +840,8 @@ html.su-loading #emptyState { display: none; }
             </button>
         </header>
         <div class="su-dialog-body">
-            <p><strong>Your data stays in your browser.</strong> These tools run entirely client-side. Tokens, PEMs, SAML payloads, Markdown source, and mock-response bodies are never sent to the Secutils.dev server. State that needs to survive a reload (or be shared) lives in the URL fragment (<code>#&hellip;</code>), which browsers never transmit to the server.</p>
+            <p><strong>Your data stays in your browser.</strong> These tools run entirely client-side. Tokens, PEMs, SAML payloads, Markdown source, and mock-response bodies are never sent to the Secutils.dev server in readable form. State that needs to survive a reload (or be shared) lives in the URL fragment (<code>#&hellip;</code>), which browsers never transmit to the server.</p>
+            <p><strong>Short links.</strong> When you copy a short link, your browser encrypts the document and Secutils.dev stores only the encrypted copy, for the period you choose (1, 7, or 14 days). The decryption key exists only in the link, so the server can't read the document. Only the browser that created a link can delete it early. Your IP address is kept for one hour to rate-limit link creation.</p>
             <p><strong>Loading from a URL.</strong> When you use <code>?url=</code> or the "Load URL" box, your browser fetches that address directly; the Markdown is read into the page client-side and is never relayed through the Secutils.dev server.</p>
             <p><strong>Map basemaps.</strong> GeoJSON and TopoJSON viewers fetch map tiles directly from OpenStreetMap. Tile requests reveal the displayed geographic area. Your Markdown source is not included.</p>
             <p><strong>Anonymous usage analytics.</strong> We use <a href="https://plausible.io/" target="_blank" rel="noopener noreferrer">Plausible Analytics</a>, a privacy-first, GDPR-compliant tool, to collect aggregate usage data. No cookies, no personal data, no individual tracking. The data is limited to top pages, referral sources, visit duration, and device-class metadata (device type, OS, country, browser). Full details in the <a href="https://plausible.io/data-policy" target="_blank" rel="noopener noreferrer">Plausible Data Policy</a>.</p>
@@ -875,6 +1018,14 @@ const els = {
     optFind: $('optFind'),
     optSource: $('optSource'),
     shareBtn: $('shareBtn'),
+    shareMenu: $('shareMenu'),
+    copyFullLinkBtn: $('copyFullLinkBtn'),
+    fullLinkSub: $('fullLinkSub'),
+    copyShortLinkBtn: $('copyShortLinkBtn'),
+    shortLinkSub: $('shortLinkSub'),
+    shortTtl: $('shortTtl'),
+    deleteShortLinkBtn: $('deleteShortLinkBtn'),
+    shortLinkAlert: $('shortLinkAlert'),
     exportBtn: $('exportBtn'),
     exportMenu: $('exportMenu'),
     exportHtmlBtn: $('exportHtmlBtn'),
@@ -2067,6 +2218,7 @@ function updatePanes() {
     const hasContent = !!markdown.trim();
     els.loadingState.style.display = (pendingHydration && !hasContent) ? 'flex' : 'none';
     els.emptyState.style.display = (!pendingHydration && !hasContent) ? 'flex' : 'none';
+    if (hasContent) els.shortLinkAlert.hidden = true;
     els.previewArticle.style.display = hasContent ? '' : 'none';
 }
 
@@ -2119,6 +2271,7 @@ function setExportEnabled(on) {
     for (const b of [els.shareBtn, els.exportBtn, els.viewHtmlBtn]) b.disabled = !on;
     if (!on) {
         hidePopoverEl(els.exportMenu);
+        hidePopoverEl(els.shareMenu);
         if (viewMode === 'html') setViewMode('preview');
     } else if (viewMode === 'html') {
         renderHtmlPreview();
@@ -3400,6 +3553,7 @@ const wireTether = (invoker, popover) => {
 };
 wireTether(els.optionsBtn, els.optionsPopover);
 wireTether(els.exportBtn, els.exportMenu);
+wireTether(els.shareBtn, els.shareMenu);
 
 if (!('popover' in HTMLElement.prototype) || !('commandForElement' in HTMLButtonElement.prototype)) {
     const pops = document.querySelectorAll('[popover]');
@@ -3655,20 +3809,233 @@ document.addEventListener('paste', (e) => {
     loadDocument(parseSource(text));
 });
 
-// ---- Share ----
-els.shareBtn.addEventListener('click', async () => {
+// ---- Share: full link (document in the fragment) or short link (encrypted copy on the server) ----
+// A short link is `#s=<secret>`, where the secret is 12 random bytes. The responder only
+// sees `id`, a hash of the secret, and stores IV + AES-GCM(name + encodeState output).
+// The AES key is another hash of the secret, so it never leaves the fragment.
+const SHORT_MAX_CHARS = 1398100; // Keep in sync with MAX_CHARS in the responder script.
+const SHORT_TTLS = [86400, 604800, 1209600];
+const SHORT_LINKS_KEY = 'md.shortLinks';
+const SHORT_TTL_KEY = 'md.shortTtl';
+let shortTtl = 604800;
+try { shortTtl = SHORT_TTLS.find((t) => t === Number(localStorage.getItem(SHORT_TTL_KEY))) ?? shortTtl; } catch {}
+let shareDocHash = null, shareTooLarge = false;
+
+const ttlLabel = (sec) => `${sec / 86400} day${sec === 86400 ? '' : 's'}`;
+const fmtExpiry = (exp, withTime = false) => new Date(exp * 1000).toLocaleString(undefined,
+    withTime ? { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' } : { month: 'short', day: 'numeric' });
+const fmtRemaining = (exp) => {
+    const sec = exp - Date.now() / 1000;
+    const [n, unit] = sec >= 86400 ? [Math.round(sec / 86400), 'day'] : [Math.max(1, Math.round(sec / 3600)), 'hour'];
+    return `${n} ${unit}${n === 1 ? '' : 's'}`;
+};
+const fmtSize = (chars) => chars < 1024 ? `${chars} B` : chars < 1048576 ? `${Math.round(chars / 1024)} KB` : `${(chars / 1048576).toFixed(1)} MB`;
+// Base64url length of IV (12 B) + ciphertext + GCM tag (16 B) for an encodeState output.
+// Short-link plaintext: u16 LE name byte length, UTF-8 name ('' when frontmatter implies it),
+// then the encodeState bytes. Keeping the name inside the ciphertext keeps it out of the URL.
+const shortPlaintext = (state) => {
+    const name = utf8Enc.encode((state.name ?? '').slice(0, 256));
+    const doc = fromBase64Url(state.encoded);
+    const plain = new Uint8Array(2 + name.length + doc.length);
+    new DataView(plain.buffer).setUint16(0, name.length, true);
+    plain.set(name, 2);
+    plain.set(doc, 2 + name.length);
+    return plain;
+};
+// Base64url length of IV (12 B) + plaintext + GCM tag (16 B).
+const sealedChars = (state) => Math.ceil((Math.floor(state.encoded.length * 3 / 4) + 30 + utf8Enc.encode((state.name ?? '').slice(0, 256)).length) * 4 / 3);
+const hashBytes = async (...parts) => new Uint8Array(await crypto.subtle.digest('SHA-256', await new Blob(parts).arrayBuffer()));
+const shareDocKey = async (state) => toBase64Url(await hashBytes(`${state.name}\n`, state.encoded));
+const shortUrl = (secret) => `${location.origin}${location.pathname}#s=${secret}`;
+
+async function deriveShortLink(secret) {
+    const [idHash, keyBytes] = await Promise.all([hashBytes('id', secret), hashBytes('key', secret)]);
+    const key = await crypto.subtle.importKey('raw', keyBytes, 'AES-GCM', false, ['encrypt', 'decrypt']);
+    return { id: toBase64Url(idHash.subarray(0, 12)), key };
+}
+
+// `{ [id]: { token, exp, secret, ttl, docHash } }` for links this browser created, minus expired ones.
+function readShortLinks() {
+    let links = {};
+    try { links = JSON.parse(localStorage.getItem(SHORT_LINKS_KEY)) || {}; } catch {}
+    const now = Date.now() / 1000;
+    for (const [id, link] of Object.entries(links)) if (!(link?.exp > now)) delete links[id];
+    return links;
+}
+const writeShortLinks = (links) => { try { localStorage.setItem(SHORT_LINKS_KEY, JSON.stringify(links)); } catch {} };
+
+async function shortFetch(id, { query = '', ...init } = {}) {
+    const url = `${location.pathname}?s=${id}${query}`;
+    const send = () => fetch(url, { cache: 'no-store', ...init }).catch(() => {
+        throw new Error('Network error. Check your connection and try again.');
+    });
+    const res = await send();
+    // A 429 without a JSON error comes from the responder's concurrency limit, not the throttle.
+    if (res.status !== 429 || (await res.clone().json().catch(() => null))?.error) return res;
+    await new Promise((resolve) => setTimeout(resolve, 1000 * Math.min(5, Number(res.headers.get('Retry-After')) || 1)));
+    return send();
+}
+
+async function createShortLink() {
+    const state = await shareState();
+    const docHash = await shareDocKey(state), ttl = shortTtl, now = Date.now() / 1000;
+    const links = readShortLinks();
+    const reuse = Object.values(links).find((l) => l.docHash === docHash && l.ttl === ttl && l.exp - now >= ttl / 2);
+    if (reuse) return { url: shortUrl(reuse.secret), exp: reuse.exp, ttl };
+
+    const secret = crypto.getRandomValues(new Uint8Array(12));
+    const token = toBase64Url(crypto.getRandomValues(new Uint8Array(16)));
+    const { id, key } = await deriveShortLink(secret);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const sealed = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, shortPlaintext(state)));
+    const envelope = new Uint8Array(iv.length + sealed.length);
+    envelope.set(iv);
+    envelope.set(sealed, iv.length);
+    const blob = toBase64Url(envelope);
+    if (blob.length > SHORT_MAX_CHARS) throw new Error('Too large for a short link. Use a full link or Export instead.');
+
+    const res = await shortFetch(id, { method: 'POST', body: blob, headers: { 'x-su-delete-token': token }, query: `&ttl=${ttl}` });
+    if (res.status !== 201) {
+        throw new Error({
+            413: 'Too large for a short link. Use a full link or Export instead.',
+            429: 'Too many short links from this network. Try again in an hour.',
+            507: 'Short-link storage is full right now. Use a full link instead.',
+        }[res.status] ?? `Could not create a short link (HTTP ${res.status})`);
+    }
+    const { exp } = await res.json();
+    links[id] = { token, exp, secret: toBase64Url(secret), ttl, docHash };
+    writeShortLinks(links);
+    return { url: shortUrl(links[id].secret), exp, ttl };
+}
+
+// Safari keeps the click's user activation only for a clipboard write started synchronously,
+// so the write starts at once with a promise that settles after the async work.
+async function copyText(textPromise) {
+    if (typeof ClipboardItem === 'function' && navigator.clipboard?.write) {
+        try {
+            const blob = textPromise.then((text) => new Blob([text], { type: 'text/plain' }));
+            await navigator.clipboard.write([new ClipboardItem({ 'text/plain': blob })]);
+            return;
+        } catch (err) {
+            if (await textPromise.then(() => false, () => true)) throw err;
+        }
+    }
+    await navigator.clipboard.writeText(await textPromise);
+}
+
+function renderShareMenu() {
+    for (const b of els.shortTtl.querySelectorAll('button')) b.setAttribute('aria-pressed', String(Number(b.dataset.ttl) === shortTtl));
+    els.copyShortLinkBtn.disabled = shareTooLarge;
+    els.shortTtl.hidden = shareTooLarge;
+    els.shortLinkSub.textContent = shareTooLarge
+        ? 'Too large for a short link, use a full link or Export'
+        : `Expires in ${ttlLabel(shortTtl)} · encrypted copy stored on Secutils.dev`;
+    const owned = Object.values(readShortLinks()).filter((l) => l.docHash === shareDocHash);
+    els.deleteShortLinkBtn.hidden = !owned.length;
+    if (owned.length) els.deleteShortLinkBtn.textContent = `Delete short link · expires ${fmtExpiry(Math.max(...owned.map((l) => l.exp)))}`;
+}
+
+els.shareMenu.addEventListener('toggle', async (e) => {
+    if (e.newState !== 'open') return;
+    renderShareMenu();
+    const state = await shareState();
+    shareDocHash = await shareDocKey(state);
+    shareTooLarge = sealedChars(state) > SHORT_MAX_CHARS;
+    els.fullLinkSub.textContent = `Never expires · whole document in the URL (${fmtSize(state.encoded.length)})`;
+    renderShareMenu();
+});
+
+els.shortTtl.addEventListener('click', (e) => {
+    const ttl = Number(e.target.closest('button[data-ttl]')?.dataset.ttl);
+    if (!SHORT_TTLS.includes(ttl)) return;
+    shortTtl = ttl;
+    try { localStorage.setItem(SHORT_TTL_KEY, String(ttl)); } catch {}
+    renderShareMenu();
+});
+
+els.copyFullLinkBtn.addEventListener('click', async () => {
     if (!markdown.trim()) return;
+    hidePopoverEl(els.shareMenu);
+    const text = markdown, meta = metaState();
+    const url = stateHash().then((hash) => `${location.origin}${location.pathname}${hash}`);
     try {
-        const url = `${location.origin}${location.pathname}${await stateHash()}`;
-        fragmentMarkdown = markdown;
-        fragmentMeta = metaState();
-        history.replaceState({}, '', url);
-        await navigator.clipboard.writeText(url);
-        toast('Share link copied');
+        await copyText(url);
+        fragmentMarkdown = text;
+        fragmentMeta = meta;
+        history.replaceState({}, '', await url);
+        toast('Full link copied');
     } catch {
         toast('Failed to copy share link');
     }
 });
+
+els.copyShortLinkBtn.addEventListener('click', async () => {
+    if (!markdown.trim() || shareTooLarge) return;
+    hidePopoverEl(els.shareMenu);
+    toast('Creating short link...');
+    const link = createShortLink();
+    try {
+        await copyText(link.then((l) => l.url));
+        const { exp, ttl } = await link;
+        toast(`Short link copied · expires ${fmtExpiry(exp, true)} (${ttlLabel(ttl)})`);
+    } catch (err) {
+        toast(await link.then(() => 'Failed to copy short link', (e) => e?.message ?? 'Failed to create short link'));
+    }
+});
+
+els.deleteShortLinkBtn.addEventListener('click', async () => {
+    hidePopoverEl(els.shareMenu);
+    const links = readShortLinks();
+    try {
+        for (const [id, link] of Object.entries(links)) {
+            if (link.docHash !== shareDocHash) continue;
+            const res = await shortFetch(id, { method: 'DELETE', headers: { 'x-su-delete-token': link.token } });
+            if (res.status !== 204 && res.status !== 404) throw new Error(`Could not delete the short link (HTTP ${res.status})`);
+            delete links[id];
+        }
+        toast('Short link deleted');
+        // The address bar may still hold the deleted link; swap in the full fragment.
+        if (new URLSearchParams(location.hash.slice(1)).has('s')) { fragmentMarkdown = null; persistNow(); }
+    } catch (err) {
+        toast(err.message);
+    } finally {
+        writeShortLinks(links);
+    }
+});
+
+// Returns `{ text, name }`, or null after telling the user why the link can't be opened.
+async function openShortLink(secretParam) {
+    const gone = () => {
+        history.replaceState(history.state, '', `${location.pathname}${location.search}`);
+        els.shortLinkAlert.hidden = false;
+        return null;
+    };
+    let secret;
+    try { secret = fromBase64Url(secretParam); } catch { return gone(); }
+    if (secret.length !== 12) return gone();
+    const { id, key } = await deriveShortLink(secret);
+    let res;
+    try {
+        res = await shortFetch(id);
+        if (res.status === 404) return gone();
+        if (!res.ok) throw new Error(`Could not load the short link (HTTP ${res.status}). Reload to retry.`);
+    } catch (err) {
+        toast(err.message);
+        return null;
+    }
+    const { v, exp } = await res.json();
+    let text = null, name = '';
+    try {
+        const envelope = fromBase64Url(v);
+        const plain = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: envelope.subarray(0, 12) }, key, envelope.subarray(12)));
+        const nameEnd = 2 + (plain[0] | (plain[1] << 8));
+        name = utf8Dec.decode(plain.subarray(2, nameEnd));
+        text = await decodeState(toBase64Url(plain.subarray(nameEnd)));
+    } catch {}
+    if (text === null) return gone();
+    if (exp) toast(`Shared link · expires in ${fmtRemaining(exp)}`);
+    return { text, name };
+}
 
 // ---- Export: HTML download / Copy HTML / PDF ----
 els.copyHtmlBtn.addEventListener('click', async () => {
@@ -3832,10 +4199,15 @@ const metaState = () => `${filename}\n${commentsState}`;
 
 // The fragment holds the document, plus its name when frontmatter doesn't imply it:
 // `#<encoded>` or `#name=<name>&md=<encoded>` (base64url never contains `=`).
-async function stateHash() {
+// Short links use `#s=<secret>` and carry the name inside the ciphertext (see "Share").
+async function shareState() {
     const encoded = await encodeState(documentText());
     const implied = frontmatter.match(FRONTMATTER_TITLE_RE)?.[1] ?? 'Untitled';
-    return `#${filename === implied ? encoded : new URLSearchParams({ name: filename, md: encoded })}`;
+    return { encoded, name: filename === implied ? null : filename };
+}
+async function stateHash() {
+    const { encoded, name } = await shareState();
+    return `#${name === null ? encoded : new URLSearchParams({ name, md: encoded })}`;
 }
 
 function updateSaveState() {
@@ -3935,10 +4307,12 @@ async function saveDocument() {
     if (location.hash.length > 1) {
         const fragment = location.hash.slice(1);
         const params = fragment.includes('=') ? new URLSearchParams(fragment) : null;
-        const initial = await decodeState(params ? params.get('md') ?? '' : fragment);
+        let initial, name = params?.get('name');
+        if (params?.has('s')) ({ text: initial, name } = (await openShortLink(params.get('s'))) ?? {});
+        else initial = await decodeState(params ? params.get('md') ?? '' : fragment);
         if (initial) {
             window.__suInitialDoc = adoptEol(parseSource(initial));
-            const name = params?.get('name')?.trim();
+            name = name?.trim();
             if (name) filename = name.replace(MD_FILE_EXT, '');
             savedMarkdown = fragmentMarkdown = window.__suInitialDoc;
             savedComments = commentsState;
