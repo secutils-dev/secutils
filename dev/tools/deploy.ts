@@ -716,12 +716,16 @@ async function putResponder(
   // not a map -- duplicates allowed, which is how multiple Link headers are
   // sent). For HTML the Content-Type is implied by the responder default; for
   // every other MIME we pin it explicitly so crawlers see the right type.
+  // `requestsToTrack: 0` is explicit so tool responders never record visitor requests
+  // (headers, bodies, IPs) in their history. A value set by hand for debugging is reset here.
   const settings: {
+    requestsToTrack: number;
     statusCode: number;
     body: string;
     headers?: [string, string][];
     script?: string;
   } = {
+    requestsToTrack: 0,
     statusCode: 200,
     body: target.body,
   };

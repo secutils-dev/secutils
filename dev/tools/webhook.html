@@ -104,20 +104,24 @@
     'Access-Control-Allow-Methods': 'GET, PUT, DELETE, POST, OPTIONS',
     'Access-Control-Allow-Headers': '*',
   };
+  // Every non-null response sets `skipRequest: true` so the responder's request history never
+  // records captures (plaintext headers, body, client IP) or inspector polls, even if the
+  // responder's `requestsToTrack` setting drifts above 0.
   const json = (statusCode, obj) => ({
     statusCode,
     headers: Object.assign({ 'Content-Type': 'application/json; charset=utf-8' }, cors),
     body: JSON.stringify(obj),
+    skipRequest: true,
   });
   const notFound = () => ({
     statusCode: 404,
     headers: { 'Content-Type': 'text/plain; charset=utf-8' },
     body: 'Not found',
+    skipRequest: true,
   });
 
-  // CORS preflight - never recorded.
   if (method === 'OPTIONS') {
-    return { statusCode: 204, headers: cors, body: '' };
+    return { statusCode: 204, headers: cors, body: '', skipRequest: true };
   }
 
   // base64url encoder for raw bytes (the Deno sandbox has no btoa).
@@ -176,7 +180,7 @@
         query: context.rawQuery || '',
         headers: context.headers || {},
         clientAddress: context.clientAddress || null,
-        bodyB64: b64url(context.body || []),
+        bodyB64: b64url(context.body),
       };
 
       let sealed;
@@ -212,7 +216,7 @@
           if (!Object.keys(headers).some((h) => h.toLowerCase() === 'content-type')) {
             headers['Content-Type'] = 'text/plain; charset=utf-8';
           }
-          return { statusCode: cfg.s, headers, body: cfg.b };
+          return { statusCode: cfg.s, headers, body: cfg.b, skipRequest: true };
         } catch (_e) {
           // Corrupt config - fall back to the default OK below.
         }
@@ -234,9 +238,9 @@
       let pub = '';
       // `mock`: undefined = leave config unchanged, null = delete it, object = set it.
       let mock;
-      const body = context.body || [];
+      const body = context.body;
       if (body.length) {
-        const raw = Deno.core.decode(new Uint8Array(body)).trim();
+        const raw = Deno.core.decode(body).trim();
         if (raw.startsWith('{')) {
           try {
             const parsed = JSON.parse(raw);

@@ -20,7 +20,7 @@ test.describe(`${tool.name} (${tool.path})`, () => {
 
     // Session catalog controls are always present, even before registration.
     await expect(page.getByRole('combobox')).toBeVisible();
-    await expect(page.getByRole('button', { name: '+ New' })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('button', { name: 'New', exact: true })).toBeVisible({ timeout: 15000 });
 
     // A fresh visit either surfaces the registration overlay (while keys are
     // generated and the public key is registered) or the resulting webhook URL.
@@ -31,6 +31,19 @@ test.describe(`${tool.name} (${tool.path})`, () => {
         timeout: 15000,
       })
       .toBeTruthy();
+  });
+
+  test('captures a request and decrypts its body in the inspector', async ({ page }) => {
+    await page.goto(tool.path);
+    const url = page.locator('#webhookUrl');
+    await expect(url).toHaveValue(/^https:\/\//, { timeout: 30000 });
+
+    const marker = `su-e2e-${Date.now()}`;
+    const res = await page.request.post(await url.inputValue(), { data: JSON.stringify({ marker }) });
+    expect(await res.json()).toEqual({ ok: true });
+
+    await page.getByRole('button', { name: 'Refresh' }).click();
+    await expect(page.locator('#reqList')).toContainText(marker, { timeout: 15000 });
   });
 
   test('privacy modal explains the end-to-end encryption model', async ({ page }) => {

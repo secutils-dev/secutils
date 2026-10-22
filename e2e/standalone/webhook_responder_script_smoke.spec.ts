@@ -38,6 +38,7 @@ interface ResponderResponse {
   statusCode: number;
   headers: Record<string, string>;
   body: string;
+  skipRequest?: boolean;
 }
 
 interface ScriptContext {
@@ -46,7 +47,7 @@ interface ScriptContext {
   query?: Record<string, string>;
   rawQuery?: string;
   headers?: Record<string, string>;
-  body?: number[];
+  body?: Uint8Array;
   clientAddress?: string;
 }
 
@@ -149,7 +150,14 @@ async function runScript(
     },
   };
 
-  const sandbox: Record<string, unknown> = { context, secutils, Deno, console, TextEncoder, TextDecoder };
+  const sandbox: Record<string, unknown> = {
+    context: { body: new Uint8Array(), ...context },
+    secutils,
+    Deno,
+    console,
+    TextEncoder,
+    TextDecoder,
+  };
   sandbox.globalThis = sandbox;
   vm.createContext(sandbox);
 
@@ -201,7 +209,7 @@ test.describe('webhook.html @su:responder-script', () => {
     // PUT registers the recipient public key (first-writer-wins).
     const reg = await runScript(
       script,
-      { method: 'PUT', path: '/webhook', query: { t: TOKEN }, body: Array.from(new TextEncoder().encode(PUBKEY)) },
+      { method: 'PUT', path: '/webhook', query: { t: TOKEN }, body: new TextEncoder().encode(PUBKEY) },
       store,
     );
     expect(reg?.statusCode).toBe(200);
@@ -218,7 +226,7 @@ test.describe('webhook.html @su:responder-script', () => {
         method: 'PUT',
         path: '/webhook',
         query: { t: TOKEN },
-        body: Array.from(new TextEncoder().encode('B'.repeat(96))),
+        body: new TextEncoder().encode('B'.repeat(96)),
       },
       store,
     );
@@ -234,7 +242,7 @@ test.describe('webhook.html @su:responder-script', () => {
         query: {},
         rawQuery: 'a=1',
         headers: { 'content-type': 'application/json' },
-        body: Array.from(new TextEncoder().encode('{"hello":"world"}')),
+        body: new TextEncoder().encode('{"hello":"world"}'),
         clientAddress: '203.0.113.7:5555',
       },
       store,
@@ -268,7 +276,7 @@ test.describe('webhook.html @su:responder-script', () => {
 
   test('mock response config: set -> served on capture -> reset to default', async () => {
     const store = new Map<string, string>();
-    const enc = (s: string): number[] => Array.from(new TextEncoder().encode(s));
+    const enc = (s: string) => new TextEncoder().encode(s);
 
     // PUT registers the key AND a custom response template in one call.
     const cfgBody = JSON.stringify({
@@ -325,7 +333,7 @@ test.describe('webhook.html @su:responder-script', () => {
   test('absolute deadline: key, config and requests all expire together (script-owned, backstop disabled)', async () => {
     const store = new Map<string, string>();
     const expiries = expiriesFor(store);
-    const enc = (s: string): number[] => Array.from(new TextEncoder().encode(s));
+    const enc = (s: string) => new TextEncoder().encode(s);
     const nowSec = Math.floor(Date.now() / 1000);
 
     // Registration returns the absolute deadline (~7 days out). The script writes the key
@@ -360,10 +368,40 @@ test.describe('webhook.html @su:responder-script', () => {
     }
   });
 
+  test('every non-null response skips request tracking, so plaintext captures never reach the history', async () => {
+    const store = new Map<string, string>();
+    const enc = (s: string) => new TextEncoder().encode(s);
+    const mockCfg = JSON.stringify({ pk: PUBKEY, mock: { s: 201, h: [], b: 'ok' } });
+    const responses = [
+      await runScript(script, { method: 'OPTIONS', path: '/webhook', query: {} }, store),
+      await runScript(script, { method: 'POST', path: '/webhook/!!bad!!', query: {} }, store),
+      await runScript(script, { method: 'POST', path: `/webhook/${TOKEN}`, query: {} }, store),
+      await runScript(script, { method: 'GET', path: '/webhook', query: { t: '!!' } }, store),
+      await runScript(script, { method: 'PUT', path: '/webhook', query: { t: TOKEN }, body: enc(PUBKEY) }, store),
+      await runScript(script, { method: 'POST', path: `/webhook/${TOKEN}`, query: {}, body: enc('captured') }, store),
+      await runScript(script, { method: 'PUT', path: '/webhook', query: { t: TOKEN }, body: enc(mockCfg) }, store),
+      await runScript(script, { method: 'POST', path: `/webhook/${TOKEN}`, query: {} }, store),
+      await runScript(script, { method: 'GET', path: '/webhook', query: { t: TOKEN } }, store),
+      await runScript(script, { method: 'DELETE', path: '/webhook', query: { t: TOKEN } }, store),
+    ];
+    expect(responses.map((r) => r?.statusCode)).toEqual([204, 404, 404, 400, 200, 200, 200, 201, 200, 200]);
+    for (const r of responses) expect(r?.skipRequest).toBe(true);
+  });
+
+  test('CAPTURE seals the bytes from context.body', async () => {
+    const store = new Map<string, string>();
+    const enc = (s: string) => new TextEncoder().encode(s);
+    await runScript(script, { method: 'PUT', path: '/webhook', query: { t: TOKEN }, body: enc(PUBKEY) }, store);
+    await runScript(script, { method: 'POST', path: `/webhook/${TOKEN}`, query: {}, body: enc('héllo') }, store);
+    const sealed = store.get(Array.from(store.keys()).find((k) => k.startsWith(`req/${TOKEN}/`))!)!;
+    const record = JSON.parse(Buffer.from(sealed, 'base64url').toString('utf8'));
+    expect(Buffer.from(record.bodyB64, 'base64url').toString('utf8')).toBe('héllo');
+  });
+
   test('server backstop only clamps the lifetime shorter, never longer', async () => {
     const store = new Map<string, string>();
     const expiries = expiriesFor(store);
-    const enc = (s: string): number[] => Array.from(new TextEncoder().encode(s));
+    const enc = (s: string) => new TextEncoder().encode(s);
     const nowSec = Math.floor(Date.now() / 1000);
     const backstopSec = 3 * 24 * 3600; // operator clamps the lifetime to 3 days.
 
