@@ -594,6 +594,7 @@ async fn execute_responder_script<R: for<'de> Deserialize<'de> + Send + 'static>
         Some(js_script_context_json),
         Some(proxy_state),
         Some(kv_state),
+        Some(js_script_context.body.to_vec()),
     )
     .await
     {
@@ -1087,7 +1088,7 @@ mod tests {
                         body: Some("body".to_string()),
                         headers: Some(vec![("key".to_string(), "value".to_string())]),
                         script: Some(
-                            "(() => { return { statusCode: 300, headers: { one: `two` }, body: Deno.core.encode(JSON.stringify(context)) }; })()".to_string(),
+                            "(() => { return { statusCode: 300, headers: { one: `two` }, body: Deno.core.encode(JSON.stringify({ ...context, body: Deno.core.decode(context.body) })) }; })()".to_string(),
                         ),
                         secrets: SecretsAccess::None,
                         notifications: None,
@@ -1120,7 +1121,7 @@ mod tests {
             Response HTTP/1.1 300 Multiple Choices
               headers:
                 "one": "two"
-              body: Sized(360)
+              body: Sized(325)
             ,
         }
         "###);
@@ -1142,7 +1143,7 @@ mod tests {
                 "query": {
                     "query": "some",
                 },
-                "body": [105, 110, 99, 111, 109, 105, 110, 103, 45, 98, 111, 100, 121],
+                "body": "incoming-body",
             })
         );
 
@@ -2683,6 +2684,7 @@ mod tests {
             None,
             None,
             Some(make_state()),
+            None,
         )
         .await?;
         assert_eq!(result["got"], json!("aGVsbG8"));
@@ -2703,6 +2705,7 @@ mod tests {
             None,
             None,
             Some(make_state()),
+            None,
         )
         .await?;
         assert_eq!(immediate["n"], json!(1));
@@ -2720,6 +2723,7 @@ mod tests {
             None,
             None,
             Some(make_state()),
+            None,
         )
         .await?;
         assert_eq!(timed_out["n"], json!(0));
@@ -2736,6 +2740,7 @@ mod tests {
             None,
             None,
             Some(make_state()),
+            None,
         )
         .await;
         assert!(oversized.is_err());

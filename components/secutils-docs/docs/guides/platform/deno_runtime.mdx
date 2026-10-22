@@ -63,11 +63,11 @@ const text = Deno.core.decode(new Uint8Array([72, 101, 108, 108, 111]));
 // 'Hello'
 ```
 
-Typical use - parsing an incoming JSON body in a responder or extractor:
+Typical use - parsing an incoming JSON body in a responder. `context.body` is a `Uint8Array` stored outside the script's memory limit, so decode it directly:
 
 ```javascript
 const body = context.body.length > 0
-  ? JSON.parse(Deno.core.decode(new Uint8Array(context.body)))
+  ? JSON.parse(Deno.core.decode(context.body))
   : {};
 ```
 
@@ -205,7 +205,7 @@ copy.nested.count = 99;
 
 ```javascript
 if (Deno.core.isTypedArray(context.body)) {
-  Deno.core.print('Body is already a typed array\n', false);
+  Deno.core.print('Responder body is already a typed array\n', false);
 }
 ```
 
@@ -251,8 +251,8 @@ interface ProxyRequest {
   method?: string;
   // Optional HTTP headers to send with the request.
   headers?: Record<string, string>;
-  // Optional binary request body as an array of bytes.
-  body?: number[];
+  // Optional binary request body, e.g. the responder's `context.body`.
+  body?: number[] | Uint8Array;
   // Skip TLS certificate validation. Defaults to false.
   // Useful for proxying to upstream servers with self-signed certificates.
   insecure?: boolean;

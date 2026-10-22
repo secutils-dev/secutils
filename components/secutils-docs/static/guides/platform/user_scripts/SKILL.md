@@ -108,6 +108,10 @@ curl -s -H "Authorization: Bearer $SECUTILS_API_KEY" \
   responder editor is not offered by the UI but the API does not
   enforce the constraint on the destination side. Choose `universal`
   for cross-editor helpers.
+- In `responder` scripts, `context.body` is a `Uint8Array` stored outside
+  the script memory limit; decode it with `Deno.core.decode(context.body)`.
+  Universal helpers can wrap it in `new Uint8Array(...)`, which also
+  accepts the plain byte arrays other script types receive.
 - Hard limits: 100 scripts per user (configurable per subscription
   tier), 50 KB per script.
 

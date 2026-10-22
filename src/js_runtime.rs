@@ -253,18 +253,23 @@ impl JsRuntime {
         js_script_context: Option<String>,
         proxy_state: Option<ProxyState>,
     ) -> Result<(R, Duration), anyhow::Error> {
-        Self::execute_script_with_state(config, js_code, js_script_context, proxy_state, None).await
+        Self::execute_script_with_state(config, js_code, js_script_context, proxy_state, None, None)
+            .await
     }
 
     /// Like [`Self::execute_script`], but additionally injects per-responder KV state so the script
     /// can use the `secutils.kv.*` primitive. Kept as a separate entry point so the many existing
     /// call sites (and benches) that do not need KV remain unchanged.
+    ///
+    /// `request_body`, when set, becomes `context.body`: a `Uint8Array` backed by memory outside
+    /// the V8 heap. A `body` placeholder (e.g. `null`) in the context JSON fixes the key's position.
     pub async fn execute_script_with_state<R: for<'de> Deserialize<'de> + Send + 'static>(
         config: JsRuntimeConfig,
         js_code: String,
         js_script_context: Option<String>,
         proxy_state: Option<ProxyState>,
         kv_state: Option<KvState>,
+        request_body: Option<Vec<u8>>,
     ) -> Result<(R, Duration), anyhow::Error> {
         let wrapped = wrap_user_script_in_async_iife(&js_code);
         let (tx, rx) = oneshot::channel::<Result<(R, Duration), anyhow::Error>>();
@@ -276,6 +281,7 @@ impl JsRuntime {
                     js_script_context,
                     proxy_state,
                     kv_state,
+                    request_body,
                 )
                 .await;
                 // Ignore a dropped receiver: the caller awaiting `rx` either
@@ -298,6 +304,7 @@ impl JsRuntime {
         js_script_context: Option<String>,
         proxy_state: Option<ProxyState>,
         kv_state: Option<KvState>,
+        request_body: Option<Vec<u8>>,
     ) -> Result<(R, Duration), anyhow::Error> {
         let now = Instant::now();
 
@@ -367,6 +374,21 @@ impl JsRuntime {
             let Some(context_value) = v8::json::parse(scope, json_v8) else {
                 anyhow::bail!("Cannot parse script context JSON.");
             };
+            if let (Some(body), Ok(context_obj)) = (
+                request_body,
+                v8::Local::<v8::Object>::try_from(context_value),
+            ) {
+                let len = body.len();
+                let backing = v8::ArrayBuffer::new_backing_store_from_vec(body).make_shared();
+                let buffer = v8::ArrayBuffer::with_backing_store(scope, &backing);
+                let (Some(bytes), Some(body_key)) = (
+                    v8::Uint8Array::new(scope, buffer, 0, len),
+                    v8::String::new(scope, "body"),
+                ) else {
+                    anyhow::bail!("Cannot create script context body.");
+                };
+                context_obj.set(scope, body_key.into(), bytes.into());
+            }
             context
                 .global(scope)
                 .set(scope, context_key.into(), context_value);
@@ -495,6 +517,60 @@ pub mod tests {
             10_485_760,
             std::time::Duration::from_secs(30),
         )
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn exposes_request_body_as_bytes() -> anyhow::Result<()> {
+        let config = JsRuntimeConfig {
+            max_heap_size: 10 * 1024 * 1024,
+            max_user_script_execution_time: std::time::Duration::from_secs(5),
+        };
+        let context = r#"{"method":"POST","body":null,"secrets":{"K":"v"}}"#;
+
+        let (result, _) = JsRuntime::execute_script_with_state::<serde_json::Value>(
+            config,
+            r#"(() => ({
+                keys: Object.keys(context),
+                isBytes: context.body instanceof Uint8Array,
+                decoded: Deno.core.decode(context.body),
+            }))()"#
+                .to_string(),
+            Some(context.to_string()),
+            None,
+            None,
+            Some(b"hi!".to_vec()),
+        )
+        .await?;
+        assert_eq!(
+            result,
+            serde_json::json!({
+                "keys": ["method", "body", "secrets"],
+                "isBytes": true,
+                "decoded": "hi!",
+            })
+        );
+
+        // The bytes live outside the heap: a 4 MiB body fits in a 10 MiB heap.
+        let (result, _) = JsRuntime::execute_script_with_state::<serde_json::Value>(
+            config,
+            r#"(() => {
+                const len = Deno.core.decode(context.body).length;
+                context.body = 'replaced';
+                return { len, assigned: context.body };
+            })()"#
+                .to_string(),
+            Some(context.to_string()),
+            None,
+            None,
+            Some(vec![b'A'; 4 * 1024 * 1024]),
+        )
+        .await?;
+        assert_eq!(
+            result,
+            serde_json::json!({ "len": 4 * 1024 * 1024, "assigned": "replaced" })
+        );
+
+        Ok(())
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -723,12 +799,9 @@ pub mod tests {
         let script = format!(
             r#"(async () => {{
                 const body = Deno.core.encode(JSON.stringify({{ key: "value" }}));
-                return await Deno.core.ops.op_proxy_request({{
-                    url: "{url}",
-                    method: "POST",
-                    headers: {{ "content-type": "application/json" }},
-                    body: Array.from(body),
-                }});
+                const request = {{ url: "{url}", method: "POST", headers: {{ "content-type": "application/json" }} }};
+                await Deno.core.ops.op_proxy_request({{ ...request, body: Array.from(body) }});
+                return await Deno.core.ops.op_proxy_request({{ ...request, body }});
             }})()"#
         );
 
@@ -742,7 +815,7 @@ pub mod tests {
 
         assert_eq!(result.status_code, 201);
         assert_eq!(String::from_utf8(result.body)?, "created");
-        mock.assert_async().await;
+        mock.assert_calls_async(2).await;
 
         Ok(())
     }

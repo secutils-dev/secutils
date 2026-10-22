@@ -450,7 +450,7 @@ button:hover { background:var(--primary-hover); }
 
     // Login form submission.
     if (context.method === 'POST' && context.query._auth === '1') {
-        const form = parseForm(Deno.core.decode(new Uint8Array(context.body)));
+        const form = parseForm(Deno.core.decode(context.body));
         const submittedPassword = form.password || '';
         const submittedUsername = form.username || '';
         const passwordOk = ctEq(submittedPassword, PASSWORD);

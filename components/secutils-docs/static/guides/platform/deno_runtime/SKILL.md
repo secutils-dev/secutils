@@ -32,7 +32,7 @@ list of `Deno.core` members exposed in the sandbox is published live at
 
 | Surface                     | Wrapper                                                                                                                   | `context` global shape                                                                 |
 |-----------------------------|---------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------|
-| Responder script (webhooks) | Wrapped with an outer IIFE; the script body may begin directly with statements or with its own `(async () => { ... })()`. | `{ clientAddress?, method, headers, path, rawQuery?, query, body: number[], secrets }` |
+| Responder script (webhooks) | Wrapped with an outer IIFE; the script body may begin directly with statements or with its own `(async () => { ... })()`. | `{ clientAddress?, method, headers, path, rawQuery?, query, body: Uint8Array, secrets }` |
 | API tracker configurator    | Must be a self-invoking IIFE: `(() => { ... })();`                                                                        | `{ requests, params: { secrets } }`; return `{ requests }`                             |
 | API tracker extractor       | Must be a self-invoking IIFE                                                                                              | `{ responses, params: { secrets, previousContent? } }`; return `{ body }`              |
 | Page tracker extractor      | Must export `async function execute(page, context)`                                                                       | `context = { params: { secrets }, previousContent? }`; `page` is a Playwright Page     |
@@ -93,7 +93,7 @@ interface Context {
   path: string;                    // request path (without query)
   rawQuery?: string;               // query string without leading `?`
   query: Record<string, string>;   // parsed query
-  body: number[];                  // raw request body bytes
+  body: Uint8Array;                // raw request body bytes, outside the heap limit
   secrets: Record<string, string>; // decrypted secrets the responder may access
 }
 ```

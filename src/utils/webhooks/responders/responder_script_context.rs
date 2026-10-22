@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 use std::{collections::HashMap, net::SocketAddr};
 
 /// Context available to the responder scripts through global `context` variable.
@@ -19,11 +19,18 @@ pub struct ResponderScriptContext<'a> {
     pub raw_query: Option<&'a str>,
     /// Parsed query string of the received request.
     pub query: HashMap<&'a str, &'a str>,
-    /// HTTP body of the received request.
+    /// HTTP body of the received request. Serialized as a `null` placeholder that only fixes the
+    /// key position; the bytes reach the script out of band as a `Uint8Array` (see
+    /// `JsRuntime::execute_script_with_state`).
+    #[serde(serialize_with = "serialize_body_placeholder")]
     pub body: &'a [u8],
     /// User secrets (decrypted key-value pairs).
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub secrets: HashMap<String, String>,
+}
+
+fn serialize_body_placeholder<S: Serializer>(_: &&[u8], serializer: S) -> Result<S::Ok, S::Error> {
+    serializer.serialize_unit()
 }
 
 #[cfg(test)]
@@ -50,7 +57,7 @@ mod tests {
           "headers": {},
           "path": "/test",
           "query": {},
-          "body": []
+          "body": null
         }
         "###);
     }

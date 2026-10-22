@@ -95,12 +95,27 @@ pub struct ProxyRequest {
     pub method: String,
     #[serde(default)]
     pub headers: HashMap<String, String>,
+    #[serde(default, deserialize_with = "deserialize_body")]
     pub body: Option<Vec<u8>>,
     #[serde(default)]
     pub insecure: bool,
     pub timeout: Option<u64>,
     #[serde(default = "default_decompress")]
     pub decompress: bool,
+}
+
+/// Accepts a `Uint8Array` (e.g. `context.body`) and a plain number array. A plain
+/// `Vec<u8>` rejects typed arrays and `serde_bytes` rejects arrays; serde_v8's `deserialize_any`,
+/// reached via `untagged`, yields either a sequence or a byte buffer, and `ByteBuf` takes both.
+fn deserialize_body<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Vec<u8>>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Body {
+        Bytes(serde_bytes::ByteBuf),
+    }
+    Ok(Option::<Body>::deserialize(deserializer)?.map(|Body::Bytes(bytes)| bytes.into_vec()))
 }
 
 fn default_decompress() -> bool {
