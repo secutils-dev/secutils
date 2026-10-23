@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import { PROMOTED_TOOLS, TOOLS, TOOLS_HOST } from './registry';
+import { PROMOTED_TOOLS, skillUrl, TOOLS, TOOLS_HOST, toolUrl } from './registry';
 
 // Cross-cutting checks for the agent-discovery surface: llms.txt aggregate
 // index, every per-tool .md, and the bare TOOLS_HOST root. These are
@@ -27,9 +27,9 @@ test.describe('Tools registry - agent-discovery surface', () => {
 
   for (const tool of TOOLS) {
     if (tool.slug === 'index') continue;
-    test(`/${tool.slug}.md is reachable as text/markdown and lists in llms.txt`, async ({ request }) => {
-      const r = await request.get(`${tool.path}.md`);
-      expect(r.ok(), `GET ${tool.path}.md should succeed`).toBeTruthy();
+    test(`${skillUrl(tool)} is reachable as text/markdown and lists in llms.txt`, async ({ request }) => {
+      const r = await request.get(skillUrl(tool));
+      expect(r.ok(), `GET ${skillUrl(tool)} should succeed`).toBeTruthy();
       const ct = r.headers()['content-type'] ?? '';
       expect(ct).toMatch(/text\/markdown/);
 
@@ -47,12 +47,12 @@ test.describe('Tools registry - agent-discovery surface', () => {
 
       const llms = await (await request.get('/llms.txt')).text();
       if (tool.promote) {
-        expect(llms, 'llms.txt should reference this tool').toContain(tool.path);
+        expect(llms, 'llms.txt should reference this tool').toContain(skillUrl(tool));
       } else {
         // Non-promoted tools must be reachable via direct link, but must
         // not be advertised in any aggregate discovery surface (see
         // `dev/tools/AGENTS.md` -> "Promotion (su-tool-promote)").
-        expect(llms, 'llms.txt must not advertise non-promoted tools').not.toContain(tool.path);
+        expect(llms, 'llms.txt must not advertise non-promoted tools').not.toContain(skillUrl(tool));
       }
     });
   }
@@ -62,13 +62,14 @@ test.describe('Tools registry - agent-discovery surface', () => {
   // `<slug>.md` sibling (or `/llms.txt` for the index). Browsers and
   // `Accept: */*` clients are unaffected.
   for (const tool of TOOLS) {
-    test(`${tool.path} negotiates Accept: text/markdown to its .md sibling`, async ({ request }) => {
-      const r = await request.get(tool.path, {
+    test(`${toolUrl(tool)} negotiates Accept: text/markdown to its .md sibling`, async ({ request }) => {
+      const r = await request.get(tool.host ? toolUrl(tool) : tool.path, {
         headers: { Accept: 'text/markdown' },
         maxRedirects: 0,
       });
       expect(r.status(), `GET ${tool.path} with Accept: text/markdown`).toBe(302);
-      const expected = tool.slug === 'index' ? '/llms.txt' : `${tool.path}.md`;
+      // The index and standalone apps on their own host negotiate to `/llms.txt`.
+      const expected = tool.slug === 'index' || tool.host ? '/llms.txt' : `${tool.path}.md`;
       expect(r.headers().location, 'Location must point at the .md sibling').toBe(expected);
       expect(r.headers().vary ?? '', 'Vary: Accept must be set so caches keep variants distinct').toMatch(/Accept/i);
     });
@@ -97,14 +98,13 @@ test.describe('Tools registry - cross-cutting agent-discovery artefacts', () => 
     expect(body).toContain(`<loc>https://${TOOLS_HOST}/</loc>`);
     expect(body).toContain(`<loc>https://${TOOLS_HOST}/llms.txt</loc>`);
     expect(body).toContain(`<loc>https://${TOOLS_HOST}/.well-known/agent-skills/index.json</loc>`);
-    for (const tool of PROMOTED_TOOLS) {
+    // Standalone apps live on their own host, which this sitemap can't list.
+    for (const tool of PROMOTED_TOOLS.filter((t) => !t.host)) {
       expect(body, `sitemap must list ${tool.path}`).toContain(`<loc>https://${TOOLS_HOST}${tool.path}</loc>`);
       expect(body, `sitemap must list ${tool.path}.md`).toContain(`<loc>https://${TOOLS_HOST}${tool.path}.md</loc>`);
     }
     for (const tool of TOOLS.filter((t) => !t.promote && t.slug !== 'index')) {
-      expect(body, `sitemap must NOT list non-promoted ${tool.path}`).not.toContain(
-        `<loc>https://${TOOLS_HOST}${tool.path}</loc>`,
-      );
+      expect(body, `sitemap must NOT list non-promoted ${tool.path}`).not.toContain(`<loc>${toolUrl(tool)}</loc>`);
     }
   });
 
@@ -129,7 +129,7 @@ test.describe('Tools registry - cross-cutting agent-discovery artefacts', () => 
       expect(skill.name, 'name must conform to Agent Skills naming spec').toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
       expect(skill.name.length).toBeLessThanOrEqual(64);
       expect(skill.description, 'description must be non-empty').toMatch(/\S/);
-      expect(skill.url, 'url must point at our tools host .md').toMatch(new RegExp(`^https://${TOOLS_HOST}/.+\\.md$`));
+      expect(TOOLS.map(skillUrl), 'url must point at a tool SKILL.md').toContain(skill.url);
       // RFC v0.2.0 §"Integrity and Verification": digest is `sha256:<hex>`,
       // not a bare hex string under a `sha256` field.
       expect(skill.digest, 'digest must be sha256:<hex>').toMatch(/^sha256:[0-9a-f]{64}$/);
@@ -142,8 +142,11 @@ test.describe('Tools registry - cross-cutting agent-discovery artefacts', () => 
     // Non-promoted tools must not advertise their skill in the discovery
     // index (their `<path>.md` is still served for direct fetching).
     const urls = doc.skills.map((s: { url: string }) => s.url);
+    for (const tool of PROMOTED_TOOLS) {
+      expect(urls, `agent-skills index must advertise ${tool.slug}`).toContain(skillUrl(tool));
+    }
     for (const tool of TOOLS.filter((t) => !t.promote && t.slug !== 'index')) {
-      const expected = `https://${TOOLS_HOST}${tool.path}.md`;
+      const expected = skillUrl(tool);
       expect(urls, `agent-skills index must NOT advertise non-promoted ${tool.path}`).not.toContain(expected);
     }
   });

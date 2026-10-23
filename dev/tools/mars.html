@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<!-- @su:responder-script
+// =============================================================================
+// RESPONDER SCRIPT - paired with mars.html, auto-deployed to the responder's
+// `script` setting by dev/tools/deploy.ts. This HTML comment is stripped from
+// the served body by html-minifier-terser (`removeComments: true`).
+// A copy of md.html's short-link store; MARS keeps its links in its own responder KV.
+// See dev/tools/AGENTS.md -> "Short links (md.html)" and "MARS".
+//
+// Short-link store on the bare mount, keyed by `?s=<id>`:
+//   POST   ?s=<id>[&ttl=<sec>]  body: base64url blob, x-su-delete-token -> 201 {exp}
+//   GET    ?s=<id>                                                     -> 200 {v, exp} | 404
+//   DELETE ?s=<id>              x-su-delete-token                      -> 204 | 403 | 404
+// The blob is an IV plus AES-GCM ciphertext. The key exists only in the link
+// fragment, so this script stores and serves opaque bytes. Requests without
+// `s` return null, and the static HTML body is served.
+// =============================================================================
+(() => {
+  const id = (context.query || {}).s;
+  if (!id) return null;
+
+  const TTLS = [86400, 604800, 1209600]; // 1, 7, and 14 days.
+  const DEFAULT_TTL = 604800;
+  // base64url length of 1 MiB, the KV value cap. Keep in sync with SHORT_MAX_CHARS in the page.
+  const MAX_CHARS = 1398100;
+  const MIN_CHARS = 43; // 12 B IV + 16 B GCM tag + 4 B length prefix.
+  const RL_WINDOW_SEC = 3600;
+  const RL_MAX_LINKS = 20;
+  const RL_MAX_BYTES = 16 * 1024 * 1024;
+  const TOKEN_RE = /^[A-Za-z0-9_-]{22}$/;
+
+  const json = (statusCode, obj) => ({
+    statusCode,
+    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
+    body: obj === undefined ? '' : JSON.stringify(obj),
+    skipRequest: true,
+  });
+
+  if (!/^[A-Za-z0-9_-]{16}$/.test(id)) return json(400, { error: 'invalid-id' });
+  const method = (context.method || 'GET').toUpperCase();
+  const token = (context.headers || {})['x-su-delete-token'] || '';
+
+  if (method === 'GET') {
+    return (async () => {
+      const entry = await secutils.kv.getEntry('s/' + id);
+      return entry && entry.value
+        ? json(200, { v: entry.value, exp: entry.expiresAt })
+        : json(404, { error: 'not-found' });
+    })();
+  }
+
+  if (method === 'POST') {
+    const bytes = context.body;
+    if (bytes.length > MAX_CHARS) return json(413, { error: 'too-large', max: MAX_CHARS });
+    const blob = Deno.core.decode(bytes);
+    if (blob.length < MIN_CHARS || blob.length % 4 === 1 || !/^[A-Za-z0-9_-]+$/.test(blob)) {
+      return json(400, { error: 'invalid-body' });
+    }
+    if (!TOKEN_RE.test(token)) return json(400, { error: 'invalid-token' });
+    const ttl = TTLS.includes(Number(context.query.ttl)) ? Number(context.query.ttl) : DEFAULT_TTL;
+    const ip = String(context.clientAddress || 'unknown').replace(/:\d+$/, '');
+    return (async () => {
+      // ponytail: approximate sliding window (list + set is not atomic); concurrent bursts can
+      // overshoot by a few links. Per-tier KV quotas remain the hard backstop.
+      const rlPrefix = 'rl/' + ip + '/';
+      const recent = await secutils.kv.list({ prefix: rlPrefix, valuesIncluded: false, limit: RL_MAX_LINKS });
+      const usedBytes = recent.entries.reduce((sum, e) => sum + (Number(e.key.split('.').pop()) || 0), 0);
+      if (recent.entries.length >= RL_MAX_LINKS || usedBytes + blob.length > RL_MAX_BYTES) {
+        return json(429, { error: 'rate-limited', retryAfter: RL_WINDOW_SEC });
+      }
+      let tokenHash;
+      try {
+        tokenHash = await secutils.crypto.sha256(token);
+      } catch (_e) {
+        return json(400, { error: 'invalid-token' });
+      }
+      // ponytail: ids are 96-bit hashes of client-side random secrets, so `ifAbsent` never
+      // meets a live row in practice. When it does, the original link is preserved.
+      try {
+        await secutils.kv.set('s/' + id, blob, { ifAbsent: true, ttlSec: ttl });
+        await secutils.kv.set('d/' + id, tokenHash, { ifAbsent: true, ttlSec: ttl });
+      } catch (e) {
+        return /base64url/.test(String(e && e.message))
+          ? json(400, { error: 'invalid-body' })
+          : json(507, { error: 'storage-full' });
+      }
+      try {
+        await secutils.kv.set(rlPrefix + id + '.' + blob.length, 'AA', { ttlSec: RL_WINDOW_SEC });
+      } catch (_e) {
+        // The link is stored; a missed throttle mark only loosens the limit.
+      }
+      return json(201, { exp: Math.floor(Date.now() / 1000) + ttl });
+    })();
+  }
+
+  if (method === 'DELETE') {
+    if (!TOKEN_RE.test(token)) return json(403, { error: 'forbidden' });
+    return (async () => {
+      const stored = await secutils.kv.get('d/' + id);
+      if (!stored) return json(404, { error: 'not-found' });
+      let tokenHash;
+      try {
+        tokenHash = await secutils.crypto.sha256(token);
+      } catch (_e) {
+        return json(403, { error: 'forbidden' });
+      }
+      if (stored !== tokenHash) return json(403, { error: 'forbidden' });
+      await secutils.kv.delete('s/' + id);
+      await secutils.kv.delete('d/' + id);
+      return json(204);
+    })();
+  }
+
+  return json(405, { error: 'method-not-allowed' });
+})();
+-->
+<html lang="en" data-theme="dark" class="mars-boot">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MARS: Markdown Annotation &amp; Review System | Secutils.dev</title>
+    <meta name="description" content="Review Markdown in your browser: highlight text, leave threaded comments, organize reviews in folders, and share them with a short link. Free, no signup.">
+    <meta name="robots" content="index, follow, max-image-preview:large">
+    <link rel="canonical" href="https://{{MARS_HOST}}/">
+    <meta name="su-tool-path" content="/">
+    <meta name="su-tool-host" content="{{MARS_HOST}}">
+    <meta name="su-tool-name" content="MARS">
+    <meta name="su-tool-description" content="Markdown Annotation and Review System: threaded review comments, highlights, folders in the browser, and shareable review links. No signup.">
+    <meta name="su-tool-promote" content="true">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Secutils.dev">
+    <meta property="og:title" content="MARS: Markdown Annotation &amp; Review System">
+    <meta property="og:description" content="Highlight, comment on, and share Markdown reviews. Reviews stay in your browser; shared links land in your colleague's sidebar.">
+    <meta property="og:url" content="https://{{MARS_HOST}}/">
+    <meta property="og:image" content="https://secutils.dev/docs/img/og/og-mars.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="MARS on Secutils.dev: Markdown Annotation and Review System.">
+    <meta property="og:locale" content="en_US">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="MARS: Markdown Annotation &amp; Review System">
+    <meta name="twitter:description" content="Highlight, comment on, and share Markdown reviews. Reviews stay in your browser; shared links land in your colleague's sidebar.">
+    <meta name="twitter:image" content="https://secutils.dev/docs/img/og/og-mars.png">
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"MARS: Markdown Annotation & Review System","url":"https://{{MARS_HOST}}/","applicationCategory":"DeveloperApplication","operatingSystem":"Any","browserRequirements":"Requires JavaScript","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"publisher":{"@type":"Organization","name":"Secutils.dev","url":"https://secutils.dev"},"sameAs":"https://github.com/secutils-dev/secutils/blob/main/dev/tools/mars.html","description":"Free Markdown review tool: threaded comments anchored to highlighted text, folders stored in the browser, Mermaid diagrams, maps, 3D models, math, and encrypted short links for sharing reviews."}</script>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Cdefs%3E%3ClinearGradient id='tile' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23ff6240'/%3E%3Cstop offset='.52' stop-color='%23d43a32'/%3E%3Cstop offset='1' stop-color='%23711b2a'/%3E%3C/linearGradient%3E%3ClinearGradient id='planet' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23fffdf7'/%3E%3Cstop offset='1' stop-color='%23f4eee7'/%3E%3C/linearGradient%3E%3CclipPath id='disc'%3E%3Ccircle cx='64' cy='64' r='39'/%3E%3C/clipPath%3E%3C/defs%3E%3Crect x='3' y='3' width='122' height='122' rx='23' fill='url(%23tile)'/%3E%3Ccircle cx='64' cy='64' r='39' fill='url(%23planet)'/%3E%3Cg fill='%23c93b32'%3E%3Crect x='40' y='49' width='37' height='5.5' rx='2.75'/%3E%3Crect x='40' y='61' width='49' height='5.5' rx='2.75'/%3E%3Crect x='40' y='73' width='28' height='5.5' rx='2.75'/%3E%3C/g%3E%3Cg clip-path='url(%23disc)'%3E%3Cpath d='M63 102 C70 91 79 84 89 84 C98 84 104 91 108 101 L108 113 L58 113 Z' fill='%23d84a38'/%3E%3Cellipse cx='89' cy='96' rx='4' ry='6' transform='rotate(-25 89 96)' fill='%23a92a30' opacity='.6'/%3E%3Cellipse cx='72' cy='104' rx='2.5' ry='2' fill='%23a92a30' opacity='.55'/%3E%3C/g%3E%3C/svg%3E">
+    <link rel="icon" type="image/png" sizes="32x32" href="data:image/png;base64,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">
+    <link rel="apple-touch-icon" href="data:image/png;base64,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">
+    <meta name="theme-color" content="#0b1628">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=Roboto+Mono:wght@400..700&display=swap" rel="stylesheet">
+    <!-- Privacy-friendly analytics by Plausible -->
+    <script defer src="https://tools.secutils.dev/js/script.js" fetchpriority="low"></script>
+    <script>
+        window.plausible = window.plausible || function () { (plausible.q = plausible.q || []).push(arguments) };
+        plausible.init = plausible.init || function (i) { plausible.o = i || {} };
+        plausible.init();
+    </script>
+    <script>
+        // Theme before first paint, and the loading state for share links / ?url=.
+        (() => {
+            const root = document.documentElement;
+            try {
+                const saved = localStorage.getItem('su-tool-theme');
+                root.dataset.theme = saved || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+            } catch {}
+            const hash = location.hash.slice(1);
+            if ((hash && !/^doc=/.test(hash)) || /[?&]url=/.test(location.search)) root.classList.add('su-loading');
+        })();
+    </script>
+    <style>html.mars-boot body { visibility: hidden; }</style>
+</head>
+<body>
+    <noscript>
+        <p class="su-noscript"><strong>MARS</strong> &mdash; Markdown Annotation &amp; Review System: highlight and comment on Markdown, keep reviews in folders, and share them. Requires JavaScript; please enable it. Source on <a href="https://github.com/secutils-dev/secutils/blob/main/dev/tools/mars.html">GitHub</a>.</p>
+    </noscript>
+
+    <header class="mars-header">
+        <div class="mars-header-section">
+            <button id="navToggle" type="button" class="mars-header-btn" aria-controls="sidebar" aria-expanded="true" title="Toggle documents sidebar" aria-label="Toggle documents sidebar"><span data-icon="menu"></span></button>
+            <a class="mars-logo" href="./" aria-label="MARS home">
+                <svg class="mars-logo-mark" viewBox="84 36 152 152" width="26" height="26" aria-hidden="true">
+                    <defs><linearGradient id="mars-mark-g" x1=".15" y1="0" x2=".8" y2="1"><stop offset="0" stop-color="#ff6240"/><stop offset=".55" stop-color="#d43a32"/><stop offset="1" stop-color="#8b202d"/></linearGradient><clipPath id="mars-mark-c"><circle cx="160" cy="112" r="76"/></clipPath></defs>
+                    <circle cx="160" cy="112" r="76" fill="url(#mars-mark-g)"/>
+                    <g fill="#fffaf4"><rect x="110" y="78" width="68" height="10" rx="5"/><rect x="110" y="102" width="96" height="10" rx="5"/><rect x="110" y="126" width="53" height="10" rx="5"/></g>
+                    <g clip-path="url(#mars-mark-c)"><path d="M158 187 C170 164 188 153 207 153 C225 153 237 168 242 188 L242 207 L145 207 Z" fill="#d84a38"/><ellipse cx="207" cy="177" rx="9" ry="13" transform="rotate(-25 207 177)" fill="#a92a30" opacity=".6"/><ellipse cx="178" cy="191" rx="5" ry="3.5" fill="#a92a30" opacity=".55"/></g>
+                </svg>
+                <span class="mars-wordmark">MARS</span>
+            </a>
+            <nav class="mars-crumbs" aria-label="Breadcrumb">
+                <ol id="crumbs"></ol>
+                <span id="docTitle" class="doc-title" spellcheck="false" title="Rename">MARS</span>
+            </nav>
+        </div>
+        <div class="mars-header-section">
+            <span id="saveState" class="save-state" role="status" aria-live="polite"></span>
+            <a id="skillLink" class="skill-link" href="#" target="_blank" rel="noopener" title="View AI agent skill (skill.md, opens in new tab)" aria-label="View AI agent skill (opens in new tab)"><span data-icon="sparkles"></span><span>Skill</span></a>
+            <button class="mars-header-btn theme-toggle" id="themeToggle" type="button" aria-label="Toggle theme" title="Toggle theme"><span class="icon-sun" data-icon="sun"></span><span class="icon-moon" data-icon="moon"></span></button>
+        </div>
+    </header>
+
+    <div class="mars-layout">
+        <aside id="sidebar" class="mars-sidebar" aria-label="Documents">
+            <div class="sb-head">
+                <h2 class="sb-title">Documents</h2>
+                <button id="sbNewBtn" type="button" class="icon-btn" aria-haspopup="menu" title="New document, folder, or import" aria-label="New document, folder, or import"><span data-icon="plus"></span></button>
+            </div>
+            <div class="sb-filter">
+                <span data-icon="magnify"></span>
+                <input id="sbFilter" type="search" placeholder="Filter documents" aria-label="Filter documents" autocomplete="off" spellcheck="false">
+            </div>
+            <div id="tree" class="sb-tree" role="tree" aria-label="Documents" tabindex="0"></div>
+            <div class="sb-foot">
+                <span id="sbUsage" class="sb-usage"></span>
+                <button id="sbExportAllBtn" type="button" class="btn btn-xs" title="Download every document as a .zip">Export all</button>
+            </div>
+            <p class="sb-fineprint">
+                <button type="button" class="su-footer-link" id="privacyOpen">Privacy</button>
+                <span aria-hidden="true"> &middot; </span>
+                <button type="button" class="su-footer-link" id="creditsOpen">Credits</button>
+                <span aria-hidden="true"> &middot; </span>
+                <a class="su-footer-link" href="https://{{TOOLS_HOST}}/">More tools</a>
+            </p>
+            <div id="sbResizer" class="sb-resizer" role="separator" aria-orientation="vertical" title="Drag to resize"></div>
+        </aside>
+        <div id="sbBackdrop" class="sb-backdrop" hidden></div>
+
+        <main class="mars-main">
+            <div class="toolbar">
+                <div class="toolbar-left">
+                    <span id="docStats" class="stats-text">empty</span>
+                </div>
+                <div class="toolbar-actions">
+                    <button id="openBtn" class="btn btn-sm" type="button" title="Open a Markdown, STL, or 3MF file as a new document (Ctrl/Cmd+O)"><span data-icon="folderOpen"></span><span class="btn-label">Open</span></button>
+                    <div class="view-switch" role="group" aria-label="View mode">
+                        <button type="button" class="view-btn active" data-view="preview" aria-pressed="true" title="Rendered preview">Preview</button>
+                        <button type="button" class="view-btn" data-view="edit" aria-pressed="false" title="Edit the Markdown source (Ctrl/Cmd+E)">Source</button>
+                    </div>
+                    <button id="commentsBtn" type="button" class="icon-btn comments-btn" hidden data-mode="expanded" aria-label="Comments">
+                        <svg class="i-expanded" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M7 8h10M7 12h6"/></svg>
+                        <svg class="i-collapsed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                        <svg class="i-hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15V5a2 2 0 0 0-2-2H9"/><path d="m2 2 20 20"/><path d="M3.6 3.6A2 2 0 0 0 3 5v16l4-4h10"/></svg>
+                        <span id="commentsCount"></span>
+                    </button>
+                    <button id="findBtn" type="button" class="icon-btn" title="Find in document (Ctrl/Cmd+F)" aria-label="Find in document"><span data-icon="magnify"></span></button>
+                    <div class="options-anchor">
+                        <button id="optionsBtn" type="button" class="icon-btn" commandfor="optionsPopover" command="toggle-popover" aria-haspopup="true" title="Document options" aria-label="Document options"><span data-icon="gear"></span></button>
+                        <div id="optionsPopover" popover class="options-popover" role="dialog" aria-label="Document options">
+                            <h4>Reading layout</h4>
+                            <label class="width-label" for="optReadingWidth">Reading width</label>
+                            <select id="optReadingWidth">
+                                <option value="800">Comfortable (800px)</option>
+                                <option value="1100">Wide (1100px)</option>
+                                <option value="full">Full width</option>
+                                <option value="custom">Custom</option>
+                            </select>
+                            <label class="width-custom" id="optReadingCustomWrap" for="optReadingCustom" hidden>Custom width (px)
+                                <input type="number" id="optReadingCustom" min="320" max="2400" step="1" value="800" inputmode="numeric">
+                            </label>
+                            <h4>Editing</h4>
+                            <label>
+                                <input type="checkbox" id="optHideDone">
+                                <span>Hide done items
+                                    <span class="opt-desc">Hides checked tasks and sections whose heading is struck through.</span>
+                                </span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="export-anchor">
+                        <button id="shareBtn" type="button" class="btn btn-primary btn-sm" disabled commandfor="shareMenu" command="toggle-popover" aria-haspopup="menu" title="Share this document"><span data-icon="share"></span><span class="btn-label">Share</span></button>
+                        <div id="shareMenu" popover class="export-menu share-menu" role="menu" aria-label="Share menu">
+                            <button type="button" class="export-item" role="menuitem" id="copyShortLinkBtn"><span data-icon="link"></span><span>Copy short link<span class="item-sub" id="shortLinkSub">Encrypted copy stored on Secutils.dev</span></span></button>
+                            <div class="share-ttl" id="shortTtl" role="group" aria-label="Short link lifetime">
+                                <button type="button" data-ttl="86400" aria-pressed="false">1 day</button>
+                                <button type="button" data-ttl="604800" aria-pressed="true">7 days</button>
+                                <button type="button" data-ttl="1209600" aria-pressed="false">14 days</button>
+                            </div>
+                            <button type="button" class="export-item" role="menuitem" id="copyFullLinkBtn"><span data-icon="documents"></span><span>Copy full link<span class="item-sub" id="fullLinkSub">Never expires &middot; whole document in the URL</span></span></button>
+                            <hr class="menu-sep">
+                            <button type="button" class="export-item" role="menuitem" id="copySlackBtn"><span data-icon="logoSlack"></span><span>Copy for Slack<span class="item-sub">Titled link with the open-thread count</span></span></button>
+                            <button type="button" class="export-item" role="menuitem" id="copyGithubBtn"><span data-icon="logoGithub"></span><span>Copy for GitHub<span class="item-sub">Markdown comment with the quotes and threads</span></span></button>
+                            <button type="button" class="export-item" role="menuitem" id="downloadMdBtn"><span data-icon="download"></span><span>Download .md<span class="item-sub">The Markdown file, with review threads</span></span></button>
+                            <button type="button" class="export-item share-danger" role="menuitem" id="deleteShortLinkBtn" hidden><span data-icon="trash"></span><span id="deleteShortLinkLabel">Delete short link</span></button>
+                        </div>
+                    </div>
+                    <button id="fullscreenBtn" type="button" class="icon-btn" title="Toggle fullscreen" aria-label="Toggle fullscreen">
+                        <span id="fullscreenEnterIcon" data-icon="fullScreen"></span>
+                        <span id="fullscreenExitIcon" data-icon="fullScreenExit" style="display:none"></span>
+                    </button>
+                </div>
+            </div>
+
+            <div id="previewPane">
+                <div class="output-panel" id="previewWrap">
+                    <div id="previewScroll" class="output-scroll">
+                        <article id="previewArticle" class="preview-article"></article>
+                        <aside id="commentsRail" aria-label="Comments">
+                            <div id="railResizer" class="cm-resizer" role="separator" aria-orientation="vertical" title="Drag to resize comments. Double-click to widen."></div>
+                        </aside>
+                        <div id="blockHandle" class="block-handle" hidden>
+                            <button id="blockAddBtn" type="button" title="Add a block below" aria-label="Add a block below">
+                                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>
+                            </button>
+                            <button id="blockGripBtn" type="button" title="Block actions (double-click a block to edit)" aria-label="Block actions" aria-haspopup="menu" aria-expanded="false">
+                                <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="6" cy="4" r="1.2"/><circle cx="10" cy="4" r="1.2"/><circle cx="6" cy="8" r="1.2"/><circle cx="10" cy="8" r="1.2"/><circle cx="6" cy="12" r="1.2"/><circle cx="10" cy="12" r="1.2"/></svg>
+                            </button>
+                        </div>
+                        <div id="blockDropLine" class="block-drop-line" hidden></div>
+                        <div id="loadingState" class="loading-state" aria-live="polite">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="9" opacity=".25"/><path d="M21 12a9 9 0 0 1-9 9" stroke-linecap="round"/></svg>
+                            <span class="loading-text">Opening the shared document&hellip;</span>
+                        </div>
+                        <div id="emptyState" class="empty-state">
+                            <div id="shortLinkAlert" class="short-link-alert" role="alert" hidden>This link has expired or doesn't exist. Ask the sender for a new one.</div>
+                            <div class="empty-state-icon"><span data-icon="comment"></span></div>
+                            <div class="empty-state-title">Open a document</div>
+                            <div class="empty-state-sub">Open or drop a Markdown file, paste (Ctrl/Cmd+V), start writing, or fetch a public URL. Documents are saved in this browser and listed in the sidebar.</div>
+                            <div class="empty-actions">
+                                <button id="emptyOpenBtn" type="button" class="btn btn-primary btn-sm">Open file</button>
+                                <button id="emptyWriteBtn" type="button" class="btn btn-sm">Start writing</button>
+                                <button id="emptyExampleBtn" type="button" class="btn btn-sm">Load example</button>
+                            </div>
+                            <form id="urlForm" class="url-form">
+                                <input id="urlInput" type="url" inputmode="url" placeholder="https://raw.githubusercontent.com/&hellip;/README.md" aria-label="Markdown URL to load">
+                                <button type="submit" class="btn btn-sm">Load URL</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                <div id="editorMount" aria-label="Markdown editor"></div>
+                <div id="findBar" class="find-bar" hidden role="search">
+                    <span data-icon="magnify"></span>
+                    <input id="findInput" type="text" placeholder="Find in document" aria-label="Find in document" autocomplete="off" spellcheck="false">
+                    <span id="findCount" class="find-count">0/0</span>
+                    <button id="findPrev" type="button" class="icon-btn" aria-label="Previous match" title="Previous (Shift+Enter)">
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m11 10-3-3-3 3"/></svg>
+                    </button>
+                    <button id="findNext" type="button" class="icon-btn" aria-label="Next match" title="Next (Enter)">
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 6 3 3 3-3"/></svg>
+                    </button>
+                    <button id="findClose" type="button" class="icon-btn" aria-label="Close find" title="Close (Esc)"><span data-icon="cross"></span></button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <dialog id="privacyDialog" class="su-dialog" closedby="any" aria-labelledby="privacyDialogTitle">
+        <header class="su-dialog-header">
+            <h2 id="privacyDialogTitle">Privacy</h2>
+            <button type="button" class="su-dialog-close" id="privacyClose" aria-label="Close"><span data-icon="cross"></span></button>
+        </header>
+        <div class="su-dialog-body">
+            <p><strong>Your documents stay in your browser.</strong> MARS stores documents, folders, and review threads in this browser's IndexedDB storage. They are never sent to the Secutils.dev server in readable form. Clearing site data for this page deletes them, so use <em>Export all</em> for backups.</p>
+            <p><strong>Short links.</strong> When you copy a short link, your browser encrypts the document and Secutils.dev stores only the encrypted copy, for the period you choose (1, 7, or 14 days). The decryption key exists only in the link, so the server can't read the document. Only the browser that created a link can delete it early. Your IP address is kept for one hour to rate-limit link creation.</p>
+            <p><strong>Full links.</strong> A full link carries the whole document in the URL fragment (<code>#&hellip;</code>), which browsers never transmit to the server.</p>
+            <p><strong>Loading from a URL.</strong> When you use <code>?url=</code> or the "Load URL" box, your browser fetches that address directly; the Markdown is never relayed through the Secutils.dev server.</p>
+            <p><strong>Map basemaps.</strong> GeoJSON and TopoJSON viewers fetch map tiles directly from OpenStreetMap. Tile requests reveal the displayed geographic area. Your Markdown source is not included.</p>
+            <p><strong>Anonymous usage analytics.</strong> We use <a href="https://plausible.io/" target="_blank" rel="noopener noreferrer">Plausible Analytics</a>, a privacy-first, GDPR-compliant tool, to collect aggregate usage data. No cookies, no personal data, no individual tracking. Full details in the <a href="https://plausible.io/data-policy" target="_blank" rel="noopener noreferrer">Plausible Data Policy</a>.</p>
+            <p class="su-dialog-fineprint">See the full <a href="https://secutils.dev/privacy" target="_blank" rel="noopener noreferrer">Secutils.dev privacy policy</a> for details on the wider service.</p>
+        </div>
+    </dialog>
+
+    <dialog id="creditsDialog" class="su-dialog" closedby="any" aria-labelledby="creditsDialogTitle">
+        <header class="su-dialog-header">
+            <h2 id="creditsDialogTitle">Credits</h2>
+            <button type="button" class="su-dialog-close" id="creditsClose" aria-label="Close"><span data-icon="cross"></span></button>
+        </header>
+        <div class="su-dialog-body">
+            <p>MARS is powered by the following open-source libraries:</p>
+            <ul class="su-credits-list">
+                <li><a href="https://github.com/markedjs/marked" target="_blank" rel="noopener noreferrer"><strong>marked</strong></a> - Markdown parser and compiler, used to render the source into HTML.</li>
+                <li><a href="https://github.com/highlightjs/highlight.js" target="_blank" rel="noopener noreferrer"><strong>highlight.js</strong></a> - syntax highlighter, used to colourise fenced code blocks.</li>
+                <li><a href="https://github.com/KaTeX/KaTeX" target="_blank" rel="noopener noreferrer"><strong>KaTeX</strong></a> - math typesetting, used to render <code>$&hellip;$</code> and <code>$$&hellip;$$</code> formulas.</li>
+                <li><a href="https://github.com/mermaid-js/mermaid" target="_blank" rel="noopener noreferrer"><strong>Mermaid</strong></a> - diagram renderer, used to turn <code>```mermaid</code> code blocks into inline SVG diagrams.</li>
+                <li><a href="https://github.com/topojson/topojson-client" target="_blank" rel="noopener noreferrer"><strong>topojson-client</strong></a> - converts TopoJSON objects into GeoJSON for map display.</li>
+                <li><a href="https://github.com/codemirror/dev" target="_blank" rel="noopener noreferrer"><strong>CodeMirror</strong></a> - extensible code editor, powers the source editing mode.</li>
+                <li><a href="https://github.com/101arrowz/fflate" target="_blank" rel="noopener noreferrer"><strong>fflate</strong></a> - builds and reads <code>.zip</code> exports, and extracts 3MF packages in a worker (MIT).</li>
+                <li><a href="https://github.com/lddubeau/saxes" target="_blank" rel="noopener noreferrer"><strong>saxes</strong></a> - parses namespace-aware 3MF XML in a worker (ISC).</li>
+                <li><a href="https://github.com/elastic/eui" target="_blank" rel="noopener noreferrer"><strong>EUI</strong></a> - Elastic UI design language; MARS borrows its icons and color tokens.</li>
+            </ul>
+            <p class="su-dialog-fineprint">All trademarks are property of their respective owners.</p>
+        </div>
+    </dialog>
+
+    <dialog id="marsModal" class="su-dialog mars-modal" aria-labelledby="marsModalTitle">
+        <form method="dialog">
+            <header class="su-dialog-header"><h2 id="marsModalTitle"></h2></header>
+            <div class="su-dialog-body" id="marsModalBody"></div>
+            <footer class="mars-modal-foot" id="marsModalFoot"></footer>
+        </form>
+    </dialog>
+
+    <div id="blockMenu" class="export-menu block-menu" role="menu" aria-label="Block actions" hidden>
+        <button class="export-item" role="menuitem" data-action="edit">Edit</button>
+        <button class="export-item" role="menuitem" data-action="done">Mark done</button>
+        <button class="export-item" role="menuitem" data-action="copy">Copy text</button>
+        <button class="export-item" role="menuitem" data-action="up">Move up</button>
+        <button class="export-item" role="menuitem" data-action="down">Move down</button>
+        <button class="export-item block-menu-danger" role="menuitem" data-action="delete">Delete</button>
+    </div>
+    <div id="formatBar" class="export-menu format-bar" role="toolbar" aria-label="Format selection" hidden>
+        <button type="button" data-format="bold" title="Bold (Ctrl/Cmd+B)" aria-label="Bold"><b>B</b></button>
+        <button type="button" data-format="italic" title="Italic (Ctrl/Cmd+I)" aria-label="Italic"><i>I</i></button>
+        <button type="button" data-format="strike" title="Strikethrough" aria-label="Strikethrough"><s>S</s></button>
+        <button type="button" data-format="highlight" title="Highlight" aria-label="Highlight"><mark>H</mark></button>
+        <button type="button" data-format="code" title="Inline code" aria-label="Inline code"><code>&lt;/&gt;</code></button>
+        <span class="format-sep" data-format-sep aria-hidden="true"></span>
+        <button type="button" data-comment title="Comment (Ctrl/Cmd+Alt+M)" aria-label="Comment"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M12 7v6M9 10h6"/></svg></button>
+    </div>
+    <div id="marsMenu" class="export-menu mars-menu" role="menu" hidden></div>
+
+    <input type="file" id="fileInput" accept=".md,.markdown,.txt,.mdx,.html,.htm,.stl,.3mf" hidden>
+    <input type="file" id="importInput" accept=".md,.markdown,.txt,.mdx,.zip" multiple hidden>
+    <input type="file" id="importFolderInput" webkitdirectory hidden>
+    <div id="modelImportStatus" class="toast" role="status" aria-live="polite" hidden>
+        <span>Importing 3MF model&hellip;</span><button id="cancelModelImport" class="btn btn-sm" type="button">Cancel import</button>
+    </div>
+    <div id="toast" class="toast" style="display:none" role="status" aria-live="polite">
+        <span id="toastMsg"></span>
+        <button id="toastAction" class="btn btn-sm" type="button" hidden></button>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" integrity="sha384-F/bZzf7p3Joyp5psL90p/p89AZJsndkSoGwRpXcZhleCWhd8SnRuoYo4d0yirjJp" crossorigin="anonymous" fetchpriority="low"></script>
+    <script id="su-bundle-three-mf" type="text/plain" data-su-bundle="three-mf" data-su-bundle-encoding="gzip-base64"></script>
+    <script id="su-bundle-mars" type="text/plain" data-su-bundle="mars" data-su-bundle-encoding="gzip-base64"></script>
+    <script>
+        // The app is one inlined ES module (dev/tools/js/mars); see AGENTS.md -> "Embedded JS bundles".
+        (async () => {
+            const el = document.getElementById('su-bundle-mars');
+            const bin = atob(el.textContent.trim());
+            const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+            const src = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+            await import(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+        })().catch((err) => {
+            console.error(err);
+            document.documentElement.classList.remove('mars-boot');
+            document.body.textContent = 'MARS failed to start. Reload the page, or use a current Chrome, Firefox, Safari, or Edge.';
+        });
+    </script>
+</body>
+</html>

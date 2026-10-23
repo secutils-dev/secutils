@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff6240"/>
+      <stop offset=".52" stop-color="#d43a32"/>
+      <stop offset="1" stop-color="#711b2a"/>
+    </linearGradient>
+    <linearGradient id="planet" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fffdf7"/>
+      <stop offset="1" stop-color="#f4eee7"/>
+    </linearGradient>
+    <clipPath id="disc"><circle cx="64" cy="64" r="39"/></clipPath>
+  </defs>
+  <rect x="3" y="3" width="122" height="122" rx="23" fill="url(#tile)"/>
+  <circle cx="64" cy="64" r="39" fill="url(#planet)"/>
+  <g fill="#c93b32">
+    <rect x="40" y="49" width="37" height="5.5" rx="2.75"/>
+    <rect x="40" y="61" width="49" height="5.5" rx="2.75"/>
+    <rect x="40" y="73" width="28" height="5.5" rx="2.75"/>
+  </g>
+  <g clip-path="url(#disc)">
+    <path d="M63 102 C70 91 79 84 89 84 C98 84 104 91 108 101 L108 113 L58 113 Z" fill="#d84a38"/>
+    <ellipse cx="89" cy="96" rx="4" ry="6" transform="rotate(-25 89 96)" fill="#a92a30" opacity=".6"/>
+    <ellipse cx="72" cy="104" rx="2.5" ry="2" fill="#a92a30" opacity=".55"/>
+  </g>
+</svg>

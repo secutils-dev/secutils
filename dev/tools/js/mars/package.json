@@ -1,0 +1,15 @@
+{
+  "name": "@secutils-dev/mars",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "preview": "node build.mjs --preview",
+    "serve": "node build.mjs --preview && node serve.mjs",
+    "test": "node --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": { "fflate": "0.8.3", "marked": "18.1.1" },
+  "devDependencies": { "esbuild": "0.25.12", "typescript": "5.9.3" }
+}

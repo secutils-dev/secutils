@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { test } from '@playwright/test';
 
 import { goto } from '../helpers';
-import { type Tool, TOOLS } from './registry';
+import { type Tool, TOOLS, TOOLS_HOST } from './registry';
 
 // Output directory: Docusaurus serves `static/*` verbatim under `/docs/...`,
 // so the final URL is the stable absolute `https://secutils.dev/docs/img/og/og-<slug>.png`
@@ -25,6 +25,7 @@ function buildTemplateUrl(tool: Tool, theme: 'dark' | 'light'): string {
     desc: tool.description,
     accent: tool.accent,
     icon: tool.icon,
+    host: tool.host ?? TOOLS_HOST,
     theme,
   });
   return `${TEMPLATE_FILE_URL}?${params.toString()}`;

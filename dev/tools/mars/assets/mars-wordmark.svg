@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 330">
+  <defs>
+    <linearGradient id="planet" x1=".15" y1="0" x2=".8" y2="1">
+      <stop offset="0" stop-color="#ff6240"/>
+      <stop offset=".55" stop-color="#d43a32"/>
+      <stop offset="1" stop-color="#8b202d"/>
+    </linearGradient>
+    <clipPath id="disc"><circle cx="160" cy="112" r="76"/></clipPath>
+  </defs>
+  <circle cx="160" cy="112" r="76" fill="url(#planet)"/>
+  <g fill="#fffaf4">
+    <rect x="110" y="78" width="68" height="10" rx="5"/>
+    <rect x="110" y="102" width="96" height="10" rx="5"/>
+    <rect x="110" y="126" width="53" height="10" rx="5"/>
+  </g>
+  <g clip-path="url(#disc)">
+    <path d="M158 187 C170 164 188 153 207 153 C225 153 237 168 242 188 L242 207 L145 207 Z" fill="#d84a38"/>
+    <ellipse cx="207" cy="177" rx="9" ry="13" transform="rotate(-25 207 177)" fill="#a92a30" opacity=".6"/>
+    <ellipse cx="178" cy="191" rx="5" ry="3.5" fill="#a92a30" opacity=".55"/>
+  </g>
+  <text x="160" y="268" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="49" font-weight="700" letter-spacing="10" fill="#101722">MARS</text>
+</svg>

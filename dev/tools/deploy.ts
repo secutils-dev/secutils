@@ -71,9 +71,13 @@ function extractResponderScript(
 // Substitute `{{TOOLS_HOST}}` placeholders with the configured public host.
 // Used in HTML <head> (canonical, og:url, og:image, JSON-LD url, related-tools
 // hrefs) and in skill .md frontmatter. One source-of-truth knob, one re-deploy
-// to change the public host of every tool.
+// to change the public host of every tool. `{{MARS_HOST}}` is the host of the
+// standalone MARS app (see dev/tools/AGENTS.md -> "MARS").
+const MARS_HOST = process.env.SECUTILS_MARS_PUBLIC_HOST?.trim() || "mars.secutils.dev";
 function substituteToolsHost(text: string, toolsHost: string): string {
-  return text.replace(/\{\{\s*TOOLS_HOST\s*\}\}/g, toolsHost);
+  return text
+    .replace(/\{\{\s*TOOLS_HOST\s*\}\}/g, toolsHost)
+    .replace(/\{\{\s*MARS_HOST\s*\}\}/g, MARS_HOST);
 }
 
 // -----------------------------------------------------------------------------
@@ -286,18 +290,25 @@ type ToolMeta = {
   description: string;
   // su-tool-promote content === "true".
   promote: boolean;
+  // su-tool-host content: set for standalone apps served at `/` of their own
+  // host, with their SKILL.md (unchanged) at `/llms.txt` there instead of `<path>.md`.
+  host?: string;
 };
+
+// Where a tool's SKILL.md companion is served.
+const skillUrl = (t: ToolMeta, toolsHost: string) => (t.host ? `https://${t.host}/llms.txt` : `https://${toolsHost}${t.path}.md`);
 
 const META_RE = (name: string): RegExp =>
   new RegExp(`<meta\\s+name=["']${name}["']\\s+content=["']([^"']*)["']`, "i");
 
 function parseToolMeta(rawHtml: string, slug: string): ToolMeta | null {
+  const host = META_RE("su-tool-host").exec(substituteToolsHost(rawHtml, ""))?.[1];
   const name = META_RE("su-tool-name").exec(rawHtml)?.[1];
   const path = META_RE("su-tool-path").exec(rawHtml)?.[1];
   const description = META_RE("su-tool-description").exec(rawHtml)?.[1];
   const promote = META_RE("su-tool-promote").exec(rawHtml)?.[1];
   if (!name || !path || !description || promote == null) return null;
-  return { slug, name, path, description, promote: promote === "true" };
+  return { slug, name, path, description, promote: promote === "true", ...(host ? { host } : {}) };
 }
 
 // Build the aggregate llms.txt body (https://llmstxt.org/ convention) from
@@ -307,7 +318,7 @@ function parseToolMeta(rawHtml: string, slug: string): ToolMeta | null {
 // Each entry links to the `.md` SKILL companion because that is the canonical
 // machine-readable form.
 function buildLlmsTxt(tools: ToolMeta[], toolsHost: string): string {
-  const ordered = tools.filter((t) => t.promote && t.path !== "/");
+  const ordered = tools.filter((t) => t.promote && (t.host || t.path !== "/"));
   const lines: string[] = [];
   lines.push("# Secutils.dev Tools");
   lines.push("");
@@ -326,7 +337,7 @@ function buildLlmsTxt(tools: ToolMeta[], toolsHost: string): string {
   lines.push("");
   for (const t of ordered) {
     lines.push(
-      `- [${t.name}](https://${toolsHost}${t.path}.md): ${t.description}`,
+      `- [${t.name}](${skillUrl(t, toolsHost)}): ${t.description}`,
     );
   }
   lines.push("");
@@ -411,7 +422,8 @@ function buildRobotsTxt(toolsHost: string): string {
 function buildSitemapXml(tools: ToolMeta[], toolsHost: string): string {
   const ordered = [
     ...tools.filter((t) => t.path === "/"),
-    ...tools.filter((t) => t.promote && t.path !== "/"),
+    // Standalone apps live on their own host, which a sitemap here can't list.
+    ...tools.filter((t) => t.promote && t.path !== "/" && !t.host),
   ];
   const today = new Date().toISOString().slice(0, 10);
   const urls: { loc: string; priority: string; changefreq: string }[] = [];
@@ -498,7 +510,7 @@ function buildAgentSkillsIndex(
 ): string {
   // Only promoted tools advertise their skill in the discovery index;
   // non-promoted skills are still served at `<path>.md` for direct fetching.
-  const ordered = tools.filter((t) => t.promote && t.path !== "/");
+  const ordered = tools.filter((t) => t.promote && (t.host || t.path !== "/"));
   const skills: SkillIndexEntry[] = [];
   const seenNames = new Set<string>();
   for (const t of ordered) {
@@ -521,7 +533,7 @@ function buildAgentSkillsIndex(
       name,
       type: "skill-md",
       description: t.description,
-      url: `https://${toolsHost}${t.path}.md`,
+      url: skillUrl(t, toolsHost),
       digest: `sha256:${hex}`,
     });
   }
@@ -828,7 +840,7 @@ async function main() {
   }
 
   log(`API domain: ${ANSI.cyan(API_DOMAIN)}`);
-  log(`tools host: ${ANSI.cyan(TOOLS_HOST)}`);
+  log(`tools host: ${ANSI.cyan(TOOLS_HOST)} · mars host: ${ANSI.cyan(MARS_HOST)}`);
   if (cliArgs.length > 0) {
     log(`deploying ${targetFiles.length} responder(s): ${targetFiles.join(", ")}`);
   } else {
@@ -868,7 +880,8 @@ async function main() {
   // configured rather than on having an `index.skill.md` (there is none).
   const mdNegotiationPaths = new Map<string, string>();
   for (const t of toolMetas) {
-    if (t.path !== "/") mdNegotiationPaths.set(t.slug, `${t.path}.md`);
+    if (t.host) mdNegotiationPaths.set(t.slug, "/llms.txt");
+    else if (t.path !== "/") mdNegotiationPaths.set(t.slug, `${t.path}.md`);
   }
   if (
     htmlFiles.includes("index.html") &&

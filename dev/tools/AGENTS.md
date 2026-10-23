@@ -14,7 +14,8 @@ popovers, form validation, responsive) · **code** (JavaScript style, long tasks
 polling) · **process** (pre-deploy verification, new-tool checklist, PDF export).
 
 Per-tool deviations from the rules below are called out inline where they exist; the current
-ones are `mock-saml-idp.html` (pre-banner chrome) and `certificate-decoder.html` (ES5 syntax).
+ones are `mock-saml-idp.html` (pre-banner chrome), `certificate-decoder.html` (ES5 syntax),
+and `mars.html` (bundled multi-file app with EUI-like chrome; see "MARS (`mars.html`)").
 
 ## Browser-support policy
 
@@ -555,6 +556,57 @@ not a fragment parameter: it travels inside the ciphertext, so the URL reveals n
   its lifetime remains. `localStorage["md.shortTtl"]` remembers the lifetime choice.
 - **Tests**: `e2e/standalone/md_responder_script_smoke.spec.ts` (check 4) and the
   short-link cases in `e2e/tools/md.spec.ts`.
+
+## MARS (`mars.html`)
+
+MARS (Markdown Annotation & Review System) is the review app extracted from `md.html`.
+It is a standalone app on its own host, not a path under `{{TOOLS_HOST}}`, and deliberately
+deviates from the single-file convention and the tool chrome:
+
+- **Hosting**: the `_MARS` responder is a prefix match on `/` and `_MARS_MD` an exact match
+  on `/llms.txt`, under their own `subdomainPrefix` (aliased as `mars.secutils.dev`).
+  `<meta name="su-tool-host" content="{{MARS_HOST}}">` plus `su-tool-path` `/` mark it as
+  standalone; `deploy.ts` substitutes `{{MARS_HOST}}` (`SECUTILS_MARS_PUBLIC_HOST`, default
+  `mars.secutils.dev`), negotiates `Accept: text/markdown` to `/llms.txt`, and deploys
+  `mars.skill.md` there unchanged (a SKILL.md, like every tool's `<path>.md`). In-app
+  URLs derive from `location.pathname`.
+
+- **Source layout**: `mars.html` is a thin shell (SEO head, static DOM, the
+  `@su:responder-script`, favicons) plus two `gzip-base64` bundles: `mars` (the app, a
+  TypeScript sub-package in `js/mars/`, built by esbuild) and `three-mf` (shared with
+  `md.html`). The shell loads the `mars` bundle at startup, not lazily. The page renders
+  only after the bundle injects its CSS (`html.mars-boot` hides the body until then).
+- **Look**: EUI-like (Borealis tokens, EUI icons, header + docked sidebar like the
+  Web UI), not the tools chrome above: no CTA banner or footer; Privacy and Credits sit
+  in the sidebar. The brand ramp (`--mars-*`, `--brand*`) comes from the logo, in
+  `js/mars/src/ui/tokens.css`. The logo artwork lives in `mars/assets/`; the header mark
+  and data-URI favicons in `mars.html` are copies of it.
+- **Viewer**: `js/mars/src/doc/viewer.js` is a copy of `md.html`'s live script without
+  HTML/PDF export, the HTML view, and fragment autosave. Fixes to rendering, block
+  editing, formatting, or comments land in both files (diff the shared sections after
+  porting). `viewer.d.ts` is its host API.
+- **Storage**: reviews live in IndexedDB (`mars` database: `nodes`, `docs`, `meta`), so
+  the URL fragment is a route (`#doc=<id>`) or an incoming share, never autosaved state.
+  Every document carries an `originId` that survives sharing; opening a link for a
+  known `originId` merges its review threads (comment `id`s, or `author` + `at`).
+- **Links**: full links are md.html-compatible (`#name=&md=`, plus `&o=<originId>`);
+  folders use `#b=<state of a JSON bundle>`. Short links reuse the md.html scheme
+  above with a different plaintext (`encodeState` bytes of the bundle JSON) in MARS's
+  own responder KV, so `/md` and MARS short links are not interchangeable.
+  Client state is `localStorage["mars.shortLinks"]` / `["mars.shortTtl"]`.
+- **Promotion**: promoted like any tool, linked by its own host: an `index.html` card
+  (`https://{{MARS_HOST}}/`), the README row, the marketing `#free-tools` card (absolute
+  `https://mars.secutils.dev/`; the marketing site has no `{{MARS_HOST}}`), and the
+  tools-host `llms.txt` and agent-skills index (both pointing at its `/llms.txt`). The
+  tools-host `sitemap.xml` can't list another host, so it leaves MARS out.
+  `tools-check.ts` and the e2e registry (`host`, `toolUrl`, `skillUrl`) understand
+  `su-tool-host`.
+- **Checks**: `npm test` and `npm run typecheck` in `js/mars/` (codec, tree, and merge
+  logic); `npm run serve` serves the deploy-equivalent page at `http://localhost:7373/`
+  (and `/llms.txt`) with the responder script on an in-memory KV, so
+  `MARS_BASE_URL=http://localhost:7373 make e2e-tools-test ARGS=mars.spec.ts` runs the
+  functional suite before a deploy (`MARS_BASE_URL` defaults to `https://mars.secutils.dev`).
+  The responder smoke test covers both files.
 
 ## AI-agent surface (`<slug>.skill.md` and `llms.txt`)
 

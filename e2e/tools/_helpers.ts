@@ -1,6 +1,6 @@
 import { type APIRequestContext, expect, type Page } from '@playwright/test';
 
-import { type Tool, TOOLS, TOOLS_HOST } from './registry';
+import { type Tool, TOOLS, toolUrl } from './registry';
 
 /**
  * Resolves the canonical Tool definition for a slug. Throws if the slug is not
@@ -29,7 +29,7 @@ export async function assertSeoBasics(page: Page, tool: Tool): Promise<void> {
   await expect(page).toHaveTitle(new RegExp(escapeRegex(tool.name).split(' ').join('.{0,4}'), 'i'));
 
   const canonical = page.locator('link[rel="canonical"]');
-  await expect(canonical).toHaveAttribute('href', `https://${TOOLS_HOST}${tool.path}`);
+  await expect(canonical).toHaveAttribute('href', toolUrl(tool));
 
   const robots = page.locator('meta[name="robots"]');
   await expect(robots).toHaveAttribute('content', /index/);
@@ -42,7 +42,7 @@ export async function assertSeoBasics(page: Page, tool: Tool): Promise<void> {
     await expect(el).toHaveAttribute('content', /\S/);
   }
 
-  await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', `https://${TOOLS_HOST}${tool.path}`);
+  await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', toolUrl(tool));
 
   for (const name of ['twitter:card', 'twitter:title', 'twitter:image']) {
     const el = page.locator(`meta[name="${name}"]`);
@@ -86,7 +86,8 @@ export async function assertSkillMd(request: APIRequestContext, tool: Tool): Pro
     return;
   }
 
-  const url = `${tool.path}.md`;
+  // A standalone app on its own host serves its SKILL.md at `/llms.txt`.
+  const url = tool.host ? '/llms.txt' : `${tool.path}.md`;
   const r = await request.get(url);
   expect(r.ok(), `GET ${url} should succeed`).toBeTruthy();
   const ct = r.headers()['content-type'] ?? '';

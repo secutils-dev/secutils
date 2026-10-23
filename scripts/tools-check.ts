@@ -42,7 +42,14 @@ type Tool = {
   path: string;
   name: string;
   promote: boolean;
+  // Standalone apps (`su-tool-host`) are linked by their own host, not a tools-host path.
+  host?: string;
 };
+
+const MARS_HOST = process.env.SECUTILS_MARS_PUBLIC_HOST?.trim() || "mars.secutils.dev";
+// How the promo home page (Parcel-templated) and README link to a tool.
+const promoUrl = (t: Tool) => (t.host ? `https://${t.host}/` : `https://{{TOOLS_HOST}}${t.path}`);
+const readmeUrl = (t: Tool) => (t.host ? `https://${t.host}/` : `https://tools.secutils.dev${t.path}`);
 
 const META_RE = (name: string): RegExp =>
   new RegExp(`<meta\\s+name=["']${name}["']\\s+content=["']([^"']*)["']`, "i");
@@ -61,7 +68,8 @@ async function readTools(): Promise<Tool[]> {
         `${file} is missing one of su-tool-path / su-tool-name / su-tool-promote - required by AGENTS.md`,
       );
     }
-    tools.push({ file, path, name, promote: promote === "true" });
+    const host = META_RE("su-tool-host").exec(html)?.[1]?.replace(/\{\{\s*MARS_HOST\s*\}\}/g, MARS_HOST);
+    tools.push({ file, path, name, promote: promote === "true", ...(host ? { host } : {}) });
   }
   return tools;
 }
@@ -97,7 +105,7 @@ async function main(): Promise<void> {
   // (1) every promoted tool appears at least once in the promo home page.
   if (promoHtml) {
     for (const t of promoted) {
-      const needle = `https://{{TOOLS_HOST}}${t.path}`;
+      const needle = promoUrl(t);
       if (!promoHtml.includes(needle)) {
         errors.push(
           `Promoted tool "${t.name}" (${t.path}) is NOT linked from the promo home page (looked for "${needle}" in ${PROMO_INDEX}).`,
@@ -109,8 +117,8 @@ async function main(): Promise<void> {
     // index page itself (path `/`) is always linked from the home page via
     // "See all" / "Browse all tools" anchors, so we skip it here.
     for (const t of nonPromoted) {
-      if (t.path === "/") continue;
-      const needle = `https://{{TOOLS_HOST}}${t.path}`;
+      if (t.path === "/" && !t.host) continue;
+      const needle = promoUrl(t);
       if (promoHtml.includes(needle)) {
         errors.push(
           `Non-promoted tool "${t.name}" (${t.path}) leaked into the promo home page; it should appear only on the index page. Either set su-tool-promote=true or remove the link in ${PROMO_INDEX}.`,
@@ -122,7 +130,7 @@ async function main(): Promise<void> {
   // (2) every promoted tool is listed in the README table.
   if (readme) {
     for (const t of promoted) {
-      const needle = `https://tools.secutils.dev${t.path}`;
+      const needle = readmeUrl(t);
       if (!readme.includes(needle)) {
         errors.push(
           `Promoted tool "${t.name}" (${t.path}) is NOT listed in README.md "Free single-page tools" subsection (expected an absolute "${needle}" link).`,

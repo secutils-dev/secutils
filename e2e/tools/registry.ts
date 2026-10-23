@@ -10,6 +10,7 @@
 // (`make tools-og`), and add the env-var responder ID. See dev/tools/AGENTS.md.
 
 export const TOOLS_HOST = process.env.SECUTILS_TOOLS_PUBLIC_HOST?.trim() || 'tools.secutils.dev';
+export const MARS_HOST = process.env.SECUTILS_MARS_PUBLIC_HOST?.trim() || 'mars.secutils.dev';
 
 export interface Tool {
   /** Slug used in OG image filenames (`og-<slug>.png`) and inside the spec
@@ -29,8 +30,11 @@ export interface Tool {
   promote: boolean;
   /** Per-tool accent color for OG images. Hex, lowercase. */
   accent: string;
+  /** Own host of a standalone app (matches `<meta name="su-tool-host">`): served at `/`,
+   *  with its SKILL.md at `/llms.txt`, and absent from the tools-host sitemap. */
+  host?: string;
   /** Symbolic icon id understood by `dev/tools/og-template.html`. */
-  icon: 'key' | 'shield' | 'cert' | 'doc' | 'bolt' | 'id' | 'grid' | 'pdf' | 'chart';
+  icon: 'key' | 'shield' | 'cert' | 'doc' | 'bolt' | 'id' | 'grid' | 'pdf' | 'chart' | 'mars';
 }
 
 export const TOOLS: readonly Tool[] = [
@@ -77,6 +81,18 @@ export const TOOLS: readonly Tool[] = [
     promote: true,
     accent: '#a371f7',
     icon: 'doc',
+  },
+  {
+    slug: 'mars',
+    source: 'mars.html',
+    name: 'MARS',
+    path: '/',
+    host: MARS_HOST,
+    description: 'Markdown Annotation & Review System: comment on, organize, and share Markdown reviews.',
+    applicationCategory: 'DeveloperApplication',
+    promote: true,
+    accent: '#d43a32',
+    icon: 'mars',
   },
   {
     slug: 'pdf',
@@ -147,3 +163,8 @@ export const TOOLS: readonly Tool[] = [
 ];
 
 export const PROMOTED_TOOLS = TOOLS.filter((t) => t.promote);
+// Tools served from the tools host (standalone apps have their own host and spec).
+export const HOSTED_TOOLS = TOOLS.filter((t) => !t.host);
+// Absolute page and SKILL.md URLs.
+export const toolUrl = (t: Tool) => `https://${t.host ?? TOOLS_HOST}${t.path}`;
+export const skillUrl = (t: Tool) => (t.host ? `https://${t.host}/llms.txt` : `https://${TOOLS_HOST}${t.path}.md`);

@@ -32,7 +32,7 @@ Secutils.dev adheres to [open security principles](https://en.wikipedia.org/wiki
 
 ## Free single-page tools
 
-A handful of focused, no-signup, browser-only tools is hosted at [tools.secutils.dev](https://tools.secutils.dev/). Every tool ships with a stable shareable URL (drop a link into a ticket, an MCP agent, or a postmortem) and an AI-agent skill at `/<slug>.md` so coding assistants can drive the tool directly from a `WebFetch` call.
+A handful of focused, no-signup, browser-only tools is hosted at [tools.secutils.dev](https://tools.secutils.dev/). Every tool ships with a stable shareable URL (drop a link into a ticket, an MCP agent, or a postmortem) and an AI-agent skill at `/<slug>.md` (MARS, on its own host, serves its skill at `/llms.txt`) so coding assistants can drive the tool directly from a `WebFetch` call.
 
 | Tool                                                         | What it does                                                                | AI-agent skill                                           |
 |--------------------------------------------------------------|-----------------------------------------------------------------------------|----------------------------------------------------------|
@@ -40,6 +40,7 @@ A handful of focused, no-signup, browser-only tools is hosted at [tools.secutils
 | [SAML Decoder](https://tools.secutils.dev/saml)              | Inspect SAML responses, requests, and metadata                              | [`/saml.md`](https://tools.secutils.dev/saml.md)         |
 | [PEM Certificate Decoder](https://tools.secutils.dev/pem)    | Inspect PEM-encoded X.509 certificate chains                                | [`/pem.md`](https://tools.secutils.dev/pem.md)           |
 | [Markdown Preview](https://tools.secutils.dev/md)            | Preview Markdown, Mermaid, GeoJSON/TopoJSON, STL, and math, export HTML/PDF | [`/md.md`](https://tools.secutils.dev/md.md)             |
+| [MARS](https://mars.secutils.dev/)                           | Review Markdown: threaded comments, folders, and shareable review links     | [`/llms.txt`](https://mars.secutils.dev/llms.txt)        |
 | [PDF Extractor](https://tools.secutils.dev/pdf)              | Extract spatial text and structured JSON from PDFs, in-browser              | [`/pdf.md`](https://tools.secutils.dev/pdf.md)           |
 | [HTTP Echo / Mock Response](https://tools.secutils.dev/echo) | Build a customizable HTTP response, served as a shareable URL               | [`/echo.md`](https://tools.secutils.dev/echo.md)         |
 | [Webhook Inspector](https://tools.secutils.dev/webhook)      | Ephemeral webhook URL that captures incoming HTTP requests, E2E-encrypted   | [`/webhook.md`](https://tools.secutils.dev/webhook.md)   |

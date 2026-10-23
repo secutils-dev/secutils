@@ -1,7 +1,11 @@
 import { expect, test } from '@playwright/test';
 
 import { assertSeoBasics, assertSkillMd, getTool } from './_helpers';
-import { PROMOTED_TOOLS, TOOLS, TOOLS_HOST } from './registry';
+import { PROMOTED_TOOLS, skillUrl, type Tool, TOOLS, TOOLS_HOST } from './registry';
+
+// Links to a standalone app match its host; `href$="/"` would match any link.
+const anchor = (t: Tool) =>
+  t.host ? `a[href^="https://${t.host}/"]` : `a[href$="${t.path}"], a[href*="${TOOLS_HOST}${t.path}"]`;
 
 const tool = getTool('index');
 
@@ -22,14 +26,14 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     const r = await request.get('/llms.txt');
     const body = await r.text();
     for (const t of PROMOTED_TOOLS) {
-      expect(body, `llms.txt should mention ${t.slug}`).toContain(t.path);
+      expect(body, `llms.txt should mention ${t.slug}`).toContain(skillUrl(t));
     }
   });
 
   test('every promoted tool has a working anchor on the index page', async ({ page }) => {
     await page.goto(tool.path);
     for (const t of PROMOTED_TOOLS) {
-      const link = page.locator(`a[href$="${t.path}"], a[href*="${TOOLS_HOST}${t.path}"]`).first();
+      const link = page.locator(anchor(t)).first();
       await expect(link, `index should link to ${t.slug} (${t.path})`).toBeVisible();
     }
   });
@@ -38,7 +42,7 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     await page.goto(tool.path);
     const nonPromoted = TOOLS.filter((t) => !t.promote && t.slug !== 'index');
     for (const t of nonPromoted) {
-      const link = page.locator(`a[href$="${t.path}"], a[href*="${TOOLS_HOST}${t.path}"]`);
+      const link = page.locator(anchor(t));
       await expect(link, `index should not link to non-promoted tool ${t.slug}`).toHaveCount(0);
     }
   });
