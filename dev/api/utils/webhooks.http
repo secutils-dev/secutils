@@ -15,6 +15,21 @@ POST {{host}}/api/webhooks/responders/018cb666-e66c-755c-8d1e-7ff6cacb8641/_clea
 Authorization: {{api-credentials}}
 Accept: application/json
 
+### Get responder script storage usage.
+GET {{host}}/api/webhooks/responders/018cb666-e66c-755c-8d1e-7ff6cacb8641/_storage
+Authorization: {{api-credentials}}
+Accept: application/json
+
+### Clear responder script storage (omit `prefix` to clear everything).
+POST {{host}}/api/webhooks/responders/018cb666-e66c-755c-8d1e-7ff6cacb8641/_clear_storage
+Authorization: {{api-credentials}}
+Accept: application/json
+Content-Type: application/json
+
+{
+  "prefix": "rl/"
+}
+
 ### Get responder summaries (first page).
 GET {{host}}/api/webhooks/responders?page=0&pageSize=15&sort=updatedAt&order=desc
 Cookie: {{cookie-credentials}}

@@ -1,0 +1,45 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nSELECT COUNT(kv.key) AS \"entries!\", COALESCE(SUM(length(kv.value)), 0)::bigint AS \"total_bytes!\",\n       MIN(kv.created_at) AS oldest_created_at, MIN(kv.expires_at) AS next_expires_at\nFROM user_data_webhooks_responders r\nLEFT JOIN user_data_webhooks_responders_kv kv\n    ON kv.responder_id = r.id AND (kv.expires_at IS NULL OR kv.expires_at > now())\nWHERE r.user_id = $1 AND r.id = $2\nGROUP BY r.id\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "entries!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "total_bytes!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 2,
+        "name": "oldest_created_at",
+        "type_info": "Timestamptz",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 3,
+        "name": "next_expires_at",
+        "type_info": "Timestamptz",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "5282238b029c633f87705dc8f40fbaaab3e5899ec951e59096c42433fccc2fce"
+}

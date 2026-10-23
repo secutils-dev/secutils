@@ -24,6 +24,7 @@ import { getResponder } from './responder';
 import type { ResponderEditFlyoutProps } from './responder_edit_flyout';
 import { ResponderName } from './responder_name';
 import { ResponderRequestsTable } from './responder_requests_table';
+import { ResponderStorage } from './responder_storage';
 import { PageErrorState, PageLoadingState } from '../../../../components';
 import { useUserTags } from '../../../../hooks';
 import type { Page, PaginationRequest } from '../../../../model';
@@ -198,8 +199,8 @@ export default function Responders() {
       confirmButtonText="Remove"
       buttonColor="danger"
     >
-      The responder endpoint will be deactivated, and the request history will be cleared. Are you sure you want to
-      proceed?
+      The responder endpoint will be deactivated, and its request history and script storage will be cleared. Are you
+      sure you want to proceed?
     </EuiConfirmModal>
   ) : null;
 
@@ -208,7 +209,18 @@ export default function Responders() {
     if (itemIdToExpandedRowMapValues[responder.id]) {
       delete itemIdToExpandedRowMapValues[responder.id];
     } else {
-      itemIdToExpandedRowMapValues[responder.id] = <ResponderRequestsTable responder={responder} />;
+      itemIdToExpandedRowMapValues[responder.id] = (
+        <EuiFlexGroup direction="column" gutterSize="s" style={{ width: '100%' }}>
+          <EuiFlexItem>
+            <ResponderRequestsTable responder={responder} />
+          </EuiFlexItem>
+          {responder.settings.hasScript ? (
+            <EuiFlexItem grow={false}>
+              <ResponderStorage responder={responder} />
+            </EuiFlexItem>
+          ) : null}
+        </EuiFlexGroup>
+      );
     }
     setItemIdToExpandedRowMap(itemIdToExpandedRowMapValues);
   };

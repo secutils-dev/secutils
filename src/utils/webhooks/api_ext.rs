@@ -1,8 +1,10 @@
+mod responders_clear_storage_params;
 mod responders_create_params;
 mod responders_request_create_params;
 mod responders_update_params;
 
 pub use self::{
+    responders_clear_storage_params::RespondersClearStorageParams,
     responders_create_params::RespondersCreateParams,
     responders_request_create_params::RespondersRequestCreateParams,
     responders_update_params::RespondersUpdateParams,
@@ -18,7 +20,8 @@ use crate::{
     utils::{
         constants::MAX_ENTITY_NAME_LENGTH,
         webhooks::{
-            Responder, ResponderMethod, ResponderPathType, ResponderRequest, ResponderSummary,
+            Responder, ResponderMethod, ResponderPathType, ResponderRequest, ResponderStorageStats,
+            ResponderSummary,
             database_ext::{RESPONDER_LAST_REQUESTED_AT_SORT_SQL, RESPONDER_SETTINGS_SIZE_SQL},
         },
     },
@@ -339,6 +342,64 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, 'u, DR, ET>
             .db
             .webhooks()
             .clear_responder_requests(self.user.id, responder_id)
+            .await
+    }
+
+    /// Returns usage of the responder's script key-value storage and the quotas that apply to it.
+    pub async fn get_responder_storage(
+        &self,
+        responder_id: Uuid,
+    ) -> anyhow::Result<ResponderStorageStats> {
+        let Some(usage) = self
+            .api
+            .db
+            .webhooks()
+            .get_responder_kv_usage(self.user.id, responder_id)
+            .await?
+        else {
+            bail!(SecutilsError::not_found(format!(
+                "Responder ('{responder_id}') is not found."
+            )));
+        };
+
+        let features = self.user.subscription.get_features(&self.api.config);
+        Ok(ResponderStorageStats {
+            entries: usage.entries,
+            total_bytes: usage.total_bytes,
+            oldest_created_at: usage.oldest_created_at,
+            next_expires_at: usage.next_expires_at,
+            max_entries: features.config.webhooks.responder_kv_max_entries as u64,
+            max_total_bytes: features.config.webhooks.responder_kv_max_total_bytes as u64,
+        })
+    }
+
+    /// Removes the responder's script key-value storage entries, or only those whose key starts
+    /// with the specified prefix. Returns the number of removed entries.
+    pub async fn clear_responder_storage(
+        &self,
+        responder_id: Uuid,
+        params: RespondersClearStorageParams,
+    ) -> anyhow::Result<u64> {
+        let features = self.user.subscription.get_features(&self.api.config);
+        if let Some(ref prefix) = params.prefix
+            && prefix.len() > features.config.webhooks.responder_kv_max_key_bytes
+        {
+            bail!(SecutilsError::client(format!(
+                "Storage key prefix cannot be longer than {} bytes.",
+                features.config.webhooks.responder_kv_max_key_bytes
+            )));
+        }
+
+        if self.get_responder(responder_id).await?.is_none() {
+            bail!(SecutilsError::not_found(format!(
+                "Responder ('{responder_id}') is not found."
+            )));
+        };
+
+        self.api
+            .db
+            .webhooks()
+            .clear_responder_kv(self.user.id, responder_id, params.prefix.as_deref())
             .await
     }
 

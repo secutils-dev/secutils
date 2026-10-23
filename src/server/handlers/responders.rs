@@ -6,11 +6,13 @@ use crate::{
     },
     users::User,
     utils::webhooks::{
-        Responder, ResponderSummary, RespondersCreateParams, RespondersUpdateParams,
+        Responder, ResponderStorageStats, ResponderSummary, RespondersClearStorageParams,
+        RespondersCreateParams, RespondersUpdateParams,
     },
 };
 use actix_web::{HttpResponse, delete, get, post, put, web};
-use utoipa::IntoParams;
+use serde::Serialize;
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 #[derive(serde::Deserialize, IntoParams)]
@@ -190,12 +192,81 @@ pub async fn responders_clear_history(
         .await?;
     Ok(HttpResponse::NoContent().finish())
 }
+
+/// Result of clearing a responder's script key-value storage.
+#[derive(Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RespondersClearStorageResponse {
+    /// Number of removed storage entries.
+    pub removed: u64,
+}
+
+/// Returns usage of a responder's script key-value storage (`secutils.kv.*`) and its quotas.
+#[utoipa::path(
+    tags = ["webhooks"],
+    params(ResponderIdPath),
+    responses(
+        (status = 200, description = "Responder storage usage.", body = ResponderStorageStats),
+        (status = NOT_FOUND, description = "Responder not found."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
+    )
+)]
+#[get("/api/webhooks/responders/{responder_id}/_storage")]
+pub async fn responders_get_storage(
+    state: web::Data<AppState>,
+    user: User,
+    path: web::Path<ResponderIdPath>,
+) -> Result<HttpResponse, Error> {
+    let stats = state
+        .api
+        .webhooks(&user)
+        .get_responder_storage(path.responder_id)
+        .await?;
+    Ok(HttpResponse::Ok().json(stats))
+}
+
+/// Clears a responder's script key-value storage, entirely or only entries under a key prefix.
+#[utoipa::path(
+    tags = ["webhooks"],
+    params(ResponderIdPath),
+    request_body = RespondersClearStorageParams,
+    responses(
+        (status = 200, description = "Storage was successfully cleared.", body = RespondersClearStorageResponse),
+        (status = BAD_REQUEST, description = "Invalid key prefix."),
+        (status = NOT_FOUND, description = "Responder not found."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
+    )
+)]
+#[post("/api/webhooks/responders/{responder_id}/_clear_storage")]
+pub async fn responders_clear_storage(
+    state: web::Data<AppState>,
+    user: User,
+    path: web::Path<ResponderIdPath>,
+    body: web::Json<RespondersClearStorageParams>,
+) -> Result<HttpResponse, Error> {
+    let removed = state
+        .api
+        .webhooks(&user)
+        .clear_responder_storage(path.responder_id, body.into_inner())
+        .await?;
+    Ok(HttpResponse::Ok().json(RespondersClearStorageResponse { removed }))
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
         tests::schema_example,
-        utils::webhooks::{RespondersCreateParams, RespondersUpdateParams},
+        utils::webhooks::{
+            RespondersClearStorageParams, RespondersCreateParams, RespondersUpdateParams,
+        },
     };
+
+    #[test]
+    fn responders_clear_storage_params_example_is_valid() {
+        let example: RespondersClearStorageParams =
+            serde_json::from_value(schema_example::<RespondersClearStorageParams>()).unwrap();
+        assert_eq!(example.prefix.as_deref(), Some("req/"));
+    }
 
     #[test]
     fn responders_create_params_example_is_valid() {

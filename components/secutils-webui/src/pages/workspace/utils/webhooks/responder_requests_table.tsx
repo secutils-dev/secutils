@@ -482,7 +482,7 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
             <EuiFlexItem grow={false}>
               <EuiToolTip content="Clear request history" disableScreenReaderOutput>
                 <EuiButtonIcon
-                  iconType="cross"
+                  iconType="trash"
                   color="danger"
                   aria-label="Clear request history"
                   isDisabled={
@@ -542,14 +542,12 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
   }
 
   return (
-    <EuiFlexGroup direction={'column'} style={{ height: '100%' }} gutterSize={'s'}>
-      {controlPanel}
-      <EuiFlexItem>
-        <EuiPanel hasShadow={false} hasBorder={true}>
-          {content}
-        </EuiPanel>
-        {clearConfirmModal}
-      </EuiFlexItem>
-    </EuiFlexGroup>
+    <EuiPanel hasShadow={false} hasBorder={true}>
+      <EuiFlexGroup direction={'column'} style={{ height: '100%' }} gutterSize={'s'}>
+        {controlPanel}
+        <EuiFlexItem>{content}</EuiFlexItem>
+      </EuiFlexGroup>
+      {clearConfirmModal}
+    </EuiPanel>
   );
 }

@@ -3,12 +3,15 @@ mod database_ext;
 mod responders;
 
 pub use self::{
-    api_ext::{RespondersCreateParams, RespondersRequestCreateParams, RespondersUpdateParams},
+    api_ext::{
+        RespondersClearStorageParams, RespondersCreateParams, RespondersRequestCreateParams,
+        RespondersUpdateParams,
+    },
     responders::{
         Responder, ResponderLocation, ResponderMethod, ResponderNotificationSettings,
         ResponderPathType, ResponderRequest, ResponderRequestHeaders, ResponderScriptContext,
-        ResponderScriptResult, ResponderSettings, ResponderStats, ResponderSummary,
-        ResponderSummarySettings,
+        ResponderScriptResult, ResponderSettings, ResponderStats, ResponderStorageStats,
+        ResponderSummary, ResponderSummarySettings,
     },
 };
 

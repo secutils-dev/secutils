@@ -720,6 +720,69 @@ ORDER BY t.name ASC
         .await?
         .rows_affected())
     }
+
+    /// Returns usage of the responder's KV store, counting only live rows so the numbers match the
+    /// quota accounting. Returns `None` if the user doesn't own the responder.
+    pub async fn get_responder_kv_usage(
+        &self,
+        user_id: UserId,
+        responder_id: Uuid,
+    ) -> anyhow::Result<Option<ResponderKvUsage>> {
+        Ok(query!(
+            r#"
+SELECT COUNT(kv.key) AS "entries!", COALESCE(SUM(length(kv.value)), 0)::bigint AS "total_bytes!",
+       MIN(kv.created_at) AS oldest_created_at, MIN(kv.expires_at) AS next_expires_at
+FROM user_data_webhooks_responders r
+LEFT JOIN user_data_webhooks_responders_kv kv
+    ON kv.responder_id = r.id AND (kv.expires_at IS NULL OR kv.expires_at > now())
+WHERE r.user_id = $1 AND r.id = $2
+GROUP BY r.id
+            "#,
+            *user_id,
+            responder_id
+        )
+        .fetch_optional(self.pool)
+        .await?
+        .map(|row| ResponderKvUsage {
+            entries: row.entries as u64,
+            total_bytes: row.total_bytes as u64,
+            oldest_created_at: row.oldest_created_at,
+            next_expires_at: row.next_expires_at,
+        }))
+    }
+
+    /// Deletes the responder's KV rows, optionally only those whose key starts with `prefix`,
+    /// returning the number of rows removed. Rows of responders the user doesn't own are untouched.
+    pub async fn clear_responder_kv(
+        &self,
+        user_id: UserId,
+        responder_id: Uuid,
+        prefix: Option<&str>,
+    ) -> anyhow::Result<u64> {
+        Ok(query!(
+            r#"
+DELETE FROM user_data_webhooks_responders_kv kv
+USING user_data_webhooks_responders r
+WHERE r.id = kv.responder_id AND r.user_id = $1 AND r.id = $2
+  AND ($3::text IS NULL OR starts_with(kv.key, $3))
+            "#,
+            *user_id,
+            responder_id,
+            prefix
+        )
+        .execute(self.pool)
+        .await?
+        .rows_affected())
+    }
+}
+
+/// Live usage of a responder's KV store, see [`WebhooksDatabaseExt::get_responder_kv_usage`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ResponderKvUsage {
+    pub entries: u64,
+    pub total_bytes: u64,
+    pub oldest_created_at: Option<OffsetDateTime>,
+    pub next_expires_at: Option<OffsetDateTime>,
 }
 
 impl Database {
@@ -738,7 +801,7 @@ mod tests {
         users::EntityTag,
         utils::webhooks::{
             Responder, ResponderLocation, ResponderMethod, ResponderPathType, ResponderRequest,
-            ResponderStats,
+            ResponderStats, database_ext::ResponderKvUsage,
         },
     };
     use insta::assert_debug_snapshot;
@@ -2779,6 +2842,151 @@ VALUES ($1, $2, $3, $4, $5)
         .fetch_all(&db.pool)
         .await?;
         assert_eq!(remaining, vec!["eternal".to_string(), "live".to_string()]);
+
+        Ok(())
+    }
+
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
+    async fn responder_kv_usage_and_clear_are_scoped(pool: PgPool) -> anyhow::Result<()> {
+        let user_a = mock_user()?;
+        let user_b = mock_user_with_id(uuid!("00000000-0000-0000-0000-000000000002"))?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user_a).await?;
+        db.insert_user(&user_b).await?;
+
+        let webhooks = db.webhooks();
+        let responder_a = MockResponderBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "kv-a",
+            "/a",
+        )?
+        .build();
+        let responder_b = MockResponderBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000002"),
+            "kv-b",
+            "/b",
+        )?
+        .build();
+        webhooks.insert_responder(user_a.id, &responder_a).await?;
+        webhooks.insert_responder(user_b.id, &responder_b).await?;
+
+        // An empty store still reports usage for an owned responder.
+        assert_eq!(
+            webhooks
+                .get_responder_kv_usage(user_a.id, responder_a.id)
+                .await?,
+            Some(ResponderKvUsage {
+                entries: 0,
+                total_bytes: 0,
+                oldest_created_at: None,
+                next_expires_at: None,
+            })
+        );
+
+        let now = OffsetDateTime::from_unix_timestamp(OffsetDateTime::now_utc().unix_timestamp())?;
+        let rows = [
+            (
+                responder_a.id,
+                "s/1",
+                &b"abc"[..],
+                now - time::Duration::hours(2),
+                None,
+            ),
+            (
+                responder_a.id,
+                "s/2",
+                &b"abcde"[..],
+                now,
+                Some(now + time::Duration::hours(1)),
+            ),
+            (
+                responder_a.id,
+                "rl/1",
+                &b"a"[..],
+                now,
+                Some(now + time::Duration::hours(2)),
+            ),
+            // Expired rows aren't counted.
+            (
+                responder_a.id,
+                "s/3",
+                &b"expired"[..],
+                now - time::Duration::hours(3),
+                Some(now - time::Duration::hours(1)),
+            ),
+            (responder_b.id, "s/1", &b"other"[..], now, None),
+        ];
+        for (responder_id, key, value, created_at, expires_at) in rows {
+            sqlx::query!(
+                r#"
+INSERT INTO user_data_webhooks_responders_kv (responder_id, key, value, created_at, expires_at)
+VALUES ($1, $2, $3, $4, $5)
+                "#,
+                responder_id,
+                key,
+                value,
+                created_at,
+                expires_at,
+            )
+            .execute(&db.pool)
+            .await?;
+        }
+
+        assert_eq!(
+            webhooks
+                .get_responder_kv_usage(user_a.id, responder_a.id)
+                .await?,
+            Some(ResponderKvUsage {
+                entries: 3,
+                total_bytes: 9,
+                oldest_created_at: Some(now - time::Duration::hours(2)),
+                next_expires_at: Some(now + time::Duration::hours(1)),
+            })
+        );
+
+        // Another user's responder is neither visible nor clearable.
+        assert_eq!(
+            webhooks
+                .get_responder_kv_usage(user_b.id, responder_a.id)
+                .await?,
+            None
+        );
+        assert_eq!(
+            webhooks
+                .clear_responder_kv(user_b.id, responder_a.id, None)
+                .await?,
+            0
+        );
+
+        // Prefix clear removes only matching keys, including expired ones.
+        assert_eq!(
+            webhooks
+                .clear_responder_kv(user_a.id, responder_a.id, Some("s/"))
+                .await?,
+            3
+        );
+        let remaining: Vec<String> = sqlx::query_scalar!(
+            r#"SELECT key FROM user_data_webhooks_responders_kv WHERE responder_id = $1"#,
+            responder_a.id
+        )
+        .fetch_all(&db.pool)
+        .await?;
+        assert_eq!(remaining, vec!["rl/1".to_string()]);
+
+        // A full clear empties the store, leaving other responders intact.
+        assert_eq!(
+            webhooks
+                .clear_responder_kv(user_a.id, responder_a.id, None)
+                .await?,
+            1
+        );
+        assert_eq!(
+            webhooks
+                .get_responder_kv_usage(user_b.id, responder_b.id)
+                .await?
+                .map(|usage| usage.entries),
+            Some(1)
+        );
 
         Ok(())
     }

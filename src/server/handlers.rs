@@ -220,6 +220,8 @@ pub(crate) async fn resolve_shared_user(
         responders::responders_delete,
         responders::responders_get_history,
         responders::responders_clear_history,
+        responders::responders_get_storage,
+        responders::responders_clear_storage,
         // Page trackers
         page_trackers::page_trackers_list,
         page_trackers::page_trackers_create,
@@ -337,10 +339,13 @@ pub(crate) async fn resolve_shared_user(
         crate::utils::webhooks::ResponderPathType,
         crate::utils::webhooks::ResponderSettings,
         crate::utils::webhooks::ResponderStats,
+        crate::utils::webhooks::ResponderStorageStats,
         crate::utils::webhooks::ResponderSummary,
         crate::utils::webhooks::ResponderSummarySettings,
+        crate::utils::webhooks::RespondersClearStorageParams,
         crate::utils::webhooks::RespondersCreateParams,
         crate::utils::webhooks::RespondersUpdateParams,
+        responders::RespondersClearStorageResponse,
         crate::users::SecretsAccess,
         // Page trackers
         crate::utils::web_scraping::PageTracker,
@@ -487,7 +492,9 @@ mod tests {
           "/api/webhooks/responders",
           "/api/webhooks/responders/{responder_id}",
           "/api/webhooks/responders/{responder_id}/_clear",
-          "/api/webhooks/responders/{responder_id}/_history"
+          "/api/webhooks/responders/{responder_id}/_clear_storage",
+          "/api/webhooks/responders/{responder_id}/_history",
+          "/api/webhooks/responders/{responder_id}/_storage"
         ]
         "###);
     }
@@ -598,8 +605,11 @@ mod tests {
           "ResponderPathType",
           "ResponderSettings",
           "ResponderStats",
+          "ResponderStorageStats",
           "ResponderSummary",
           "ResponderSummarySettings",
+          "RespondersClearStorageParams",
+          "RespondersClearStorageResponse",
           "RespondersCreateParams",
           "RespondersUpdateParams",
           "RetrackTracker",
@@ -1329,6 +1339,27 @@ mod tests {
         // _clear
         let clear = &spec["paths"]["/api/webhooks/responders/{responder_id}/_clear"]["post"];
         assert_eq!(clear["operationId"], "responders_clear_history");
+
+        // _storage
+        let storage = &spec["paths"]["/api/webhooks/responders/{responder_id}/_storage"]["get"];
+        assert_eq!(storage["operationId"], "responders_get_storage");
+        assert_eq!(
+            storage["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/ResponderStorageStats"
+        );
+
+        // _clear_storage
+        let clear_storage =
+            &spec["paths"]["/api/webhooks/responders/{responder_id}/_clear_storage"]["post"];
+        assert_eq!(clear_storage["operationId"], "responders_clear_storage");
+        assert_eq!(
+            clear_storage["requestBody"]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/RespondersClearStorageParams"
+        );
+        assert_eq!(
+            clear_storage["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/RespondersClearStorageResponse"
+        );
     }
 
     #[test]

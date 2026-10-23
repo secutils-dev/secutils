@@ -66,4 +66,9 @@ describe('formatBytes', () => {
     expect(formatBytes(1.5 * 1024 * 1024)).toBe('1.5 MB');
     expect(formatBytes(100 * 1024 * 1024)).toBe('100.0 MB');
   });
+
+  it('formats gigabytes', () => {
+    expect(formatBytes(1024 * 1024 * 1024)).toBe('1.0 GB');
+    expect(formatBytes(2.5 * 1024 * 1024 * 1024)).toBe('2.5 GB');
+  });
 });

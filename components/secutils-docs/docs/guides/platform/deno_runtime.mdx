@@ -506,9 +506,22 @@ const { entries, cursor, timedOut } = await secutils.kv.watch({
 :::info Limits
 KV usage is governed by per-subscription-tier quotas: maximum key size, maximum value size, maximum number of live
 entries, maximum total bytes per responder, and a maximum TTL (writes that would breach a quota are rejected with a
-descriptive error). Each script invocation also has a bounded number of KV operations it may perform. Expired entries
-are invisible immediately and are physically reaped by a periodic background sweep.
+descriptive error). Entry and byte quotas apply to each responder separately, not to your account as a whole. Each
+script invocation also has a bounded number of KV operations it may perform. Expired entries are invisible immediately
+and are physically reaped by a periodic background sweep.
 :::
+
+### Managing storage
+
+Expand a responder's row in the responders grid to see its **Script storage** usage: the number of live entries and
+their total size against the quotas, the age of the oldest entry, and when the next entry expires. Use the **Clear
+storage** button to remove all entries, or only those whose key starts with a prefix (for example, `req/`). Clearing by
+prefix can leave a script's related entries inconsistent, for example, a registration key without its captured
+requests, until the remaining entries expire. The same operations are available through the API as
+`GET /api/webhooks/responders/{responder_id}/_storage` and `POST /api/webhooks/responders/{responder_id}/_clear_storage`.
+
+Storage entries are deleted together with their responder and are **not** included in
+[data export](/docs/guides/platform/export_import).
 
 ## End-to-end encryption {#crypto}
 
