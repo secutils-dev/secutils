@@ -58,6 +58,38 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     await expect(page.getByRole('button', { name: 'Open file' })).toBeVisible();
   });
 
+  test('the format toolbar works by touch and queues formats clicked mid-render', async ({ browser }) => {
+    const touch = await browser.newContext({
+      baseURL: test.info().project.use.baseURL,
+      hasTouch: true,
+      isMobile: true,
+      viewport: { width: 412, height: 800 },
+    });
+    const page = await touch.newPage();
+    await page.goto(tool.path);
+    await setMarkdown(page, 'Plain words here.');
+    await expect(page.locator('#previewArticle p')).toHaveText('Plain words here.');
+    await page.evaluate(() => {
+      const text = document.querySelector('#previewArticle p')!.firstChild as Text;
+      const range = document.createRange();
+      range.setStart(text, 6);
+      range.setEnd(text, 11);
+      getSelection()!.removeAllRanges();
+      getSelection()!.addRange(range);
+    });
+    const bar = page.locator('#formatBar');
+    await expect(bar).toBeVisible();
+    // Below the selection, clear of the browser's own selection menu.
+    const [barBox, textBox] = [await bar.boundingBox(), await page.locator('#previewArticle p').boundingBox()];
+    expect(barBox!.y).toBeGreaterThan(textBox!.y);
+    await bar.getByRole('button', { name: 'Highlight' }).tap();
+    await bar.getByRole('button', { name: 'Strikethrough' }).tap();
+    const source = () =>
+      page.evaluate(() => (window as unknown as { __suEditorAPI: { getText(): string } }).__suEditorAPI.getText());
+    await expect.poll(source).toBe('Plain ~~==words==~~ here.');
+    await touch.close();
+  });
+
   test('renders Markdown into the preview', async ({ page }) => {
     await page.goto(tool.path);
     await setMarkdown(page, '# Hello *world*\n\n- item 1\n- item 2');

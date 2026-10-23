@@ -2262,6 +2262,7 @@ async function updatePreview() {
     anchorThreads();
     renderRail();
     restoreFormatSelection();
+    if (queuedFormat) { const kind = queuedFormat; queuedFormat = null; applyFormat(kind); }
     const target = hovered && els.previewArticle.querySelector(hovered);
     if (target) showHandle(target); else hideHandle();
     const wordCount = source.length > 1000000 ? null : source.trim().split(/\s+/).length;
@@ -2446,6 +2447,9 @@ function applyEdit(text, anchor) {
     // Edits run inside user gestures, which lets Chromium show its write-permission prompt.
     fileHandle?.requestPermission?.({ mode: 'readwrite' }).then((state) => { if (state === 'granted') persistSoon(); }).catch(() => {});
     setMarkdown(text);
+    // Preview edits (and their undo) re-render at once rather than after the typing debounce.
+    clearTimeout(renderTimer);
+    updatePreview();
 }
 
 function restoreScrollAnchor() {
@@ -2769,6 +2773,7 @@ const FORMATS = {
 let selectingWithMouse = false;
 let formatTimer;
 let pendingSelection = null;
+let queuedFormat = null; // A format clicked while the previous one re-renders.
 
 function selectionTarget() {
     const sel = window.getSelection();
@@ -2892,7 +2897,8 @@ function restoreFormatSelection() {
 function applyFormat(kind) {
     const sel = selectionTarget();
     if (!sel) { hideFormatBar(); return; }
-    if (!previewInSync()) return;
+    // The selection still marks the right text; apply once the preview catches up.
+    if (markdown !== renderedMarkdown) { queuedFormat = kind; return; }
     const minimal = selectionSourceRange(sel);
     if (!minimal) { hideFormatBar(); toast('Could not find the selected text in the source. Double-click the block to edit it.'); return; }
     const format = FORMATS[kind];
@@ -2925,6 +2931,7 @@ function applyFormat(kind) {
     editSource(at, end, wrapMarker(kind === 'code' ? inlineText(text) : inner, format.markers[0]), sel.block);
 }
 
+const COARSE_POINTER = matchMedia('(pointer: coarse)');
 function hideFormatBar() { els.formatBar.hidden = true; }
 function updateFormatBar() {
     const sel = selectionTarget();
@@ -2935,26 +2942,37 @@ function updateFormatBar() {
     const r = range.getBoundingClientRect();
     els.formatBar.hidden = false;
     const { width, height } = els.formatBar.getBoundingClientRect();
-    els.formatBar.style.top = `${Math.round(r.top - height - 8 < 8 ? r.bottom + 8 : r.top - height - 8)}px`;
+    // Touch browsers draw their own selection menu above the text, so ours goes below the handles.
+    const below = COARSE_POINTER.matches ? r.bottom + 32 : r.top - height - 8 < 8 ? r.bottom + 8 : null;
+    els.formatBar.style.top = `${Math.round(below !== null && below + height < window.innerHeight - 8 ? below : Math.max(8, r.top - height - 8))}px`;
     els.formatBar.style.left = `${Math.round(Math.min(Math.max(8, r.left + r.width / 2 - width / 2), window.innerWidth - width - 8))}px`;
 }
 document.addEventListener('selectionchange', () => {
     clearTimeout(formatTimer);
     if (!selectingWithMouse) formatTimer = setTimeout(updateFormatBar, 100);
 });
-els.previewArticle.addEventListener('pointerdown', () => { selectingWithMouse = true; hideFormatBar(); });
-document.addEventListener('pointerup', () => {
+// Only mouse drags defer the bar: a touch long-press selects text and ends in
+// `pointercancel`, never `pointerup`.
+els.previewArticle.addEventListener('pointerdown', (e) => { if (e.pointerType === 'mouse') selectingWithMouse = true; hideFormatBar(); });
+const endPointerSelection = () => {
     if (!selectingWithMouse) return;
     selectingWithMouse = false;
     formatTimer = setTimeout(updateFormatBar, 0);
-});
+};
+document.addEventListener('pointerup', endPointerSelection);
+document.addEventListener('pointercancel', endPointerSelection);
 els.previewScroll.addEventListener('scroll', () => { if (!els.formatBar.hidden) updateFormatBar(); }, { passive: true });
-els.formatBar.addEventListener('mousedown', (e) => e.preventDefault());
-els.formatBar.addEventListener('click', (e) => {
-    if (e.target.closest('[data-comment]')) { startDraft(); return; }
-    const kind = e.target.closest('[data-format]')?.dataset.format;
+function formatBarAction(target) {
+    if (target.closest('[data-comment]')) { startDraft(); return; }
+    const kind = target.closest('[data-format]')?.dataset.format;
     if (kind) applyFormat(kind);
-});
+}
+els.formatBar.addEventListener('mousedown', (e) => e.preventDefault());
+// A tap would collapse the selection before `click`; cancelling touchstart keeps it
+// (and suppresses that click), so taps act on pointerup instead.
+els.formatBar.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
+els.formatBar.addEventListener('pointerup', (e) => { if (e.pointerType !== 'mouse') formatBarAction(e.target); });
+els.formatBar.addEventListener('click', (e) => formatBarAction(e.target));
 
 // ---- Review comments ----
 // Threads anchor to the rendered text by quote plus surrounding context (like the
