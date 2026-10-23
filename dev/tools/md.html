@@ -330,18 +330,19 @@ body.su-view-html #htmlPreview { display: block; }
 .preview-article .su-done.su-expanded > :is(h1, h2, h3, h4, h5, h6)::before { content: '\25BE\00A0'; }
 .preview-article .su-collapsed, .preview-article.su-hide-done :is(.su-done-section, li.su-checked), .su-copying .su-anchor { display: none; }
 .block-handle { position: absolute; z-index: 5; display: flex; gap: 2px; padding-top: 2px; }
-.block-handle[hidden], .block-menu[hidden], .block-menu [hidden], .block-drop-line[hidden], .format-bar[hidden], #toastAction[hidden] { display: none; }
+.block-handle[hidden], .block-menu[hidden], .block-menu [hidden], .block-drop-line[hidden], #toastAction[hidden] { display: none; }
 #blockGripBtn { cursor: grab; touch-action: none; }
 .block-drop-line { position: absolute; z-index: 5; height: 2px; border-radius: 1px; background: var(--primary); pointer-events: none; }
 .preview-article .su-dragging { opacity: .4; }
-.format-bar { position: fixed; z-index: 150; display: flex; gap: 2px; min-width: 0; padding: 4px; }
+/* Override the shared menu sizing even when only Comment is visible. */
+.export-menu.format-bar { position: fixed; z-index: 150; display: flex; gap: 2px; min-width: 0; padding: 4px; }
 .format-bar button { min-width: 28px; height: 28px; padding: 0 6px; border: none; border-radius: 6px; background: none; color: var(--text); font: 14px var(--font); cursor: pointer; }
 .format-bar button:hover { background: var(--surface-hover); }
 .format-bar mark { background: var(--hl-bg); color: var(--hl-text); padding: 0 3px; border-radius: 3px; }
 .format-bar code { font: 12px var(--mono); }
 .format-bar button svg { vertical-align: middle; }
 .format-sep { width: 1px; margin: 4px 2px; background: var(--border); }
-.format-sep[hidden] { display: none; }
+.format-bar[hidden], .format-sep[hidden] { display: none; }
 .block-handle button { width: 22px; height: 22px; padding: 3px; border: none; border-radius: 4px; background: none; color: var(--text-muted); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
 .block-handle button:hover, .block-handle button[aria-expanded="true"] { background: var(--surface-hover); color: var(--text); }
 .block-handle button:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }

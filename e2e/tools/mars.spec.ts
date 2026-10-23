@@ -2,6 +2,7 @@ import type { Browser, BrowserContext, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 
 import { assertSeoBasics, assertSkillMd, getTool } from './_helpers';
+import { selectionToolbarTests } from './_markdown_selection';
 
 // MARS keeps reviews in IndexedDB, so every test gets a fresh context. It runs on its own
 // host (MARS_BASE_URL); locally, `npm run serve` in dev/tools/js/mars and
@@ -68,6 +69,14 @@ function freshContext(browser: Browser): Promise<BrowserContext> {
 }
 
 test.describe(`${tool.name} (${tool.path})`, () => {
+  selectionToolbarTests(async (page, markdown) => {
+    await page.goto(tool.path);
+    await page.getByRole('button', { name: 'Start writing' }).click();
+    await setMarkdown(page, markdown);
+    await page.getByRole('button', { name: 'Preview', exact: true }).click();
+    await expect(page.locator('#previewArticle p').first()).toHaveText('Plain words here.');
+  });
+
   test('SEO head block matches the AGENTS.md SEO budget', async ({ page }) => {
     const response = await page.goto(tool.path);
     expect(response?.ok()).toBeTruthy();
