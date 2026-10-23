@@ -5,6 +5,21 @@ use hickory_resolver::{
     lookup_ip::LookupIp,
     net::NetError,
 };
+use std::time::Duration;
+
+/// Hard upper bound on a single lookup, above hickory's own retry budget (5s timeout x 2 attempts). hickory has been
+/// observed to wedge internally after long uptimes, leaving every lookup pending forever, and its own timeouts don't
+/// cover that.
+const LOOKUP_TIMEOUT: Duration = Duration::from_secs(15);
+
+async fn lookup_with_timeout(
+    lookup: impl Future<Output = Result<LookupIp, NetError>>,
+    timeout: Duration,
+) -> Result<LookupIp, NetError> {
+    tokio::time::timeout(timeout, lookup)
+        .await
+        .unwrap_or(Err(NetError::Timeout))
+}
 
 /// Trait describing a facade for a DNS resolver.
 pub trait DnsResolver: Sync + Send + 'static {
@@ -32,12 +47,16 @@ impl TokioDnsResolver {
 
 impl DnsResolver for TokioDnsResolver {
     fn lookup_ip<'a>(&'a self, name: &'a str) -> BoxFuture<'a, Result<LookupIp, NetError>> {
-        Box::pin(self.inner.lookup_ip(name))
+        Box::pin(lookup_with_timeout(
+            self.inner.lookup_ip(name),
+            LOOKUP_TIMEOUT,
+        ))
     }
 }
 
 #[cfg(test)]
 pub mod tests {
+    use super::lookup_with_timeout;
     use crate::network::{DnsResolver, TokioDnsResolver};
     use futures::future::BoxFuture;
     use hickory_resolver::{
@@ -117,5 +136,12 @@ pub mod tests {
                 "DNS resolver appears to have no configured name servers: {err}"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn lookup_with_timeout_fails_a_lookup_that_never_completes() {
+        let result =
+            lookup_with_timeout(std::future::pending(), std::time::Duration::from_millis(10)).await;
+        assert!(matches!(result, Err(NetError::Timeout)));
     }
 }
