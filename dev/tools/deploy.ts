@@ -9,7 +9,7 @@ const TOOLS_DIR = resolve(dirname(process.argv[1]));
 // Each sub-directory under `dev/tools/js/` is an isolated build of one JS
 // bundle (own package.json + lockfile + Vite/Rollup config). The deploy
 // pipeline inlines these into HTML responders that reference them via a
-// `data-su-bundle="<name>"` placeholder. See dev/tools/AGENTS.md ->
+// `data-su-bundle="<name>"` placeholder. See dev/tools/guides/platform.md ->
 // "Embedded JS bundles (`data-su-bundle`)".
 const BUNDLES_DIR = resolve(TOOLS_DIR, "js");
 const PREFIX = "deploy-tools";
@@ -50,8 +50,8 @@ function filenameToEnvKey(filename: string): string {
 //   -->
 // The marker comment is stripped from the deployed body by html-minifier-terser
 // (`removeComments: true`); we lift its payload here so it can be sent in the
-// same PUT as the responder's `script` setting. See dev/tools/AGENTS.md for the
-// full convention.
+// same PUT as the responder's `script` setting. See dev/tools/guides/platform.md ->
+// "Responder Script (`@su:responder-script`)".
 const RESPONDER_SCRIPT_RE = /<!--\s*@su:responder-script\s*\r?\n([\s\S]*?)\s*-->/g;
 
 function extractResponderScript(
@@ -72,7 +72,7 @@ function extractResponderScript(
 // Used in HTML <head> (canonical, og:url, og:image, JSON-LD url, related-tools
 // hrefs) and in skill .md frontmatter. One source-of-truth knob, one re-deploy
 // to change the public host of every tool. `{{MARS_HOST}}` is the host of the
-// standalone MARS app (see dev/tools/AGENTS.md -> "MARS").
+// standalone MARS app (see dev/tools/guides/mars.md -> "MARS").
 const MARS_HOST = process.env.SECUTILS_MARS_PUBLIC_HOST?.trim() || "mars.secutils.dev";
 function substituteToolsHost(text: string, toolsHost: string): string {
   return text
@@ -314,7 +314,7 @@ function parseToolMeta(rawHtml: string, slug: string): ToolMeta | null {
 // Build the aggregate llms.txt body (https://llmstxt.org/ convention) from
 // the tool HTML registry. Only promoted tools (`su-tool-promote=true`) are
 // listed; non-promoted tools are reachable only via direct link and must not
-// appear in any discovery surface (see `dev/tools/AGENTS.md` -> "Promotion").
+// appear in any discovery surface (see `dev/tools/guides/platform.md` -> "Promotion").
 // Each entry links to the `.md` SKILL companion because that is the canonical
 // machine-readable form.
 function buildLlmsTxt(tools: ToolMeta[], toolsHost: string): string {
@@ -354,7 +354,7 @@ function buildLlmsTxt(tools: ToolMeta[], toolsHost: string): string {
   );
   lines.push("produce the URL. Reference and full spec:");
   lines.push(
-    "https://github.com/secutils-dev/secutils/blob/main/dev/tools/AGENTS.md#url-state-encoding-encodestate--decodestate",
+    "https://github.com/secutils-dev/secutils/blob/main/dev/tools/guides/url-state.md#url-state-encoding-encodestate--decodestate",
   );
   lines.push("");
   lines.push(`Index: https://${toolsHost}/`);
@@ -555,7 +555,7 @@ function buildAgentSkillsIndex(
 // no quality-value parsing -- if the Accept header literally contains
 // `text/markdown` and does NOT start with `text/html`, we serve the redirect.
 // That covers every realistic agent / WebFetch UA we've seen and never trips a
-// browser. See `dev/tools/AGENTS.md` -> "Markdown content negotiation".
+// browser. See `dev/tools/guides/agent-surface.md` -> "Markdown content negotiation".
 const MD_NEGOTIATION_PRELUDE = `
   // SU: Markdown content negotiation prelude (auto-injected by deploy.ts).
   {
@@ -613,6 +613,18 @@ type DeployTarget = {
   bundleBytes?: Map<string, number>;
 };
 
+// html-minifier-terser options for every HTML responder body (also used by
+// scripts/tools-verify.ts for the pre-deploy dry run).
+export const MINIFY_OPTIONS = {
+  collapseWhitespace: true,
+  removeComments: true,
+  minifyCSS: true,
+  minifyJS: true,
+  removeRedundantAttributes: true,
+  removeScriptTypeAttributes: true,
+  removeStyleLinkTypeAttributes: true,
+};
+
 async function buildHtmlTarget(
   filename: string,
   rawHtml: string,
@@ -632,15 +644,7 @@ async function buildHtmlTarget(
   // `removeScriptTypeAttributes` would strip `type="text/javascript"` but
   // intentionally leaves non-default types like `text/plain` (which we use
   // for `data-su-bundle` placeholders) intact, so the convention survives.
-  const minified = await minify(templated, {
-    collapseWhitespace: true,
-    removeComments: true,
-    minifyCSS: true,
-    minifyJS: true,
-    removeRedundantAttributes: true,
-    removeScriptTypeAttributes: true,
-    removeStyleLinkTypeAttributes: true,
-  });
+  const minified = await minify(templated, MINIFY_OPTIONS);
   // Inline `data-su-bundle` payloads *after* minification: the bundle source
   // is already minified by Vite, and bypassing the HTML minifier avoids any
   // chance of `collapseWhitespace` / `minifyJS` corrupting the inlined ESM
@@ -1056,4 +1060,5 @@ async function main() {
   process.exit(failed > 0 ? 1 : 0);
 }
 
-main();
+// Importable (scripts/tools-verify.ts reads MINIFY_OPTIONS) without deploying.
+if (import.meta.main) main();

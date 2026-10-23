@@ -6,7 +6,7 @@ inlined into `dev/tools/forecast.html` at deploy time by
 `dev/tools/deploy.ts`'s `data-su-bundle="micro-ml"` mechanism.
 
 Not published. Internal to this repo. See
-[`dev/tools/AGENTS.md`](../../AGENTS.md) -> "Embedded JS bundles" for the
+[`dev/tools/guides/platform.md`](../../guides/platform.md#embedded-js-bundles-data-su-bundle) for the
 inliner contract.
 
 ## Build

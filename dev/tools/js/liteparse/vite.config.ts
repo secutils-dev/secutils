@@ -8,7 +8,7 @@ import { defineConfig, type Plugin } from "vite";
 // a single self-contained ESM module re-exporting `@llamaindex/liteparse`'s
 // public API rewired to run in a browser tab. The build is consumed at deploy
 // time by `dev/tools/deploy.ts`'s `data-su-bundle="liteparse"` inliner; see
-// `dev/tools/AGENTS.md` -> "Embedded JS bundles".
+// `dev/tools/guides/platform.md` -> "Embedded JS bundles".
 //
 // What we redirect (and why):
 //

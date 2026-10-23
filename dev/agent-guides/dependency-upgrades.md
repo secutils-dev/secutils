@@ -2,7 +2,7 @@
 
 Run commands from the Secutils root unless a stage names another directory.
 For changes inside Retrack, read [its agent guide](../../components/retrack/AGENTS.md) first.
-Standalone `dev/tools/js/*` bundles have their own upgrade surface in `dev/tools/AGENTS.md`.
+Tool-app bundles in `dev/tools/js/*` (MARS included) pin their own dependencies; see [bundles](../tools/guides/platform.md#embedded-js-bundles-data-su-bundle).
 
 ## Upgrade sequence
 

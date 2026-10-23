@@ -1,7 +1,7 @@
 # Application and standalone E2E
 
 Run `make` commands from the Secutils root. Run browser installation from `e2e/`.
-For standalone tool tests in `e2e/tools/`, read `dev/tools/AGENTS.md`.
+For tool-app tests in `e2e/tools/`, read `dev/tools/AGENTS.md`.
 For docs tests, also read [docs screenshots](docs-screenshots.md).
 
 ## Run the relevant stack

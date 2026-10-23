@@ -8,7 +8,7 @@
  * with GET/PUT/DELETE), and CONFIGURATOR (bare `<mount>` -> `null`).
  *
  * This mirrors the wire-format pairing pattern documented in
- * dev/tools/AGENTS.md -> "Responder-script smoke test", and catches a script
+ * dev/tools/AGENTS.md -> "Change a tool" (step 4), and catches a script
  * that throws/hangs or returns the wrong response shape before deploy.
  *
  * Run:

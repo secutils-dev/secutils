@@ -1,4 +1,4 @@
-// Canonical registry of the seven free tools deployed under `{{TOOLS_HOST}}`.
+// Canonical registry of the tool apps in dev/tools/ (on `{{TOOLS_HOST}}`, or their own `host`).
 // One source of truth used by:
 //   - `og.spec.ts`        to render OG images
 //   - `<slug>.spec.ts`    for per-tool SEO + functional assertions

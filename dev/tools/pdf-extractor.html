@@ -87,8 +87,8 @@ header { display: flex; align-items: center; justify-content: space-between; pad
    variant because the heavier font-weight expands the line box's strut
    metrics. Pinning `height` makes both weights resolve to the same outer
    size so the primary buttons line up flush with the outlined regular
-   ones in the same row. See dev/tools/AGENTS.md -> "Buttons" / "Canonical
-   control height: 24 px". With box-sizing: border-box (global) padding +
+   ones in the same row. See dev/tools/guides/chrome.md -> "Buttons" / "Control
+   heights (load-bearing)". With box-sizing: border-box (global) padding +
    border sit inside this height; `align-items: center` centres the label.
 
    `font-weight: 500` on .btn-primary (down from the obvious-looking 600)
@@ -98,7 +98,7 @@ header { display: flex; align-items: center; justify-content: space-between; pad
    eye -- two 24 px boxes look the same size when type weights are 400
    vs 500 and both have a visible 1 px edge, but the 400-vs-600 +
    edgeless-fill pairing reads as "Parse is bigger than Options" even
-   though both boxes are exactly the same pixel height. See AGENTS.md
+   though both boxes are exactly the same pixel height. See dev/tools/guides/chrome.md
    -> "Buttons" for the full rationale (including why --primary-text
    is the only palette token with enough contrast against yellow); do
    not revert either change in isolation. */
@@ -308,7 +308,7 @@ main { flex: 1; min-height: 0; padding: 24px 16px; display: flex; flex-direction
    auto from .output-scroll, so the column overflows into the scrollbar. */
 /* Skip rendering for off-screen page captures + outline branches; the browser
    uses contain-intrinsic-size as a placeholder until the element scrolls
-   close to the viewport. See AGENTS.md → "Long tasks". */
+   close to the viewport. See dev/tools/guides/javascript.md → "Long tasks". */
 .shots-figure { width: 100%; max-width: 100%; flex-shrink: 0; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; content-visibility: auto; contain-intrinsic-size: auto 800px; }
 /* `.shots-img-wrap` is the canvas overlay's positioning context: the wrap
    keeps `position: relative` so the canvas absolutely covers the image
@@ -382,10 +382,10 @@ main { flex: 1; min-height: 0; padding: 24px 16px; display: flex; flex-direction
 .su-dialog-body a { color: var(--primary); text-decoration: none; }
 .su-dialog-body a:hover { text-decoration: underline; }
 .su-dialog-fineprint { font-size: 0.8rem; color: var(--text-muted); }
-/* Typography polish (Baseline; selectors that don't exist in this tool are no-ops). See AGENTS.md → "Typography polish". */
+/* Typography polish (Baseline; selectors that don't exist in this tool are no-ops). See dev/tools/guides/chrome.md → "Typography polish". */
 .page-title, .panel-label, .su-dialog-header h2, .card-header { text-wrap: balance; }
 .su-dialog-body p, .su-more-tools p, .tool-desc, .empty-state-sub, .progress-sub, .error-sub { text-wrap: pretty; }
-/* Respect prefers-reduced-motion. See AGENTS.md → "Reduced motion". */
+/* Respect prefers-reduced-motion. See dev/tools/guides/chrome.md → "Reduced motion". */
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
@@ -741,7 +741,7 @@ main { flex: 1; min-height: 0; padding: 24px 16px; display: flex; flex-direction
     </div>
 
     <!-- Inlined at deploy time by dev/tools/deploy.ts (data-su-bundle). See
-         dev/tools/AGENTS.md -> "Embedded JS bundles". Sub-package source lives
+         dev/tools/guides/platform.md -> "Embedded JS bundles". Sub-package source lives
          in dev/tools/js/liteparse/. Body is empty in source and stays empty
          after `npm run build`; the deploy inliner fills it with the built
          ESM module. `type="text/plain"` keeps the browser from executing the
@@ -862,12 +862,12 @@ let shotsSearchDebounce = null;  // debounce timer for the search input
 // Practical cap for what we will encode into the URL fragment. ~64 KB of UTF-8
 // is well within every modern browser's URL length limit, doesn't generate a
 // pathologically long anchor, and matches the guidance in
-// dev/tools/AGENTS.md ("URL state encoding"). Larger results are kept in
+// dev/tools/guides/url-state.md ("URL state encoding"). Larger results are kept in
 // memory but Share is disabled (with a hint) -- the user can still copy /
 // download the result manually.
 const MAX_URL_STATE_BYTES = 64 * 1024;
 
-// URL state encoding: see dev/tools/AGENTS.md -> "URL state encoding".
+// URL state encoding: see dev/tools/guides/url-state.md -> "URL state encoding".
 const utf8Enc = new TextEncoder();
 const utf8Dec = new TextDecoder();
 const toBase64Url = (bytes) => {
@@ -958,7 +958,7 @@ function toast(msg) {
 // before the next chunk of synchronous work. Prefers `scheduler.yield()` (resumes
 // in the same priority queue, lower latency than rAF) and falls back to rAF for
 // the visual-frame-aligned semantics on browsers without the API.
-// See AGENTS.md → "Long tasks (scheduler.yield)".
+// See dev/tools/guides/javascript.md → "Long tasks (scheduler.yield)".
 const yieldToMain = () => 'scheduler' in window && typeof scheduler.yield === 'function'
     ? scheduler.yield()
     : new Promise((r) => requestAnimationFrame(() => r()));
@@ -975,7 +975,7 @@ function formatBytes(n) {
 // placeholder carries `data-su-bundle-encoding="gzip-base64"`, we base64-
 // decode and gunzip it first (the deploy pipeline picks this encoding when
 // the raw bundle would exceed the responder JSON payload cap; see
-// dev/tools/AGENTS.md -> "Embedded JS bundles").
+// dev/tools/guides/platform.md -> "Embedded JS bundles").
 async function loadLiteparseBundle() {
     if (liteparseModule) return liteparseModule;
     const el = document.getElementById('su-bundle-liteparse');
@@ -1088,7 +1088,7 @@ els.clearBtn.addEventListener('click', clearFile);
 // uses `position: fixed; inset: 0; margin: auto;` by default — without this
 // override the popover renders centered. `position-area` would replace this
 // helper but is Chromium-only at time of writing.
-// See AGENTS.md → "Tethered popovers (native popover + commandfor)".
+// See dev/tools/guides/components.md → "Tethered popovers (native popover + commandfor)".
 const positionPopover = (popover, invoker) => {
     // Skip in the fallback path (no Popover API) — the fallback IIFE already
     // positions the element via inline `position: absolute; top/right` styles.
@@ -2845,7 +2845,7 @@ function closeExportMenu() {
 
 // Shared fallback for engines without Popover API + Invoker Commands (older Safari, older Firefox).
 // Wires the OCR popover and the Export menu at the same time; see
-// AGENTS.md → "Tethered popovers (native popover + commandfor)".
+// dev/tools/guides/components.md → "Tethered popovers (native popover + commandfor)".
 if (!('popover' in HTMLElement.prototype) || !('commandForElement' in HTMLButtonElement.prototype)) {
     const pops = document.querySelectorAll('[popover]');
     for (const p of pops) { p.hidden = true; p.style.position = 'absolute'; p.style.top = 'calc(100% + 6px)'; p.style.right = '0'; }

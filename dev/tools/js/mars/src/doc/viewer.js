@@ -309,7 +309,7 @@ function escapeUnmatchedInlineHtml(value) {
 }
 
 // Yield to the event loop between highlight passes so long documents
-// don't block input. See AGENTS.md -> "Long tasks (scheduler.yield)".
+// don't block input. See dev/tools/guides/javascript.md -> "Long tasks (scheduler.yield)".
 const yieldToMain = () => 'scheduler' in window && typeof scheduler.yield === 'function'
     ? scheduler.yield()
     : new Promise((r) => setTimeout(r, 0));

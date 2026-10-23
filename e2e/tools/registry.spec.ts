@@ -51,7 +51,7 @@ test.describe('Tools registry - agent-discovery surface', () => {
       } else {
         // Non-promoted tools must be reachable via direct link, but must
         // not be advertised in any aggregate discovery surface (see
-        // `dev/tools/AGENTS.md` -> "Promotion (su-tool-promote)").
+        // `dev/tools/guides/platform.md` -> "Promotion (su-tool-promote)").
         expect(llms, 'llms.txt must not advertise non-promoted tools').not.toContain(skillUrl(tool));
       }
     });

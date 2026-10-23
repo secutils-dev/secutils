@@ -32,7 +32,7 @@ export DEPLOY_REMOTE_DIR DEPLOY_REMOTE_BUILDER DEPLOY_REMOTE_MEMORY DEPLOY_REMOT
 .PHONY: deploy-dev deploy-dev-api deploy-dev-webui deploy-dev-docs deploy-dev-retrack-api deploy-dev-retrack-scraper
 .PHONY: deploy-prod deploy-prod-api deploy-prod-webui deploy-prod-docs deploy-prod-retrack-api deploy-prod-retrack-scraper
 .PHONY: deploy-camoufox deploy-health deploy-stats
-.PHONY: deploy-tools tools-bundles tools-og tools-og-loop tools-check e2e-tools-test
+.PHONY: deploy-tools tools-bundles tools-og tools-og-loop tools-check tools-verify e2e-tools-test
 
 ## ---------- Development ----------
 
@@ -298,6 +298,9 @@ e2e-tools-test: ## Run the e2e/tools/ Playwright suite against $(BASE_URL) (defa
 
 tools-check: ## Validate that the promo home Free-tools section matches `<meta name="su-tool-promote">` in dev/tools/. Read-only, no browser.
 	@node scripts/tools-check.ts
+
+tools-verify: ## Pre-deploy checks for dev/tools HTML: inline scripts and responder script parse, minifier accepts the page (ARGS=files, default: all).
+	@node scripts/tools-verify.ts $(ARGS)
 
 ## ---------- Docker Cleanup ----------
 

@@ -19,7 +19,7 @@ export function getTool(slug: string): Tool {
  * Asserts the SEO basics common to every free tool page: title, meta
  * description, canonical, robots, OG tag set, twitter card, and a parseable
  * WebApplication or ItemList JSON-LD block. These mirror the head block
- * documented in dev/tools/AGENTS.md so a regression here means the SEO budget
+ * documented in dev/tools/guides/seo-og.md so a regression here means the SEO budget
  * has degraded.
  */
 export async function assertSeoBasics(page: Page, tool: Tool): Promise<void> {

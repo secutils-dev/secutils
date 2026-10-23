@@ -4,7 +4,7 @@
 // RESPONDER SCRIPT - paired with md.html, auto-deployed to the responder's
 // `script` setting by dev/tools/deploy.ts. This HTML comment is stripped from
 // the served body by html-minifier-terser (`removeComments: true`).
-// See dev/tools/AGENTS.md -> "Short links (md.html)".
+// See dev/tools/guides/url-state.md -> "Short links (`md.html`, MARS)".
 //
 // Short-link store on the bare mount, keyed by `?s=<id>`:
 //   POST   ?s=<id>[&ttl=<sec>]  body: base64url blob, x-su-delete-token -> 201 {exp}
@@ -196,7 +196,7 @@ header { display: flex; align-items: center; justify-content: space-between; pad
 .logo-badge { display: inline-flex; align-items: center; padding: 4px 16px; border-radius: 4px; border: none; background: var(--badge-bg); color: var(--badge-text); font-size: 12px; font-weight: 450; line-height: 16px; white-space: nowrap; }
 .header-right { display: flex; gap: 8px; align-items: center; }
 /* `height` pins the outer size so `.btn-primary`'s bold weight doesn't render
-   1-2 px taller than the regular variant. See dev/tools/AGENTS.md -> "Buttons". */
+   1-2 px taller than the regular variant. See dev/tools/guides/chrome.md -> "Buttons". */
 .btn { padding: 7px 14px; height: 29px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: 13px/1 var(--font); cursor: pointer; transition: all .15s; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .btn:hover:not(:disabled) { background: var(--surface-hover); border-color: var(--text-muted); }
 .btn:disabled { opacity: 0.55; cursor: default; }
@@ -1178,7 +1178,7 @@ const EXAMPLE_MD = [
     '',
 ].join('\n');
 
-// URL state encoding: see dev/tools/AGENTS.md -> "URL state encoding".
+// URL state encoding: see dev/tools/guides/url-state.md -> "URL state encoding".
 const utf8Enc = new TextEncoder();
 const utf8Dec = new TextDecoder();
 const toBase64Url = (bytes) => {
@@ -1331,7 +1331,7 @@ function escapeUnmatchedInlineHtml(value) {
 }
 
 // Yield to the event loop between highlight passes so long documents
-// don't block input. See AGENTS.md -> "Long tasks (scheduler.yield)".
+// don't block input. See dev/tools/guides/javascript.md -> "Long tasks (scheduler.yield)".
 const yieldToMain = () => 'scheduler' in window && typeof scheduler.yield === 'function'
     ? scheduler.yield()
     : new Promise((r) => setTimeout(r, 0));

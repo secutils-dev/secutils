@@ -258,10 +258,10 @@ main { flex: 1; padding: 24px 16px; max-width: 1280px; margin: 0 auto; width: 10
 .su-credits-list li { margin-bottom: 6px; }
 .su-credits-list li:last-child { margin-bottom: 0; }
 
-/* Typography polish (Baseline; selectors that don't exist in this tool are no-ops). See AGENTS.md → "Typography polish". */
+/* Typography polish (Baseline; selectors that don't exist in this tool are no-ops). See dev/tools/guides/chrome.md → "Typography polish". */
 .page-title, .panel-label, .su-dialog-header h2, .card-header { text-wrap: balance; }
 .su-dialog-body p, .su-more-tools p, .ex-hint, .chart-state .sub { text-wrap: pretty; }
-/* Respect prefers-reduced-motion. See AGENTS.md → "Reduced motion". */
+/* Respect prefers-reduced-motion. See dev/tools/guides/chrome.md → "Reduced motion". */
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }

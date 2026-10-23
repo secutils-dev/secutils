@@ -101,7 +101,9 @@ secutils/
 │   ├── secutils-jwt-tools/   # JWT generation CLI (Cargo workspace member)
 │   └── secutils-webui/       # Web UI (React/TypeScript, Parcel)
 ├── dev/
-│   └── docker/               # Docker Compose files and configs
+│   ├── agent-guides/         # Task guides for coding agents (routed from AGENTS.md)
+│   ├── docker/               # Docker Compose files and configs
+│   └── tools/                # Free tool apps and MARS, deployed as webhook responders
 ├── e2e/                      # Playwright end-to-end tests
 ├── migrations/               # SQLx database migrations
 ├── src/                      # Secutils API server (Rust)

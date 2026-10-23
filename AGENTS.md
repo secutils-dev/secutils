@@ -12,7 +12,7 @@ Read each applicable guide before changes to its surface. A task can require sev
 |------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------|
 | Service topology, ports, or repository layout                                                        | [ARCHITECTURE.md](ARCHITECTURE.md)                                                 |
 | Changes inside the Retrack submodule, including scraper or Camoufox work                             | [components/retrack/AGENTS.md](components/retrack/AGENTS.md)                       |
-| Standalone tools, their bundles, agent surfaces, OG images, or `e2e/tools/` tests                    | [dev/tools/AGENTS.md](dev/tools/AGENTS.md)                                         |
+| Tool apps in `dev/tools/` (MARS included), their bundles, skills, OG images, or `e2e/tools/` tests  | [dev/tools/AGENTS.md](dev/tools/AGENTS.md)                                         |
 | Dependency upgrades, runtime versions, Docker base images, or Retrack pointer upgrades               | [dev/agent-guides/dependency-upgrades.md](dev/agent-guides/dependency-upgrades.md) |
 | Publish Docker images, select local/SSH builds, or inspect remote build capacity and timing          | [dev/agent-guides/image-publishing.md](dev/agent-guides/image-publishing.md)       |
 | Run, write, or debug application E2E or standalone tests                                             | [dev/agent-guides/e2e.md](dev/agent-guides/e2e.md)                                 |

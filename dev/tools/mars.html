@@ -5,7 +5,7 @@
 // `script` setting by dev/tools/deploy.ts. This HTML comment is stripped from
 // the served body by html-minifier-terser (`removeComments: true`).
 // A copy of md.html's short-link store; MARS keeps its links in its own responder KV.
-// See dev/tools/AGENTS.md -> "Short links (md.html)" and "MARS".
+// See dev/tools/guides/url-state.md -> "Short links" and dev/tools/guides/mars.md.
 //
 // Short-link store on the bare mount, keyed by `?s=<id>`:
 //   POST   ?s=<id>[&ttl=<sec>]  body: base64url blob, x-su-delete-token -> 201 {exp}
@@ -424,7 +424,7 @@
     <script id="su-bundle-three-mf" type="text/plain" data-su-bundle="three-mf" data-su-bundle-encoding="gzip-base64"></script>
     <script id="su-bundle-mars" type="text/plain" data-su-bundle="mars" data-su-bundle-encoding="gzip-base64"></script>
     <script>
-        // The app is one inlined ES module (dev/tools/js/mars); see AGENTS.md -> "Embedded JS bundles".
+        // The app is one inlined ES module (dev/tools/js/mars); see dev/tools/guides/platform.md -> "Embedded JS bundles".
         (async () => {
             const el = document.getElementById('su-bundle-mars');
             const bin = atob(el.textContent.trim());

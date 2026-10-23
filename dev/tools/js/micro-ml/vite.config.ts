@@ -6,7 +6,7 @@ import { defineConfig } from "vite";
 // a single self-contained ESM module re-exporting the subset of `micro-ml`
 // used by `dev/tools/forecast.html`. The build is consumed at deploy time
 // by `dev/tools/deploy.ts`'s `data-su-bundle="micro-ml"` inliner; see
-// `dev/tools/AGENTS.md` -> "Embedded JS bundles".
+// `dev/tools/guides/platform.md` -> "Embedded JS bundles".
 //
 // How the WASM gets inlined:
 //

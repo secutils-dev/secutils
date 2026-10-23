@@ -2,7 +2,7 @@
 
 The MARS (Markdown Annotation & Review System) app, bundled into `dev/tools/mars.html`
 through the `data-su-bundle="mars"` placeholder. `npm run build` writes `dist/mars.js`
-(esbuild, ESM, minified). See `dev/tools/AGENTS.md` -> "MARS (`mars.html`)".
+(esbuild, ESM, minified). See [`dev/tools/guides/mars.md`](../../guides/mars.md).
 
 Pinned runtime dependencies: `marked` 18.1.1 (the version md.html's unpinned CDN load
 resolved to when MARS was extracted) and `fflate` 0.8.3 (same as `three-mf`).

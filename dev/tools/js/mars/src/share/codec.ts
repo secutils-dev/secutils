@@ -1,6 +1,6 @@
 // Wire formats for sharing (pure; runs in browsers and Node >= 22 for tests).
 //
-// URL state: see dev/tools/AGENTS.md -> "URL state encoding":
+// URL state: see dev/tools/guides/url-state.md -> "URL state encoding":
 //   base64url( u32le(uncompressed length) || deflate-raw(UTF-8 text) )
 // Full links: `#name=<name>&md=<state>&o=<originId>` for one document (md.html-compatible;
 // md.html ignores `o`), or `#b=<state of a bundle JSON>` for a folder.

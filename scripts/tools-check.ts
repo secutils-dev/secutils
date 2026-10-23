@@ -65,7 +65,7 @@ async function readTools(): Promise<Tool[]> {
     const promote = META_RE("su-tool-promote").exec(html)?.[1];
     if (!path || !name || promote == null) {
       throw new Error(
-        `${file} is missing one of su-tool-path / su-tool-name / su-tool-promote - required by AGENTS.md`,
+        `${file} is missing one of su-tool-path / su-tool-name / su-tool-promote - required by dev/tools/guides/platform.md`,
       );
     }
     const host = META_RE("su-tool-host").exec(html)?.[1]?.replace(/\{\{\s*MARS_HOST\s*\}\}/g, MARS_HOST);
@@ -145,7 +145,7 @@ async function main(): Promise<void> {
     const expected = t.file.replace(/\.html$/, ".skill.md");
     if (!dirEntries.has(expected)) {
       errors.push(
-        `Promoted tool "${t.name}" (${t.file}) is missing the sibling AI-agent skill at ${expected} (required by AGENTS.md → "AI-agent surface").`,
+        `Promoted tool "${t.name}" (${t.file}) is missing the sibling AI-agent skill at ${expected} (required by dev/tools/guides/agent-surface.md → "AI-agent surface").`,
       );
     }
   }

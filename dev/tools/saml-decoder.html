@@ -71,7 +71,7 @@ header { display: flex; align-items: center; justify-content: space-between; pad
 .header-right { display: flex; gap: 8px; align-items: center; }
 /* `height` pins the outer size so `.btn-primary`'s `font-weight: 600` doesn't
    render 1-2 px taller than the regular variant via expanded bold strut
-   metrics. See dev/tools/AGENTS.md -> "Buttons". */
+   metrics. See dev/tools/guides/chrome.md -> "Buttons". */
 .btn { padding: 7px 14px; height: 29px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: 13px/1 var(--font); cursor: pointer; transition: all .15s; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .btn:hover:not(:disabled) { background: var(--surface-hover); border-color: var(--text-muted); }
 .btn-primary { background: var(--primary); border-color: var(--primary-text); color: var(--primary-text); font-weight: 500; }
@@ -154,10 +154,10 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; }
 .su-dialog-body a { color: var(--primary); text-decoration: none; }
 .su-dialog-body a:hover { text-decoration: underline; }
 .su-dialog-fineprint { font-size: 0.8rem; color: var(--text-muted); }
-/* Typography polish (Baseline; selectors that don't exist in this tool are no-ops). See AGENTS.md → "Typography polish". */
+/* Typography polish (Baseline; selectors that don't exist in this tool are no-ops). See dev/tools/guides/chrome.md → "Typography polish". */
 .page-title, .panel-label, .su-dialog-header h2, .card-header { text-wrap: balance; }
 .su-dialog-body p, .su-more-tools p, .tool-desc, .empty-state-sub, .progress-sub, .error-sub { text-wrap: pretty; }
-/* Respect prefers-reduced-motion. See AGENTS.md → "Reduced motion". */
+/* Respect prefers-reduced-motion. See dev/tools/guides/chrome.md → "Reduced motion". */
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
@@ -413,7 +413,7 @@ const EXAMPLE_SAML_REQUEST = `<?xml version="1.0" encoding="UTF-8"?>
   <samlp:NameIDPolicy Format="urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress" AllowCreate="true"/>
 </samlp:AuthnRequest>`;
 
-// URL state encoding: see dev/tools/AGENTS.md → "URL state encoding".
+// URL state encoding: see dev/tools/guides/url-state.md → "URL state encoding".
 const utf8Enc = new TextEncoder();
 const utf8Dec = new TextDecoder();
 const toBase64Url = (bytes) => {

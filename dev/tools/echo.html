@@ -4,7 +4,7 @@
 // RESPONDER SCRIPT - paired with echo.html, auto-deployed to the responder's
 // `script` setting by dev/tools/deploy.ts. This HTML comment is stripped from
 // the served body by html-minifier-terser (`removeComments: true`).
-// See dev/tools/AGENTS.md → "Responder Script (`@su:responder-script`)".
+// See dev/tools/guides/platform.md → "Responder Script (`@su:responder-script`)".
 //
 // Wire format (after base64url-decode):
 //   | 4 bytes ulen (LE u32) | N bytes raw-deflate(JSON.stringify(state)) |
@@ -322,7 +322,7 @@ main { flex: 1; padding: 32px 16px 48px; max-width: 760px; margin: 0 auto; width
 .textarea-sm { min-height: 64px; font-family: var(--font); font-size: 13px; }
 .input:focus, .textarea:focus, .input-mono:focus { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
 /* Defer validation feedback until the user has interacted with the field.
-   See AGENTS.md → "Form validation feedback". */
+   See dev/tools/guides/components.md → "Form validation feedback". */
 .input:user-invalid, .textarea:user-invalid, .input-mono:user-invalid { border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger); }
 .input[readonly] { color: var(--text-muted); cursor: text; }
 
@@ -338,7 +338,7 @@ td:last-child { padding-right: 0; width: 38px; }
 
 /* `height` pins the outer size so `.btn-primary`'s `font-weight: 600` doesn't
    render 1-2 px taller than the regular variant via expanded bold strut
-   metrics. See dev/tools/AGENTS.md -> "Buttons". */
+   metrics. See dev/tools/guides/chrome.md -> "Buttons". */
 .btn { padding: 7px 14px; height: 29px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: 13px/1 var(--font); cursor: pointer; transition: all .15s; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .btn:hover:not(:disabled) { background: var(--surface-hover); border-color: var(--text-muted); }
 .btn-primary { background: var(--primary); border-color: var(--primary-text); color: var(--primary-text); font-weight: 500; }
@@ -370,10 +370,10 @@ td:last-child { padding-right: 0; width: 38px; }
 .su-dialog-body a { color: var(--primary); text-decoration: none; }
 .su-dialog-body a:hover { text-decoration: underline; }
 .su-dialog-fineprint { font-size: 0.8rem; color: var(--text-muted); }
-/* Typography polish (Baseline; selectors that don't exist in this tool are no-ops). See AGENTS.md → "Typography polish". */
+/* Typography polish (Baseline; selectors that don't exist in this tool are no-ops). See dev/tools/guides/chrome.md → "Typography polish". */
 .page-title, .panel-label, .su-dialog-header h2, .card-header { text-wrap: balance; }
 .su-dialog-body p, .su-more-tools p, .tool-desc, .empty-state-sub, .progress-sub, .error-sub { text-wrap: pretty; }
-/* Respect prefers-reduced-motion. See AGENTS.md → "Reduced motion". */
+/* Respect prefers-reduced-motion. See dev/tools/guides/chrome.md → "Reduced motion". */
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
@@ -563,7 +563,7 @@ const fromBase64Url = (str) => {
     return out;
 };
 
-// Wire format (see dev/tools/AGENTS.md → "URL state encoding"):
+// Wire format (see dev/tools/guides/url-state.md → "URL state encoding"):
 // [4-byte LE u32 ulen][raw deflate bytes]. ulen lets the responder's pure-JS
 // inflater (tiny-inflate) pre-allocate the output buffer in one go.
 const encodeState = async (text) => {
@@ -776,7 +776,7 @@ els.reset.addEventListener('click', () => {
 })();
 
 // Mirror :user-invalid into aria-invalid on blur so screen readers announce
-// the same error state the CSS reveals. See AGENTS.md → "Form validation feedback".
+// the same error state the CSS reveals. See dev/tools/guides/components.md → "Form validation feedback".
 for (const i of document.querySelectorAll('input[required], input[type=number], input[type=email]')) {
     i.addEventListener('blur', () => i.setAttribute('aria-invalid', String(!i.matches(':valid'))));
 }
