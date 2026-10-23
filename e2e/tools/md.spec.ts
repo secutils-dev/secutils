@@ -380,7 +380,14 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     await setMarkdown(page, ['```mermaid', 'flowchart LR', '  A[Start] --> B[End]', '```'].join('\n'));
 
     // Mermaid is lazy-loaded from a CDN, so allow extra time for the diagram.
-    await expect(page.locator('#previewArticle figure.su-mermaid svg')).toBeVisible({ timeout: 15000 });
+    const figure = page.locator('#previewArticle figure.su-mermaid');
+    await expect(figure.locator('svg').first()).toBeVisible({ timeout: 15000 });
+
+    await figure.hover();
+    await figure.getByRole('button', { name: 'Toggle diagram fullscreen' }).click();
+    await expect.poll(() => page.evaluate(() => document.fullscreenElement?.className)).toBe('su-mermaid');
+    await figure.getByRole('button', { name: 'Toggle diagram fullscreen' }).click();
+    await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull();
   });
 
   test('GitHub maps and STL models remain interactive in offline HTML exports', async ({ page }) => {
@@ -975,7 +982,28 @@ endsolid corner
       await expect.poll(() => page.evaluate('renderedMarkdown === markdown')).toBe(true);
     };
     await formatText('words', 'Bold', 'Plain **words** here.');
-    await formatText('words', 'Bold', 'Plain words here.');
+    // The toolbar and selection survive the re-render, so the same format toggles straight back.
+    await expect(page.locator('#formatBar')).toBeVisible();
+    await expect.poll(() => page.evaluate(() => getSelection()!.toString())).toBe('words');
+    const toggle = async (name: string, result: string) => {
+      await page.locator('#formatBar').getByRole('button', { name }).click();
+      expected = expected.replace(/^.*here\..*$/m, result);
+      await expect.poll(source).toBe(expected);
+      await expect.poll(() => page.evaluate('renderedMarkdown === markdown')).toBe(true);
+      await expect(page.locator('#formatBar')).toBeVisible();
+    };
+    await toggle('Bold', 'Plain words here.');
+    // Stacked formats toggle independently, keeping each other's markers balanced.
+    await toggle('Highlight', 'Plain ==words== here.');
+    await toggle('Strikethrough', 'Plain ~~==words==~~ here.');
+    await toggle('Highlight', 'Plain ~~words~~ here.');
+    await toggle('Highlight', 'Plain ==~~words~~== here.');
+    await toggle('Strikethrough', 'Plain ==words== here.');
+    await toggle('Highlight', 'Plain words here.');
+    await toggle('Bold', 'Plain **words** here.');
+    await toggle('Italic', 'Plain ***words*** here.');
+    await toggle('Bold', 'Plain *words* here.');
+    await toggle('Italic', 'Plain words here.');
     // A selection across an already struck run strikes it as one run, then clears it.
     await formatText('words', 'Strikethrough', 'Plain ~~words~~ here.');
     await formatText('Plain words here.', 'Strikethrough', '~~Plain words here.~~');

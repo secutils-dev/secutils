@@ -449,8 +449,11 @@ body.su-rail-wide .cm-widen .i-narrow { display: block; }
 .preview-article .markdown-alert-warning { border-left-color: #d29922; } .preview-article .markdown-alert-warning .markdown-alert-title { color: #d29922; }
 .preview-article .markdown-alert-caution { border-left-color: #cf222e; } .preview-article .markdown-alert-caution .markdown-alert-title { color: #cf222e; }
 /* Mermaid: render into a light figure card so it stays legible in any theme. */
-.preview-article .su-mermaid { margin: 0 0 14px; padding: 16px; background: #fff; border: 1px solid var(--border); border-radius: 8px; text-align: center; overflow-x: auto; }
+.preview-article .su-mermaid { position: relative; margin: 0 0 14px; padding: 16px; background: #fff; border: 1px solid var(--border); border-radius: 8px; text-align: center; overflow-x: auto; }
 .preview-article .su-mermaid svg { max-width: 100%; height: auto; }
+@media (hover: hover) { .su-mermaid:not(:hover, :focus-within) .su-diagram-controls { visibility: hidden; } }
+.preview-article .su-mermaid:fullscreen { display: flex; align-items: center; justify-content: center; margin: 0; border: none; border-radius: 0; }
+.preview-article .su-mermaid:fullscreen > svg { width: 100%; height: 100%; max-width: none !important; }
 .su-diagram { position: relative; margin: 0 0 16px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: #fff; color: #343741; }
 .su-diagram .su-diagram-view { display: block; width: 100%; height: auto; aspect-ratio: 2; background: #eef3f8; touch-action: none; cursor: grab; }
 .su-diagram .su-diagram-view:active { cursor: grabbing; }
@@ -1385,7 +1388,7 @@ async function renderMermaid(src) {
     return svg;
 }
 
-async function replaceMermaidBlock(codeEl) {
+async function replaceMermaidBlock(codeEl, forExport) {
     const pre = codeEl.parentElement;
     const src = codeEl.textContent;
     try {
@@ -1393,6 +1396,7 @@ async function replaceMermaidBlock(codeEl) {
         const fig = document.createElement('figure');
         fig.className = 'su-mermaid';
         fig.innerHTML = svg;
+        if (!forExport) fig.insertAdjacentHTML('beforeend', '<div class="su-diagram-controls"><div class="su-diagram-actions"><button type="button" class="su-mermaid-fullscreen" title="Toggle diagram fullscreen" aria-label="Toggle diagram fullscreen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></svg></button></div></div>');
         pre.replaceWith(fig);
     } catch (err) {
         if (err && err.__suMermaidUnavailable) {
@@ -2137,7 +2141,7 @@ async function render(md, forExport = true, comment = false) {
     for (const block of el.querySelectorAll('pre code')) {
         const langCls = [...block.classList].find((c) => c.startsWith('language-'));
         if (langCls === 'language-mermaid') {
-            await replaceMermaidBlock(block);
+            await replaceMermaidBlock(block, forExport);
             continue;
         }
         const diagramKind = langCls?.slice('language-'.length).toLowerCase();
@@ -2257,6 +2261,7 @@ async function updatePreview() {
     updatePanes();
     anchorThreads();
     renderRail();
+    restoreFormatSelection();
     const target = hovered && els.previewArticle.querySelector(hovered);
     if (target) showHandle(target); else hideHandle();
     const wordCount = source.length > 1000000 ? null : source.trim().split(/\s+/).length;
@@ -2366,6 +2371,14 @@ document.addEventListener('fullscreenchange', () => {
     const entering = !!document.fullscreenElement;
     els.fullscreenEnterIcon.style.display = entering ? 'none' : 'block';
     els.fullscreenExitIcon.style.display = entering ? 'block' : 'none';
+});
+document.addEventListener('click', async (e) => {
+    const fig = e.target.closest?.('.su-mermaid-fullscreen')?.closest('.su-mermaid');
+    if (!fig) return;
+    try {
+        if (document.fullscreenElement === fig) await document.exitFullscreen();
+        else await fig.requestFullscreen();
+    } catch (err) { toast(`Fullscreen failed: ${err?.message ?? err}`); }
 });
 
 // ---- Anchor links inside the preview (slug navigation + copy) ----
@@ -2755,6 +2768,7 @@ const FORMATS = {
 };
 let selectingWithMouse = false;
 let formatTimer;
+let pendingSelection = null;
 
 function selectionTarget() {
     const sel = window.getSelection();
@@ -2787,8 +2801,9 @@ function inlineText(md) {
 // Rendered characters are matched in order against the block source (skipping
 // markup), then the span grows until it renders to exactly the text it covers,
 // so markers inside it stay balanced. A selection that starts or ends inside a
-// formatted run grows to cover the whole run.
-function selectionSourceRange({ range, block }) {
+// formatted run grows to cover the whole run. With `fits`, the span then widens over
+// markup that renders nothing (`word` -> `~~word~~`) to the largest span `fits` accepts.
+function selectionSourceRange({ range, block }, fits) {
     const [start, end] = blockRange(block);
     const raw = markdown.slice(start, end);
     const text = renderedText(block);
@@ -2809,11 +2824,26 @@ function selectionSourceRange({ range, block }) {
     const a = map[rs], b = map[re - 1] + 1;
     if (re <= rs || a < 0 || b <= 0) return null;
     const covered = (s, e) => map.reduce((t, k, i) => (k >= s && k < e ? t + text[i] : t), '');
+    const renders = (s, e) => inlineText(raw.slice(s, e)).trim() === covered(s, e).trim();
+    const widen = (s, e) => {
+        const mapped = new Set(map);
+        // ponytail: widening stops at 16 unrendered characters per side, enough for nested markers.
+        let lo = s, hi = e;
+        while (lo > 0 && s - lo < 16 && !mapped.has(lo - 1)) lo--;
+        while (hi < raw.length && hi - e < 16 && !mapped.has(hi)) hi++;
+        let best = [s, e];
+        for (let x = lo; x <= s; x++) {
+            for (let y = hi; y >= e; y--) {
+                if (y - x > best[1] - best[0] && fits(start + x, start + y) && renders(x, y)) best = [x, y];
+            }
+        }
+        return [start + best[0], start + best[1]];
+    };
     // ponytail: growth stops at 64 characters; a longer miss shows the toast.
     for (let grow = 0; grow <= 64; grow++) {
         for (let before = Math.min(grow, a); before >= 0; before--) {
             const s = a - before, e = b + grow - before;
-            if (e <= raw.length && inlineText(raw.slice(s, e)).trim() === covered(s, e).trim()) return [start + s, start + e];
+            if (e <= raw.length && renders(s, e)) return fits ? widen(s, e) : [start + s, start + e];
         }
     }
     return null;
@@ -2831,23 +2861,51 @@ function formatRuns(sel, format) {
     return [...sel.block.querySelectorAll(format.tag)].filter((el) => sel.range.intersectsNode(el)).flatMap((el) => {
         const contents = document.createRange();
         contents.selectNodeContents(el);
-        const span = selectionSourceRange({ range: contents, block: sel.block });
-        const marker = span && format.markers.find((m) => markdown.slice(span[0] - m.length, span[0]) === m && markdown.startsWith(m, span[1]));
-        return marker ? [{ start: span[0], end: span[1], marker }] : [];
+        // Markers go longest first, so `~~a~~` is not read as `~` around `~a~`.
+        const between = (m) => (s, e) => markdown.slice(s - m.length, s) === m && markdown.startsWith(m, e);
+        for (const marker of format.markers) {
+            const span = selectionSourceRange({ range: contents, block: sel.block }, between(marker));
+            if (span && between(marker)(...span)) return [{ start: span[0], end: span[1], marker }];
+        }
+        return [];
     });
+}
+
+// The bar stays up after a format: the re-render restores the selection from its
+// rendered-text offsets, which formatting never changes.
+function restoreFormatSelection() {
+    const pending = pendingSelection;
+    pendingSelection = null;
+    const block = pending && els.previewArticle.querySelector(pending.selector);
+    if (!block) return;
+    const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT, { acceptNode: (n) => (n.parentElement.closest('.su-anchor') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) });
+    const points = [];
+    for (let pos = 0, node; points.length < 4 && (node = walker.nextNode()); pos += node.length) {
+        if (!points.length && pos + node.length > pending.start) points.push(node, pending.start - pos);
+        if (points.length && pos + node.length >= pending.end) points.push(node, pending.end - pos);
+    }
+    if (points.length !== 4) return;
+    window.getSelection().setBaseAndExtent(...points);
+    updateFormatBar();
 }
 
 function applyFormat(kind) {
     const sel = selectionTarget();
-    hideFormatBar();
-    if (!sel || !previewInSync()) return;
-    const span = selectionSourceRange(sel);
-    if (!span) { toast('Could not find the selected text in the source. Double-click the block to edit it.'); return; }
-    const [at, end] = span;
-    const text = markdown.slice(at, end);
+    if (!sel) { hideFormatBar(); return; }
+    if (!previewInSync()) return;
+    const minimal = selectionSourceRange(sel);
+    if (!minimal) { hideFormatBar(); toast('Could not find the selected text in the source. Double-click the block to edit it.'); return; }
     const format = FORMATS[kind];
     const runs = formatRuns(sel, format);
-    window.getSelection().removeAllRanges();
+    // The selection takes in the markers of other formats it covers, staying inside a run of this format.
+    const within = runs.find((r) => minimal[0] >= r.start && minimal[1] <= r.end);
+    const [at, end] = selectionSourceRange(sel, within ? (s, e) => s >= within.start && e <= within.end : () => true);
+    const text = markdown.slice(at, end);
+    pendingSelection = {
+        selector: `${sel.block.matches('li') ? 'li' : '.su-block'}[data-start="${sel.block.dataset.start}"]`,
+        start: renderedText(sel.block, sel.range.startContainer, sel.range.startOffset).length,
+        end: renderedText(sel.block, sel.range.endContainer, sel.range.endOffset).length,
+    };
     // Inside a run that already has the format: remove it from the selection,
     // re-wrapping whatever is left of the run on either side.
     const outer = runs.find((r) => at >= r.start && end <= r.end);
