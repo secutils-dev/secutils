@@ -23,6 +23,8 @@ It is promoted like any tool, linked by that host. In-app URLs derive from `loca
 - **Storage**: documents live in IndexedDB (database `mars`: `nodes`, `docs`, `meta`). The fragment is a route
   (`#doc=<id>`) or an incoming share, never autosaved state. Every document carries an `originId` that survives sharing;
   opening a link for a known `originId` merges its review threads (by comment `id`, or `author` plus `at`).
+  Open existing databases without a requested version. Some browsers retain version 2 from the deferred review-rounds feature.
+  Preserve extra stores during rollback. Never downgrade or delete the database to restore the previous UI.
 - **Links**: full links are md.html-compatible (`#name=&md=`, plus `&o=<originId>`); folders use
   `#b=<state of a JSON bundle>`. Short links use the md.html scheme ([url-state.md](url-state.md#short-links-mdhtml-mars))
   with a different plaintext (`encodeState` bytes of the bundle JSON), in MARS's own KV, so `md.html` and MARS short

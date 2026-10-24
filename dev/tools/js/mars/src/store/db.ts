@@ -12,14 +12,19 @@ const req = <T>(r: IDBRequest<T>) => new Promise<T>((resolve, reject) => {
 
 function db() {
     dbPromise ??= new Promise((resolve, reject) => {
-        const open = indexedDB.open(DB_NAME, 1);
+        // Open the existing version, including databases upgraded by the optional review feature.
+        // A rollback must preserve documents and extra stores, not attempt a version downgrade.
+        const open = indexedDB.open(DB_NAME);
         open.onupgradeneeded = () => {
             const d = open.result;
             d.createObjectStore('nodes', { keyPath: 'id' });
             d.createObjectStore('docs');
             d.createObjectStore('meta');
         };
-        open.onsuccess = () => resolve(open.result);
+        open.onsuccess = () => {
+            open.result.onversionchange = () => { open.result.close(); dbPromise = null; };
+            resolve(open.result);
+        };
         open.onerror = () => reject(open.error);
         open.onblocked = () => reject(new Error('Close other MARS tabs to finish upgrading storage.'));
     });

@@ -279,4 +279,76 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     expect(text).toContain('> needs a TTL');
     expect(text).toContain('Which TTL?');
   });
+
+  for (const version of [1, 2]) {
+    test(`previous UI opens database version ${version} without changing its schema or stored data`, async ({
+      page,
+    }) => {
+      await page.route('**/rollback-storage-fixture', (route) =>
+        route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Existing browser storage</title>' }),
+      );
+      await page.goto('/rollback-storage-fixture');
+      await page.evaluate(async (version) => {
+        const db = await new Promise<IDBDatabase>((resolve, reject) => {
+          const request = indexedDB.open('mars', version);
+          request.onupgradeneeded = () => {
+            request.result.createObjectStore('nodes', { keyPath: 'id' });
+            request.result.createObjectStore('docs');
+            request.result.createObjectStore('meta');
+            if (version === 2) request.result.createObjectStore('reviews');
+          };
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+        const stores = version === 2 ? ['nodes', 'docs', 'meta', 'reviews'] : ['nodes', 'docs', 'meta'];
+        const tx = db.transaction(stores, 'readwrite');
+        tx.objectStore('nodes').put({
+          id: 'existing',
+          kind: 'doc',
+          name: 'Existing notes',
+          parentId: null,
+          order: 0,
+          createdAt: 1,
+          updatedAt: 1,
+          originId: 'original',
+        });
+        tx.objectStore('docs').put('# Existing notes\n\nKeep the original document.', 'existing');
+        tx.objectStore('meta').put('existing', 'lastDoc');
+        if (version === 2) tx.objectStore('reviews').put({ preserved: 'Review history stays untouched.' }, 'existing');
+        await new Promise<void>((resolve, reject) => {
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => reject(tx.error);
+        });
+        db.close();
+      }, version);
+      await page.goto('/');
+      await expect(page.locator('#previewArticle')).toContainText('Keep the original document.');
+      await expect(row(page, 'Existing notes')).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Review', exact: true })).toHaveCount(0);
+      await page.getByRole('button', { name: 'Source', exact: true }).click();
+      await setMarkdown(page, '# Existing notes\n\nEdits still save after rollback.');
+      await page.getByRole('button', { name: 'Preview', exact: true }).click();
+      await expect(page.locator('#saveState')).toHaveText('Saved');
+      await page.reload();
+      await expect(page.locator('#previewArticle')).toContainText('Edits still save after rollback.');
+      const storage = await page.evaluate(async () => {
+        const db = await new Promise<IDBDatabase>((resolve) => {
+          const request = indexedDB.open('mars');
+          request.onsuccess = () => resolve(request.result);
+        });
+        const result = { version: db.version, stores: [...db.objectStoreNames], history: undefined as unknown };
+        if (db.objectStoreNames.contains('reviews')) {
+          result.history = await new Promise((resolve) => {
+            const request = db.transaction('reviews').objectStore('reviews').get('existing');
+            request.onsuccess = () => resolve(request.result);
+          });
+        }
+        db.close();
+        return result;
+      });
+      expect(storage.version).toBe(version);
+      expect(storage.stores).toEqual(version === 2 ? ['docs', 'meta', 'nodes', 'reviews'] : ['docs', 'meta', 'nodes']);
+      if (version === 2) expect(storage.history).toEqual({ preserved: 'Review history stays untouched.' });
+    });
+  }
 });
