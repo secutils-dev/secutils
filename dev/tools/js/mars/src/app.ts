@@ -288,8 +288,9 @@ export async function remove(id: string) {
     for (const d of gone) if (d.kind === 'doc') texts[d.id] = (await db.getText(d.id)) ?? '';
     const ids = new Set(gone.map((d) => d.id));
     const wasOpen = state.currentId && ids.has(state.currentId) ? state.currentId : null;
-    await db.deleteNodes([...ids]);
+    // Leave the tree first, so the smart-search indexer stops writing entries for these documents.
     state.nodes = state.nodes.filter((d) => !ids.has(d.id));
+    await db.deleteNodes([...ids]);
     if (state.folderId && ids.has(state.folderId)) state.folderId = n.parentId;
     if (wasOpen) closeDoc(); else emit();
     return async () => {

@@ -177,11 +177,12 @@ their Cache Storage until they turn smart search off, which deletes every model.
 fonts, and scripts loading without CORP headers. Safari ignores it and stays single-threaded.
 
 **Status line**: "Preparing the … model", "Downloading the … model… N%" (first use only), then
-"Indexing N of M". A failure shows there too.
+"Indexing N of M", or "Indexing paused". A failure shows there too.
 
 **Browser test.** `e2e/tools/mars-smart.spec.ts` runs the built page with each model: it
 indexes a fixture, asserts a match by meaning and a miss for an unrelated word, and checks the
-picker's Downloaded badge. It runs in a persistent browser profile (`e2e/.cache/profile/`,
+picker's Downloaded badge. Another case pauses indexing, imports a document, and checks it
+matches only after **Resume indexing**. It runs in a persistent browser profile (`e2e/.cache/profile/`,
 gitignored), so each model downloads once; after that the spec takes about 15 seconds. Point
 `MARS_SMART_LIBRARY` at an export `.zip` to time a real library, with `MARS_SMART_QUERIES`
 (`|`-separated) to log its matches, and set `MARS_SMART_DEVICE=cpu` to hide the GPU. Test
@@ -244,7 +245,8 @@ floor or `min` is explained in the change description.
 
 An entry is current when its `at` equals the document's `updatedAt` and its model is the
 selected model. Every tree change schedules one pass over the stale documents, 2 seconds
-after the last change. Passes never overlap.
+after the last change. Passes never overlap: a change during a pass queues one more pass after it.
+A pass skips documents deleted since it started and writes no entry for them.
 
 ```mermaid
 flowchart TD
@@ -256,7 +258,7 @@ flowchart TD
     pass --> stale{"Entry missing, at differs from updatedAt, or another model?"}
     stale -- yes --> embed["Chunk, embed, put vec:id"]
     stale -- no --> skip["Keep the entry"]
-    del["Delete a document or folder"] --> drop["db.deleteNodes removes vec:id"]
+    del["Delete a document or folder"] --> drop["Leaves the tree, then db.deleteNodes removes vec:id"]
     drop --> prune["Next pass drops it from memory"]
     move["Move a document"] --> none["No reindex: updatedAt is unchanged"]
 ```
@@ -267,6 +269,14 @@ flowchart TD
 - **Renames** re-embed, because EmbeddingGemma prefixes each chunk with the document name.
 - **Other tabs**: each tab runs its own worker and indexes on its own. Two open tabs may embed
   the same change twice; the result is the same entry.
+- **Pause**: **Pause indexing** in the sparkles menu stops a pass after the current document, and
+  the status line says "Indexing paused". Search keeps using the entries already stored.
+  **Resume indexing** runs one pass, which catches up on every document added or edited
+  meanwhile and skips deleted ones. The pause is held in memory only, so a reload resumes. An
+  import of 20 or more documents offers **Pause indexing** on its toast, so you can remove the
+  files you don't need before they are embedded.
+- **Imports**: a folder deleted while an import runs stays deleted. The import leaves out its
+  remaining files and removes anything it created under the deleted folder.
 - **Size**: a 384-value vector is 1.5 KB per chunk, and a chunk is a paragraph or a few short
   ones (up to 500 characters; longer single paragraphs and code blocks are cut at 1,500).
 
@@ -289,10 +299,14 @@ sequenceDiagram
     Q-->>S: Re-render the ranked list
 ```
 
+The sidebar keeps the last query's matches only while the index is unchanged: a pass that
+changes the index bumps `indexRevision()`, and the open query runs again, keeping its
+previous matches on screen until the new ones arrive.
+
 ### Models and space
 
-The sparkles button opens a menu: change the model (rebuilds the index), rebuild the index,
-remove downloaded models other than the current one, or turn smart search off. Turning off
+The sparkles button opens a menu: change the model (rebuilds the index), pause or resume
+indexing, rebuild the index, remove downloaded models other than the current one, or turn smart search off. Turning off
 removes the index and every downloaded model. Model files sit in the browser's Cache Storage
 (`transformers-cache`), keyed by their Hugging Face URL; `embed.removeModel` deletes one
 model's files.

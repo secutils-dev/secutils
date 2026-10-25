@@ -108,19 +108,24 @@ export const activeDevice = () => device;
 function loadModel(key: ModelKey) {
     if (loaded?.key === key) return loaded.ready;
     const m = MODELS[key], files = new Map<string, [number, number]>();
-    status(`Preparing the ${m.label} model…`);
+    let line: string | null = null;
+    const show = (s: string) => { line = s; status(s); };
+    // The loading line goes once the model is ready or failed; a line set meanwhile stays.
+    // Re-emitting also refreshes the button's device label.
+    const settle = () => status(currentStatus === line ? null : currentStatus);
+    show(`Preparing the ${m.label} model…`);
     const ready = placementOf(key).then((p) => {
         // EmbeddingGemma on WebAssembly takes minutes per document and can run out of memory.
         if (!p) throw new Error(`the ${m.label} model needs a graphics card (WebGPU), which this browser doesn't offer. Pick another model from the sparkles button.`);
         return call({ type: 'load', model: m.id, file: m.file, dtype: p.dtype, cpuDtype: m.dtype, device: p.device, gpuOnly: m.gpu }, ({ file, loaded: got, total }) => {
             files.set(file, [got, total]);
             const [done, all] = [...files.values()].reduce((s, [a, b]) => [s[0] + a, s[1] + b], [0, 0]);
-            if (all > 1e6 && done < all) status(`Downloading the ${m.label} model… ${Math.min(99, Math.round((done / Math.max(all, p.bytes)) * 100))}%`);
-            else if (all > 1e6) status(`Preparing the ${m.label} model…`);
+            if (all > 1e6 && done < all) show(`Downloading the ${m.label} model… ${Math.min(99, Math.round((done / Math.max(all, p.bytes)) * 100))}%`);
+            else if (all > 1e6) show(`Preparing the ${m.label} model…`);
         });
-    }).then((r) => { device = r.device ?? null; status(currentStatus); });
+    }).then((r) => { device = r.device ?? null; settle(); });
     loaded = { key, ready };
-    ready.catch(() => { if (loaded?.ready === ready) loaded = null; });
+    ready.catch(() => { settle(); if (loaded?.ready === ready) loaded = null; });
     return ready;
 }
 
@@ -134,6 +139,25 @@ async function embed(key: ModelKey, texts: string[]) {
 // ---- Index ----
 let generation = 0;
 let indexing: Promise<void> | null = null;
+// A change arrived during a run, so another run follows it.
+let queued = false;
+// Bumped after a run that changed the index, so earlier search results go stale.
+let revision = 0;
+export const indexRevision = () => revision;
+const indexedListeners = new Set<() => void>();
+export const onIndexed = (fn: () => void) => { indexedListeners.add(fn); };
+// In memory only: a reload resumes indexing, so a forgotten pause can't leave the index stale.
+let paused = false;
+export const isPaused = () => paused;
+export function pause() {
+    paused = true;
+    if (!indexing) status('Indexing paused');
+}
+export function resume() {
+    paused = false;
+    status(null);
+    return reindex();
+}
 
 async function loadIndex(key: ModelKey) {
     if (index.size) return;
@@ -143,35 +167,43 @@ async function loadIndex(key: ModelKey) {
 // Embeds documents whose text changed since they were indexed; one run at a time.
 export function reindex() {
     const key = enabledModel();
-    if (!key) return Promise.resolve();
-    if (indexing) return indexing;
+    if (!key || paused) return Promise.resolve();
+    if (indexing) { queued = true; return indexing; }
+    queued = false;
     const gen = generation;
+    let changed = false;
     indexing = (async () => {
         try {
             await loadIndex(key);
             const docs = app.state.nodes.filter((n) => n.kind === 'doc');
             const ids = new Set(docs.map((n) => n.id));
-            for (const id of index.keys()) if (!ids.has(id)) index.delete(id);
+            for (const id of index.keys()) if (!ids.has(id)) { index.delete(id); changed = true; }
             const current = (e?: Entry) => e?.model === key && e.v === indexVersion(key);
             const stale = docs.filter((n) => index.get(n.id)?.at !== n.updatedAt || !current(index.get(n.id)));
             // Load first, so the status line shows the download before "Indexing".
             if (stale.length) await loadModel(key);
             for (const [i, n] of stale.entries()) {
                 if (gen !== generation) return;
+                if (paused) { status('Indexing paused'); return; }
+                if (!app.node(n.id)) continue;
                 status(`Indexing ${i + 1} of ${stale.length}…`);
                 const chunks = indexChunks((await db.getText(n.id)) ?? '');
                 const vectors: Float32Array[] = [];
                 for (let j = 0; j < chunks.length; j += 8) vectors.push(...(await embed(key, chunks.slice(j, j + 8).map((c) => passageInput(MODELS[key], n.name, c)))));
-                if (gen !== generation) return;
+                if (gen !== generation || !app.node(n.id)) continue;
                 const entry: Entry = { id: n.id, model: key, v: indexVersion(key), at: n.updatedAt, chunks: chunks.map((c, j) => ({ start: c.start, text: c.text.slice(0, 220), v: vectors[j] })) };
                 index.set(n.id, entry);
-                if (app.node(n.id)) await db.putSide('vec', n.id, entry);
+                changed = true;
+                await db.putSide('vec', n.id, entry);
             }
-            status(null);
+            status(paused ? 'Indexing paused' : null);
         } catch (err) {
             if (gen === generation) status(`Smart search is unavailable: ${(err as Error)?.message ?? err}`);
         } finally {
             indexing = null;
+            if (changed) { revision++; for (const fn of indexedListeners) fn(); }
+            // A model switch or rebuild starts its own run once the old index is cleared.
+            if (queued && gen === generation && !paused) reindex();
         }
     })();
     return indexing;
@@ -227,6 +259,7 @@ export async function removeModel(key: ModelKey) {
 // `force` rebuilds the index even when the model stays the same.
 export async function enable(key: ModelKey, force = false) {
     const previous = enabledModel();
+    paused = false;
     try { localStorage.setItem(SETTING_KEY, key); } catch {}
     if (previous !== key || force) {
         generation++;
@@ -240,6 +273,7 @@ export async function enable(key: ModelKey, force = false) {
 // Turns smart search off and removes the index and every downloaded model.
 export async function disable() {
     try { localStorage.removeItem(SETTING_KEY); } catch {}
+    paused = false;
     generation++;
     index.clear();
     worker?.terminate();

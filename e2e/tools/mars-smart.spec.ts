@@ -145,6 +145,42 @@ test.describe(`${tool.name} smart search`, () => {
       await page.getByRole('menuitem', { name: /Change model/ }).click();
       await expect(page.locator('.model-option', { hasText: model }).locator('.model-badge')).toHaveText('Downloaded');
       await page.locator('#marsModalFoot').getByRole('button', { name: 'Cancel' }).click();
+
+      // After a reload, the first query loads the model, and the status line clears once it is ready.
+      // Waits out the startup index pass, which would clear the line on its own.
+      await page.reload();
+      await page.waitForTimeout(3500);
+      expect(await meaningHits(page, 'single sign-on')).toEqual(['login']);
+      await expect(page.locator('#sbSmartStatus')).toBeHidden();
     });
   }
+
+  test('paused indexing leaves new documents out until resumed', async () => {
+    test.skip(!!LIBRARY, 'uses the fixture');
+    test.setTimeout(15 * 60_000);
+    await importLibrary(page);
+    await turnOn(page, 'Best speed');
+    const button = page.getByRole('button', { name: 'Smart search' });
+    const status = page.locator('#sbSmartStatus');
+    await button.click();
+    await page.getByRole('menuitem', { name: /Pause indexing/ }).click();
+    await expect(status).toHaveText('Indexing paused');
+
+    await page.locator('#importInput').setInputFiles({
+      name: 'billing.md',
+      mimeType: 'text/markdown',
+      buffer: Buffer.from('# Billing\n\nInvoices go out on the first of each month, with thirty days to pay.\n'),
+    });
+    await expect(page.locator('#toast')).toContainText('Imported 1 document');
+    // Past the 2-second indexing delay.
+    await page.waitForTimeout(3000);
+    await expect(status).toHaveText('Indexing paused');
+    expect(await meaningHits(page, 'when invoices are due')).not.toContain('billing');
+
+    await button.click();
+    await page.getByRole('menuitem', { name: /Resume indexing/ }).click();
+    await expect(status).toBeHidden({ timeout: 60_000 });
+    // The same query again: matches made before the document was indexed must not be reused.
+    await expect.poll(() => meaningHits(page, 'when invoices are due')).toContain('billing');
+  });
 });

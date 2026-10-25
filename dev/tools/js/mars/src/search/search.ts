@@ -6,7 +6,7 @@ import * as db from '../store/db.ts';
 import { $, modal, openMenu } from '../ui/ui.ts';
 import * as viewer from '../doc/viewer.js';
 import { type Chunk, nudgeDue, searchBody, snippet, threadChunks } from './chunks.ts';
-import { activeDevice, disable, enable, enabledModel, isDownloaded, MODELS, modelUsage, onStatus, placementOf, reindex, removeModel, search, type Hit, type ModelKey } from './embed.ts';
+import { activeDevice, disable, enable, enabledModel, indexRevision, isDownloaded, isPaused, MODELS, modelUsage, onIndexed, onStatus, pause, placementOf, reindex, removeModel, resume, search, type Hit, type ModelKey } from './embed.ts';
 
 const smartBtn = $('sbSmartBtn'), statusEl = $('sbSmartStatus');
 const listeners = new Set<() => void>();
@@ -53,29 +53,36 @@ export function textMatches(query: string) {
 }
 
 // ---- Smart matches ----
-// The last query's passages by meaning. `pending` while the query is being embedded.
-let smart: { query: string; hits: Hit[]; pending: boolean; error?: string } = { query: '', hits: [], pending: false };
+// The last query's passages by meaning, against index revision `at`. `pending` while the
+// query is being embedded.
+type Smart = { query: string; at: number; hits: Hit[]; pending: boolean; error?: string };
+let smart: Smart = { query: '', at: -1, hits: [], pending: false };
 let smartTimer: ReturnType<typeof setTimeout> | undefined;
+const same = (s: Smart, query: string, at: number) => s.query === query && s.at === at;
 
 // Passages that match `query` by meaning, for the sidebar's ranked list. Starts a search
-// (debounced) when the query changed, and re-renders the sidebar when it finishes.
+// (debounced) when the query or the index changed, and re-renders the sidebar when it finishes.
+// After an index change, the previous matches stay on screen, without the pending note, until the new ones arrive.
 export function smartMatches(query: string) {
     if (!enabledModel() || query.length < 3) return null;
-    if (smart.query !== query) {
-        smart = { query, hits: [], pending: true };
+    const at = indexRevision();
+    if (!same(smart, query, at)) {
+        const requery = smart.query === query && !smart.pending;
+        smart = { query, at, hits: requery ? smart.hits : [], pending: !requery };
         clearTimeout(smartTimer);
         smartTimer = setTimeout(async () => {
             try {
                 const hits = await search(query);
-                if (smart.query === query) smart = { query, hits, pending: false };
+                if (same(smart, query, at)) smart = { query, at, hits, pending: false };
             } catch (err) {
-                if (smart.query === query) smart = { query, hits: [], pending: false, error: (err as Error)?.message ?? String(err) };
+                if (same(smart, query, at)) smart = { query, at, hits: [], pending: false, error: (err as Error)?.message ?? String(err) };
             }
-            if (smart.query === query) notify();
+            if (same(smart, query, at)) notify();
         }, 350);
     }
     return smart;
 }
+onIndexed(notify);
 
 // ---- Settings ----
 const deviceLabel = () => ({ webgpu: 'GPU', wasm: 'CPU' } as Record<string, string>)[activeDevice() ?? ''];
@@ -139,6 +146,9 @@ smartBtn.addEventListener('click', async () => {
     openMenu(smartBtn, [
         { label: `On · ${MODELS[key].label} model`, icon: 'sparkles', sub: [MODELS[key].langs, deviceLabel() && `runs on the ${deviceLabel()}`, usage[key] && `${fmtBytes(usage[key]!)} downloaded`].filter(Boolean).join(', '), disabled: true },
         { label: 'Change model…', icon: 'gear', run: turnOn },
+        isPaused()
+            ? { label: 'Resume indexing', icon: 'play', sub: 'Indexes what changed while paused', run: () => { resume(); viewer.toast('Indexing resumed'); } }
+            : { label: 'Pause indexing', icon: 'pause', sub: 'Until resumed or the page reloads', run: () => { pause(); viewer.toast('Indexing paused'); } },
         { label: 'Rebuild the index', icon: 'refresh', run: async () => { await enable(key, true); viewer.toast('Rebuilding the smart-search index'); } },
         ...(unused.length ? ['separator' as const, ...unused.map((k) => ({ label: `Remove the ${MODELS[k].label} model`, icon: 'trash' as const, sub: `Frees ${fmtBytes(usage[k]!)}`, run: async () => { await removeModel(k); viewer.toast(`Removed the ${MODELS[k].label} model`); } }))] : []),
         'separator',

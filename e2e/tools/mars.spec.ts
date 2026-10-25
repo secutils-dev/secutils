@@ -1,3 +1,4 @@
+import { mkdir, writeFile } from 'node:fs/promises';
 import { deflateRawSync } from 'node:zlib';
 
 import type { Browser, BrowserContext, Page } from '@playwright/test';
@@ -153,6 +154,44 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     await page.locator('#toast').getByRole('button', { name: 'Undo' }).click();
     await expect(row(page, 'Plan')).toBeVisible();
     await expect(page.locator('#previewArticle h1')).toHaveText(/^Plan/);
+  });
+
+  test('a folder deleted during an import stays deleted', async ({ page }) => {
+    // `drop/` sorts first and is large, so the import is still filling it when it is deleted.
+    const dir = test.info().outputPath('library');
+    await mkdir(`${dir}/drop`, { recursive: true });
+    await mkdir(`${dir}/keep`, { recursive: true });
+    await Promise.all(
+      Array.from({ length: 200 }, (_, i) => writeFile(`${dir}/drop/note-${i}.md`, `# Drop ${i}\n\nBody.\n`)),
+    );
+    await writeFile(`${dir}/keep/kept.md`, '# Kept\n\nBody.\n');
+
+    // Storage writes finish in a millisecond or two, faster than the clicks below. Slowed down,
+    // the delete also lands while a document is being saved.
+    await page.addInitScript(() => {
+      const desc = Object.getOwnPropertyDescriptor(IDBTransaction.prototype, 'oncomplete')!;
+      Object.defineProperty(IDBTransaction.prototype, 'oncomplete', {
+        ...desc,
+        set(fn: ((e: Event) => void) | null) {
+          desc.set!.call(this, fn && ((e: Event) => setTimeout(() => fn.call(this, e), 20)));
+        },
+      });
+    });
+    await page.goto(tool.path);
+    await page.locator('#importFolderInput').setInputFiles(dir);
+    await row(page, 'drop')
+      .getByRole('button', { name: /Actions for drop/ })
+      .click();
+    await page.getByRole('menuitem', { name: 'Delete' }).click();
+    await page.getByRole('button', { name: 'Delete folder' }).click();
+
+    await expect(page.locator('#toast')).toContainText('Imported 1 document · left out 200 deleted during the import', {
+      timeout: 60_000,
+    });
+    await page.reload();
+    await expect(row(page, 'drop')).toHaveCount(0);
+    await expect(row(page, 'kept')).toHaveAttribute('aria-level', '3');
+    await expect(page.locator('#tree .tree-row[aria-level="1"]')).toHaveCount(1);
   });
 
   test('a shared full link lands in "Shared with me" and comments merge back', async ({ page, context, browser }) => {

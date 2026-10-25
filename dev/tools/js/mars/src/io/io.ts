@@ -1,6 +1,7 @@
 // Export (.md, .zip, a folder on disk) and import (.md files, folders, .zip exports).
 import { strToU8, strFromU8, unzipSync, zipSync, type Zippable } from 'fflate';
 import * as app from '../app.ts';
+import * as search from '../search/embed.ts';
 import { descendants, exportPaths } from '../tree/model.ts';
 import { download, fileSafe } from '../ui/ui.ts';
 import { toast } from '../doc/viewer.js';
@@ -87,18 +88,34 @@ async function expand(file: File, relPath: string): Promise<Incoming[]> {
 async function importIncoming(items: Incoming[], parentId: string | null, skipped: number) {
     if (!items.length) { toast(skipped ? 'Only .md, .markdown, .mdx, .txt, and .zip files can be imported' : 'Nothing to import'); return; }
     const folderIds = new Map<string, string | null>([['', parentId]]);
-    let last: string | null = null;
+    // A folder deleted while the import runs stays deleted: its remaining files are left out.
+    const alive = (id: string | null): boolean => { const n = app.node(id); return id === null || (!!n && alive(n.parentId)); };
+    const docs: string[] = [];
     for (const item of items) {
         let parent = parentId, key = '';
         for (const seg of item.path) {
+            if (!alive(parent)) break;
             key += `/${seg}`;
             if (!folderIds.has(key)) folderIds.set(key, (await app.findOrCreateFolder(seg, parent)).id);
             parent = folderIds.get(key)!;
         }
-        last = (await app.createDoc({ name: app.uniqueName(item.name, parent), text: item.text, parentId: parent, open: false, opened: true })).id;
+        if (!alive(parent)) continue;
+        docs.push((await app.createDoc({ name: app.uniqueName(item.name, parent), text: item.text, parentId: parent, open: false, opened: true })).id);
     }
-    if (items.length === 1 && last) await app.openDoc(last);
-    toast(`Imported ${items.length} document${items.length === 1 ? '' : 's'}${skipped ? ` · skipped ${skipped} other file${skipped === 1 ? '' : 's'}` : ''}`);
+    // A delete that lands while a folder or document is being saved leaves it under a deleted folder.
+    for (const id of [...folderIds.values(), ...docs]) if (id && app.node(id) && !alive(id)) await app.remove(id);
+    const imported = docs.filter((id) => app.node(id)).length, removed = items.length - imported;
+    const last = docs.at(-1);
+    if (items.length === 1 && last && app.node(last)) await app.openDoc(last);
+    const notes = [
+        removed && `left out ${removed} deleted during the import`,
+        skipped && `skipped ${skipped} other file${skipped === 1 ? '' : 's'}`,
+    ].filter(Boolean);
+    const many = imported >= 20 && search.enabledModel() && !search.isPaused();
+    toast(
+        `Imported ${imported} document${imported === 1 ? '' : 's'}${notes.map((n) => ` · ${n}`).join('')}`,
+        many ? { label: 'Pause indexing', run: () => { search.pause(); toast('Indexing paused. Resume it from the sparkles button in the search box.'); } } : undefined,
+    );
 }
 
 export async function importFiles(files: File[], parentId: string | null = app.state.folderId) {
