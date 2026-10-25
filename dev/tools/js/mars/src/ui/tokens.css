@@ -24,6 +24,7 @@
     --selection: rgba(255, 106, 77, 0.24);
     --comment-hl: rgba(255, 106, 77, 0.22); --comment-hl-active: rgba(255, 106, 77, 0.45);
     --find-hl: rgba(250, 203, 61, 0.35);
+    --diff-ins: rgba(36, 194, 146, 0.24);
     --shadow-s: 0 1px 2px rgba(0, 0, 0, 0.5);
     --shadow-m: 0 2px 4px rgba(0, 0, 0, 0.4), 0 6px 18px rgba(0, 0, 0, 0.45);
     --shadow-l: 0 4px 8px rgba(0, 0, 0, 0.4), 0 16px 40px rgba(0, 0, 0, 0.55);
@@ -52,6 +53,7 @@
     --selection: rgba(212, 58, 50, 0.16);
     --comment-hl: rgba(212, 58, 50, 0.14); --comment-hl-active: rgba(212, 58, 50, 0.32);
     --find-hl: rgba(250, 203, 61, 0.5);
+    --diff-ins: rgba(0, 138, 94, 0.16);
     --shadow-s: 0 1px 2px rgba(43, 57, 79, 0.12);
     --shadow-m: 0 1px 3px rgba(43, 57, 79, 0.1), 0 6px 16px rgba(43, 57, 79, 0.12);
     --shadow-l: 0 2px 6px rgba(43, 57, 79, 0.1), 0 16px 40px rgba(43, 57, 79, 0.18);

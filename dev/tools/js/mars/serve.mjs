@@ -7,7 +7,8 @@ import { createServer } from 'node:http';
 import * as vm from 'node:vm';
 
 const PORT = Number(process.env.PORT) || 7373;
-const script = readFileSync('../../mars.html', 'utf8').match(/<!--\s*@su:responder-script\s*([\s\S]*?)-->/)[1];
+const script = readFileSync('../../mars.html', 'utf8').match(/<!--\s*@su:responder-script\s*([\s\S]*?)-->/)[1]
+    .replace('{{OG_JPEG_BASE64}}', readFileSync('../../../../components/secutils-docs/static/img/og/og-mars.jpg').toString('base64'));
 const values = new Map(), expiry = new Map();
 const live = (k) => values.has(k) && (expiry.get(k) ?? Infinity) > Date.now() / 1000;
 const kv = {
@@ -34,6 +35,7 @@ createServer(async (req, res) => {
     vm.runInContext(`globalThis.__ret = ${script}`, sandbox);
     const out = await sandbox.__ret;
     if (out) { res.writeHead(out.statusCode, out.headers); res.end(out.body); return; }
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    // Same cross-origin isolation headers as dev/tools/deploy.ts.
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cross-Origin-Opener-Policy': 'same-origin', 'Cross-Origin-Embedder-Policy': 'credentialless' });
     res.end(readFileSync('dist/mars.html'));
 }).listen(PORT, () => console.log(`MARS dev server: http://localhost:${PORT}/`));

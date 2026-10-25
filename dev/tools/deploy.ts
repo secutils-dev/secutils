@@ -80,6 +80,26 @@ function substituteToolsHost(text: string, toolsHost: string): string {
     .replace(/\{\{\s*MARS_HOST\s*\}\}/g, MARS_HOST);
 }
 
+// Cross-origin isolation for MARS: with it, ONNX Runtime runs smart-search models on several
+// CPU threads (SharedArrayBuffer). `credentialless`, unlike `require-corp`, keeps loading
+// cross-origin images, fonts, and scripts that send no CORP header (map tiles, analytics).
+// Safari ignores `credentialless` and stays single-threaded. Keep in sync with js/mars/serve.mjs.
+const CROSS_ORIGIN_ISOLATION: [string, string][] = [
+  ["Cross-Origin-Opener-Policy", "same-origin"],
+  ["Cross-Origin-Embedder-Policy", "credentialless"],
+];
+
+// An own-host app serves its link-preview image itself: its responder script carries
+// `{{OG_JPEG_BASE64}}`, replaced with the base64 of `og-<stem>.jpg` that `make tools-og`
+// renders next to the docs-hosted PNGs.
+const OG_DIR = resolve(TOOLS_DIR, "../../components/secutils-docs/static/img/og");
+function inlineOgImage(script: string | undefined, filename: string): string | undefined {
+  if (!script?.includes("{{OG_JPEG_BASE64}}")) return script;
+  const jpeg = join(OG_DIR, `og-${filename.replace(/\.html$/, "")}.jpg`);
+  if (!existsSync(jpeg)) throw new Error(`${filename}: ${jpeg} is missing; run \`make tools-og\``);
+  return script.replace("{{OG_JPEG_BASE64}}", readFileSync(jpeg).toString("base64"));
+}
+
 // -----------------------------------------------------------------------------
 // Generic JS bundle inliner (data-su-bundle)
 // -----------------------------------------------------------------------------
@@ -640,7 +660,7 @@ async function buildHtmlTarget(
   extraHeaders?: [string, string][],
 ): Promise<DeployTarget> {
   const templated = substituteToolsHost(rawHtml, toolsHost);
-  const responderScript = extractResponderScript(templated, label);
+  const responderScript = inlineOgImage(extractResponderScript(templated, label), filename);
   // `removeScriptTypeAttributes` would strip `type="text/javascript"` but
   // intentionally leaves non-default types like `text/plain` (which we use
   // for `data-su-bundle` placeholders) intact, so the convention survives.
@@ -942,7 +962,7 @@ async function main() {
         // The index responder also gets the RFC 8288 Link headers pointing
         // at the discovery surfaces; per-tool responders don't need them
         // because the index already advertises everything an agent needs.
-        const extraHeaders = slug === "index" ? indexLinkHeaders : undefined;
+        const extraHeaders = slug === "index" ? indexLinkHeaders : slug === "mars" ? CROSS_ORIGIN_ISOLATION : undefined;
         target = await buildHtmlTarget(file, raw, TOOLS_HOST, label, mdPath, extraHeaders);
       } else {
         target = buildSkillTarget(file, raw, TOOLS_HOST);

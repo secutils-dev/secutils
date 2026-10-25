@@ -27,6 +27,7 @@ function buildTemplateUrl(tool: Tool, theme: 'dark' | 'light'): string {
     icon: tool.icon,
     host: tool.host ?? TOOLS_HOST,
     theme,
+    layout: tool.host ? 'app' : '',
   });
   return `${TEMPLATE_FILE_URL}?${params.toString()}`;
 }
@@ -44,6 +45,9 @@ test.describe('OG image generation', () => {
       // `page.screenshot` to run waitForStableUiBeforeScreenshot before and
       // stabilizeScreenshot after, so re-runs converge byte-for-byte.
       await page.screenshot({ path, fullPage: false });
+      // An own-host app serves its preview image from its own host (dev/tools/deploy.ts
+      // embeds this JPEG in the responder script), so it needs no docs deploy.
+      if (tool.host) await page.screenshot({ path: resolve(OG_DIR, `og-${tool.slug}.jpg`), type: 'jpeg', quality: 86 });
     });
 
     test(`renders light OG image for ${tool.slug}`, async ({ page }) => {

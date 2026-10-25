@@ -8,6 +8,11 @@ import { loadEditor } from './editor.js';
 
 let host = {};
 export const setHost = (h) => { host = h; };
+// MARS-only review-changes hooks (absent from md.html); see "Review changes hooks" below.
+const renderedHooks = [];
+const renderedHook = () => { for (const fn of renderedHooks) fn(); applyReveal(); };
+let threadHooks = {};
+let pendingReveal = null;
 
 const MERMAID_URL = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
 const TOPOJSON_URL = 'https://esm.sh/topojson-client@3.1.0?bundle';
@@ -1206,6 +1211,7 @@ async function updatePreview() {
         renderedMarkdown = markdown;
         blockEditor = null;
         updatePanes();
+        renderedHook();
         anchorThreads();
         renderRail();
         els.docStats.textContent = 'empty';
@@ -1229,6 +1235,7 @@ async function updatePreview() {
     decorateBlocks();
     restoreScrollAnchor();
     updatePanes();
+    renderedHook();
     anchorThreads();
     renderRail();
     restoreFormatSelection();
@@ -1998,10 +2005,10 @@ function timeAgo(date) {
 }
 
 // Flattened preview text with the text node that starts at each offset.
-function textIndex() {
+function textIndex(root = els.previewArticle) {
     const nodes = [], starts = new Map();
     let text = '';
-    const walker = document.createTreeWalker(els.previewArticle, NodeFilter.SHOW_TEXT, {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
         acceptNode: (node) => (node.parentElement.closest('.su-anchor, .su-block-editor, .katex-mathml, style, script') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
     });
     for (let node; (node = walker.nextNode());) { starts.set(node, text.length); nodes.push(node); text += node.data; }
@@ -2053,7 +2060,7 @@ function anchorThreads() {
     anchors.clear();
     if (allThreads().length && renderedMarkdown.trim()) {
         const index = textIndex();
-        for (const t of allThreads()) anchors.set(t.id, locate(index, t));
+        for (const t of allThreads()) anchors.set(t.id, locate(index, t) ?? threadHooks.fallbackAnchor?.(t) ?? null);
     }
     updateHighlights();
 }
@@ -2114,7 +2121,7 @@ const commentHtml = (c, i) => {
     const date = new Date(c.at);
     const dated = Number.isFinite(date.getTime());
     return `<div class="cm-comment" data-index="${i}">
-<div class="cm-meta">${avatarHtml(c.author)}<span class="cm-name">${escHTML(authorName(c.author))}</span>${dated ? `<time class="cm-time" datetime="${date.toISOString()}" title="${escAttr(date.toLocaleString())}">${timeAgo(date)}${c.edited ? ' · edited' : ''}</time>` : ''}<span class="cm-actions"><button type="button" data-act="edit">Edit</button>${i ? '<button type="button" data-act="delete">Delete</button>' : ''}</span></div>
+<div class="cm-meta">${avatarHtml(c.author)}<span class="cm-name">${escHTML(authorName(c.author))}</span>${threadHooks.isNew?.(c) ? '<span class="cm-tag cm-new">New</span>' : ''}${dated ? `<time class="cm-time" datetime="${date.toISOString()}" title="${escAttr(date.toLocaleString())}">${timeAgo(date)}${c.edited ? ' · edited' : ''}</time>` : ''}<span class="cm-actions"><button type="button" data-act="edit">Edit</button>${i ? '<button type="button" data-act="delete">Delete</button>' : ''}</span></div>
 <div class="cm-body preview-article"></div>
 </div>`;
 };
@@ -2159,7 +2166,9 @@ function buildCard(t) {
 <button type="button" class="icon-btn" data-act="delete-thread" title="Delete thread" aria-label="Delete thread">${TRASH_SVG}</button>`;
     const authors = [...new Set(t.comments.map((c) => authorName(c.author)))];
     const summary = `<span class="cm-summary" aria-hidden="true">${authors.slice(0, 3).map(avatarHtml).join('')}${t.comments.length > 1 ? `<span class="cm-count">${t.comments.length}</span>` : ''}</span>`;
+    const note = isDraft ? '' : threadHooks.note?.(t);
     card.innerHTML = `<div class="cm-head"><button type="button" class="cm-quote" data-act="toggle" title="${anchored ? 'Collapse or expand' : 'The commented text was changed or removed'}">${escHTML(t.quote)}</button>${summary}${actions}</div>
+${note ? `<div class="cm-note">${escHTML(note)}</div>` : ''}
 ${t.comments.map(commentHtml).join('')}
 ${composerHtml(isDraft ? 'Comment' : 'Reply')}`;
     for (const [i, body] of card.querySelectorAll('.cm-body').entries()) fillCommentBody(body, t.comments[i].body);
@@ -2716,6 +2725,12 @@ async function handleFile(file, handle = null) {
         } else {
             const embedded = extractEmbeddedMarkdown(raw);
             const editable = embedded === null && MD_FILE_EXT.test(file.name);
+            // MARS: the host files Markdown into the tree, matching a copy already there.
+            if (editable && host.openFile) {
+                await host.openFile({ name: file.name, text: raw, handle, stamp: file.lastModified });
+                setViewMode('preview');
+                return;
+            }
             loadDocument(parseSource(embedded ?? raw), editable ? handle : null, file.lastModified);
         }
         setViewMode('preview');
@@ -2971,6 +2986,75 @@ export function openDocument({ text = '', name = 'Untitled', handle = null, stam
     markPersisted();
     updateSaveState();
     setDocTitle();
+}
+
+// ---- Review changes hooks (MARS only) ----
+// `fn` runs after each preview render, before threads anchor to it.
+export const onRendered = (fn) => { renderedHooks.push(fn); };
+
+// Shows a search hit once the open document has rendered: `query` opens Find with it, and
+// `start` (a body offset) scrolls to the block that contains it.
+export function reveal(target) {
+    pendingReveal = target;
+    if (markdown.trim() && markdown === renderedMarkdown) applyReveal();
+}
+function applyReveal() {
+    const target = pendingReveal;
+    pendingReveal = null;
+    if (!target || !markdown.trim()) return;
+    if (target.query) { els.findInput.value = target.query; openFind(); return; }
+    const block = [...els.previewArticle.querySelectorAll(':scope > .su-block')].findLast((b) => Number(b.dataset.start) <= target.start);
+    if (!block) return;
+    block.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    block.classList.add('su-reveal');
+    setTimeout(() => block.classList.remove('su-reveal'), 1600);
+}
+// { fallbackAnchor(thread) -> Range | null, note(thread) -> string | null, isNew(comment) -> boolean }
+export const setThreadHooks = (hooks) => { threadHooks = hooks; };
+export const refreshThreads = () => { anchorThreads(); renderRail(); };
+// The body the preview DOM was rendered from; `.su-block` data-start/data-end index into it.
+export const renderedSource = () => renderedMarkdown;
+export const inSync = () => markdown === renderedMarkdown;
+export const currentAuthor = () => savedAuthor();
+
+// A block's rendered text, and Ranges over offsets into it.
+export function blockText(el) {
+    const index = textIndex(el);
+    const range = (start, end) => {
+        const r = document.createRange();
+        if (!index.nodes.length) { r.selectNodeContents(el); return r; }
+        r.setStart(...textPoint(index, start));
+        r.setEnd(...textPoint(index, end, true));
+        return r;
+    };
+    return { text: index.text, range };
+}
+
+// Re-quotes threads to new passages: `entries` holds [thread id, preview Range] pairs.
+// Quotes are clipped to COMMENT_QUOTE_MAX at a word boundary, so they still match.
+export function requote(entries) {
+    const index = textIndex();
+    let changed = false;
+    for (const [id, range] of entries) {
+        const t = threads.find((x) => x.id === id);
+        if (!t) continue;
+        let start = textOffset(index, range.startContainer, range.startOffset);
+        let end = textOffset(index, range.endContainer, range.endOffset);
+        while (start < end && /\s/.test(index.text[start])) start++;
+        while (end > start && /\s/.test(index.text[end - 1])) end--;
+        if (end - start > COMMENT_QUOTE_MAX) {
+            const cut = index.text.lastIndexOf(' ', start + COMMENT_QUOTE_MAX);
+            end = cut > start ? cut : start + COMMENT_QUOTE_MAX;
+        }
+        if (end <= start) continue;
+        Object.assign(t, {
+            quote: index.text.slice(start, end),
+            prefix: index.text.slice(Math.max(0, start - COMMENT_CONTEXT), start),
+            suffix: index.text.slice(end, end + COMMENT_CONTEXT),
+        });
+        changed = true;
+    }
+    if (changed) commentsChanged();
 }
 
 export function renameDocument(name) {

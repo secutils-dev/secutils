@@ -16,6 +16,29 @@
 // `s` return null, and the static HTML body is served.
 // =============================================================================
 (() => {
+  // The link-preview image. deploy.ts replaces the placeholder with the base64 of
+  // components/secutils-docs/static/img/og/og-mars.jpg (`make tools-og` renders it).
+  if (context.path === '/og.jpg') {
+    const B64 = '{{OG_JPEG_BASE64}}';
+    const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    const map = new Uint8Array(128);
+    for (let i = 0; i < A.length; i++) map[A.charCodeAt(i)] = i;
+    const len = Math.floor((B64.replace(/=+$/, '').length * 3) / 4);
+    const bytes = new Uint8Array(len);
+    for (let i = 0, j = 0; i < B64.length; i += 4) {
+      const n = (map[B64.charCodeAt(i)] << 18) | (map[B64.charCodeAt(i + 1)] << 12) | (map[B64.charCodeAt(i + 2)] << 6) | map[B64.charCodeAt(i + 3)];
+      if (j < len) bytes[j++] = n >> 16;
+      if (j < len) bytes[j++] = (n >> 8) & 255;
+      if (j < len) bytes[j++] = n & 255;
+    }
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=86400' },
+      body: bytes,
+      skipRequest: true,
+    };
+  }
+
   const id = (context.query || {}).s;
   if (!id) return null;
 
@@ -119,7 +142,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MARS: Markdown Annotation &amp; Review System | Secutils.dev</title>
-    <meta name="description" content="Review Markdown in your browser: highlight text, leave threaded comments, organize reviews in folders, and share them with a short link. Free, no signup.">
+    <meta name="description" content="Review Markdown in your browser: comment on highlighted text, see what changed between versions, and share reviews by link. Free, no signup.">
     <meta name="robots" content="index, follow, max-image-preview:large">
     <link rel="canonical" href="https://{{MARS_HOST}}/">
     <meta name="su-tool-path" content="/">
@@ -130,17 +153,18 @@
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Secutils.dev">
     <meta property="og:title" content="MARS: Markdown Annotation &amp; Review System">
-    <meta property="og:description" content="Highlight, comment on, and share Markdown reviews. Reviews stay in your browser; shared links land in your colleague's sidebar.">
+    <meta property="og:description" content="Comment on Markdown, see what changed, and share reviews by link. Everything stays in your browser.">
     <meta property="og:url" content="https://{{MARS_HOST}}/">
-    <meta property="og:image" content="https://secutils.dev/docs/img/og/og-mars.png">
+    <meta property="og:image" content="https://{{MARS_HOST}}/og.jpg">
+    <meta property="og:image:type" content="image/jpeg">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
-    <meta property="og:image:alt" content="MARS on Secutils.dev: Markdown Annotation and Review System.">
+    <meta property="og:image:alt" content="The MARS logo: Markdown Annotation and Review System.">
     <meta property="og:locale" content="en_US">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="MARS: Markdown Annotation &amp; Review System">
-    <meta name="twitter:description" content="Highlight, comment on, and share Markdown reviews. Reviews stay in your browser; shared links land in your colleague's sidebar.">
-    <meta name="twitter:image" content="https://secutils.dev/docs/img/og/og-mars.png">
+    <meta name="twitter:description" content="Comment on Markdown, see what changed, and share reviews by link. Everything stays in your browser.">
+    <meta name="twitter:image" content="https://{{MARS_HOST}}/og.jpg">
     <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"MARS: Markdown Annotation & Review System","url":"https://{{MARS_HOST}}/","applicationCategory":"DeveloperApplication","operatingSystem":"Any","browserRequirements":"Requires JavaScript","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"publisher":{"@type":"Organization","name":"Secutils.dev","url":"https://secutils.dev"},"sameAs":"https://github.com/secutils-dev/secutils/blob/main/dev/tools/mars.html","description":"Free Markdown review tool: threaded comments anchored to highlighted text, folders stored in the browser, Mermaid diagrams, maps, 3D models, math, and encrypted short links for sharing reviews."}</script>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Cdefs%3E%3ClinearGradient id='tile' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23ff6240'/%3E%3Cstop offset='.52' stop-color='%23d43a32'/%3E%3Cstop offset='1' stop-color='%23711b2a'/%3E%3C/linearGradient%3E%3ClinearGradient id='planet' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23fffdf7'/%3E%3Cstop offset='1' stop-color='%23f4eee7'/%3E%3C/linearGradient%3E%3CclipPath id='disc'%3E%3Ccircle cx='64' cy='64' r='39'/%3E%3C/clipPath%3E%3C/defs%3E%3Crect x='3' y='3' width='122' height='122' rx='23' fill='url(%23tile)'/%3E%3Ccircle cx='64' cy='64' r='39' fill='url(%23planet)'/%3E%3Cg fill='%23c93b32'%3E%3Crect x='40' y='49' width='37' height='5.5' rx='2.75'/%3E%3Crect x='40' y='61' width='49' height='5.5' rx='2.75'/%3E%3Crect x='40' y='73' width='28' height='5.5' rx='2.75'/%3E%3C/g%3E%3Cg clip-path='url(%23disc)'%3E%3Cpath d='M63 102 C70 91 79 84 89 84 C98 84 104 91 108 101 L108 113 L58 113 Z' fill='%23d84a38'/%3E%3Cellipse cx='89' cy='96' rx='4' ry='6' transform='rotate(-25 89 96)' fill='%23a92a30' opacity='.6'/%3E%3Cellipse cx='72' cy='104' rx='2.5' ry='2' fill='%23a92a30' opacity='.55'/%3E%3C/g%3E%3C/svg%3E">
     <link rel="icon" type="image/png" sizes="32x32" href="data:image/png;base64,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">
@@ -207,9 +231,20 @@
             </div>
             <div class="sb-filter">
                 <span data-icon="magnify"></span>
-                <input id="sbFilter" type="search" placeholder="Filter documents" aria-label="Filter documents" autocomplete="off" spellcheck="false">
+                <input id="sbFilter" type="search" placeholder="Search documents" aria-label="Search documents" autocomplete="off" spellcheck="false">
+                <button id="sbSmartBtn" type="button" class="sb-smart" aria-pressed="false" title="Smart search: find passages by meaning (off)" aria-label="Smart search"><span data-icon="sparkles"></span></button>
             </div>
+            <div id="sbSmartStatus" class="sb-smart-status" role="status" aria-live="polite" hidden></div>
             <div id="tree" class="sb-tree" role="tree" aria-label="Documents" tabindex="0"></div>
+            <section id="smartNudge" class="sb-nudge" role="dialog" aria-labelledby="smartNudgeTitle" hidden>
+                <button id="smartNudgeClose" type="button" class="icon-btn sb-nudge-close" title="Not now" aria-label="Not now"><span data-icon="cross"></span></button>
+                <h3 id="smartNudgeTitle"><span data-icon="sparkles"></span><span>Search by meaning</span></h3>
+                <p>Find passages by what they say, not only by exact words. Everything stays in your browser.</p>
+                <div class="sb-nudge-actions">
+                    <button id="smartNudgeOn" type="button" class="btn btn-primary btn-xs">Turn on</button>
+                    <button id="smartNudgeNever" type="button" class="btn btn-empty btn-xs">Don't ask again</button>
+                </div>
+            </section>
             <div class="sb-foot">
                 <span id="sbUsage" class="sb-usage"></span>
                 <button id="sbExportAllBtn" type="button" class="btn btn-xs" title="Download every document as a .zip">Export all</button>
@@ -229,6 +264,19 @@
             <div class="toolbar">
                 <div class="toolbar-left">
                     <span id="docStats" class="stats-text">empty</span>
+                    <div id="changesBar" class="changes-bar" role="group" aria-label="Changes since your last review" hidden>
+                        <span id="changesLabel" class="changes-label" role="status" aria-live="polite"></span>
+                        <button id="changesPrev" type="button" class="icon-btn" title="Previous change" aria-label="Previous change">
+                            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m11 10-3-3-3 3"/></svg>
+                        </button>
+                        <button id="changesNext" type="button" class="icon-btn" title="Next change" aria-label="Next change">
+                            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 6 3 3 3-3"/></svg>
+                        </button>
+                        <button id="changesBefore" type="button" class="btn btn-xs btn-empty" aria-expanded="false" hidden><span data-icon="eye"></span>Show before</button>
+                        <button id="changesSwap" type="button" class="icon-btn" hidden><span data-icon="merge"></span></button>
+                        <button id="changesDone" type="button" class="btn btn-xs" title="Clear the change marks and start the next review from this text"><span data-icon="check"></span>Mark reviewed</button>
+                        <button id="changesClose" type="button" class="icon-btn" title="Hide changes since opened" aria-label="Hide changes since opened" hidden><span data-icon="cross"></span></button>
+                    </div>
                 </div>
                 <div class="toolbar-actions">
                     <button id="openBtn" class="btn btn-sm" type="button" title="Open a Markdown, STL, or 3MF file as a new document (Ctrl/Cmd+O)"><span data-icon="folderOpen"></span><span class="btn-label">Open</span></button>
@@ -264,6 +312,14 @@
                                     <span class="opt-desc">Hides checked tasks and sections whose heading is struck through.</span>
                                 </span>
                             </label>
+                            <label id="optLiveFilesWrap" hidden>
+                                <input type="checkbox" id="optLiveFiles">
+                                <span>Reload linked files automatically
+                                    <span class="opt-desc">A file opened with Open or dropped on the preview reloads when it changes on disk. Off: MARS offers to reload.</span>
+                                </span>
+                            </label>
+                            <h4>Changes</h4>
+                            <button type="button" id="optSinceOpened" class="btn btn-sm opt-action" disabled title="Available for documents opened from a file, link, or import">Show changes since opened</button>
                         </div>
                     </div>
                     <div class="export-anchor">
@@ -279,6 +335,7 @@
                             <hr class="menu-sep">
                             <button type="button" class="export-item" role="menuitem" id="copySlackBtn"><span data-icon="logoSlack"></span><span>Copy for Slack<span class="item-sub">Titled link with the open-thread count</span></span></button>
                             <button type="button" class="export-item" role="menuitem" id="copyGithubBtn"><span data-icon="logoGithub"></span><span>Copy for GitHub<span class="item-sub">Markdown comment with the quotes and threads</span></span></button>
+                            <button type="button" class="export-item" role="menuitem" id="copyAgentBtn"><span data-icon="sparkles"></span><span>Copy for agent<span class="item-sub">Open threads and reply instructions for an AI agent</span></span></button>
                             <button type="button" class="export-item" role="menuitem" id="downloadMdBtn"><span data-icon="download"></span><span>Download .md<span class="item-sub">The Markdown file, with review threads</span></span></button>
                             <button type="button" class="export-item share-danger" role="menuitem" id="deleteShortLinkBtn" hidden><span data-icon="trash"></span><span id="deleteShortLinkLabel">Delete short link</span></button>
                         </div>
@@ -354,6 +411,7 @@
             <p><strong>Short links.</strong> When you copy a short link, your browser encrypts the document and Secutils.dev stores only the encrypted copy, for the period you choose (1, 7, or 14 days). The decryption key exists only in the link, so the server can't read the document. Only the browser that created a link can delete it early. Your IP address is kept for one hour to rate-limit link creation.</p>
             <p><strong>Full links.</strong> A full link carries the whole document in the URL fragment (<code>#&hellip;</code>), which browsers never transmit to the server.</p>
             <p><strong>Loading from a URL.</strong> When you use <code>?url=</code> or the "Load URL" box, your browser fetches that address directly; the Markdown is never relayed through the Secutils.dev server.</p>
+            <p><strong>Smart search (optional, off by default).</strong> When you turn it on, your browser downloads the model you pick from Hugging Face, and the search library from jsDelivr, once; the browser caches them. Documents are indexed and searched inside this browser, and the index stays in its storage. Nothing about your documents or searches is sent anywhere.</p>
             <p><strong>Map basemaps.</strong> GeoJSON and TopoJSON viewers fetch map tiles directly from OpenStreetMap. Tile requests reveal the displayed geographic area. Your Markdown source is not included.</p>
             <p><strong>Anonymous usage analytics.</strong> We use <a href="https://plausible.io/" target="_blank" rel="noopener noreferrer">Plausible Analytics</a>, a privacy-first, GDPR-compliant tool, to collect aggregate usage data. No cookies, no personal data, no individual tracking. Full details in the <a href="https://plausible.io/data-policy" target="_blank" rel="noopener noreferrer">Plausible Data Policy</a>.</p>
             <p class="su-dialog-fineprint">See the full <a href="https://secutils.dev/privacy" target="_blank" rel="noopener noreferrer">Secutils.dev privacy policy</a> for details on the wider service.</p>
@@ -376,6 +434,7 @@
                 <li><a href="https://github.com/codemirror/dev" target="_blank" rel="noopener noreferrer"><strong>CodeMirror</strong></a> - extensible code editor, powers the source editing mode.</li>
                 <li><a href="https://github.com/101arrowz/fflate" target="_blank" rel="noopener noreferrer"><strong>fflate</strong></a> - builds and reads <code>.zip</code> exports, and extracts 3MF packages in a worker (MIT).</li>
                 <li><a href="https://github.com/lddubeau/saxes" target="_blank" rel="noopener noreferrer"><strong>saxes</strong></a> - parses namespace-aware 3MF XML in a worker (ISC).</li>
+                <li><a href="https://github.com/huggingface/transformers.js" target="_blank" rel="noopener noreferrer"><strong>Transformers.js</strong></a> - runs the optional smart-search embedding models in the browser (Apache-2.0), with <a href="https://huggingface.co/ibm-granite/granite-embedding-small-english-r2" target="_blank" rel="noopener noreferrer">Granite Embedding Small English R2</a> or <a href="https://huggingface.co/google/embeddinggemma-2" target="_blank" rel="noopener noreferrer">EmbeddingGemma 2</a> (both Apache-2.0).</li>
                 <li><a href="https://github.com/elastic/eui" target="_blank" rel="noopener noreferrer"><strong>EUI</strong></a> - Elastic UI design language; MARS borrows its icons and color tokens.</li>
             </ul>
             <p class="su-dialog-fineprint">All trademarks are property of their respective owners.</p>
@@ -408,6 +467,7 @@
         <button type="button" data-comment title="Comment (Ctrl/Cmd+Alt+M)" aria-label="Comment"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M12 7v6M9 10h6"/></svg></button>
     </div>
     <div id="marsMenu" class="export-menu mars-menu" role="menu" hidden></div>
+    <div id="diffBefore" class="export-menu diff-before" popover role="dialog" aria-label="Text before your last review"></div>
 
     <input type="file" id="fileInput" accept=".md,.markdown,.txt,.mdx,.html,.htm,.stl,.3mf" hidden>
     <input type="file" id="importInput" accept=".md,.markdown,.txt,.mdx,.zip" multiple hidden>

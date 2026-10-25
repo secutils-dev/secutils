@@ -25,7 +25,7 @@ export function joinComments(body: string, threads: Thread[]) {
 export const openThreads = (text: string) => splitComments(text).threads.filter((t) => !t.resolved).length;
 
 // Comments written before MARS had ids are matched by author and timestamp.
-const commentKey = (c: Comment) => c.id ?? `${c.author ?? ''}\u0000${c.at ?? ''}`;
+export const commentKey = (c: Comment) => c.id ?? `${c.author ?? ''}\u0000${c.at ?? ''}`;
 
 // Union of both sides' threads and comments. A comment edited on both sides keeps the
 // later edit. ponytail: `resolved` keeps the local value for existing threads, so a
@@ -48,14 +48,19 @@ export function mergeThreads(local: Thread[], incoming: Thread[]) {
 }
 
 // Merges a shared copy into the local document. `mine` keeps the local body, `theirs`
-// takes the incoming body; both carry the merged threads.
+// takes the incoming body; both carry the merged threads, anchored by the side whose body they keep.
 export function mergeDocuments(localText: string, incomingText: string) {
     const local = splitComments(localText), incoming = splitComments(incomingText);
     const { threads, added } = mergeThreads(local.threads, incoming.threads);
+    const anchors = new Map(incoming.threads.map((t) => [t.id, t]));
+    const theirs = threads.map((t) => {
+        const a = anchors.get(t.id);
+        return a ? { ...t, quote: a.quote, prefix: a.prefix, suffix: a.suffix } : t;
+    });
     return {
         sameBody: local.body === incoming.body,
         added,
         mine: joinComments(local.body, threads),
-        theirs: joinComments(incoming.body, threads),
+        theirs: joinComments(incoming.body, theirs),
     };
 }

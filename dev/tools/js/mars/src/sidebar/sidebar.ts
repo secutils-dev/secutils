@@ -3,8 +3,10 @@
 import * as app from '../app.ts';
 import { ancestors, canMove, childrenOf, textBytes, type TreeNode } from '../tree/model.ts';
 import { icon } from '../ui/icons.ts';
-import { $, confirmDanger, esc, openMenu, type MenuEntry } from '../ui/ui.ts';
+import { $, confirmDanger, esc, modal, openMenu, type MenuEntry } from '../ui/ui.ts';
+import * as viewer from '../doc/viewer.js';
 import { setViewMode, toast } from '../doc/viewer.js';
+import { onUpdate, smartMatches, textMatches } from '../search/search.ts';
 import * as io from '../io/io.ts';
 import * as share from '../share/share.ts';
 import * as db from '../store/db.ts';
@@ -54,55 +56,104 @@ resizer.addEventListener('pointerup', () => { resizer.onpointermove = null; });
 // ---- Rendering ----
 const filterText = () => filterInput.value.trim().toLowerCase();
 
-// With a filter, matching documents show with their folders, expanded.
 function visibleRows(): { n: TreeNode; depth: number }[] {
-    const q = filterText();
-    const nodes = app.state.nodes;
-    const keep = new Set<string>();
-    if (q) {
-        for (const n of nodes) {
-            if (!n.name.toLowerCase().includes(q)) continue;
-            keep.add(n.id);
-            for (const a of ancestors(nodes, n.id)) keep.add(a.id);
-        }
-    }
     const rows: { n: TreeNode; depth: number }[] = [];
     const walk = (parentId: string | null, depth: number) => {
-        for (const n of childrenOf(nodes, parentId)) {
-            if (q && !keep.has(n.id)) continue;
+        for (const n of childrenOf(app.state.nodes, parentId)) {
             rows.push({ n, depth });
-            if (n.kind === 'folder' && (q || n.open)) walk(n.id, depth + 1);
+            if (n.kind === 'folder' && n.open) walk(n.id, depth + 1);
         }
     };
     walk(null, 0);
     return rows;
 }
 
+// Every document in tree order, open folders or not.
+function allDocs() {
+    const out: TreeNode[] = [];
+    const walk = (parentId: string | null) => {
+        for (const n of childrenOf(app.state.nodes, parentId)) n.kind === 'doc' ? out.push(n) : walk(n.id);
+    };
+    walk(null);
+    return out;
+}
+
+const folderPath = (n: TreeNode) => ancestors(app.state.nodes, n.id).map((f) => f.name).join(' / ');
+
+// With a query, the sidebar lists matching documents, best first: a match in the name or
+// folder, then in the text (with a snippet), then by meaning (smart search, marked with
+// sparkles). A document appears once, at its best rank.
+interface Result { n: TreeNode; snippet?: string; start?: number; smart?: boolean }
+let textHits = new Map<string, { snippet: string; start?: number }>();
+function searchResults(q: string) {
+    textHits = textMatches(q);
+    const named: Result[] = [], texted: Result[] = [];
+    for (const n of allDocs()) {
+        if (`${n.name}\n${folderPath(n)}`.toLowerCase().includes(q)) named.push({ n });
+        else if (textHits.has(n.id)) texted.push({ n, ...textHits.get(n.id)! });
+    }
+    const seen = new Set([...named, ...texted].map((r) => r.n.id));
+    const smart = smartMatches(q);
+    const meaning = (smart?.hits ?? []).flatMap((h): Result[] => {
+        const n = app.node(h.id);
+        return n && !seen.has(n.id) ? [{ n, snippet: h.text, start: h.start, smart: true }] : [];
+    });
+    const note = smart?.pending ? 'Searching by meaning…' : smart?.error ? `Smart search failed: ${smart.error}` : null;
+    return { rows: [...named, ...texted, ...meaning], note };
+}
+
+const labelHtml = (n: TreeNode) => (renaming === n.id
+    ? `<input class="tree-rename" value="${esc(n.name)}" aria-label="Name" spellcheck="false">`
+    : `<span class="tree-label" title="${esc(n.name)}${n.handle ? ` · linked to ${esc(n.handle.name)}` : ''}">${esc(n.name)}</span>`);
+const badgesHtml = (n: TreeNode) => `${n.pending ? '<span class="tree-dot" title="Changed since your last review" aria-label="Changed since your last review"></span>' : ''}${n.threads ? `<span class="tree-badge" title="${n.threads} open thread${n.threads === 1 ? '' : 's'}">${n.threads}</span>` : ''}`;
+const moreHtml = (n: TreeNode) => `<button type="button" class="tree-more" tabindex="-1" aria-label="Actions for ${esc(n.name)}" title="Actions">${icon('boxesVertical')}</button>`;
+
 function rowHtml({ n, depth }: { n: TreeNode; depth: number }) {
     const folder = n.kind === 'folder';
     const hasKids = folder && app.state.nodes.some((c) => c.parentId === n.id);
     const selected = n.id === app.state.currentId || (folder && !app.state.currentId && n.id === app.state.folderId);
-    const chevron = `<span class="tree-chevron${hasKids ? '' : ' leaf'}">${icon(n.open || filterText() ? 'chevronDown' : 'chevronRight')}</span>`;
+    const chevron = `<span class="tree-chevron${hasKids ? '' : ' leaf'}">${icon(n.open ? 'chevronDown' : 'chevronRight')}</span>`;
     const glyph = `<span class="tree-icon">${icon(folder ? (n.open ? 'folderOpen' : 'folder') : 'document')}</span>`;
-    const label = renaming === n.id
-        ? `<input class="tree-rename" value="${esc(n.name)}" aria-label="Name" spellcheck="false">`
-        : `<span class="tree-label" title="${esc(n.name)}${n.handle ? ` · linked to ${esc(n.handle.name)}` : ''}">${esc(n.name)}</span>`;
-    const badge = !folder && n.threads ? `<span class="tree-badge" title="${n.threads} open thread${n.threads === 1 ? '' : 's'}">${n.threads}</span>` : '';
     return `<div class="tree-row" role="treeitem" data-id="${n.id}" data-kind="${n.kind}" style="--depth:${depth}" tabindex="-1" draggable="${renaming === n.id ? 'false' : 'true'}"
-${folder ? `aria-expanded="${!!(n.open || filterText())}"` : ''} aria-selected="${selected}" aria-level="${depth + 1}">${folder ? chevron : '<span class="tree-chevron leaf"></span>'}${glyph}${label}${badge}<button type="button" class="tree-more" tabindex="-1" aria-label="Actions for ${esc(n.name)}" title="Actions">${icon('boxesVertical')}</button></div>`;
+${folder ? `aria-expanded="${!!n.open}"` : ''} aria-selected="${selected}" aria-level="${depth + 1}">${folder ? chevron : '<span class="tree-chevron leaf"></span>'}${glyph}${labelHtml(n)}${folder ? '' : badgesHtml(n)}${moreHtml(n)}</div>`;
 }
 
+function resultHtml(r: Result) {
+    const path = folderPath(r.n);
+    const glyph = r.smart
+        ? `<span class="tree-icon smart" title="Matches by meaning" aria-label="Matches by meaning">${icon('sparkles')}</span>`
+        : `<span class="tree-icon">${icon('document')}</span>`;
+    return `<div class="tree-row result${r.snippet ? ' has-snippet' : ''}" role="treeitem" data-id="${r.n.id}" data-kind="doc"${r.start === undefined ? '' : ` data-start="${r.start}"`} tabindex="-1" draggable="false" aria-selected="${r.n.id === app.state.currentId}" aria-level="1">${glyph}${labelHtml(r.n)}${path ? `<span class="tree-path" title="${esc(path)}">${esc(path)}</span>` : ''}${badgesHtml(r.n)}${moreHtml(r.n)}${r.snippet ? `<span class="tree-snippet">${esc(r.snippet)}</span>` : ''}</div>`;
+}
+
+// A render while a rename is in progress replaces the input; the typed name and the
+// selection carry over, and the focusout from removing the old input doesn't commit it.
+let rendering = false;
 export function render() {
-    const rows = visibleRows();
-    if (!app.state.nodes.length) {
-        tree.innerHTML = `<div class="tree-empty">No documents yet. Open a file, start writing, or open a shared link.<br><button type="button" class="btn btn-sm" data-new-doc>New document</button></div>`;
-    } else if (!rows.length) {
-        tree.innerHTML = '<div class="tree-empty">No documents match the filter.</div>';
-    } else {
-        tree.innerHTML = rows.map(rowHtml).join('');
+    const q = filterText();
+    const typing = tree.querySelector<HTMLInputElement>('.tree-rename');
+    const draft = typing && { value: typing.value, start: typing.selectionStart, end: typing.selectionEnd };
+    // Background renders (saves, other tabs, search) keep keyboard focus on the same row.
+    const focusedRow = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>('#tree .tree-row')?.dataset.id;
+    rendering = true;
+    try {
+        if (!app.state.nodes.length) {
+            tree.innerHTML = `<div class="tree-empty">No documents yet. Open a file, start writing, or open a shared link.<br><button type="button" class="btn btn-sm" data-new-doc>New document</button></div>`;
+        } else if (q) {
+            const { rows, note } = searchResults(q);
+            const noteHtml = note ? `<div class="tree-note">${esc(note)}</div>` : '';
+            tree.innerHTML = rows.length ? rows.map(resultHtml).join('') + noteHtml : noteHtml || '<div class="tree-empty">No documents match.</div>';
+        } else {
+            tree.innerHTML = visibleRows().map(rowHtml).join('');
+        }
+    } finally {
+        rendering = false;
     }
     const input = tree.querySelector<HTMLInputElement>('.tree-rename');
-    if (input) { input.focus(); input.select(); }
+    if (input) {
+        input.focus();
+        if (draft) { input.value = draft.value; input.setSelectionRange(draft.start, draft.end); } else input.select();
+    } else if (focusedRow) rowEl(focusedRow)?.focus();
     const focus = rowEl(focusId ?? app.state.currentId);
     if (focus) focus.tabIndex = 0; else (tree.querySelector('.tree-row') as HTMLElement | null)?.setAttribute('tabindex', '0');
     renderCrumbs();
@@ -174,6 +225,21 @@ async function deleteNode(n: TreeNode) {
     if (undo) toast(`Deleted ${n.name}`, { label: 'Undo', run: undo });
 }
 
+// A document tied to its source: a linked file, a recorded source text, or a file or URL origin.
+const linked = (n: TreeNode) => !!(n.handle || n.opened || /^(file|url):/.test(n.originId ?? ''));
+
+async function unlinkDoc(n: TreeNode) {
+    const source = n.handle?.name ?? n.originId?.replace(/^(file|url):/, '') ?? 'its source';
+    const { value } = await modal({
+        title: `Unlink "${n.name}"?`,
+        html: `<p>MARS forgets that this document came from <strong>${esc(source)}</strong>. The text and comments stay.</p><p>Opening that source again adds a new document instead of updating this one, and "changes since opened" and pending change marks go away.</p>`,
+        buttons: [{ label: 'Cancel', value: '' }, { label: 'Unlink', value: 'ok', primary: true }],
+    });
+    if (value !== 'ok') return;
+    await app.unlink(n.id);
+    toast(`Unlinked "${n.name}"`);
+}
+
 function menuFor(n: TreeNode): MenuEntry[] {
     const dirPicker = 'showDirectoryPicker' in window;
     if (n.kind === 'folder') return [
@@ -192,6 +258,7 @@ function menuFor(n: TreeNode): MenuEntry[] {
         { label: 'Rename', icon: 'pencil', run: () => startRename(n.id) },
         { label: 'Duplicate', icon: 'copy', run: () => app.duplicate(n.id) },
         ...(n.handle ? [{ label: 'Reload from disk', icon: 'refresh' as const, sub: n.handle.name, run: () => app.reloadFromDisk(n.id) }] : []),
+        ...(linked(n) ? [{ label: 'Unlink from source', icon: 'cross' as const, run: () => unlinkDoc(n) }] : []),
         ...(n.parentId ? [{ label: 'Move to top level', icon: 'home' as const, run: () => app.move(n.id, null) }] : []),
         'separator',
         { label: 'Copy short link', icon: 'link', run: () => share.copyNodeLink(n.id, 'short') },
@@ -202,14 +269,18 @@ function menuFor(n: TreeNode): MenuEntry[] {
     ];
 }
 
-async function activate(n: TreeNode) {
+// A search result opens at its match: the passage found by meaning, or Find on the query.
+async function activate(n: TreeNode, row?: HTMLElement | null) {
     focusId = n.id;
     if (n.kind === 'folder') {
         app.state.folderId = n.id;
-        await app.setOpen(n.id, !n.open || !!filterText());
+        await app.setOpen(n.id, !n.open);
         return;
     }
+    const q = filterText(), start = row?.dataset.start;
     if (n.id !== app.state.currentId) await app.openDoc(n.id);
+    if (q && start !== undefined) viewer.reveal({ start: Number(start) });
+    else if (q && textHits.has(n.id)) viewer.reveal({ query: q });
     closeOverlay();
 }
 
@@ -221,7 +292,7 @@ tree.addEventListener('click', (e) => {
     if (!n) return;
     if (target.closest('.tree-more')) { openMenu(target.closest('.tree-more')!, menuFor(n), `Actions for ${n.name}`); return; }
     if (target.closest('.tree-chevron') && n.kind === 'folder') { app.setOpen(n.id, !n.open); return; }
-    activate(n);
+    activate(n, target.closest<HTMLElement>('.tree-row'));
 });
 tree.addEventListener('dblclick', (e) => {
     const n = rowNode(e.target as HTMLElement);
@@ -259,14 +330,14 @@ tree.addEventListener('keydown', (e) => {
             if (n.kind === 'folder' && n.open) app.setOpen(n.id, false);
             else if (n.parentId) go(rowEl(n.parentId) ?? undefined);
             break;
-        case 'Enter': case ' ': e.preventDefault(); activate(n); break;
+        case 'Enter': case ' ': e.preventDefault(); activate(n, el); break;
         case 'F2': e.preventDefault(); startRename(n.id); break;
         case 'Delete': case 'Backspace': e.preventDefault(); deleteNode(n); break;
         case 'ContextMenu': e.preventDefault(); openMenu(el, menuFor(n), `Actions for ${n.name}`); break;
     }
 });
 tree.addEventListener('focusout', (e) => {
-    if ((e.target as HTMLElement).matches('.tree-rename') && renaming) finishRename(true);
+    if ((e.target as HTMLElement).matches('.tree-rename') && renaming && !rendering) finishRename(true);
 });
 
 $('sbNewBtn').addEventListener('click', (e) => openMenu(e.currentTarget as HTMLElement, [
@@ -347,3 +418,4 @@ tree.addEventListener('drop', async (e) => {
 });
 
 app.onChange(render);
+onUpdate(render);

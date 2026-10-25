@@ -61,10 +61,27 @@ export async function putNodes(nodes: TreeNode[], texts: Record<string, string> 
 
 export async function deleteNodes(ids: string[]) {
     await tx(['nodes', 'docs'], 'readwrite', (t) => {
-        for (const id of ids) { t.objectStore('nodes').delete(id); t.objectStore('docs').delete(id); }
+        for (const id of ids) {
+            t.objectStore('nodes').delete(id);
+            t.objectStore('docs').delete(id);
+            for (const kind of SIDES) t.objectStore('docs').delete(sideKey(kind, id));
+        }
     });
     announce(ids);
 }
+
+// Per-document side data in the `docs` store, so it needs no new store:
+// `base` (the text at the last review, kept while changes are unreviewed), `opened` (the
+// source text as MARS last received it), and `vec` (the smart-search index entry).
+export type Side = 'base' | 'opened' | 'vec';
+const SIDES: Side[] = ['base', 'opened', 'vec'];
+const sideKey = (kind: Side, id: string) => `${kind}:${id}`;
+export const getSide = <T = string>(kind: Side, id: string) => tx(['docs'], 'readonly', (t) => req(t.objectStore('docs').get(sideKey(kind, id)) as IDBRequest<T | undefined>));
+export const putSide = (kind: Side, id: string, value: unknown) => tx(['docs'], 'readwrite', (t) => { t.objectStore('docs').put(value, sideKey(kind, id)); });
+export const deleteSide = (kind: Side, id: string) => tx(['docs'], 'readwrite', (t) => { t.objectStore('docs').delete(sideKey(kind, id)); });
+const sideRange = (kind: Side) => IDBKeyRange.bound(`${kind}:`, `${kind}:\uffff`);
+export const allSides = <T>(kind: Side) => tx(['docs'], 'readonly', (t) => req(t.objectStore('docs').getAll(sideRange(kind)) as IDBRequest<T[]>));
+export const clearSides = (kind: Side) => tx(['docs'], 'readwrite', (t) => { t.objectStore('docs').delete(sideRange(kind)); });
 
 export const getMeta = <T>(key: string) => tx(['meta'], 'readonly', (t) => req(t.objectStore('meta').get(key) as IDBRequest<T | undefined>));
 export const setMeta = (key: string, value: unknown) => tx(['meta'], 'readwrite', (t) => { t.objectStore('meta').put(value, key); });

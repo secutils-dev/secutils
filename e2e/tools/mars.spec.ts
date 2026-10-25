@@ -1,3 +1,5 @@
+import { deflateRawSync } from 'node:zlib';
+
 import type { Browser, BrowserContext, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 
@@ -60,6 +62,28 @@ async function copyLink(page: Page, item: RegExp) {
   await expect(page.locator('#toast')).toContainText(/copied/i);
   return page.evaluate(() => navigator.clipboard.readText());
 }
+
+// The link the skill's `mars` shell function builds for a local file.
+function fileLink(md: string, origin: string, name = 'Plan') {
+  const utf8 = Buffer.from(md);
+  const state = Buffer.concat([Buffer.alloc(4), deflateRawSync(utf8)]);
+  state.writeUInt32LE(utf8.length, 0);
+  return `/#${new URLSearchParams({ name, md: state.toString('base64url'), o: origin })}`;
+}
+
+const docRows = (page: Page) => page.locator('#tree .tree-row[data-kind="doc"]');
+
+async function editSource(page: Page, md: string) {
+  await page.getByRole('button', { name: 'Source', exact: true }).click();
+  await setMarkdown(page, md);
+  await page.getByRole('button', { name: 'Preview', exact: true }).click();
+  await expect(page.locator('#saveState')).toHaveText('Saved');
+}
+
+const PLAN = ['# Plan', '', 'First point stays.', '', 'Second point stays.', '', 'Third point stays.', ''];
+const planWith = (last: string) => [...PLAN, last, ''].join('\n');
+
+const threadsBlock = (threads: object[]) => `\n<!-- su-comments\n${JSON.stringify(threads, null, 2)}\n-->\n`;
 
 function freshContext(browser: Browser): Promise<BrowserContext> {
   return browser.newContext({
@@ -278,6 +302,212 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     expect(text).toMatch(/^\*\*\[Untitled\]\(.+\/#s=.+\)\*\* · review in MARS · 1 open thread/);
     expect(text).toContain('> needs a TTL');
     expect(text).toContain('Which TTL?');
+  });
+
+  test('a revised copy shows what changed, threads follow the rewrite, and Mark reviewed clears it', async ({
+    page,
+  }) => {
+    const origin = `file:/tmp/plan-${Date.now()}.md`;
+    const thread = {
+      id: '1f3a9c2e',
+      quote: 'warnings as the final behavior',
+      comments: [{ id: 'a1b2c3d4', author: 'Reviewer', at: '2026-10-21T09:41:00.000Z', body: 'Too strong?' }],
+    };
+    const reply = { id: '5e6f7a8b', author: 'Agent', at: '2026-10-21T10:02:00.000Z', body: 'Queries fail closed now.' };
+    await page.goto(tool.path);
+    await page.evaluate(() => localStorage.setItem('su-md-author', 'Reviewer'));
+    await page.goto(
+      fileLink(
+        `# Plan\n\nKeep this intro.\n\nI disagree with warnings as the final behavior.\n\nThis paragraph goes away.\n${threadsBlock([thread])}`,
+        origin,
+      ),
+    );
+    await expect(page.locator('#previewArticle h1')).toHaveText(/^Plan/);
+    await expect(page.locator('.cm-card:not(.orphan)')).toHaveCount(1);
+    await expect(page.locator('#changesBar')).toBeHidden();
+
+    await page.goto(
+      fileLink(
+        `# Plan\n\nA new lead paragraph.\n\nKeep this intro.\n\nProtected queries fail closed instead of returning partial data.\n${threadsBlock([{ ...thread, comments: [...thread.comments, reply] }])}`,
+        origin,
+      ),
+    );
+    // Only the source changed since it was opened, so MARS takes it without asking.
+    await expect(page.locator('#toast')).toContainText('showing what changed');
+    await expect(page.locator('#changesLabel')).toHaveText('3 changes since your review · 1 new reply');
+    await expect(page.locator('#previewArticle .su-diff-add')).toHaveCount(1);
+    await expect(page.locator('#previewArticle .su-diff-edit')).toHaveCount(1);
+    await expect(page.locator('#previewArticle .su-diff-del-end')).toHaveCount(1);
+    await expect(page.locator('#tree .tree-dot')).toHaveCount(1);
+    const card = page.locator('.cm-card');
+    await expect(card).not.toHaveClass(/orphan/);
+    await expect(card.locator('.cm-note')).toHaveText('Quoted text changed since your review');
+    await expect(card.locator('.cm-new')).toHaveCount(1);
+
+    await page.getByRole('button', { name: 'Next change' }).click();
+    await expect(page.locator('#changesLabel')).toHaveText('Added · 1 of 3 · 1 new reply');
+    await page.getByRole('button', { name: 'Next change' }).click();
+    await expect(page.locator('#changesLabel')).toHaveText('Edited · 2 of 3 · 1 new reply');
+    await page.getByRole('button', { name: 'Show before' }).click();
+    await expect(page.locator('#diffBefore')).toContainText('I disagree with warnings as the final behavior.');
+
+    await page.getByRole('button', { name: 'Mark reviewed' }).click();
+    await expect(page.locator('#changesBar')).toBeHidden();
+    await expect(page.locator('#tree .tree-dot')).toHaveCount(0);
+    // The thread re-quotes to the inserted words of the edited paragraph.
+    await expect(card.locator('.cm-quote')).toHaveText(
+      'Protected queries fail closed instead of returning partial data',
+    );
+    await expect(page.locator('#saveState')).toHaveText('Saved');
+    await page.reload();
+    await expect(page.locator('.cm-card')).not.toHaveClass(/orphan/);
+    await expect(page.locator('#changesBar')).toBeHidden();
+    await expect(page.locator('.cm-new')).toHaveCount(0);
+  });
+
+  test('Copy for agent hands over the file, the open threads, and the reply steps', async ({ page, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    const open = {
+      id: '1f3a9c2e',
+      quote: 'needs a TTL',
+      comments: [{ id: 'a1b2c3d4', author: 'Oleg', at: '2026-10-21T09:41:00.000Z', body: 'Which TTL?' }],
+    };
+    const done = { ...open, id: '2f3a9c2e', quote: 'The cache', resolved: true };
+    await page.goto(fileLink(`The cache needs a TTL.\n${threadsBlock([open, done])}`, 'file:/tmp/agent.md'));
+    await expect(page.locator('.cm-card')).toHaveCount(2);
+    const text = await copyLink(page, /^Copy for agent/);
+    expect(text).toMatch(/^Address the 1 open review thread on \/tmp\/agent\.md\. .+\/llms\.txt$/m);
+    expect(text).toContain('append one comment');
+    expect(text).toContain('<!-- su-comments');
+    expect(text).toContain('"id": "1f3a9c2e"');
+    expect(text).not.toContain('2f3a9c2e');
+  });
+
+  test('Open and moved files update the same document after the reader confirms', async ({ page }) => {
+    await page.goto(fileLink(planWith('Fourth point, first draft.'), 'file:/tmp/dl/test.md', 'test'));
+    await expect(page.locator('#toast')).toContainText('Added "test"');
+    await expect(page.locator('#previewArticle')).toContainText('first draft');
+    // The import's last save can re-render the tree between focusing the row and the key press.
+    await expect(async () => {
+      if (!(await page.locator('.tree-rename').count())) await row(page, 'test').press('F2');
+      await expect(page.locator('.tree-rename')).toBeVisible({ timeout: 1000 });
+    }).toPass();
+    await page.locator('.tree-rename').fill('test v1');
+    await page.keyboard.press('Enter');
+
+    // Open without a file handle (Firefox, or the file input): matched by content.
+    await page.locator('#fileInput').setInputFiles({
+      name: 'test.md',
+      mimeType: 'text/markdown',
+      buffer: Buffer.from(planWith('Fourth point, second draft.')),
+    });
+    await expect(page.getByRole('heading', { name: 'Is this an updated copy?' })).toBeVisible();
+    await page.getByRole('button', { name: 'Update "test v1"' }).click();
+    await expect(page.locator('#toast')).toContainText('showing what changed');
+    await expect(page.locator('#changesLabel')).toHaveText('1 change since your review');
+    await expect(docRows(page)).toHaveCount(1);
+
+    // The file moved: confirm once, then its new path matches directly.
+    const moved = 'file:/tmp/dl/tests/test.md';
+    await page.goto(fileLink(planWith('Fourth point, third draft.'), moved, 'test'));
+    await page.getByRole('button', { name: 'Update "test v1"' }).click();
+    await expect(page.locator('#previewArticle')).toContainText('third draft');
+    await page.goto(fileLink(planWith('Fourth point, final.'), moved, 'test'));
+    await expect(page.locator('#toast')).toContainText('Updated "test v1"');
+    await expect(page.locator('#previewArticle')).toContainText('Fourth point, final.');
+    await expect(docRows(page)).toHaveCount(1);
+  });
+
+  test('when both copies changed, MARS asks and suggests saving a copy', async ({ page }) => {
+    const origin = `file:/tmp/both-${Date.now()}.md`;
+    await page.goto(fileLink(planWith('Fourth point.'), origin));
+    await expect(page.locator('#previewArticle')).toContainText('Fourth point.');
+    await editSource(page, planWith('Fourth point, edited in MARS.'));
+    await page.goto(fileLink(planWith('Fourth point, edited by the agent.'), origin));
+    await expect(page.getByRole('heading', { name: 'Both copies changed' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Save as a copy' })).toBeFocused();
+    await page.getByRole('button', { name: 'Save as a copy' }).click();
+    await expect(row(page, 'Plan (new)')).toBeVisible();
+    await expect(docRows(page)).toHaveCount(2);
+  });
+
+  test('changes since opened show your edits, and Unlink forgets the source', async ({ page }) => {
+    const origin = `file:/tmp/opened-${Date.now()}.md`;
+    await page.goto(fileLink(planWith('Fourth point.'), origin));
+    await expect(page.locator('#previewArticle')).toContainText('Fourth point.');
+    await editSource(page, planWith('Fourth point, edited in MARS.'));
+    await page.getByRole('button', { name: 'Document options' }).click();
+    await page.getByRole('button', { name: 'Show changes since opened' }).click();
+    await expect(page.locator('#changesLabel')).toHaveText('1 change since opened');
+    await expect(page.locator('#previewArticle .su-diff-edit')).toHaveCount(1);
+    await page.getByRole('button', { name: 'Hide changes since opened' }).click();
+    await expect(page.locator('#changesBar')).toBeHidden();
+
+    await row(page, 'Plan')
+      .getByRole('button', { name: /Actions for Plan/ })
+      .click();
+    await page.getByRole('menuitem', { name: /Unlink from source/ }).click();
+    await page.getByRole('button', { name: 'Unlink', exact: true }).click();
+    await expect(page.locator('#toast')).toContainText('Unlinked "Plan"');
+    await page.getByRole('button', { name: 'Document options' }).click();
+    await expect(page.getByRole('button', { name: 'Show changes since opened' })).toBeDisabled();
+    await page.keyboard.press('Escape');
+
+    // The source no longer maps to this document; a look-alike still asks first.
+    await page.goto(fileLink(planWith('Fourth point.'), origin));
+    await page.getByRole('button', { name: 'Add as new' }).click();
+    await expect(docRows(page)).toHaveCount(2);
+  });
+
+  test('search matches document text, and smart search is offered at six documents', async ({ page }) => {
+    await page.goto(tool.path);
+    await page.getByRole('button', { name: 'Document options' }).click();
+    // Chromium has linked files, so the live-reload option shows, off by default.
+    await expect(page.getByLabel(/Reload linked files automatically/)).not.toBeChecked();
+    await page.keyboard.press('Escape');
+
+    const files = Array.from({ length: 6 }, (_, i) => ({
+      name: `note-${i + 1}.md`,
+      mimeType: 'text/markdown',
+      buffer: Buffer.from(
+        i === 5
+          ? `# Note 6\n\nPlain words.\n${threadsBlock([{ id: 't1', quote: 'Plain words', comments: [{ id: 'c1', author: 'Oleg', at: '2026-10-21T09:00:00.000Z', body: 'Rotate the keys quarterly.' }] }])}`
+          : `# Note ${i + 1}\n\n${i === 3 ? 'The cache needs a TTL before launch.' : 'Plain words.'}\n`,
+      ),
+    }));
+    await page.locator('#importInput').setInputFiles(files);
+    await expect(page.locator('#toast')).toContainText('Imported 6 documents');
+    const nudge = page.locator('#smartNudge');
+    await expect(nudge).toBeVisible();
+    await expect(nudge).toContainText('Search by meaning');
+    await nudge.getByRole('button', { name: 'Not now' }).click();
+    await expect(nudge).toBeHidden();
+    await page.reload();
+    await expect(docRows(page)).toHaveCount(6);
+    await page.waitForTimeout(2000);
+    await expect(nudge).toBeHidden();
+
+    await page.getByRole('searchbox', { name: 'Search documents' }).fill('ttl');
+    await expect(docRows(page)).toHaveCount(1);
+    await expect(page.locator('#tree .tree-snippet')).toHaveText('The cache needs a TTL before launch.');
+    await docRows(page).click();
+    await expect(page.locator('#findBar')).toBeVisible();
+    await expect(page.locator('#findInput')).toHaveValue('ttl');
+    await expect(page.locator('#findCount')).toHaveText('1/1');
+
+    // Review comments are searched too.
+    await page.getByRole('searchbox', { name: 'Search documents' }).fill('quarterly');
+    await expect(docRows(page)).toHaveCount(1);
+    await expect(page.locator('#tree .tree-snippet')).toHaveText(
+      'Comment on “Plain words”: Rotate the keys quarterly.',
+    );
+
+    await page.getByRole('button', { name: 'Smart search' }).click();
+    await expect(page.getByRole('heading', { name: 'Turn on smart search' })).toBeVisible();
+    await expect(page.getByRole('radio')).toHaveCount(2);
+    await expect(page.getByRole('radio', { name: /Best speed/ })).toBeChecked();
+    await page.getByRole('button', { name: 'Cancel' }).click();
+    await expect(page.getByRole('button', { name: 'Smart search' })).toHaveAttribute('aria-pressed', 'false');
   });
 
   for (const version of [1, 2]) {

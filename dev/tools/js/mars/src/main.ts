@@ -3,6 +3,7 @@ import './boot.ts';
 import * as viewer from './doc/viewer.js';
 import * as app from './app.ts';
 import './sidebar/sidebar.ts';
+import './doc/changes.ts';
 import * as share from './share/share.ts';
 import * as io from './io/io.ts';
 import * as db from './store/db.ts';
@@ -15,6 +16,7 @@ viewer.setHost({
     currentId: () => app.state.currentId,
     persist: app.persist,
     detach: app.detach,
+    openFile: (f) => share.receiveFile({ ...f, name: io.docName(f.name, f.text) }),
 });
 
 let lastDoc: string | null = null;

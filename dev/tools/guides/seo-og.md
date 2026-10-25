@@ -100,6 +100,11 @@ make tools-og
 make tools-og-loop RUNS=5
 ```
 
+An own-host app (`host` in `registry.ts`, so MARS) uses `layout=app`: its logo and name are centered, because Slack
+and other unfurlers crop the card to a square thumbnail. It also gets an `og-<slug>.jpg`, which `deploy.ts` embeds in
+its responder script (`{{OG_JPEG_BASE64}}`), so the image is served at `https://<host>/og.jpg` and updates with a tools
+deploy instead of a docs deploy. Unfurlers cache previews per URL, so a changed image may need a new URL.
+
 The same stability guarantees as the docs screenshot suite apply: pre-screenshot
 DOM stabilization in `goto()`, sticky-pixel re-encoding to absorb sub-pixel
 anti-aliasing jitter, fixed viewport at exactly 1200x630 so no scaling

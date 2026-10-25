@@ -125,6 +125,21 @@ body.su-view-edit #editorMount { display: block; }
 .doc-title[contenteditable="plaintext-only"]:hover { background: var(--surface-hover); }
 .doc-title:focus { outline: 1px solid var(--primary); text-overflow: clip; }
 /* Review comments */
+/* Review changes (MARS only): block bars in the left gutter, inserted words, removed-block notches. */
+.preview-article > .su-block:is(.su-diff-add, .su-diff-edit, .su-diff-del, .su-diff-del-end) { position: relative; }
+.preview-article > .su-block:is(.su-diff-add, .su-diff-edit)::before { content: ''; position: absolute; left: -14px; top: 2px; bottom: 2px; width: 3px; border-radius: 2px; pointer-events: none; }
+.preview-article > .su-diff-add::before { background: var(--eui-success); }
+.preview-article > .su-diff-edit::before { background: var(--eui-warning); }
+.preview-article > .su-block:is(.su-diff-del, .su-diff-del-end)::after { content: ''; position: absolute; left: -20px; width: 14px; height: 3px; border-radius: 2px; background: var(--eui-danger); pointer-events: none; }
+.preview-article > .su-diff-del::after { top: -9px; }
+.preview-article > .su-diff-del-end::after { bottom: -9px; }
+.preview-article > .su-diff-focus { outline: 1px dashed var(--text-muted); outline-offset: 6px; border-radius: 2px; }
+::highlight(su-diff-ins) { background-color: var(--diff-ins); }
+.preview-article > .su-reveal { animation: su-reveal 1.6s ease; border-radius: 4px; }
+@keyframes su-reveal { 0%, 40% { background: var(--brand-select); } 100% { background: transparent; } }
+.cm-note { margin: -2px 0 8px; font-size: 12px; color: var(--text-muted); }
+.cm-tag.cm-new { margin-left: 2px; padding: 2px 5px; border-radius: 8px; background: var(--diff-ins); color: var(--text); }
+
 ::highlight(su-comment) { background-color: var(--comment-hl); }
 ::highlight(su-comment-active) { background-color: var(--comment-hl-active); }
 .icon-btn[hidden] { display: none; }

@@ -16,6 +16,10 @@ export interface TreeNode {
     stamp?: number;
     dirty?: boolean;
     threads?: number;
+    // The text changed from outside (a shared copy or the linked file) since the last review.
+    pending?: true;
+    // The document came from outside (a file, link, URL, or import); its source text is kept.
+    opened?: true;
     // UTF-8 bytes of the stored text, for the sidebar footer.
     size?: number;
 }

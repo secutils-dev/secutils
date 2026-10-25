@@ -66,7 +66,7 @@ export async function exportToDirectory(rootId: string | null) {
 // ---- Import ----
 type Incoming = { path: string[]; name: string; text: string };
 
-const docName = (file: string, text: string) => text.match(FRONTMATTER_RE)?.[1].match(FRONTMATTER_TITLE_RE)?.[1] ?? file.replace(MD_RE, '');
+export const docName = (file: string, text: string) => text.match(FRONTMATTER_RE)?.[1].match(FRONTMATTER_TITLE_RE)?.[1] ?? file.replace(MD_RE, '');
 
 async function expand(file: File, relPath: string): Promise<Incoming[]> {
     const segments = relPath.split('/').filter(Boolean);
@@ -95,7 +95,7 @@ async function importIncoming(items: Incoming[], parentId: string | null, skippe
             if (!folderIds.has(key)) folderIds.set(key, (await app.findOrCreateFolder(seg, parent)).id);
             parent = folderIds.get(key)!;
         }
-        last = (await app.createDoc({ name: app.uniqueName(item.name, parent), text: item.text, parentId: parent, open: false })).id;
+        last = (await app.createDoc({ name: app.uniqueName(item.name, parent), text: item.text, parentId: parent, open: false, opened: true })).id;
     }
     if (items.length === 1 && last) await app.openDoc(last);
     toast(`Imported ${items.length} document${items.length === 1 ? '' : 's'}${skipped ? ` · skipped ${skipped} other file${skipped === 1 ? '' : 's'}` : ''}`);

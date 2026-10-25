@@ -7,7 +7,8 @@ import { $, copyRich, esc, modal } from '../ui/ui.ts';
 import * as viewer from '../doc/viewer.js';
 import { type Bundle, decodeState, deriveShortLink, encodeState, fromBase64Url, hashText, openSealed, parseBundle, sealBundle, SHORT_MAX_CHARS, toBase64Url } from './codec.ts';
 import { downloadDoc } from '../io/io.ts';
-import { mergeDocuments, splitComments, type Thread } from './merge.ts';
+import { joinComments, mergeDocuments, openThreads, splitComments, type Thread } from './merge.ts';
+import { matchScore } from './match.ts';
 
 export const SHARED_FOLDER = 'Shared with me';
 const SHORT_TTLS = [86400, 604800, 1209600];
@@ -121,6 +122,24 @@ function githubSummary(name: string, url: string, threads: Thread[]) {
     return lines.join('\n');
 }
 
+// A prompt that hands the open threads to an AI agent. The protocol itself lives in the
+// skill (mars.skill.md -> "Address review threads"); this is its paste-ready summary.
+function agentPrompt(n: TreeNode, threads: Thread[]) {
+    const open = threads.filter((t) => !t.resolved);
+    const file = n.originId?.startsWith('file:') ? n.originId.slice(5) : null;
+    const target = file ?? `the Markdown document "${n.name}" (ask me for its path if you don't know it)`;
+    return [
+        `Address the ${open.length} open review thread${open.length === 1 ? '' : 's'} on ${target}. The thread format is in the MARS skill: ${base()}llms.txt`,
+        '',
+        '1. Edit the document to resolve each thread, or decide that it needs no change.',
+        '2. In each thread, append one comment with a new 8-hex-character "id", your name as "author", the current ISO 8601 time as "at", and a "body" that says what you changed or why you kept the text. Keep the thread "id".',
+        '3. When you rewrite a quoted passage, set the thread\'s "quote", "prefix", and "suffix" to the new rendered text.',
+        '4. Keep the su-comments block as the last thing in the file. If the file has no block, append this one with your replies:',
+        '',
+        joinComments('', open).trim(),
+    ].join('\n');
+}
+
 // ---- Toolbar share menu (current document) ----
 const menu = $('shareMenu');
 const hideMenu = () => { if (menu.matches(':popover-open')) menu.hidePopover(); };
@@ -188,6 +207,18 @@ $('copyGithubBtn').addEventListener('click', async () => {
         viewer.toast('Copied a GitHub comment with the open threads');
     } catch (err) { viewer.toast((err as Error)?.message ?? 'Failed to copy'); }
 });
+$('copyAgentBtn').addEventListener('click', async () => {
+    hideMenu();
+    const text = currentBundle().then(({ id, bundle }) => {
+        const { threads } = splitComments(bundle.docs[0].text);
+        if (!threads.some((t) => !t.resolved)) throw new Error('No open threads to hand off');
+        return agentPrompt(app.node(id)!, threads);
+    });
+    try {
+        await copyRich(text);
+        viewer.toast('Copied the open threads for an AI agent: paste them into its chat');
+    } catch (err) { viewer.toast((err as Error)?.message ?? 'Failed to copy'); }
+});
 $('deleteShortLinkBtn').addEventListener('click', async () => {
     hideMenu();
     const links = readLinks();
@@ -208,40 +239,105 @@ const findDoc = (originId: string) => app.state.nodes.find((n) => n.kind === 'do
 const sharedRoot = () => app.findOrCreateFolder(SHARED_FOLDER, null);
 
 async function saveText(n: TreeNode, text: string) {
-    n.size = textBytes(text);
+    Object.assign(n, { size: textBytes(text), threads: openThreads(text), updatedAt: Date.now() });
     await db.putNodes([n], { [n.id]: text });
     if (n.id === app.state.currentId) viewer.openDocument({ text, name: n.name, handle: n.handle ?? null, stamp: n.stamp ?? 0, dirty: !!n.dirty });
 }
 
-async function receiveDoc(doc: Bundle['docs'][0]) {
-    const existing = findDoc(doc.originId);
-    if (!existing) {
-        const parent = await sharedRoot();
-        await app.createDoc({ name: app.uniqueName(doc.name || 'Untitled', parent.id), text: doc.text, parentId: parent.id, originId: doc.originId });
-        viewer.toast(`Added "${doc.name}" to ${SHARED_FOLDER}`);
-        return;
-    }
-    const local = (await db.getText(existing.id)) ?? '';
-    const merged = mergeDocuments(local, doc.text);
-    if (merged.sameBody || local === doc.text) {
-        if (merged.added) await saveText(existing, merged.mine);
-        await app.openDoc(existing.id);
-        viewer.toast(merged.added ? `Merged ${merged.added} new comment${merged.added === 1 ? '' : 's'} into "${existing.name}"` : `"${existing.name}" is already up to date`);
-        return;
-    }
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+// Brings an incoming copy of a stored document in. Comments always merge. The text is
+// decided against `opened`, the source text as MARS last received it: when only the source
+// changed it is taken (and the changes marked), when only the stored copy changed it stays,
+// and when both changed (or the source text is unknown) the reader decides. `link` attaches
+// the file an incoming copy was opened from.
+async function updateExisting(existing: TreeNode, text: string, link?: { handle: FileSystemFileHandle; stamp: number }) {
     await app.openDoc(existing.id);
-    const { value } = await modal({
-        title: 'This document is already in your sidebar',
-        html: `<p>The shared copy of <strong>${esc(existing.name)}</strong> has different text than yours${merged.added ? ` and ${merged.added} new comment${merged.added === 1 ? '' : 's'}` : ''}. Comments are merged in every case.</p>`,
-        buttons: [{ label: 'Save as a copy', value: 'copy' }, { label: 'Use shared text', value: 'theirs' }, { label: 'Keep my text', value: 'mine', primary: true }],
-    });
-    if (value === 'copy') {
-        const parent = await sharedRoot();
-        await app.createDoc({ name: app.uniqueName(`${doc.name} (shared)`, parent.id), text: doc.text, parentId: parent.id });
-    } else if (value) {
-        await saveText(existing, value === 'theirs' ? merged.theirs : merged.mine);
-        viewer.toast(value === 'theirs' ? 'Replaced the text with the shared version' : 'Kept your text and merged the comments');
+    const local = (await db.getText(existing.id)) ?? '';
+    const opened = existing.opened ? await db.getSide('opened', existing.id) : undefined;
+    const merged = mergeDocuments(local, text);
+    const comments = merged.added ? ` and merged ${plural(merged.added, 'new comment')}` : '';
+    let choice: 'theirs' | 'mine' | 'copy' | '';
+    let note: string;
+    if (merged.sameBody || local === text) {
+        choice = 'mine';
+        note = merged.added ? `Merged ${plural(merged.added, 'new comment')} into "${existing.name}"` : `"${existing.name}" is already up to date`;
+    } else if (opened !== undefined && app.bodyOf(opened) === app.bodyOf(text)) {
+        choice = 'mine';
+        note = `Kept your edits to "${existing.name}": its source hasn't changed${comments}`;
+    } else if (opened !== undefined && app.bodyOf(opened) === app.bodyOf(local)) {
+        choice = 'theirs';
+        note = `Updated "${existing.name}"${comments} · showing what changed`;
+    } else {
+        const both = opened !== undefined;
+        ({ value: choice } = await modal({
+            title: both ? 'Both copies changed' : 'This document is already in your sidebar',
+            html: both
+                ? `<p>You edited <strong>${esc(existing.name)}</strong> in MARS, and the incoming copy changed too. Comments are merged in every case.</p><p><strong>Review changes</strong> takes the incoming text; your edits stay visible under <em>Show before</em> until you mark it reviewed.</p>`
+                : `<p>The incoming copy of <strong>${esc(existing.name)}</strong> has different text than yours${merged.added ? ` and ${plural(merged.added, 'new comment')}` : ''}. Comments are merged in every case.</p><p><strong>Review changes</strong> takes the incoming text and marks what changed since your review.</p>`,
+            buttons: both
+                ? [{ label: 'Keep my text', value: 'mine' }, { label: 'Review changes', value: 'theirs' }, { label: 'Save as a copy', value: 'copy', primary: true }]
+                : [{ label: 'Save as a copy', value: 'copy' }, { label: 'Keep my text', value: 'mine' }, { label: 'Review changes', value: 'theirs', primary: true }],
+        }) as { value: typeof choice });
+        note = choice === 'theirs' ? 'Showing what changed since your review' : 'Kept your text and merged the comments';
     }
+    if (choice === 'copy') {
+        await app.createDoc({ name: app.uniqueName(`${existing.name} (new)`, existing.parentId), text, parentId: existing.parentId, opened: true, handle: link?.handle, stamp: link?.stamp });
+        viewer.toast(`Saved the incoming copy next to "${existing.name}"`);
+        return;
+    }
+    if (!choice) return;
+    if (link) Object.assign(existing, { handle: link.handle, stamp: link.stamp, dirty: choice === 'mine' && !merged.sameBody });
+    await app.setOpened(existing, text);
+    if (choice === 'theirs') await app.rebase(existing, local, merged.theirs);
+    const next = choice === 'theirs' ? merged.theirs : merged.mine;
+    if (next !== local) await saveText(existing, next);
+    else await db.putNodes([existing]);
+    viewer.toast(note);
+}
+
+// A stored document the incoming one is likely an updated copy of (a moved file, or a file
+// opened with Open), confirmed by the reader. The origin then follows the new location.
+async function findLikely(name: string, text: string, originId?: string) {
+    let best: TreeNode | null = null, bestScore = 0;
+    for (const n of app.state.nodes) {
+        if (n.kind !== 'doc') continue;
+        const score = matchScore({ name, text }, { name: n.name, text: (await db.getText(n.id)) ?? '' });
+        if (score > bestScore) [best, bestScore] = [n, score];
+    }
+    if (!best) return null;
+    const folder = ancestors(app.state.nodes, best.id).at(-1)?.name;
+    const { value } = await modal({
+        title: 'Is this an updated copy?',
+        html: `<p><strong>${esc(name)}</strong> looks like an updated copy of <strong>${esc(best.name)}</strong>${folder ? ` in <em>${esc(folder)}</em>` : ''}.</p><p>Updating it keeps one document with its comments and marks what changed.</p>`,
+        buttons: [{ label: 'Add as new', value: 'new' }, { label: `Update "${best.name}"`, value: 'update', primary: true }],
+    });
+    if (value !== 'update') return null;
+    if (originId && /^(file|url):/.test(originId)) { best.originId = originId; await db.putNodes([best]); }
+    return best;
+}
+
+async function receiveDoc(doc: Bundle['docs'][0]) {
+    const existing = findDoc(doc.originId) ?? (await findLikely(doc.name, doc.text, doc.originId));
+    if (existing) { await updateExisting(existing, doc.text); return; }
+    const parent = await sharedRoot();
+    await app.createDoc({ name: app.uniqueName(doc.name || 'Untitled', parent.id), text: doc.text, parentId: parent.id, originId: doc.originId, opened: true });
+    viewer.toast(`Added "${doc.name}" to ${SHARED_FOLDER}`);
+}
+
+// A Markdown file opened with Open or dropped on the preview. Chromium hands over a handle,
+// which identifies a file already in the sidebar exactly; otherwise the content decides.
+export async function receiveFile(file: { name: string; text: string; handle: FileSystemFileHandle | null; stamp: number }) {
+    let existing: TreeNode | null = null;
+    if (file.handle) {
+        for (const n of app.state.nodes) {
+            if (n.handle && (await n.handle.isSameEntry(file.handle).catch(() => false))) { existing = n; break; }
+        }
+    }
+    existing ??= await findLikely(file.name, file.text);
+    const link = file.handle ? { handle: file.handle, stamp: file.stamp } : undefined;
+    if (existing) { await updateExisting(existing, file.text, link); return; }
+    await app.createDoc({ name: app.uniqueName(file.name, app.state.folderId), text: file.text, handle: link?.handle, stamp: link?.stamp, opened: true });
 }
 
 async function receiveFolder(bundle: Bundle) {
@@ -263,7 +359,7 @@ async function receiveFolder(bundle: Bundle) {
         }
         let parentId = target.id;
         for (const seg of doc.path) parentId = (await app.findOrCreateFolder(seg, parentId)).id;
-        const created = await app.createDoc({ name: app.uniqueName(doc.name, parentId), text: doc.text, parentId, originId: doc.originId, open: false });
+        const created = await app.createDoc({ name: app.uniqueName(doc.name, parentId), text: doc.text, parentId, originId: doc.originId, open: false, opened: true });
         first ??= created.id;
         added++;
     }
