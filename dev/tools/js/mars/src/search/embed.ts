@@ -24,10 +24,14 @@ export function enabledModel(): ModelKey | null {
 interface Entry { id: string; model: ModelKey; v?: number | string; at: number; chunks: { start: number; text: string; v: Float32Array }[] }
 
 const index = new Map<string, Entry>();
-const statusListeners = new Set<(s: string | null) => void>();
-export const onStatus = (fn: (s: string | null) => void) => { statusListeners.add(fn); };
-let currentStatus: string | null = null;
-const status = (s: string | null) => { currentStatus = s; for (const fn of statusListeners) fn(s); };
+// What smart search is doing: `label` fits the sidebar badge, `text` is the full sentence.
+export type Status = { state: 'download' | 'prepare' | 'index' | 'paused' | 'error'; label: string; text: string } | null;
+const statusListeners = new Set<(s: Status) => void>();
+export const onStatus = (fn: (s: Status) => void) => { statusListeners.add(fn); };
+let currentStatus: Status = null;
+const status = (s: Status) => { currentStatus = s; for (const fn of statusListeners) fn(s); };
+const PAUSED: Status = { state: 'paused', label: 'Paused', text: 'Smart-search indexing is paused' };
+const unavailable = (err: unknown): Status => ({ state: 'error', label: 'Unavailable', text: `Smart search is unavailable: ${(err as Error)?.message ?? err}` });
 
 // ---- Worker ----
 const WORKER = `
@@ -108,20 +112,22 @@ export const activeDevice = () => device;
 function loadModel(key: ModelKey) {
     if (loaded?.key === key) return loaded.ready;
     const m = MODELS[key], files = new Map<string, [number, number]>();
-    let line: string | null = null;
-    const show = (s: string) => { line = s; status(s); };
-    // The loading line goes once the model is ready or failed; a line set meanwhile stays.
+    let line: Status = null;
+    const show = (s: Status) => { line = s; status(s); };
+    const preparing = (): Status => ({ state: 'prepare', label: 'Preparing', text: `Preparing the ${m.label} model…` });
+    // The loading status goes once the model is ready or failed; a status set meanwhile stays.
     // Re-emitting also refreshes the button's device label.
     const settle = () => status(currentStatus === line ? null : currentStatus);
-    show(`Preparing the ${m.label} model…`);
+    show(preparing());
     const ready = placementOf(key).then((p) => {
         // EmbeddingGemma on WebAssembly takes minutes per document and can run out of memory.
         if (!p) throw new Error(`the ${m.label} model needs a graphics card (WebGPU), which this browser doesn't offer. Pick another model from the sparkles button.`);
         return call({ type: 'load', model: m.id, file: m.file, dtype: p.dtype, cpuDtype: m.dtype, device: p.device, gpuOnly: m.gpu }, ({ file, loaded: got, total }) => {
             files.set(file, [got, total]);
             const [done, all] = [...files.values()].reduce((s, [a, b]) => [s[0] + a, s[1] + b], [0, 0]);
-            if (all > 1e6 && done < all) show(`Downloading the ${m.label} model… ${Math.min(99, Math.round((done / Math.max(all, p.bytes)) * 100))}%`);
-            else if (all > 1e6) show(`Preparing the ${m.label} model…`);
+            const pct = Math.min(99, Math.round((done / Math.max(all, p.bytes)) * 100));
+            if (all > 1e6 && done < all) show({ state: 'download', label: `Downloading ${pct}%`, text: `Downloading the ${m.label} model… ${pct}%` });
+            else if (all > 1e6 && line?.state !== 'prepare') show(preparing());
         });
     }).then((r) => { device = r.device ?? null; settle(); });
     loaded = { key, ready };
@@ -151,7 +157,7 @@ let paused = false;
 export const isPaused = () => paused;
 export function pause() {
     paused = true;
-    if (!indexing) status('Indexing paused');
+    if (!indexing) status(PAUSED);
 }
 export function resume() {
     paused = false;
@@ -180,13 +186,13 @@ export function reindex() {
             for (const id of index.keys()) if (!ids.has(id)) { index.delete(id); changed = true; }
             const current = (e?: Entry) => e?.model === key && e.v === indexVersion(key);
             const stale = docs.filter((n) => index.get(n.id)?.at !== n.updatedAt || !current(index.get(n.id)));
-            // Load first, so the status line shows the download before "Indexing".
+            // Load first, so the status shows the download before "Indexing".
             if (stale.length) await loadModel(key);
             for (const [i, n] of stale.entries()) {
                 if (gen !== generation) return;
-                if (paused) { status('Indexing paused'); return; }
+                if (paused) { status(PAUSED); return; }
                 if (!app.node(n.id)) continue;
-                status(`Indexing ${i + 1} of ${stale.length}…`);
+                status({ state: 'index', label: `Indexing ${i + 1}/${stale.length}`, text: `Indexing ${i + 1} of ${stale.length}…` });
                 const chunks = indexChunks((await db.getText(n.id)) ?? '');
                 const vectors: Float32Array[] = [];
                 for (let j = 0; j < chunks.length; j += 8) vectors.push(...(await embed(key, chunks.slice(j, j + 8).map((c) => passageInput(MODELS[key], n.name, c)))));
@@ -196,9 +202,9 @@ export function reindex() {
                 changed = true;
                 await db.putSide('vec', n.id, entry);
             }
-            status(paused ? 'Indexing paused' : null);
+            status(paused ? PAUSED : null);
         } catch (err) {
-            if (gen === generation) status(`Smart search is unavailable: ${(err as Error)?.message ?? err}`);
+            if (gen === generation) status(unavailable(err));
         } finally {
             indexing = null;
             if (changed) { revision++; for (const fn of indexedListeners) fn(); }

@@ -96,7 +96,19 @@ body.sb-collapsed .mars-sidebar { display: none; }
 .sb-smart:hover { color: var(--text); background: var(--eui-hover); }
 .sb-smart[aria-pressed="true"] { color: var(--brand-text); }
 .sb-smart .eui-icon { width: 14px; height: 14px; }
-.sb-smart-status { margin: -4px 12px 6px; font-size: 11px; color: var(--text-muted); }
+/* Smart-search status (EuiBadge: hollow while working, warning when paused, danger on failure) */
+.sb-badge { min-width: 0; margin: 0 auto 0 8px; height: 20px; padding: 0 6px; display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--eui-border-plain); border-radius: var(--radius-s); background: transparent; color: var(--text-muted); font: 500 11px/1 var(--font); white-space: nowrap; cursor: pointer; }
+.sb-badge[hidden] { display: none; }
+.sb-badge:hover { color: var(--text); background: var(--eui-hover); }
+.sb-badge:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.sb-badge > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.sb-badge .eui-icon { flex: none; width: 12px; height: 12px; }
+.sb-badge[data-state="download"] { border-color: transparent; background: var(--brand-light); color: var(--brand-text); }
+.sb-badge[data-state="paused"] { border-color: transparent; background: var(--eui-warning); color: #1d2a3e; }
+.sb-badge[data-state="error"] { border-color: transparent; background: var(--eui-danger-bg); color: var(--eui-danger); }
+.sb-spin { flex: none; width: 10px; height: 10px; border: 1.5px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: su-spin-edit .8s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .sb-spin { animation-duration: 2.4s; } }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .tree-row.result { padding-left: 6px; }
 .tree-row.result .tree-snippet { padding-left: 22px; }
 .tree-row .tree-icon.smart { color: var(--brand-text); }

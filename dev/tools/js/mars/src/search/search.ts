@@ -3,7 +3,8 @@
 // to turn it on as the sidebar grows.
 import * as app from '../app.ts';
 import * as db from '../store/db.ts';
-import { $, modal, openMenu } from '../ui/ui.ts';
+import { icon } from '../ui/icons.ts';
+import { $, esc, modal, openMenu } from '../ui/ui.ts';
 import * as viewer from '../doc/viewer.js';
 import { type Chunk, nudgeDue, searchBody, snippet, threadChunks } from './chunks.ts';
 import { activeDevice, disable, enable, enabledModel, indexRevision, isDownloaded, isPaused, MODELS, modelUsage, onIndexed, onStatus, pause, placementOf, reindex, removeModel, resume, search, type Hit, type ModelKey } from './embed.ts';
@@ -93,11 +94,24 @@ function syncButton() {
     smartBtn.title = key ? `Smart search: on (${MODELS[key].label} model${on ? `, ${on}` : ''})` : 'Smart search: find passages by meaning (off)';
 }
 
+// The badge beside the Documents title. Screen readers hear state changes only, not every
+// "Indexing N of M".
+const liveEl = $('sbSmartLive');
+let lastState: string | null = null;
 onStatus((s) => {
     statusEl.hidden = !s;
-    statusEl.textContent = s ?? '';
+    if (s) {
+        const glyph = s.state === 'paused' ? icon('pause', 12) : s.state === 'error' ? icon('warning', 12) : '<span class="sb-spin" aria-hidden="true"></span>';
+        statusEl.innerHTML = `${glyph}<span>${esc(s.label)}</span>`;
+        statusEl.dataset.state = s.state;
+        statusEl.title = `${s.text}. Click for smart-search options.`;
+    }
+    const state = s?.state ?? null;
+    if (state !== lastState) liveEl.textContent = s ? s.text : lastState === 'index' ? 'Smart-search index is up to date' : '';
+    lastState = state;
     syncButton();
 });
+statusEl.addEventListener('click', () => (enabledModel() ? smartMenu(statusEl) : turnOn()));
 
 const OPTION_TEXT: Record<ModelKey, string> = {
     fast: 'Small download, quick to index. English only.',
@@ -138,12 +152,14 @@ export async function turnOn() {
 
 const fmtBytes = (b: number) => (b < 1e6 ? `${Math.max(1, Math.round(b / 1e3))} KB` : `${Math.round(b / 1e6)} MB`);
 
-smartBtn.addEventListener('click', async () => {
+smartBtn.addEventListener('click', () => (enabledModel() ? smartMenu(smartBtn) : turnOn()));
+
+async function smartMenu(anchor: HTMLElement) {
     const key = enabledModel();
-    if (!key) { turnOn(); return; }
+    if (!key) return;
     const usage = await modelUsage();
     const unused = (Object.keys(usage) as ModelKey[]).filter((k) => k !== key);
-    openMenu(smartBtn, [
+    openMenu(anchor, [
         { label: `On · ${MODELS[key].label} model`, icon: 'sparkles', sub: [MODELS[key].langs, deviceLabel() && `runs on the ${deviceLabel()}`, usage[key] && `${fmtBytes(usage[key]!)} downloaded`].filter(Boolean).join(', '), disabled: true },
         { label: 'Change model…', icon: 'gear', run: turnOn },
         isPaused()
@@ -154,7 +170,7 @@ smartBtn.addEventListener('click', async () => {
         'separator',
         { label: 'Turn off smart search', icon: 'cross', sub: 'Removes the index and the downloaded models', danger: true, run: async () => { await disable(); syncButton(); notify(); viewer.toast('Smart search is off'); } },
     ], 'Smart search');
-});
+}
 
 // ---- Suggestion ----
 // Shown at 6, 20, and 50 documents, then every 10 more, until turned on or declined for good.

@@ -73,12 +73,12 @@ async function turnOn(page: Page, model: string) {
   await page.locator('#marsModalFoot').getByRole('button', { name: 'Turn on' }).click();
   const status = page.locator('#sbSmartStatus');
   const button = page.getByRole('button', { name: 'Smart search' });
-  // Loaded once the button names the device; done once the status line clears after that.
+  // Loaded once the button names the device; done once the status badge hides after that.
   // A small library can index between two polls, so "Indexing" may never be seen.
   let loaded = 0;
   for (;;) {
     const text = (await status.isHidden()) ? '' : ((await status.textContent()) ?? '');
-    expect(text).not.toMatch(/unavailable/);
+    expect(text).not.toMatch(/unavailable/i);
     if (!loaded && /(GPU|CPU)\)/.test((await button.getAttribute('title')) ?? '')) loaded = Date.now();
     if (!text && loaded) break;
     await page.waitForTimeout(100);
@@ -146,8 +146,8 @@ test.describe(`${tool.name} smart search`, () => {
       await expect(page.locator('.model-option', { hasText: model }).locator('.model-badge')).toHaveText('Downloaded');
       await page.locator('#marsModalFoot').getByRole('button', { name: 'Cancel' }).click();
 
-      // After a reload, the first query loads the model, and the status line clears once it is ready.
-      // Waits out the startup index pass, which would clear the line on its own.
+      // After a reload, the first query loads the model, and the status badge hides once it is ready.
+      // Waits out the startup index pass, which would hide the badge on its own.
       await page.reload();
       await page.waitForTimeout(3500);
       expect(await meaningHits(page, 'single sign-on')).toEqual(['login']);
@@ -162,9 +162,15 @@ test.describe(`${tool.name} smart search`, () => {
     await turnOn(page, 'Best speed');
     const button = page.getByRole('button', { name: 'Smart search' });
     const status = page.locator('#sbSmartStatus');
+    const treeTop = async () => (await page.locator('#tree').boundingBox())!.y;
+    const top = await treeTop();
     await button.click();
     await page.getByRole('menuitem', { name: /Pause indexing/ }).click();
-    await expect(status).toHaveText('Indexing paused');
+    await expect(status).toHaveText('Paused');
+    await expect(status).toHaveAttribute('data-state', 'paused');
+    await expect(page.locator('#sbSmartLive')).toHaveText('Smart-search indexing is paused');
+    // The badge sits beside the Documents title, so the tree below doesn't move.
+    expect(await treeTop()).toBe(top);
 
     await page.locator('#importInput').setInputFiles({
       name: 'billing.md',
@@ -174,12 +180,14 @@ test.describe(`${tool.name} smart search`, () => {
     await expect(page.locator('#toast')).toContainText('Imported 1 document');
     // Past the 2-second indexing delay.
     await page.waitForTimeout(3000);
-    await expect(status).toHaveText('Indexing paused');
+    await expect(status).toHaveText('Paused');
     expect(await meaningHits(page, 'when invoices are due')).not.toContain('billing');
 
-    await button.click();
+    // The badge opens the smart-search menu.
+    await status.click();
     await page.getByRole('menuitem', { name: /Resume indexing/ }).click();
     await expect(status).toBeHidden({ timeout: 60_000 });
+    await expect(page.locator('#sbSmartLive')).toHaveText('Smart-search index is up to date');
     // The same query again: matches made before the document was indexed must not be reused.
     await expect.poll(() => meaningHits(page, 'when invoices are due')).toContain('billing');
   });

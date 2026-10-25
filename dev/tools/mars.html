@@ -245,6 +245,8 @@
         <aside id="sidebar" class="mars-sidebar" aria-label="Documents">
             <div class="sb-head">
                 <h2 class="sb-title">Documents</h2>
+                <button id="sbSmartStatus" type="button" class="sb-badge" aria-haspopup="menu" hidden></button>
+                <span id="sbSmartLive" class="sr-only" role="status" aria-live="polite"></span>
                 <button id="sbNewBtn" type="button" class="icon-btn" aria-haspopup="menu" title="New document, folder, or import" aria-label="New document, folder, or import"><span data-icon="plus"></span></button>
             </div>
             <div class="sb-filter">
@@ -252,7 +254,6 @@
                 <input id="sbFilter" type="search" placeholder="Search…" aria-label="Search documents" autocomplete="off" spellcheck="false">
                 <button id="sbSmartBtn" type="button" class="sb-smart" aria-pressed="false" title="Smart search: find passages by meaning (off)" aria-label="Smart search"><span data-icon="sparkles"></span></button>
             </div>
-            <div id="sbSmartStatus" class="sb-smart-status" role="status" aria-live="polite" hidden></div>
             <div id="tree" class="sb-tree" role="tree" aria-label="Documents" tabindex="0"></div>
             <section id="smartNudge" class="sb-nudge" role="dialog" aria-labelledby="smartNudgeTitle" hidden>
                 <button id="smartNudgeClose" type="button" class="icon-btn sb-nudge-close" title="Not now" aria-label="Not now"><span data-icon="cross"></span></button>

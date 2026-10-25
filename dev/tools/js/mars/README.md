@@ -138,7 +138,7 @@ sequenceDiagram
     UI->>E: enable(model)
     E->>DB: Clear vec:* when the model changed
     E->>W: load(model, dtype, device)
-    W-->>UI: Download progress (status line)
+    W-->>UI: Download progress (status badge)
     loop Each document without a current entry
         E->>E: indexChunks: paragraphs with their heading, and threads
         E->>W: embed(chunks, 8 at a time)
@@ -176,8 +176,11 @@ their Cache Storage until they turn smart search off, which deletes every model.
 (`dev/tools/deploy.ts`; `serve.mjs` locally). `credentialless` keeps cross-origin map tiles,
 fonts, and scripts loading without CORP headers. Safari ignores it and stays single-threaded.
 
-**Status line**: "Preparing the … model", "Downloading the … model… N%" (first use only), then
-"Indexing N of M", or "Indexing paused". A failure shows there too.
+**Status badge**: a badge beside the Documents title, so the tree never shifts. It reads
+"Downloading N%" (first use only), "Preparing", "Indexing N/M", "Paused" (warning colors), or
+"Unavailable" (danger colors), with the full sentence in its tooltip, and hides when idle.
+Clicking it opens the smart-search menu. `embed.ts` emits a `Status` (state, short label, full
+text); a visually hidden live region announces state changes, not each document.
 
 **Browser test.** `e2e/tools/mars-smart.spec.ts` runs the built page with each model: it
 indexes a fixture, asserts a match by meaning and a miss for an unrelated word, and checks the
@@ -270,7 +273,7 @@ flowchart TD
 - **Other tabs**: each tab runs its own worker and indexes on its own. Two open tabs may embed
   the same change twice; the result is the same entry.
 - **Pause**: **Pause indexing** in the sparkles menu stops a pass after the current document, and
-  the status line says "Indexing paused". Search keeps using the entries already stored.
+  the status badge says "Paused". Search keeps using the entries already stored.
   **Resume indexing** runs one pass, which catches up on every document added or edited
   meanwhile and skips deleted ones. The pause is held in memory only, so a reload resumes. An
   import of 20 or more documents offers **Pause indexing** on its toast, so you can remove the
