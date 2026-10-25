@@ -6,9 +6,8 @@ import * as db from '../store/db.ts';
 import { $, modal, openMenu } from '../ui/ui.ts';
 import * as viewer from '../doc/viewer.js';
 import { type Chunk, nudgeDue, searchBody, snippet, threadChunks } from './chunks.ts';
-import { activeDevice, disable, enable, enabledModel, hasGpu, MODELS, modelUsage, onStatus, reindex, removeModel, search, type Hit, type ModelKey } from './embed.ts';
+import { activeDevice, disable, enable, enabledModel, isDownloaded, MODELS, modelUsage, onStatus, placementOf, reindex, removeModel, search, type Hit, type ModelKey } from './embed.ts';
 
-const filterInput = $<HTMLInputElement>('sbFilter');
 const smartBtn = $('sbSmartBtn'), statusEl = $('sbSmartStatus');
 const listeners = new Set<() => void>();
 export const onUpdate = (fn: () => void) => { listeners.add(fn); };
@@ -85,7 +84,6 @@ function syncButton() {
     const key = enabledModel(), on = deviceLabel();
     smartBtn.setAttribute('aria-pressed', String(!!key));
     smartBtn.title = key ? `Smart search: on (${MODELS[key].label} model${on ? `, ${on}` : ''})` : 'Smart search: find passages by meaning (off)';
-    filterInput.placeholder = key ? 'Search documents and meaning' : 'Search documents';
 }
 
 onStatus((s) => {
@@ -101,11 +99,12 @@ const OPTION_TEXT: Record<ModelKey, string> = {
 
 // The model picker. Resolves with the chosen model, or null when cancelled.
 async function chooseModel(current: ModelKey | null): Promise<ModelKey | null> {
-    const gpu = await hasGpu();
+    const keys = Object.keys(MODELS) as ModelKey[];
+    const info = Object.fromEntries(await Promise.all(keys.map(async (k) => [k, { p: await placementOf(k), have: await isDownloaded(k) }] as const)));
     const option = (key: ModelKey) => {
-        const m = MODELS[key], off = m.gpu && !gpu;
+        const m = MODELS[key], { p, have } = info[key], off = !p;
         const text = off ? 'Needs a graphics card (WebGPU), which this browser doesn\'t offer.' : OPTION_TEXT[key];
-        return `<label class="model-option${off ? ' disabled' : ''}"><input type="radio" name="smartModel" value="${key}"${key === (current ?? 'fast') && !off ? ' checked' : ''}${off ? ' disabled' : ''}><span><strong>${m.label}</strong> · ${m.size} download<span class="opt-desc">${text}<span class="model-id">${m.name}</span></span></span></label>`;
+        return `<label class="model-option${off ? ' disabled' : ''}"><input type="radio" name="smartModel" value="${key}"${key === (current ?? 'fast') && !off ? ' checked' : ''}${off ? ' disabled' : ''}><span><strong>${m.label}</strong>${have ? ' <span class="model-badge">Downloaded</span>' : p ? ` · ${fmtBytes(p.bytes)} download` : ''}<span class="opt-desc">${text}<span class="model-id">${m.name}</span></span></span></label>`;
     };
     const { value } = await modal({
         title: current ? 'Change the search model' : 'Turn on smart search',

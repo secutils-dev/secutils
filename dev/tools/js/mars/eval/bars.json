@@ -1,0 +1,6 @@
+{
+  "fast@q8": { "mrr": 0.92, "ndcg": 0.93, "hit3": 0.95, "found": 0.9, "precision": 0.55, "clean": 0.9, "auc": 0.97 },
+  "fast@fp16": { "mrr": 0.92, "ndcg": 0.93, "hit3": 0.95, "found": 0.9, "precision": 0.55, "clean": 0.9, "auc": 0.97 },
+  "best@q4": { "mrr": 0.95, "ndcg": 0.96, "hit3": 0.95, "found": 0.85, "precision": 0.75, "clean": 0.95, "auc": 0.98 },
+  "best@q4f16": { "mrr": 0.95, "ndcg": 0.96, "hit3": 0.95, "found": 0.85, "precision": 0.75, "clean": 0.95, "auc": 0.98 }
+}

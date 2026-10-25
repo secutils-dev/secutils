@@ -1,0 +1,10 @@
+{
+  "name": "@secutils-dev/mars-eval",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "eval": "node eval.ts"
+  },
+  "dependencies": { "@huggingface/transformers": "4.3.1" }
+}

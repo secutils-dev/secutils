@@ -10,11 +10,14 @@ import { launchWithModelCache, openFresh } from './_model_cache';
 // only the first run downloads them. Local-only: run against `npm run serve` in
 // dev/tools/js/mars, or the live host:
 //   MARS_BASE_URL=http://localhost:7373 make e2e-tools-test ARGS=mars-smart.spec.ts
-// MARS_SMART_LIBRARY=<export.zip> times a real library instead of the fixture (results are
-// logged, not asserted). MARS_SMART_DEVICE=cpu hides the GPU, to compare devices.
+// MARS_SMART_LIBRARY=<export.zip> times a real library instead of the fixture, and logs the
+// matches for MARS_SMART_QUERIES (separated by `|`) without asserting them.
+// MARS_SMART_DEVICE=cpu hides the GPU, to compare devices. Search quality is measured by
+// dev/tools/js/mars/eval/, not here.
 const tool = getTool('mars');
 const MARS_BASE_URL = process.env.MARS_BASE_URL ?? `https://${tool.host}`;
 const LIBRARY = process.env.MARS_SMART_LIBRARY;
+const LIBRARY_QUERIES = (process.env.MARS_SMART_QUERIES ?? 'dog|single sign-on|how are releases shipped').split('|');
 const CPU_ONLY = process.env.MARS_SMART_DEVICE === 'cpu';
 // Metal gives headless Chromium a real GPU on macOS. Leave out `--enable-unsafe-webgpu`: it
 // exposes experimental features that ONNX Runtime then picks and fails on.
@@ -128,7 +131,7 @@ test.describe(`${tool.name} smart search`, () => {
       test.info().annotations.push({ type: 'timing', description: summary });
 
       if (LIBRARY) {
-        for (const q of ['dog', 'single sign-on', 'how are releases shipped'])
+        for (const q of LIBRARY_QUERIES)
           console.log(`  ${JSON.stringify(q)} -> ${(await meaningHits(page, q)).join(', ') || '(none)'}`);
         return;
       }
@@ -136,6 +139,12 @@ test.describe(`${tool.name} smart search`, () => {
       // Only the review comment is about credentials.
       expect(await meaningHits(page, 'rotate passwords')).toEqual(['releases']);
       expect(await meaningHits(page, 'document')).toEqual([]);
+
+      // The picker marks the model as downloaded.
+      await page.getByRole('button', { name: 'Smart search' }).click();
+      await page.getByRole('menuitem', { name: /Change model/ }).click();
+      await expect(page.locator('.model-option', { hasText: model }).locator('.model-badge')).toHaveText('Downloaded');
+      await page.locator('#marsModalFoot').getByRole('button', { name: 'Cancel' }).click();
     });
   }
 });

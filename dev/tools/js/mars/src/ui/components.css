@@ -115,6 +115,7 @@ body.sb-collapsed .mars-sidebar { display: none; }
 .model-option input { margin-top: 3px; accent-color: var(--brand); }
 .model-option.disabled { opacity: .6; cursor: not-allowed; }
 .model-option .opt-desc { display: block; margin-top: 2px; font-size: 12px; color: var(--text-muted); }
+.model-badge { margin-left: 6px; padding: 0 6px; border-radius: 9px; background: var(--badge-bg); color: var(--badge-text); font-size: 11px; font-weight: 500; line-height: 18px; vertical-align: 1px; }
 .model-id { display: block; margin-top: 2px; font-family: var(--mono); font-size: 11px; opacity: .8; white-space: nowrap; }
 .options-popover .opt-action { width: 100%; }
 .tree-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--eui-warning); }

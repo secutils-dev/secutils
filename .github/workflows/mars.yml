@@ -1,0 +1,54 @@
+name: MARS
+
+permissions:
+  contents: read
+
+# ci.yml ignores dev/tools/**; this workflow covers the MARS sub-package only.
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'dev/tools/js/mars/**'
+      - '.github/workflows/mars.yml'
+  pull_request:
+    paths:
+      - 'dev/tools/js/mars/**'
+      - '.github/workflows/mars.yml'
+
+jobs:
+  mars:
+    name: MARS logic and search quality (Linux)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dev/tools/js/mars
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+          cache-dependency-path: |
+            dev/tools/js/mars/package-lock.json
+            dev/tools/js/mars/eval/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci && npm --prefix eval ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      # Best quality (EmbeddingGemma 2, about 200 MB) is checked locally; see README.md#evaluation.
+      - name: Cache the Best speed model
+        uses: actions/cache@v6.1.0
+        with:
+          path: dev/tools/js/mars/eval/.cache
+          key: mars-search-models-${{ hashFiles('dev/tools/js/mars/src/search/models.ts') }}
+          restore-keys: mars-search-models-
+
+      - name: Search quality (Best speed, CPU and WebGPU weights)
+        run: npm --prefix eval run eval -- fast@q8 fast@fp16 --check

@@ -3,45 +3,25 @@
 // (one `vec:<id>` entry per document) lives in IndexedDB and follows document edits.
 import * as app from '../app.ts';
 import * as db from '../store/db.ts';
-import { chunkDoc, embeddable, searchBody, threadChunks } from './chunks.ts';
+import { createEncoder, type Gpu, type Hit, indexChunks, MODELS, type ModelKey, onnxFile, passageInput, placement, queryInput, rank, toVectors, TRANSFORMERS_VERSION } from './models.ts';
 
-const TRANSFORMERS_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.1';
+export { MODELS, type Hit, type ModelKey };
 
-// The models won a benchmark of seven on 70 real security-review reports (936 chunks, 30
-// paraphrased queries with known answers, 10 off-topic queries); see js/mars/README.md.
-// `min`: the lowest score worth showing (cosine similarity), the cut-off that best separated
-// answers from off-topic queries there: Granite 95% at 0.79, EmbeddingGemma 2 98% at 0.70.
-// Each model has its own scale. ponytail: fixed cut-offs; re-run the benchmark when
-// changing a model or when results feel noisy or thin.
-// `pooling`: how token states become the embedding ('cls' for Granite). `sentence`: the
-// model's own pooled `sentence_embedding` output is the embedding instead.
-// `gpu`: WebGPU only. EmbeddingGemma's q4 file needs an operator (GatherBlockQuantized)
-// that WebAssembly lacks, and on WebAssembly it takes minutes per document anyway.
-// Licenses must allow any use (MARS is a public tool): both are Apache-2.0.
-export const MODELS = {
-    fast: { label: 'Best speed', name: 'Granite Embedding Small English R2 47M', id: 'onnx-community/granite-embedding-small-english-r2-ONNX', file: 'model', dtype: 'q8', size: '55 MB', bytes: 55e6, langs: 'English', query: '', doc: () => '', dims: 0, min: 0.79, gpu: false, sentence: false, pooling: 'cls' },
-    best: { label: 'Best quality', name: 'EmbeddingGemma 2 270M', id: 'onnx-community/embeddinggemma-2-ONNX', file: 'model', dtype: 'q4', size: '174 MB', bytes: 174e6, langs: '100+ languages', query: 'task: search result | query: ', doc: (title: string) => `title: ${title || 'none'} | text: `, dims: 256, min: 0.7, gpu: true, sentence: true, pooling: 'mean' },
-} as const;
-// Bump when what gets embedded, or how, changes, so stored indexes rebuild.
-const INDEX_VERSION = 4;
-const MAX_EMBED_CHARS = 1500;
-export type ModelKey = keyof typeof MODELS;
+const TRANSFORMERS_URL = `https://cdn.jsdelivr.net/npm/@huggingface/transformers@${TRANSFORMERS_VERSION}`;
 
-// Models MARS used before: their downloaded files are removed once, and a browser that had
-// the dropped "multi" model selected switches to Best speed.
-const RETIRED = ['Xenova/multilingual-e5-small', 'Xenova/all-MiniLM-L6-v2', 'onnx-community/embeddinggemma-300m-ONNX'];
-
+// Bump when what gets embedded, or how, changes, so stored indexes rebuild. A new model or
+// quantization for a key rebuilds too.
+const INDEX_VERSION = 5;
+const indexVersion = (key: ModelKey) => `${INDEX_VERSION}:${MODELS[key].id}:${MODELS[key].dtype}`;
 const SETTING_KEY = 'mars.smartSearch';
 export function enabledModel(): ModelKey | null {
     try {
-        let v = localStorage.getItem(SETTING_KEY);
-        if (v === 'multi') localStorage.setItem(SETTING_KEY, (v = 'fast'));
+        const v = localStorage.getItem(SETTING_KEY);
         return v && v in MODELS ? (v as ModelKey) : null;
     } catch { return null; }
 }
 
-interface Entry { id: string; model: ModelKey; v?: number; at: number; chunks: { start: number; text: string; v: Float32Array }[] }
-export interface Hit { id: string; score: number; start: number; text: string }
+interface Entry { id: string; model: ModelKey; v?: number | string; at: number; chunks: { start: number; text: string; v: Float32Array }[] }
 
 const index = new Map<string, Entry>();
 const statusListeners = new Set<(s: string | null) => void>();
@@ -51,30 +31,20 @@ const status = (s: string | null) => { currentStatus = s; for (const fn of statu
 
 // ---- Worker ----
 const WORKER = `
-import { pipeline, AutoTokenizer, AutoModel, env } from '${TRANSFORMERS_URL}';
-env.allowLocalModels = false;
+import * as tf from '${TRANSFORMERS_URL}';
+tf.env.allowLocalModels = false;
 let embed;
-// \`sentence\`: read the model's pooled sentence_embedding output; otherwise pool token states
-// (\`pooling\`: 'mean' or 'cls'; the pipeline's 'last_token' ignores padding, so avoid it).
-async function create(data, device, progress_callback) {
-    const opts = { dtype: data.dtype, device, progress_callback, model_file_name: data.file };
-    if (!data.sentence) {
-        const extractor = await pipeline('feature-extraction', data.model, opts);
-        return (texts) => extractor(texts, { pooling: data.pooling, normalize: true });
-    }
-    const tokenizer = await AutoTokenizer.from_pretrained(data.model, { progress_callback });
-    const model = await AutoModel.from_pretrained(data.model, opts);
-    return async (texts) => (await model(await tokenizer(texts, { padding: true, truncation: true }))).sentence_embedding;
-}
-// The main thread picks WebGPU only after hasGpu(). A WebGPU failure, at load or first use,
-// falls back to WebAssembly unless the model is GPU-only (\`gpuOnly\`).
+const createEncoder = ${createEncoder.toString()};
+const create = (data, device, progress) => createEncoder(tf, data, device, progress);
+// The main thread picks WebGPU only after gpuInfo(). A WebGPU failure, at load or first use,
+// falls back to WebAssembly with the CPU weights (\`cpuDtype\`), unless the model is GPU-only.
 let loadData, device;
-const fallback = (err) => { if (device === 'wasm' || loadData.gpuOnly) throw err; device = 'wasm'; };
+const fallback = (err) => { if (device === 'wasm' || loadData.gpuOnly) throw err; device = 'wasm'; loadData = { ...loadData, dtype: loadData.cpuDtype }; };
 async function load(data, progress) {
     loadData = data;
     device = data.device;
-    try { embed = await create(data, device, progress); }
-    catch (err) { fallback(err); embed = await create(data, device, progress); }
+    try { embed = await create(loadData, device, progress); }
+    catch (err) { fallback(err); embed = await create(loadData, device, progress); }
 }
 self.onmessage = async ({ data }) => {
     const { id, type } = data;
@@ -116,36 +86,36 @@ function call(msg: Record<string, unknown>, progress?: (p: { file: string; loade
 
 // A hardware WebGPU adapter. `navigator.gpu` can exist without one (VMs, blocklisted GPUs),
 // and headless browsers offer a software fallback adapter, far too slow for embeddings.
-let gpu: Promise<boolean> | null = null;
-export function hasGpu() {
-    type Adapter = { isFallbackAdapter?: boolean; info?: { isFallbackAdapter?: boolean } } | null;
+let gpu: Promise<Gpu> | null = null;
+export function gpuInfo() {
+    type Adapter = { isFallbackAdapter?: boolean; info?: { isFallbackAdapter?: boolean }; features?: Set<string> } | null;
     const nav = navigator as Navigator & { gpu?: { requestAdapter(): Promise<Adapter> } };
     gpu ??= (nav.gpu?.requestAdapter() ?? Promise.resolve(null))
-        .then((a) => !!a && !a.isFallbackAdapter && !a.info?.isFallbackAdapter)
-        .catch(() => false);
+        .then((a) => {
+            const ok = !!a && !a.isFallbackAdapter && !a.info?.isFallbackAdapter;
+            return { ok, f16: ok && !!a!.features?.has('shader-f16') };
+        })
+        .catch(() => ({ ok: false, f16: false }));
     return gpu;
 }
+// This browser's device and weights for a model (see `placement`).
+export const placementOf = async (key: ModelKey) => placement(MODELS[key], await gpuInfo());
 
 // The device the loaded model runs on: 'webgpu' or 'wasm' (WebAssembly).
 let device: string | null = null;
 export const activeDevice = () => device;
 
-// Best quality runs only on WebGPU. Best speed runs on WebAssembly threads when the page is
-// cross-origin isolated, and on WebGPU otherwise (Safari), when there is one. Indexing 936
-// chunks (Apple M-series): Granite 124 s on threads, 480 s on one thread; EmbeddingGemma 2
-// 77 s on WebGPU.
 function loadModel(key: ModelKey) {
     if (loaded?.key === key) return loaded.ready;
     const m = MODELS[key], files = new Map<string, [number, number]>();
     status(`Preparing the ${m.label} model…`);
-    const ready = hasGpu().then((gpuOk) => {
+    const ready = placementOf(key).then((p) => {
         // EmbeddingGemma on WebAssembly takes minutes per document and can run out of memory.
-        if (m.gpu && !gpuOk) throw new Error(`the ${m.label} model needs a graphics card (WebGPU), which this browser doesn't offer. Pick another model from the sparkles button.`);
-        const onGpu = m.gpu || (gpuOk && !crossOriginIsolated);
-        return call({ type: 'load', model: m.id, file: m.file, dtype: m.dtype, device: onGpu ? 'webgpu' : 'wasm', gpuOnly: m.gpu, sentence: m.sentence, pooling: m.pooling }, ({ file, loaded: got, total }) => {
+        if (!p) throw new Error(`the ${m.label} model needs a graphics card (WebGPU), which this browser doesn't offer. Pick another model from the sparkles button.`);
+        return call({ type: 'load', model: m.id, file: m.file, dtype: p.dtype, cpuDtype: m.dtype, device: p.device, gpuOnly: m.gpu }, ({ file, loaded: got, total }) => {
             files.set(file, [got, total]);
             const [done, all] = [...files.values()].reduce((s, [a, b]) => [s[0] + a, s[1] + b], [0, 0]);
-            if (all > 1e6 && done < all) status(`Downloading the ${m.label} model… ${Math.min(99, Math.round((done / Math.max(all, m.bytes)) * 100))}%`);
+            if (all > 1e6 && done < all) status(`Downloading the ${m.label} model… ${Math.min(99, Math.round((done / Math.max(all, p.bytes)) * 100))}%`);
             else if (all > 1e6) status(`Preparing the ${m.label} model…`);
         });
     }).then((r) => { device = r.device ?? null; status(currentStatus); });
@@ -154,20 +124,11 @@ function loadModel(key: ModelKey) {
     return ready;
 }
 
-// Embeddings, normalized; EmbeddingGemma is truncated to `dims` (Matryoshka) first.
 async function embed(key: ModelKey, texts: string[]) {
     await loadModel(key);
     const { dims, data, device: used } = await call({ type: 'embed', texts });
     if (used && used !== device) { device = used; status(currentStatus); }
-    const keep = MODELS[key].dims || dims;
-    return texts.map((_, i) => {
-        const v = data.slice(i * dims, i * dims + keep);
-        let norm = 0;
-        for (const x of v) norm += x * x;
-        norm = Math.sqrt(norm) || 1;
-        for (let j = 0; j < v.length; j++) v[j] /= norm;
-        return v;
-    });
+    return toVectors(MODELS[key], dims, data, texts.length);
 }
 
 // ---- Index ----
@@ -176,7 +137,7 @@ let indexing: Promise<void> | null = null;
 
 async function loadIndex(key: ModelKey) {
     if (index.size) return;
-    for (const e of await db.allSides<Entry>('vec')) if (e?.model === key && e.v === INDEX_VERSION) index.set(e.id, e);
+    for (const e of await db.allSides<Entry>('vec')) if (e?.model === key && e.v === indexVersion(key)) index.set(e.id, e);
 }
 
 // Embeds documents whose text changed since they were indexed; one run at a time.
@@ -191,22 +152,18 @@ export function reindex() {
             const docs = app.state.nodes.filter((n) => n.kind === 'doc');
             const ids = new Set(docs.map((n) => n.id));
             for (const id of index.keys()) if (!ids.has(id)) index.delete(id);
-            const current = (e?: Entry) => e?.model === key && e.v === INDEX_VERSION;
+            const current = (e?: Entry) => e?.model === key && e.v === indexVersion(key);
             const stale = docs.filter((n) => index.get(n.id)?.at !== n.updatedAt || !current(index.get(n.id)));
             // Load first, so the status line shows the download before "Indexing".
             if (stale.length) await loadModel(key);
             for (const [i, n] of stale.entries()) {
                 if (gen !== generation) return;
                 status(`Indexing ${i + 1} of ${stale.length}…`);
-                const text = (await db.getText(n.id)) ?? '', body = searchBody(text);
-                const chunks = [...chunkDoc(body).filter(embeddable), ...threadChunks(text, body, 3)];
-                const prefix = MODELS[key].doc(n.name);
+                const chunks = indexChunks((await db.getText(n.id)) ?? '');
                 const vectors: Float32Array[] = [];
-                // A single long paragraph or code block can exceed the chunk target; the cap
-                // keeps a batch's token count (and memory) bounded.
-                for (let j = 0; j < chunks.length; j += 8) vectors.push(...(await embed(key, chunks.slice(j, j + 8).map((c) => prefix + (c.embed ?? c.text).slice(0, MAX_EMBED_CHARS)))));
+                for (let j = 0; j < chunks.length; j += 8) vectors.push(...(await embed(key, chunks.slice(j, j + 8).map((c) => passageInput(MODELS[key], n.name, c)))));
                 if (gen !== generation) return;
-                const entry: Entry = { id: n.id, model: key, v: INDEX_VERSION, at: n.updatedAt, chunks: chunks.map((c, j) => ({ start: c.start, text: c.text.slice(0, 220), v: vectors[j] })) };
+                const entry: Entry = { id: n.id, model: key, v: indexVersion(key), at: n.updatedAt, chunks: chunks.map((c, j) => ({ start: c.start, text: c.text.slice(0, 220), v: vectors[j] })) };
                 index.set(n.id, entry);
                 if (app.node(n.id)) await db.putSide('vec', n.id, entry);
             }
@@ -225,20 +182,9 @@ export async function search(query: string, limit = 6): Promise<Hit[]> {
     const key = enabledModel();
     if (!key) return [];
     await loadIndex(key);
-    const [q] = await embed(key, [MODELS[key].query + query]);
-    const hits: Hit[] = [];
-    for (const e of index.values()) {
-        if (e.model !== key || e.v !== INDEX_VERSION || !app.node(e.id)) continue;
-        let best: Hit | null = null;
-        for (const c of e.chunks) {
-            if (c.v.length !== q.length) continue;
-            let score = 0;
-            for (let i = 0; i < q.length; i++) score += q[i] * c.v[i];
-            if (!best || score > best.score) best = { id: e.id, score, start: c.start, text: c.text };
-        }
-        if (best && best.score >= MODELS[key].min) hits.push(best);
-    }
-    return hits.sort((a, b) => b.score - a.score).slice(0, limit);
+    const [q] = await embed(key, [queryInput(MODELS[key], query)]);
+    const live = [...index.values()].filter((e) => e.model === key && e.v === indexVersion(key) && app.node(e.id));
+    return rank(live, q, MODELS[key].min, limit);
 }
 
 // ---- Downloaded models ----
@@ -261,14 +207,21 @@ export async function modelUsage() {
     return out;
 }
 
-async function dropCached(id: string) {
+// Whether the weights this browser would load for a model are in the cache. Cache Storage
+// holds whole files only, so the weights file plus most of the expected size means done.
+export async function isDownloaded(key: ModelKey) {
+    const p = await placementOf(key);
+    if (!p || !('caches' in globalThis)) return false;
+    const weights = `/${MODELS[key].id}/resolve/main/onnx/${onnxFile(MODELS[key], p.dtype)}`;
+    const urls = (await (await caches.open(MODEL_CACHE)).keys()).map((r) => r.url);
+    return urls.some((u) => u.endsWith(weights)) && ((await modelUsage())[key] ?? 0) >= p.bytes * 0.9;
+}
+
+export async function removeModel(key: ModelKey) {
     if (!('caches' in globalThis)) return;
     const cache = await caches.open(MODEL_CACHE);
-    for (const req of await cache.keys()) if (req.url.includes(`/${id}/`)) await cache.delete(req);
+    for (const req of await cache.keys()) if (req.url.includes(`/${MODELS[key].id}/`)) await cache.delete(req);
 }
-export const removeModel = (key: ModelKey) => dropCached(MODELS[key].id);
-// ponytail: checks the cache on every page load; drop this once old installs have cleaned up.
-for (const id of RETIRED) dropCached(id).catch(() => {});
 
 // ---- Settings ----
 // `force` rebuilds the index even when the model stays the same.

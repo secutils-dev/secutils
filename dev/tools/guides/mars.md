@@ -57,9 +57,10 @@ It is promoted like any tool, linked by that host. In-app URLs derive from `loca
 ## Verify a change
 
 1. In `js/mars/`: `npm test` (codec, tree, merge, diff, match, and search logic) and `npm run typecheck`. `mars.spec.ts`
-   never downloads a smart-search model; after changing `search/`, also run
-   `MARS_BASE_URL=http://localhost:7373 make e2e-tools-test ARGS=mars-smart.spec.ts` (models cached locally, see the
-   [js/mars README](../js/mars/README.md#search)).
+   never downloads a smart-search model. After changing `search/`, also run the search-quality evaluation
+   (`npm --prefix eval run eval -- --check`, steps in the [js/mars README](../js/mars/README.md#evaluation)) and
+   `MARS_BASE_URL=http://localhost:7373 make e2e-tools-test ARGS=mars-smart.spec.ts` (the built page with each model,
+   cached in a local browser profile).
 2. `npm run serve` builds the deploy-equivalent page and serves it at `http://localhost:7373/` and `/llms.txt`, with the
    responder script on an in-memory KV.
 3. From the root: `MARS_BASE_URL=http://localhost:7373 make e2e-tools-test ARGS=mars.spec.ts`.

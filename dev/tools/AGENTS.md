@@ -4,6 +4,7 @@ A tool app is one HTML file with embedded CSS and JS, plus an AI-agent skill bes
 `dev/tools/deploy.ts` publishes both as Secutils webhook responders on `{{TOOLS_HOST}}` (`tools.secutils.dev`).
 MARS is the one bundled app, on its own host: read [guides/mars.md](guides/mars.md) before changing it.
 CI ignores `dev/tools/**`, so every gate below runs only when you run it.
+The exception is `js/mars/`: `.github/workflows/mars.yml` runs its tests, typecheck, and search-quality check.
 
 ## Contracts
 

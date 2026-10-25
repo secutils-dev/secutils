@@ -7,6 +7,7 @@ import { canMove, childrenOf, exportPaths, moveNode, type TreeNode } from '../sr
 import { diffBlocks, diffWords } from '../src/doc/diff.ts';
 import { matchScore, textOverlap } from '../src/share/match.ts';
 import { chunkDoc, embeddable, nudgeDue, searchBody, snippet, threadChunks } from '../src/search/chunks.ts';
+import { createEncoder, indexChunks, MODELS, onnxFile, placement, rank, toVectors } from '../src/search/models.ts';
 
 test('URL state round-trips and matches the md.html wire format', async () => {
     const text = '# Hi\n\nÜnïcödé ✓ and `code`\n';
@@ -122,6 +123,43 @@ test('review threads become searchable chunks, and one-word passages get no vect
     assert.equal(threadChunks(text, body, 3).length, 1);
     assert.equal(embeddable({ start: 0, text: 'Dog' }), false);
     assert.equal(embeddable({ start: 0, text: 'The cache expires' }), true);
+});
+
+test('embeddings are truncated and normalized, and ranking keeps each document\'s best passage', () => {
+    const m = { ...MODELS.best, dims: 2 };
+    const [a, b] = toVectors(m, 3, new Float32Array([3, 4, 9, 0, 2, 9]), 2);
+    assert.deepEqual([...a].map((x) => +x.toFixed(3)), [0.6, 0.8]);
+    assert.deepEqual([...b], [0, 1]);
+    const docs = [{ id: 'x', chunks: [{ start: 0, text: 'p', v: a }, { start: 5, text: 'q', v: b }] }, { id: 'y', chunks: [{ start: 0, text: 'r', v: a }] }];
+    assert.deepEqual(rank(docs, new Float32Array([0, 1])).map((h) => [h.id, h.start, +h.score.toFixed(2)]), [['x', 5, 1], ['y', 0, 0.8]]);
+    assert.deepEqual(rank(docs, new Float32Array([0, 1]), 0.9).map((h) => h.id), ['x']);
+});
+
+test('models load float16 weights on WebGPU with shader-f16, and Best quality needs a GPU', () => {
+    const at = (key: keyof typeof MODELS, ok: boolean, f16: boolean) => placement(MODELS[key], { ok, f16 })?.device + '@' + placement(MODELS[key], { ok, f16 })?.dtype;
+    assert.equal(at('fast', true, true), 'webgpu@fp16');
+    assert.equal(at('fast', true, false), 'wasm@q8');
+    assert.equal(at('fast', false, false), 'wasm@q8');
+    assert.equal(at('best', true, true), 'webgpu@q4f16');
+    assert.equal(at('best', true, false), 'webgpu@q4');
+    assert.equal(placement(MODELS.best, { ok: false, f16: false }), null);
+    assert.equal(onnxFile(MODELS.fast, 'q8'), 'model_quantized.onnx');
+});
+
+test('the encoder runs from its own source text, loads text only, and pools when the model does not', async () => {
+    const calls: Record<string, unknown> = {};
+    const tf = {
+        AutoConfig: { from_pretrained: async () => ({ vision_config: {}, audio_config: {} }) },
+        AutoTokenizer: { from_pretrained: async () => (texts: string[]) => ({ attention_mask: texts.length }) },
+        AutoModel: { from_pretrained: async (_: string, opts: Record<string, unknown>) => { calls.opts = opts; return async () => ({ last_hidden_state: 'h' }); } },
+        mean_pooling: (h: string, mask: number) => ({ dims: [mask, 1], data: new Float32Array([1]), pooled: h }),
+    };
+    // The worker evaluates the function's source, so it must not depend on module scope.
+    const encoder = new Function(`return ${createEncoder.toString()}`)() as typeof createEncoder;
+    const encode = await encoder(tf, { model: 'm', file: 'model', dtype: 'q8' }, 'cpu');
+    assert.deepEqual((calls.opts as { config: unknown }).config, { vision_config: null, audio_config: null });
+    assert.equal(((await encode(['a'])) as unknown as { pooled: string }).pooled, 'h');
+    assert.equal(indexChunks('# T\n\nOne two three.\n\nDog\n').length, 1);
 });
 
 test('the smart-search suggestion appears at 6, 20, 50, then every 10 documents', () => {

@@ -44,8 +44,11 @@ export function threadChunks(text: string, body: string, minWords = 0): Chunk[] 
 }
 
 // Paragraph-sized chunks of `body` (merged up to `max` characters), each prefixed with its
-// nearest heading for context. `start` is the chunk's offset in `body`.
-export function chunkDoc(body: string, max = 1200): Chunk[] {
+// nearest heading for context. `start` is the chunk's offset in `body`. A chunk gets one
+// vector, so a short aside inside a long chunk is lost: at 1,200 characters, "I like walking
+// with my cat" in a paragraph about network status matched neither "pet" nor "cat"
+// (eval/ measures the trade-off).
+export function chunkDoc(body: string, max = 500): Chunk[] {
     const out: Chunk[] = [];
     let heading = '', cur: Chunk | null = null, pos = 0, fence: { marker: string; skip: boolean; start: number } | null = null;
     const flush = () => { if (cur?.text.trim()) out.push({ start: cur.start, text: cur.text.trim() }); cur = null; };
