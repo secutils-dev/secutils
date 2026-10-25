@@ -293,12 +293,27 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     await touch.close();
   });
 
-  test('GitHub copy lists open threads under a review link', async ({ page, context }) => {
+  test('GitHub copy is a themed badge that links to the review', async ({ page, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.goto(tool.path);
+    await newDoc(page, '# Notes\n\nThe cache needs a TTL.');
+    const text = await copyLink(page, /^Copy for GitHub/);
+    expect(text).toMatch(
+      /^<a href="[^"]+\/#s=[\w-]+"><picture><source media="\(prefers-color-scheme: dark\)" srcset="[^"]+\/badge-dark\.svg"><img alt="View full review in MARS" src="[^"]+\/badge\.svg" height="28"><\/picture><\/a>$/,
+    );
+    for (const name of ['badge.svg', 'badge-dark.svg']) {
+      const res = await page.request.get(name);
+      expect(res.headers()['content-type']).toContain('image/svg+xml');
+      expect(await res.text()).toContain('View full review in');
+    }
+  });
+
+  test('GitHub threads copy lists open threads under a review link', async ({ page, context }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
     await page.goto(tool.path);
     await newDoc(page, '# Notes\n\nThe cache needs a TTL.');
     await comment(page, 'needs a TTL', 'Which TTL?');
-    const text = await copyLink(page, /^Copy for GitHub/);
+    const text = await copyLink(page, /^Copy threads for GitHub/);
     expect(text).toMatch(/^\*\*\[Untitled\]\(.+\/#s=.+\)\*\* · review in MARS · 1 open thread/);
     expect(text).toContain('> needs a TTL');
     expect(text).toContain('Which TTL?');

@@ -39,6 +39,24 @@
     };
   }
 
+  // The "View full review in MARS" badge that Share > Copy for GitHub links (GitHub's light
+  // and dark themes). `textLength` keeps the width the same whatever font the viewer has.
+  if (context.path === '/badge.svg' || context.path === '/badge-dark.svg') {
+    const [bg, border, ink] = context.path === '/badge.svg' ? ['#ffffff', '#d0d7de', '#1f2328'] : ['#212830', '#3d444d', '#f0f6fc'];
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="186" height="28" viewBox="0 0 186 28" role="img" aria-label="View full review in MARS">
+<defs><linearGradient id="t" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff6240"/><stop offset=".52" stop-color="#d43a32"/><stop offset="1" stop-color="#711b2a"/></linearGradient></defs>
+<rect x=".5" y=".5" width="185" height="27" rx="6" fill="${bg}" stroke="${border}"/>
+<g transform="translate(7 5) scale(.03516)"><rect x="8" y="8" width="496" height="496" rx="88" fill="url(#t)"/><circle cx="256" cy="256" r="158" fill="#fffdf7"/><g fill="#c93b32"><rect x="158" y="190" width="148" height="22" rx="11"/><rect x="158" y="242" width="205" height="22" rx="11"/><rect x="158" y="294" width="114" height="22" rx="11"/></g></g>
+<text x="32" y="18" textLength="144" lengthAdjust="spacingAndGlyphs" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif" font-size="12" fill="${ink}">View full review in <tspan font-weight="600">MARS</tspan></text>
+</svg>`;
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'image/svg+xml; charset=utf-8', 'Cache-Control': 'public, max-age=86400' },
+      body: svg,
+      skipRequest: true,
+    };
+  }
+
   const id = (context.query || {}).s;
   if (!id) return null;
 
@@ -334,7 +352,8 @@
                             <button type="button" class="export-item" role="menuitem" id="copyFullLinkBtn"><span data-icon="documents"></span><span>Copy full link<span class="item-sub" id="fullLinkSub">Never expires &middot; whole document in the URL</span></span></button>
                             <hr class="menu-sep">
                             <button type="button" class="export-item" role="menuitem" id="copySlackBtn"><span data-icon="logoSlack"></span><span>Copy for Slack<span class="item-sub">Titled link with the open-thread count</span></span></button>
-                            <button type="button" class="export-item" role="menuitem" id="copyGithubBtn"><span data-icon="logoGithub"></span><span>Copy for GitHub<span class="item-sub">Markdown comment with the quotes and threads</span></span></button>
+                            <button type="button" class="export-item" role="menuitem" id="copyGithubBtn"><span data-icon="logoGithub"></span><span>Copy for GitHub<span class="item-sub">A "View full review in MARS" badge that links here</span></span></button>
+                            <button type="button" class="export-item" role="menuitem" id="copyGithubThreadsBtn"><span data-icon="logoGithub"></span><span>Copy threads for GitHub<span class="item-sub">Markdown comment with the quotes and threads</span></span></button>
                             <button type="button" class="export-item" role="menuitem" id="copyAgentBtn"><span data-icon="sparkles"></span><span>Copy for agent<span class="item-sub">Open threads and reply instructions for an AI agent</span></span></button>
                             <button type="button" class="export-item" role="menuitem" id="downloadMdBtn"><span data-icon="download"></span><span>Download .md<span class="item-sub">The Markdown file, with review threads</span></span></button>
                             <button type="button" class="export-item share-danger" role="menuitem" id="deleteShortLinkBtn" hidden><span data-icon="trash"></span><span id="deleteShortLinkLabel">Delete short link</span></button>

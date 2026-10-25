@@ -46,6 +46,10 @@ It is promoted like any tool, linked by that host. In-app URLs derive from `loca
   opening a link for a known `originId` merges its review threads (by comment `id`, or `author` plus `at`).
   Open existing databases without a requested version. Some browsers retain version 2 from the deferred review-rounds feature.
   Preserve extra stores during rollback. Never downgrade or delete the database to restore the previous UI.
+- **GitHub badge**: Share > **Copy for GitHub** copies a one-line `<picture>` link to the document's short link, with
+  `/badge.svg` and `/badge-dark.svg` for GitHub's light and dark themes. The responder script draws both inline, with
+  `textLength` fixing the width across fonts; GitHub fetches them through its image proxy, and the link's `#s=` key
+  never reaches the server. **Copy threads for GitHub** copies the open threads as Markdown instead.
 - **Link preview**: `og:image` is `https://{{MARS_HOST}}/og.jpg`, served by the responder script from the JPEG that
   `make tools-og ARGS="-g mars"` renders ([seo-og.md](seo-og.md#og-image-generation)). Re-render it after changing the
   logo or the registry description, then deploy.

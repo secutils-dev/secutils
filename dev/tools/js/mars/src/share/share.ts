@@ -199,7 +199,17 @@ $('copySlackBtn').addEventListener('click', async () => {
         viewer.toast('Copied for Slack: paste it into a message');
     } catch (err) { viewer.toast((err as Error)?.message ?? 'Failed to copy'); }
 });
+// One line, so it can sit at the end of a comment: GitHub picks the badge for its theme.
+const githubBadge = (url: string) => `<a href="${esc(url)}"><picture><source media="(prefers-color-scheme: dark)" srcset="${base()}badge-dark.svg"><img alt="View full review in MARS" src="${base()}badge.svg" height="28"></picture></a>`;
 $('copyGithubBtn').addEventListener('click', async () => {
+    hideMenu();
+    const text = currentBundle().then(async ({ id, bundle }) => githubBadge(await bestLink(id, bundle)));
+    try {
+        await copyRich(text);
+        viewer.toast('Copied a GitHub badge that links to this review');
+    } catch (err) { viewer.toast((err as Error)?.message ?? 'Failed to copy'); }
+});
+$('copyGithubThreadsBtn').addEventListener('click', async () => {
     hideMenu();
     const text = currentBundle().then(async ({ id, bundle }) => githubSummary(bundle.name, await bestLink(id, bundle), splitComments(bundle.docs[0].text).threads));
     try {
