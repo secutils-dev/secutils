@@ -144,6 +144,9 @@ as a 4-byte little-endian u32 → base64url without padding.
 
 ## What the reviewer sees
 
+- **Pause indexing** survives reloads and pauses all MARS tabs in the same browser. **Resume indexing** resumes those tabs. Search still uses the stored index while paused.
+- Selection formatting works across wrapped lines within one list paragraph and preserves source indentation.
+- **Mark done** applies only to headings and existing task checkboxes. Regular list items support manual strikethrough through the selection toolbar.
 - When a document they reviewed comes back with new text, **Review changes** marks added and edited blocks, highlights inserted words, and shows the old text on request.
 - A thread whose quoted words you rewrote, without re-quoting it, follows them to the inserted words of the edited block and is labeled as changed. A thread you re-quoted stays attached exactly.
 - Your replies carry a **New** tag until they click **Mark reviewed**.

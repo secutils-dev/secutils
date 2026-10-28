@@ -146,7 +146,7 @@ export async function turnOn() {
     hideNudge();
     await enable(key);
     syncButton();
-    viewer.toast(`Smart search is on (${MODELS[key].label} model). Indexing your documents…`);
+    viewer.toast(`Smart search is on (${MODELS[key].label} model). ${isPaused() ? 'Indexing stays paused.' : 'Indexing your documents…'}`);
     notify();
 }
 
@@ -164,8 +164,8 @@ async function smartMenu(anchor: HTMLElement) {
         { label: 'Change model…', icon: 'gear', run: turnOn },
         isPaused()
             ? { label: 'Resume indexing', icon: 'play', sub: 'Indexes what changed while paused', run: () => { resume(); viewer.toast('Indexing resumed'); } }
-            : { label: 'Pause indexing', icon: 'pause', sub: 'Until resumed or the page reloads', run: () => { pause(); viewer.toast('Indexing paused'); } },
-        { label: 'Rebuild the index', icon: 'refresh', run: async () => { await enable(key, true); viewer.toast('Rebuilding the smart-search index'); } },
+            : { label: 'Pause indexing', icon: 'pause', sub: 'In all MARS tabs, until resumed', run: () => { pause(); viewer.toast('Indexing paused'); } },
+        { label: 'Rebuild the index', icon: 'refresh', run: async () => { await enable(key, true); viewer.toast(isPaused() ? 'Index cleared. Resume indexing to rebuild it.' : 'Rebuilding the smart-search index'); } },
         ...(unused.length ? ['separator' as const, ...unused.map((k) => ({ label: `Remove the ${MODELS[k].label} model`, icon: 'trash' as const, sub: `Frees ${fmtBytes(usage[k]!)}`, run: async () => { await removeModel(k); viewer.toast(`Removed the ${MODELS[k].label} model`); } }))] : []),
         'separator',
         { label: 'Turn off smart search', icon: 'cross', sub: 'Removes the index and the downloaded models', danger: true, run: async () => { await disable(); syncButton(); notify(); viewer.toast('Smart search is off'); } },

@@ -34,6 +34,14 @@ favicons rendered from them). `mars.html` inlines copies: the header mark (the w
 planet) and the favicon data URIs. The `--mars-*` / `--brand*` tokens in
 `src/ui/tokens.css` follow the logo's reds.
 
+## Preview edits
+
+Selection formatting supports wrapped list items with bold text and inline code.
+The edit preserves source indentation, list markers, and text outside the selection.
+**Mark done** is available only for headings and existing task checkboxes.
+Regular list items support manual strikethrough through the selection toolbar.
+These edits support undo and redo.
+
 ## Search
 
 The sidebar search box matches document names, folder names, document text, and review
@@ -273,9 +281,11 @@ flowchart TD
 - **Other tabs**: each tab runs its own worker and indexes on its own. Two open tabs may embed
   the same change twice; the result is the same entry.
 - **Pause**: **Pause indexing** in the sparkles menu stops a pass after the current document, and
-  the status badge says "Paused". Search keeps using the entries already stored.
+  the status badge says "Paused". The pause survives reloads and applies to all MARS tabs
+  in this browser (`localStorage["mars.indexingPaused"]`). Search keeps using the entries already stored.
   **Resume indexing** runs one pass, which catches up on every document added or edited
-  meanwhile and skips deleted ones. The pause is held in memory only, so a reload resumes. An
+  meanwhile and skips deleted ones, in every open tab. Switching models or rebuilding the index
+  keeps indexing paused. Turning smart search off clears the pause. An
   import of 20 or more documents offers **Pause indexing** on its toast, so you can remove the
   files you don't need before they are embedded.
 - **Imports**: a folder deleted while an import runs stays deleted. The import leaves out its

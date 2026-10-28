@@ -14,6 +14,9 @@ const TRANSFORMERS_URL = `https://cdn.jsdelivr.net/npm/@huggingface/transformers
 const INDEX_VERSION = 5;
 const indexVersion = (key: ModelKey) => `${INDEX_VERSION}:${MODELS[key].id}:${MODELS[key].dtype}`;
 const SETTING_KEY = 'mars.smartSearch';
+const PAUSE_KEY = 'mars.indexingPaused';
+const readPaused = () => { try { return localStorage.getItem(PAUSE_KEY) === '1'; } catch { return false; } };
+let paused = readPaused();
 export function enabledModel(): ModelKey | null {
     try {
         const v = localStorage.getItem(SETTING_KEY);
@@ -27,10 +30,11 @@ const index = new Map<string, Entry>();
 // What smart search is doing: `label` fits the sidebar badge, `text` is the full sentence.
 export type Status = { state: 'download' | 'prepare' | 'index' | 'paused' | 'error'; label: string; text: string } | null;
 const statusListeners = new Set<(s: Status) => void>();
-export const onStatus = (fn: (s: Status) => void) => { statusListeners.add(fn); };
+export const onStatus = (fn: (s: Status) => void) => { statusListeners.add(fn); fn(currentStatus); };
 let currentStatus: Status = null;
 const status = (s: Status) => { currentStatus = s; for (const fn of statusListeners) fn(s); };
 const PAUSED: Status = { state: 'paused', label: 'Paused', text: 'Smart-search indexing is paused' };
+if (paused && enabledModel()) currentStatus = PAUSED;
 const unavailable = (err: unknown): Status => ({ state: 'error', label: 'Unavailable', text: `Smart search is unavailable: ${(err as Error)?.message ?? err}` });
 
 // ---- Worker ----
@@ -113,7 +117,8 @@ function loadModel(key: ModelKey) {
     if (loaded?.key === key) return loaded.ready;
     const m = MODELS[key], files = new Map<string, [number, number]>();
     let line: Status = null;
-    const show = (s: Status) => { line = s; status(s); };
+    // Queries can load the model while indexing is paused; keep the pause badge visible.
+    const show = (s: Status) => { line = s; status(paused ? PAUSED : s); };
     const preparing = (): Status => ({ state: 'prepare', label: 'Preparing', text: `Preparing the ${m.label} model…` });
     // The loading status goes once the model is ready or failed; a status set meanwhile stays.
     // Re-emitting also refreshes the button's device label.
@@ -152,18 +157,28 @@ let revision = 0;
 export const indexRevision = () => revision;
 const indexedListeners = new Set<() => void>();
 export const onIndexed = (fn: () => void) => { indexedListeners.add(fn); };
-// In memory only: a reload resumes indexing, so a forgotten pause can't leave the index stale.
-let paused = false;
 export const isPaused = () => paused;
+function setPaused(value: boolean) {
+    if (paused === value) return false;
+    paused = value;
+    status(enabledModel() && paused ? PAUSED : null);
+    return true;
+}
 export function pause() {
-    paused = true;
-    if (!indexing) status(PAUSED);
+    try { localStorage.setItem(PAUSE_KEY, '1'); } catch {}
+    setPaused(true);
 }
 export function resume() {
-    paused = false;
-    status(null);
+    try { localStorage.removeItem(PAUSE_KEY); } catch {}
+    setPaused(false);
     return reindex();
 }
+// Read the latest value, not a queued event's value: a newer toggle may already have won.
+const syncPaused = () => { if (setPaused(readPaused()) && !paused) reindex(); };
+window.addEventListener('storage', (e) => {
+    if (e.storageArea === localStorage && (e.key === PAUSE_KEY || e.key === null)) syncPaused();
+});
+window.addEventListener('pageshow', syncPaused);
 
 async function loadIndex(key: ModelKey) {
     if (index.size) return;
@@ -173,7 +188,8 @@ async function loadIndex(key: ModelKey) {
 // Embeds documents whose text changed since they were indexed; one run at a time.
 export function reindex() {
     const key = enabledModel();
-    if (!key || paused) return Promise.resolve();
+    if (!key) return Promise.resolve();
+    if (paused) { status(PAUSED); return Promise.resolve(); }
     if (indexing) { queued = true; return indexing; }
     queued = false;
     const gen = generation;
@@ -265,7 +281,6 @@ export async function removeModel(key: ModelKey) {
 // `force` rebuilds the index even when the model stays the same.
 export async function enable(key: ModelKey, force = false) {
     const previous = enabledModel();
-    paused = false;
     try { localStorage.setItem(SETTING_KEY, key); } catch {}
     if (previous !== key || force) {
         generation++;
@@ -279,6 +294,7 @@ export async function enable(key: ModelKey, force = false) {
 // Turns smart search off and removes the index and every downloaded model.
 export async function disable() {
     try { localStorage.removeItem(SETTING_KEY); } catch {}
+    try { localStorage.removeItem(PAUSE_KEY); } catch {}
     paused = false;
     generation++;
     index.clear();

@@ -181,7 +181,10 @@ test.describe(`${tool.name} smart search`, () => {
     // Past the 2-second indexing delay.
     await page.waitForTimeout(3000);
     await expect(status).toHaveText('Paused');
+    await page.reload();
+    await expect(status).toHaveText('Paused');
     expect(await meaningHits(page, 'when invoices are due')).not.toContain('billing');
+    await expect(status).toHaveText('Paused');
 
     // The badge opens the smart-search menu.
     await status.click();
