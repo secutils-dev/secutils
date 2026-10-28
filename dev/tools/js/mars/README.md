@@ -42,6 +42,12 @@ The edit preserves source indentation, list markers, and text outside the select
 Regular list items support manual strikethrough through the selection toolbar.
 These edits support undo and redo.
 
+## Source editor
+
+CodeMirror draws selection backgrounds below the text lines. The active-line tint stays
+translucent so it does not hide selected text. The gutter keeps its opaque background.
+The shared browser tests check painted selection pixels in Firefox and Chromium, in both themes.
+
 ## Search
 
 The sidebar search box matches document names, folder names, document text, and review

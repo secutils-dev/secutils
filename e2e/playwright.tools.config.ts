@@ -33,5 +33,14 @@ export default defineConfig({
         viewport: { width: 1280, height: 800 },
       },
     },
+    {
+      name: 'firefox',
+      testMatch: '**/{mars,md}.spec.ts',
+      grep: /source selection/,
+      use: {
+        ...devices['Desktop Firefox'],
+        viewport: { width: 1280, height: 800 },
+      },
+    },
   ],
 });

@@ -27,7 +27,9 @@ body.su-view-edit #editorMount { display: block; }
 .cm-content { padding: 8px 0; }
 .cm-line { padding: 0 12px; }
 .cm-gutters { background: var(--surface); border-right: 1px solid var(--border); color: var(--text-muted); }
-.cm-activeLineGutter, .cm-activeLine { background: var(--surface-hover) !important; }
+.cm-activeLineGutter { background: var(--surface-hover) !important; }
+/* CodeMirror paints selections below the text, so the active-line tint must stay translucent. */
+.cm-activeLine { background: color-mix(in srgb, var(--surface-hover) 50%, transparent) !important; }
 .cm-cursor { border-left-color: var(--primary) !important; }
 .cm-selectionBackground, .cm-content ::selection { background: var(--selection) !important; }
 .cm-editor { color: var(--text); }
@@ -342,4 +344,3 @@ html.su-loading #emptyState { display: none; }
 .toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface); color: var(--text); padding: 10px 18px; border-radius: 8px; border: 1px solid var(--border); font-size: 13px; z-index: 200; box-shadow: 0 4px 12px rgba(0,0,0,0.3); display: flex; align-items: center; gap: 8px; animation: toastIn .2s ease; }
 @keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes su-spin-edit { to { transform: rotate(360deg); } }
-

@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import { PNG } from 'pngjs';
 
 const markdown = [
   'Plain words here.',
@@ -9,6 +10,51 @@ const markdown = [
   '| Column | Value |\n| --- | --- |\n| table words | cell words |',
   'Last paragraph.',
 ].join('\n\n');
+
+// CodeMirror draws selections behind the lines. Computed styles can look correct
+// while an opaque active-line background hides the selection, so check painted pixels.
+export function sourceSelectionTests(load: (page: Page, markdown: string) => Promise<void>) {
+  test.describe('source selection', () => {
+    for (const theme of ['dark', 'light']) {
+      test(`selected source text has a visible background (${theme})`, async ({ page }) => {
+        const text = 'First line of plain source text.';
+        await load(page, `${text}\nSecond line of plain source text.`);
+        await page.evaluate((value) => document.documentElement.setAttribute('data-theme', value), theme);
+        const content = page.locator('#editorMount .cm-content');
+        await expect(content).toBeVisible(); // Require CodeMirror, not its textarea fallback.
+        await content.click();
+        await page.keyboard.press('ControlOrMeta+Home');
+        const line = content.locator('.cm-line').first();
+        await expect(line).toHaveClass(/cm-activeLine/);
+        await page.evaluate(() => document.fonts.ready);
+        const before = PNG.sync.read(await line.screenshot({ animations: 'disabled', caret: 'hide' }));
+
+        await page.keyboard.press('Shift+End');
+        await expect.poll(() => page.evaluate(() => getSelection()?.toString())).toBe(text);
+        const selection = page.locator('#editorMount .cm-selectionBackground');
+        await expect(selection).toBeVisible();
+        const selectionBox = (await selection.boundingBox())!;
+        const lineBox = (await line.boundingBox())!;
+        const after = PNG.sync.read(await line.screenshot({ animations: 'disabled', caret: 'hide' }));
+        expect(after.width).toBe(before.width);
+        expect(after.height).toBe(before.height);
+
+        // A blank strip at the top of the selected text excludes glyphs and the caret.
+        const y = Math.max(0, Math.round(selectionBox.y - lineBox.y + 1));
+        const start = Math.max(0, Math.ceil(selectionBox.x - lineBox.x + 2));
+        const end = Math.min(after.width, Math.floor(selectionBox.x - lineBox.x + selectionBox.width - 2));
+        let changed = 0;
+        for (let x = start; x < end; x++) {
+          const at = (y * after.width + x) * 4;
+          if ([0, 1, 2].some((channel) => Math.abs(after.data[at + channel] - before.data[at + channel]) > 8))
+            changed++;
+        }
+        expect(end - start).toBeGreaterThan(100);
+        expect(changed / (end - start)).toBeGreaterThan(0.9);
+      });
+    }
+  });
+}
 
 // Both viewers share the toolbar, but load documents through different app shells.
 export function selectionToolbarTests(load: (page: Page, markdown: string) => Promise<void>) {

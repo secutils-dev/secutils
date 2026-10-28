@@ -262,7 +262,9 @@ body.su-view-html #htmlPreview { display: block; }
 .cm-content { padding: 8px 0; }
 .cm-line { padding: 0 12px; }
 .cm-gutters { background: var(--surface); border-right: 1px solid var(--border); color: var(--text-muted); }
-.cm-activeLineGutter, .cm-activeLine { background: var(--surface-hover) !important; }
+.cm-activeLineGutter { background: var(--surface-hover) !important; }
+/* CodeMirror paints selections below the text, so the active-line tint must stay translucent. */
+.cm-activeLine { background: color-mix(in srgb, var(--surface-hover) 50%, transparent) !important; }
 .cm-cursor { border-left-color: var(--primary) !important; }
 .cm-selectionBackground, .cm-content ::selection { background: rgba(254, 208, 71, 0.18) !important; }
 .cm-editor { color: var(--text); }
