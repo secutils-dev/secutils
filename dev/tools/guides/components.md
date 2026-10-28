@@ -2,6 +2,9 @@
 
 Copy-verbatim patterns for the Privacy and Credits dialogs, backdrop dismissal, tethered popovers, and form validation feedback. Read before adding or changing any of them.
 
+For MARS and ECHO, use [design-system.md](design-system.md) for CSS and glyphs.
+Keep the native behavior and accessibility contracts from this guide.
+
 ## Privacy dialog (footer)
 
 Every tool footer carries a **Privacy** button that opens a native `<dialog>`

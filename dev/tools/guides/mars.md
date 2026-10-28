@@ -14,7 +14,8 @@ It is promoted like any tool, linked by that host. In-app URLs derive from `loca
   (shared with `md.html`). The shell imports the `mars` bundle at startup; `html.mars-boot` hides the body until the
   bundle has injected its CSS.
 - **Look**: EUI-styled (Borealis tokens, EUI icons, a header with a docked sidebar like the Web UI), instead of the
-  tools chrome: Privacy and Credits sit in the sidebar, and there is no CTA banner or footer. The brand ramp
+  legacy tools chrome: Privacy and Credits sit in the sidebar, and there is no CTA banner or footer.
+  Reusable primitives and glyphs live in `shared/` ([design-system.md](design-system.md)). The brand ramp
   (`--mars-*`, `--brand*`) follows the logo and lives in `js/mars/src/ui/tokens.css`. The logo artwork lives in
   `mars/assets/`; the header mark and data-URI favicons in `mars.html` are copies of it.
 - **Viewer**: `js/mars/src/doc/viewer.js` is a copy of `md.html`'s live script, minus HTML/PDF export, the HTML view, and

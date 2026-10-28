@@ -227,6 +227,9 @@ distinct. An own-host app negotiates to `/llms.txt`.
 
 ### Skill link button (header) - per-tool pages only
 
+For migrated tools, use the shared `.skill-link` and EUI `sparkles` glyph from [design-system.md](design-system.md).
+The URL and accessibility contracts in this section stay unchanged.
+
 Each per-tool HTML carries a uniform header button so humans can discover the
 skill file (the URL is otherwise invisible to non-AI eyes). The href is set at
 runtime from `location.pathname` so the markup is identical across tools -

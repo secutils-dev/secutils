@@ -123,6 +123,9 @@ Rules:
 
 ## Embedded JS bundles (`data-su-bundle`)
 
+Shared visual assets use a separate inclusion step, documented in [design-system.md](design-system.md).
+Deployment inlines them before minification, without a new app bundle.
+
 When a tool needs an npm package (Node-only dependencies to stub, a worker, WASM, or a multi-file app), build it in a
 sub-package and let `deploy.ts` inline the output into the page. Current bundles: `liteparse` (`pdf-extractor.html`),
 `micro-ml` (`forecast.html`), `three-mf` (`md.html`, `mars.html`), and `mars` (the MARS app).

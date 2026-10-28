@@ -16,18 +16,10 @@ npm --prefix eval ci && npm --prefix eval run eval -- --check   # search quality
 ```
 
 `src/doc/viewer.js` is a copy of md.html's live script; `src/doc/doc.css` copies its
-preview styles. `src/ui/icons.ts` is generated from EUI's SVGs; to add an icon, extend the
-`names` map and re-run from the repo root (needs `components/secutils-webui/node_modules`):
-
-```bash
-node -e '
-const fs = require("fs"), d = "components/secutils-webui/node_modules/@elastic/eui/lib/components/icon/svgs";
-const src = "dev/tools/js/mars/src/ui/icons.ts", file = fs.readFileSync(src, "utf8");
-const names = { /* camelCaseName: "eui_file_name" */ };
-const lines = Object.entries(names).map(([k, f]) => `    ${k}: ${JSON.stringify(fs.readFileSync(`${d}/${f}.svg`, "utf8").replace(/\s+/g, " ").replace(/^.*?<svg[^>]*>/, "").replace(/<\/svg>.*$/, "").trim())},`);
-fs.writeFileSync(src, file.replace("} as const;", `${lines.join("\n")}\n} as const;`));
-'
-```
+preview styles. Borealis tokens, visual primitives, and EUI glyphs live in `dev/tools/shared/`.
+MARS imports them through its bundle, and ECHO consumes the same source.
+`src/ui/icons.ts` preserves the typed MARS API over the shared glyph catalog.
+Read [the design-system guide](../../guides/design-system.md) for migrations and new glyphs.
 
 The logo lives in `dev/tools/mars/assets/` (app icon, favicon, wordmark, and the PNG
 favicons rendered from them). `mars.html` inlines copies: the header mark (the wordmark's

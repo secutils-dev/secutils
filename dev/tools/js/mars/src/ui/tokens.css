@@ -1,23 +1,11 @@
-/* Design tokens: EUI Borealis neutrals (@elastic/eui-theme-borealis) plus the MARS
-   brand ramp taken from the logo. The `--bg`/`--surface`/`--text`... names are the
-   contract the ported md.html styles (doc.css) are written against. */
+/* MARS identity and document tokens. Borealis neutrals live in shared/tokens.css. */
 :root, [data-theme="dark"] {
-    color-scheme: dark;
     --mars-50: #fffaf4; --mars-300: #ff6240; --mars-500: #d43a32; --mars-700: #a92a30; --mars-900: #711b2a;
-
-    --eui-plain: #0b1628; --eui-subdued: #07101f; --eui-lightest: #172336; --eui-light: #243147;
-    --eui-border: #2b394f; --eui-border-plain: #485975; --eui-hover: rgba(255, 255, 255, 0.08);
-    --eui-text: #cad3e2; --eui-heading: #e3e8f2; --eui-text-subdued: #98a8c3;
-    --eui-danger: #f6726a; --eui-danger-bg: #351721; --eui-success: #24c292; --eui-warning: #facb3d;
 
     --brand: #ff6a4d; --brand-hover: #ff8a73; --brand-on: #2b0a08; --brand-text: #ff8a73;
     --brand-select: #3b1418; --brand-light: #4d1a1f; --focus: #ff8a73;
 
-    --bg: var(--eui-subdued); --surface: var(--eui-plain); --surface-hover: var(--eui-lightest);
-    --border: var(--eui-border); --text: var(--eui-text); --text-muted: var(--eui-text-subdued);
-    --primary: var(--brand-text); --primary-hover: var(--brand-hover); --primary-text: var(--brand-on);
     --primary-glow: rgba(255, 106, 77, 0.1); --accent: var(--mars-900);
-    --badge-bg: #2b394f; --badge-text: #98a8c3;
     --code-bg: #07101f;
     --bq-bg: #111c2c; --bq-border: var(--brand); --bq-text: var(--eui-text);
     --hl-bg: #b9942b; --hl-text: #0b1628;
@@ -25,28 +13,12 @@
     --comment-hl: rgba(255, 106, 77, 0.22); --comment-hl-active: rgba(255, 106, 77, 0.45);
     --find-hl: rgba(250, 203, 61, 0.35);
     --diff-ins: rgba(36, 194, 146, 0.24);
-    --shadow-s: 0 1px 2px rgba(0, 0, 0, 0.5);
-    --shadow-m: 0 2px 4px rgba(0, 0, 0, 0.4), 0 6px 18px rgba(0, 0, 0, 0.45);
-    --shadow-l: 0 4px 8px rgba(0, 0, 0, 0.4), 0 16px 40px rgba(0, 0, 0, 0.55);
-
-    --radius: 6px; --radius-s: 4px;
-    --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    --mono: 'Roboto Mono', 'SF Mono', 'Fira Code', Consolas, monospace;
-    --header-h: 48px;
 }
 [data-theme="light"] {
-    color-scheme: light;
-    --eui-plain: #ffffff; --eui-subdued: #f6f9fc; --eui-lightest: #ecf1f9; --eui-light: #cad3e2;
-    --eui-border: #e3e8f2; --eui-border-plain: #cad3e2; --eui-hover: rgba(23, 80, 186, 0.04);
-    --eui-text: #1d2a3e; --eui-heading: #111c2c; --eui-text-subdued: #516381;
-    --eui-danger: #a71627; --eui-danger-bg: #fff3f1; --eui-success: #008a5e; --eui-warning: #facb3d;
-
     --brand: #c93b32; --brand-hover: #a92a30; --brand-on: #ffffff; --brand-text: #b8322b;
     --brand-select: #fdf0ee; --brand-light: #fbdcd7; --focus: #c93b32;
 
-    --border: var(--eui-border-plain); --surface-hover: #f1f4fa;
     --primary-glow: rgba(201, 59, 50, 0.06);
-    --badge-bg: #e3e8f2; --badge-text: #505f79;
     --code-bg: #f6f9fc;
     --bq-bg: #fff7f5;
     --hl-bg: #fff3a3; --hl-text: #3b2f00;
@@ -54,7 +26,4 @@
     --comment-hl: rgba(212, 58, 50, 0.14); --comment-hl-active: rgba(212, 58, 50, 0.32);
     --find-hl: rgba(250, 203, 61, 0.5);
     --diff-ins: rgba(0, 138, 94, 0.16);
-    --shadow-s: 0 1px 2px rgba(43, 57, 79, 0.12);
-    --shadow-m: 0 1px 3px rgba(43, 57, 79, 0.1), 0 6px 16px rgba(43, 57, 79, 0.12);
-    --shadow-l: 0 2px 6px rgba(43, 57, 79, 0.1), 0 16px 40px rgba(43, 57, 79, 0.18);
 }

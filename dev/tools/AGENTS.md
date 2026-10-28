@@ -1,10 +1,11 @@
 # Tool apps (`dev/tools/`)
 
-A tool app is one HTML file with embedded CSS and JS, plus an AI-agent skill beside it.
+Tool apps deploy as one HTML file with embedded CSS and JS, plus an AI-agent skill beside it.
 `dev/tools/deploy.ts` publishes both as Secutils webhook responders on `{{TOOLS_HOST}}` (`tools.secutils.dev`).
 MARS is the one bundled app, on its own host: read [guides/mars.md](guides/mars.md) before changing it.
-CI ignores `dev/tools/**`, so every gate below runs only when you run it.
-The exception is `js/mars/`: `.github/workflows/mars.yml` runs its tests, typecheck, and search-quality check.
+The main CI workflow ignores `dev/tools/**`.
+The MARS workflow covers `js/mars/` and the shared foundation with build, typecheck, unit, and search-quality checks.
+Run the tool verification and browser gates below locally.
 
 ## Contracts
 
@@ -14,15 +15,15 @@ The exception is `js/mars/`: `.github/workflows/mars.yml` runs its tests, typech
   `e2e/tools/registry.ts` repeats those four fields beside its OG and E2E data, so update its row in the same change.
 - **Hosts**: write `{{TOOLS_HOST}}` (and `{{MARS_HOST}}` in MARS) wherever a page or skill names its host; `deploy.ts` substitutes them.
   The Plausible script URL is the one literal host ([guides/chrome.md](guides/chrome.md#analytics-plausible)).
-- **Dependencies**: CDN-hosted libraries, or an npm package bundled through `data-su-bundle` ([guides/platform.md](guides/platform.md)). The page itself has no build step.
+- **Dependencies**: CDN-hosted libraries, or an npm package bundled through `data-su-bundle` ([guides/platform.md](guides/platform.md)). Deployment inlines shared styles and glyphs for migrated tools.
 - **State**: reload-safe and shareable state lives in the URL fragment, in the shared encoding ([guides/url-state.md](guides/url-state.md)).
 - **Browsers**: current Chrome, Firefox, Safari, and Edge. Use a Baseline Newly Available feature when it replaces custom code.
   For an engine that still lacks it, add a fallback only when it is at most 20 lines, needs no polyfill or extra script,
   and the tool keeps working without it; otherwise stay on the existing pattern.
   Limited Availability features are out of scope, except the File System Access API as a feature-detected enhancement in `md.html` and MARS.
 - **Page**: `<title>Tool Name | Secutils.dev</title>`, `data-theme="dark"` on `<html>` with a theme toggle, and the shared chrome.
-  `md.html` is the reference implementation. Known deviations: `mock-saml-idp.html` (pre-banner chrome),
-  `index.html` and `certificate-decoder.html` (ES5 syntax), and `mars.html` (bundled, EUI-styled).
+  MARS and ECHO use the [shared design system](guides/design-system.md). `md.html` remains the reference for unmigrated tools.
+  Known deviations: `mock-saml-idp.html` (pre-banner chrome), and `index.html` and `certificate-decoder.html` (ES5 syntax).
 
 ## Guides
 
@@ -35,6 +36,7 @@ Read every guide whose surface the change touches.
 | `*.skill.md`, `llms.txt`, `robots.txt`, `sitemap.xml`, agent-skills index, `Accept: text/markdown`, header Skill button   | [guides/agent-surface.md](guides/agent-surface.md) |
 | `<head>` SEO tags, `<noscript>`, bottom CTA, OG images                                                                    | [guides/seo-og.md](guides/seo-og.md)               |
 | Colors, typography, header, buttons, panes, toasts, footer, analytics, responsive rules, `fetchpriority`, exports and PDF | [guides/chrome.md](guides/chrome.md)               |
+| Shared CSS or glyphs, MARS chrome, migration of tool styling                                                              | [guides/design-system.md](guides/design-system.md) |
 | Privacy and Credits dialogs, popovers, form validation                                                                    | [guides/components.md](guides/components.md)       |
 | Tool JavaScript: style, long tasks, busy state, polling                                                                   | [guides/javascript.md](guides/javascript.md)       |
 | MARS                                                                                                                      | [guides/mars.md](guides/mars.md)                   |

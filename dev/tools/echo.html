@@ -221,7 +221,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HTTP Echo and Mock Response Builder | Secutils.dev</title>
+    <title>HTTP Echo / Mock Response Builder | Secutils.dev</title>
     <meta name="description" content="Free HTTP echo and mock response builder. Configure status code, headers, and body, then serve as a shareable URL. Browser-only, state in URL, no signup.">
     <meta name="robots" content="index, follow, max-image-preview:large">
     <link rel="canonical" href="https://{{TOOLS_HOST}}/echo">
@@ -254,139 +254,44 @@
         plausible.init = plausible.init || function (i) { plausible.o = i || {} };
         plausible.init();
     </script>
+    <script>
+        // Restore the theme before CSS paints, as in MARS.
+        try {
+            const saved = localStorage.getItem('su-tool-theme');
+            document.documentElement.dataset.theme = saved === 'light' || saved === 'dark'
+                ? saved : (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        } catch {}
+    </script>
+    <link rel="stylesheet" href="./shared/tokens.css" data-su-style="tokens">
+    <link rel="stylesheet" href="./shared/components.css" data-su-style="components">
     <style>
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-:root, [data-theme="dark"] {
-    --bg: #141519; --surface: #1d1e24; --surface-hover: #2c2d33;
-    --border: #343741; --text: #dfe5ef; --text-muted: #98a2b3;
-    --primary: #fed047; --primary-hover: #fdc615;
-    --primary-text: #642340;
-    --accent: #642340;
-    --badge-bg: #2B394F; --badge-text: #98A8C3;
-    --danger: #dc4a44;
-    --radius: 12px;
-    --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    --mono: 'Roboto Mono', 'SF Mono', 'Fira Code', Consolas, monospace;
-}
-[data-theme="light"] {
-    --bg: #f5f7fa; --surface: #ffffff; --surface-hover: #f1f3f5;
-    --border: #d3dae6; --text: #343741; --text-muted: #69707d;
-    --primary: #fed047; --primary-hover: #fdc615;
-    --primary-text: #642340;
-    --accent: #642340;
-    --badge-bg: #E3E8F2; --badge-text: #505F79;
-    --danger: #bd271e;
-}
-body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; transition: background .25s, color .25s; }
-header { display: flex; align-items: center; justify-content: space-between; padding: 0 16px; height: 48px; background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; transition: background .25s, border-color .25s; }
-.logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
-.logo-svg { flex-shrink: 0; }
-.logo-svg .logo-text-fill { fill: var(--text); }
-.logo-badge { display: inline-flex; align-items: center; padding: 4px 16px; border-radius: 4px; border: none; background: var(--badge-bg); color: var(--badge-text); font-size: 12px; font-weight: 450; line-height: 16px; white-space: nowrap; }
-.header-right { display: flex; align-items: center; gap: 8px; }
-.skill-link { height: 36px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); color: var(--text-muted); font: 12px var(--font); text-decoration: none; transition: all .15s; cursor: pointer; }
-.skill-link:hover { color: var(--text); border-color: var(--text-muted); background: var(--surface-hover); }
-.skill-link svg { width: 14px; height: 14px; fill: none; stroke: currentColor; }
-.su-more-tools { margin: 8px 0 0; padding: 12px 18px; text-align: center; border: 1px solid rgba(254, 208, 71, 0.35); border-radius: 12px; background: rgba(254, 208, 71, 0.06); font: 13px/1.55 var(--font); color: var(--text); transition: border-color .25s, background-color .25s, color .25s; }
-.su-more-tools p { margin: 0; }
-.su-more-tools a { color: var(--primary); font-weight: 700; text-decoration: none; white-space: nowrap; }
-.su-more-tools a:hover { color: var(--primary-hover); text-decoration: underline; }
-@media (max-width: 600px) { .su-more-tools { padding: 12px 14px; } .su-more-tools a { white-space: normal; } }
-.su-noscript { max-width: 720px; margin: 24px auto; padding: 16px; border: 1px solid var(--border); border-radius: 8px; font: 14px/1.5 var(--font); background: var(--surface); color: var(--text); }
-.theme-toggle { width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); cursor: pointer; transition: all .2s; }
-.theme-toggle:hover { background: var(--surface-hover); color: var(--text); }
-.theme-toggle svg { width: 16px; height: 16px; fill: currentColor; }
-.theme-toggle .icon-sun { display: none; }
-.theme-toggle .icon-moon { display: block; }
-[data-theme="dark"] .theme-toggle .icon-sun { display: block; }
-[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
-
+/* ECHO layout only. Shared controls and Borealis tokens live in shared/. */
+body { min-height: 100vh; }
+.su-header { position: sticky; top: 0; padding-inline: 16px; }
 main { flex: 1; padding: 32px 16px 48px; max-width: 760px; margin: 0 auto; width: 100%; }
-.page-title { font-size: 1.5rem; font-weight: 700; margin-bottom: 6px; }
-.page-subtitle { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 24px; line-height: 1.5; }
-.page-subtitle code { font-family: var(--mono); font-size: 0.85em; padding: 1px 6px; border-radius: 4px; background: var(--surface); border: 1px solid var(--border); color: var(--text); }
-
-.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; margin-bottom: 14px; transition: background .25s, border-color .25s; }
-.card label { display: block; font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
-.label-hint { font-weight: 400; text-transform: none; letter-spacing: 0; opacity: 0.75; margin-left: 6px; }
-
-.input, .textarea, .input-mono {
-    width: 100%; padding: 0 12px; border: 1px solid var(--border); border-radius: 8px;
-    background: var(--bg); color: var(--text); font-family: inherit; font-size: 14px;
-    outline: none; transition: border-color .15s, box-shadow .15s, background .25s, color .25s;
-}
-.input { height: 38px; }
-.input-mono { height: 38px; font-family: var(--mono); font-size: 13px; }
+.page-title { margin-bottom: 6px; }
+.page-subtitle { color: var(--text-muted); margin-bottom: 24px; text-wrap: pretty; }
+.page-subtitle code, .empty code { font-family: var(--mono); font-size: .85em; padding: 1px 6px; border-radius: var(--radius-s); background: var(--surface-hover); color: var(--text); }
+.card { margin-bottom: 16px; }
+.label-hint { font-size: 12px; font-weight: 400; color: var(--text-muted); margin-left: 6px; }
 .input-status { width: 120px; font-family: var(--mono); }
-.textarea { padding: 10px 12px; font-family: var(--mono); font-size: 13px; line-height: 1.5; resize: vertical; min-height: 160px; }
-.textarea-sm { min-height: 64px; font-family: var(--font); font-size: 13px; }
-.input:focus, .textarea:focus, .input-mono:focus { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
-/* Defer validation feedback until the user has interacted with the field.
-   See dev/tools/guides/components.md → "Form validation feedback". */
-.input:user-invalid, .textarea:user-invalid, .input-mono:user-invalid { border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger); }
-.input[readonly] { color: var(--text-muted); cursor: text; }
-
-.row-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-.row-head label { margin: 0; }
-
-table { width: 100%; border-collapse: separate; border-spacing: 0 6px; }
-td { padding: 0 4px 0 0; vertical-align: middle; }
-td:first-child { padding-left: 0; width: 36%; }
-td:last-child { padding-right: 0; width: 38px; }
-.empty { color: var(--text-muted); font-size: 13px; padding: 6px 0 2px; }
-.empty code { font-family: var(--mono); font-size: 0.85em; padding: 1px 6px; border-radius: 4px; background: var(--bg); border: 1px solid var(--border); color: var(--text); }
-
-/* `height` pins the outer size so `.btn-primary`'s `font-weight: 600` doesn't
-   render 1-2 px taller than the regular variant via expanded bold strut
-   metrics. See dev/tools/guides/chrome.md -> "Buttons". */
-.btn { padding: 7px 14px; height: 29px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: 13px/1 var(--font); cursor: pointer; transition: all .15s; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
-.btn:hover:not(:disabled) { background: var(--surface-hover); border-color: var(--text-muted); }
-.btn-primary { background: var(--primary); border-color: var(--primary-text); color: var(--primary-text); font-weight: 500; }
-.btn-primary:hover:not(:disabled) { background: var(--primary-hover); border-color: var(--primary-hover); }
-.btn-icon { width: 36px; height: 36px; padding: 0; justify-content: center; color: var(--text-muted); font-size: 18px; line-height: 1; }
-.btn-icon:hover { color: var(--text); }
-
+.textarea { min-height: 160px; }
+.textarea-sm { min-height: 64px; font-family: var(--font); }
+.row-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+.row-head .field-label { margin: 0; }
+table { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0 6px; }
+td { padding-right: 8px; vertical-align: middle; }
+td:first-child { width: 36%; }
+td:last-child { padding-right: 0; width: 28px; }
+.empty { color: var(--text-muted); font-size: 13px; padding-top: 6px; overflow-wrap: anywhere; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; align-items: center; }
 .actions .spacer { flex: 1; }
-
-.toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface); color: var(--text); padding: 10px 18px; border-radius: 8px; border: 1px solid var(--border); font-size: 13px; z-index: 200; box-shadow: 0 4px 12px rgba(0,0,0,0.3); display: flex; align-items: center; gap: 8px; animation: toastIn .2s ease; }
-@keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-
-.su-footer { text-align: center; padding: 16px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.8rem; transition: border-color .25s, color .25s; }
-.su-footer p { margin: 0; }
-.su-footer-fineprint { margin-top: 6px !important; font-size: 0.7rem; opacity: 0.75; }
-.su-footer-link { background: none; border: none; padding: 0; color: inherit; font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
-.su-footer-link:hover { color: var(--text); }
-.su-dialog { max-width: 520px; width: calc(100% - 32px); max-height: calc(100% - 32px); inset: 0; margin: auto; padding: 0; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); box-shadow: 0 20px 60px rgba(0,0,0,0.4); }
-.su-dialog::backdrop { background: rgba(0,0,0,0.45); backdrop-filter: blur(2px); }
-.su-dialog-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); }
-.su-dialog-header h2 { font-size: 1rem; font-weight: 600; }
-.su-dialog-close { width: 28px; height: 28px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); cursor: pointer; transition: all .15s; }
-.su-dialog-close:hover { background: var(--surface-hover); color: var(--text); }
-.su-dialog-body { padding: 16px 18px; font-size: 0.875rem; line-height: 1.55; color: var(--text); }
-.su-dialog-body p { margin-bottom: 12px; }
-.su-dialog-body p:last-child { margin-bottom: 0; }
-.su-dialog-body code { font-family: var(--mono); background: var(--surface-hover); padding: 1px 5px; border-radius: 4px; font-size: 0.85em; }
-.su-dialog-body a { color: var(--primary); text-decoration: none; }
-.su-dialog-body a:hover { text-decoration: underline; }
-.su-dialog-fineprint { font-size: 0.8rem; color: var(--text-muted); }
-/* Typography polish (Baseline; selectors that don't exist in this tool are no-ops). See dev/tools/guides/chrome.md → "Typography polish". */
-.page-title, .panel-label, .su-dialog-header h2, .card-header { text-wrap: balance; }
-.su-dialog-body p, .su-more-tools p, .tool-desc, .empty-state-sub, .progress-sub, .error-sub { text-wrap: pretty; }
-/* Respect prefers-reduced-motion. See dev/tools/guides/chrome.md → "Reduced motion". */
-@media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
-}
-
 @media (max-width: 640px) {
-    header { padding: 0 12px; }
-    .logo-svg { height: 20px; }
-    .logo-badge { font-size: 11px; padding: 2px 7px; }
-    .skill-link span { display: none; }
-    .skill-link { padding: 0 10px; }
+    .su-header { padding-inline: 12px; }
+    .skill-link span:last-child { display: none; }
+    .skill-link { padding-inline: 10px; }
     main { padding: 20px 12px 32px; }
-    .card { padding: 14px 14px; }
-    .btn { padding: 6px 10px; font-size: 12px; }
+    .label-hint { display: block; margin-left: 0; }
     td:first-child { width: 40%; }
 }
     </style>
@@ -395,28 +300,24 @@ td:last-child { padding-right: 0; width: 38px; }
     <noscript>
         <p class="su-noscript"><strong>HTTP Echo / Mock Response</strong> &mdash; Build a fully customizable HTTP response (status code, headers, body) and serve it as a shareable URL. Configuration stays in the URL fragment. Requires JavaScript; please enable it. Source on <a href="https://github.com/secutils-dev/secutils/blob/main/dev/tools/echo.html">GitHub</a>.</p>
     </noscript>
-    <header>
-        <a class="logo" href="https://secutils.dev" target="_blank" rel="noopener">
-            <svg class="logo-svg" height="24" role="img" viewBox="0 0 98 16" xmlns="http://www.w3.org/2000/svg">
-                <path d="m3 0h10c1.662 0 3 1.338 3 3v10c0 1.662-1.338 3-3 3h-10c-1.662 0-3-1.338-3-3v-10c0-1.662 1.338-3 3-3z" fill="#fed047"/>
-                <path aria-label="SU" d="m11.285 12q-1.12 0-1.728-0.608-0.608-0.61867-0.608-1.6747v-5.6107h1.152v5.6q0 0.59733 0.29867 0.93867 0.29867 0.34133 0.88534 0.34133 0.58667 0 0.88534-0.34133 0.29867-0.34134 0.29867-0.93867v-5.6h1.152v5.6107q0 1.0667-0.608 1.6747t-1.728 0.608zm-6.368 0q-1.152 0-1.8453-0.608-0.69334-0.608-0.69334-1.664h1.1307q0 0.58667 0.384 0.928 0.384 0.33067 1.024 0.33067 0.62934 0 0.992-0.34133 0.36267-0.34134 0.36267-0.90667 0-0.42667-0.23467-0.74667t-0.672-0.43733l-1.12-0.29867q-0.78934-0.21333-1.248-0.77867-0.448-0.56534-0.448-1.3547 0-0.64 0.27733-1.1093 0.288-0.48 0.81067-0.74667t1.216-0.26667 1.216 0.26667q0.53334 0.26667 0.82134 0.74667 0.29867 0.46933 0.29867 1.0987h-1.1307q0-0.50133-0.34133-0.8-0.33067-0.30933-0.864-0.30933t-0.864 0.30933q-0.32 0.29867-0.32 0.78934 0 0.39467 0.21333 0.66134 0.224 0.26667 0.61867 0.37333l1.152 0.30933q0.81067 0.21333 1.28 0.832t0.46933 1.4613q0 0.69334-0.30933 1.2053-0.30933 0.50133-0.864 0.77867-0.55467 0.27733-1.312 0.27733z" fill="#642340"/>
-                <path class="logo-text-fill" aria-label="SECUTILS.DEV" d="m93.158 12.117-1.9733-7.7867h1.1733l1.2587 5.184q0.11733 0.46933 0.20267 0.91734 0.08533 0.448 0.128 0.69334 0.04267-0.24533 0.128-0.69334 0.096-0.45867 0.21333-0.928l1.2053-5.1733h1.184l-1.984 7.7867zm-7.8294 0v-7.7867h4.576v1.024h-3.4453v2.2187h3.072v0.992h-3.072v2.528h3.4453v1.024zm-6.5174 0v-7.7867h2.176q0.768 0 1.3333 0.29867 0.56534 0.288 0.87467 0.832 0.32 0.53334 0.32 1.248v3.008q0 0.736-0.32 1.2693-0.30933 0.53334-0.87467 0.832-0.56534 0.29867-1.3333 0.29867zm1.152-1.0347h1.024q0.62934 0 1.0027-0.36267 0.37333-0.36267 0.37333-1.0027v-3.008q0-0.61867-0.37333-0.98134-0.37334-0.37333-1.0027-0.37333h-1.024zm-5.2374 1.1413q-0.416 0-0.68267-0.24533-0.256-0.256-0.256-0.672 0-0.416 0.256-0.672 0.26667-0.26667 0.68267-0.26667 0.416 0 0.672 0.26667 0.26667 0.256 0.26667 0.672 0 0.416-0.26667 0.672-0.256 0.24533-0.672 0.24533zm-6.368 0q-1.152 0-1.8453-0.608-0.69334-0.608-0.69334-1.664h1.1307q0 0.58667 0.384 0.928 0.384 0.33067 1.024 0.33067 0.62934 0 0.992-0.34133 0.36267-0.34134 0.36267-0.90667 0-0.42667-0.23467-0.74667t-0.672-0.43733l-1.12-0.29867q-0.78934-0.21333-1.248-0.77867-0.448-0.56534-0.448-1.3547 0-0.64 0.27733-1.1093 0.288-0.48 0.81067-0.74667 0.52267-0.26667 1.216-0.26667 0.69334 0 1.216 0.26667 0.53334 0.26667 0.82134 0.74667 0.29867 0.46933 0.29867 1.0987h-1.1307q0-0.50134-0.34133-0.8-0.33067-0.30933-0.864-0.30933t-0.864 0.30933q-0.32 0.29867-0.32 0.78934 0 0.39467 0.21333 0.66134 0.224 0.26667 0.61867 0.37333l1.152 0.30933q0.81067 0.21333 1.28 0.832 0.46934 0.61867 0.46934 1.4613 0 0.69334-0.30934 1.2053-0.30933 0.50134-0.864 0.77867-0.55467 0.27733-1.312 0.27733zm-8.288-0.10667v-7.7867h1.152v6.7414h3.4027v1.0453zm-6.6987 0v-1.0453h1.568v-5.696h-1.568v-1.0453h4.32v1.0453h-1.5787v5.696h1.5787v1.0453zm-4.8214 0v-6.7414h-2.08v-1.0453h5.3227v1.0453h-2.0907v6.7414zm-5.824 0.10667q-1.12 0-1.728-0.608-0.608-0.61867-0.608-1.6747v-5.6107h1.152v5.6q0 0.59733 0.29867 0.93867 0.29867 0.34133 0.88534 0.34133 0.58667 0 0.88534-0.34133 0.29867-0.34134 0.29867-0.93867v-5.6h1.152v5.6107q0 1.0667-0.608 1.6747t-1.728 0.608zm-6.3147 0q-1.0987 0-1.7493-0.608-0.64-0.61867-0.64-1.664v-3.456q0-1.056 0.64-1.664 0.65067-0.608 1.7493-0.608 1.088 0 1.728 0.61867 0.65067 0.608 0.65067 1.6533h-1.152q0-0.608-0.33067-0.928-0.32-0.32-0.896-0.32-0.58667 0-0.91734 0.32-0.32 0.32-0.32 0.928v3.456q0 0.608 0.32 0.928 0.33067 0.32 0.91734 0.32 0.576 0 0.896-0.32 0.33067-0.32 0.33067-0.928h1.152q0 1.0453-0.65067 1.664-0.64 0.608-1.728 0.608zm-8.6827-0.10667v-7.7867h4.576v1.024h-3.4453v2.2187h3.072v0.992h-3.072v2.528h3.4453v1.024zm-4.1707 0.10667q-1.152 0-1.8453-0.608-0.69334-0.608-0.69334-1.664h1.1307q0 0.58667 0.384 0.928 0.384 0.33067 1.024 0.33067 0.62934 0 0.992-0.34133 0.36267-0.34134 0.36267-0.90667 0-0.42667-0.23467-0.74667-0.23467-0.32-0.672-0.43733l-1.12-0.29867q-0.78934-0.21333-1.248-0.77867-0.448-0.56534-0.448-1.3547 0-0.64 0.27733-1.1093 0.288-0.48 0.81067-0.74667 0.52267-0.26667 1.216-0.26667 0.69334 0 1.216 0.26667 0.53334 0.26667 0.82134 0.74667 0.29867 0.46933 0.29867 1.0987h-1.1307q0-0.50134-0.34134-0.8-0.33067-0.30933-0.864-0.30933t-0.864 0.30933q-0.32 0.29867-0.32 0.78934 0 0.39467 0.21333 0.66134 0.224 0.26667 0.61867 0.37333l1.152 0.30933q0.81067 0.21333 1.28 0.832 0.46934 0.61867 0.46934 1.4613 0 0.69334-0.30934 1.2053-0.30933 0.50134-0.864 0.77867-0.55467 0.27733-1.312 0.27733z"/>
-            </svg>
-            <span class="logo-badge">Echo</span>
+    <header class="su-header">
+        <a class="su-app-brand" href="https://secutils.dev" target="_blank" rel="noopener" aria-label="ECHO by Secutils.dev (opens in new tab)">
+            <img class="su-app-icon" src="./echo/assets/echo-app-icon.svg" data-su-app-icon="echo" width="32" height="32" alt="">
+            <span class="su-app-brand-copy">
+                <span class="su-app-name">ECHO</span>
+                <span class="su-app-publisher">Secutils.dev</span>
+            </span>
         </a>
-        <div class="header-right">
+        <div class="su-header-section">
             <a id="skillLink" class="skill-link" href="#" target="_blank" rel="noopener"
                title="View AI agent skill (skill.md, opens in new tab)"
                aria-label="View AI agent skill (opens in new tab)">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .962L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>
-                    <path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/>
-                </svg>
+                <span data-icon="sparkles"></span>
                 <span>Skill</span>
             </a>
-            <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
-                <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M8.5 15h-1v-2h1v2Zm-3.674-3.107-1.414 1.414-.707-.707 1.414-1.415.707.708Zm8.479.707-.707.707-1.414-1.414.707-.708 1.414 1.415Z"/><path fill-rule="evenodd" d="M8 4a4 4 0 1 1 0 8 4 4 0 0 1 0-8Zm0 1a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" clip-rule="evenodd"/><path d="M3.005 8.505h-2v-1h2v1Zm12 0h-2v-1h2v1ZM4.82 4.114l-.708.707-1.414-1.414.707-.707L4.82 4.114Zm8.492-.707-1.414 1.414-.708-.707L12.605 2.7l.707.707ZM8.5 3h-1V1h1v2Z"/></svg>
-                <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M4.05 12.95A6.982 6.982 0 0 1 2 8c0-1.79.684-3.583 2.05-4.95A6.982 6.982 0 0 1 9 1a1 1 0 0 1 .708 1.707 4.982 4.982 0 0 0-1.465 3.536 4.98 4.98 0 0 0 1.465 3.535 4.98 4.98 0 0 0 3.535 1.465 1 1 0 0 1 .707 1.707A6.981 6.981 0 0 1 9 15a6.983 6.983 0 0 1-4.95-2.05Zm.708-.707A5.983 5.983 0 0 0 9 14c1.535 0 3.07-.586 4.242-1.757a5.98 5.98 0 0 1-4.018-1.545L9 10.485a5.982 5.982 0 0 1-1.758-4.242A5.986 5.986 0 0 1 9 2a5.983 5.983 0 0 0-4.243 1.757A5.98 5.98 0 0 0 3 8l.006.288a5.978 5.978 0 0 0 1.75 3.955Z"/></svg>
+            <button class="su-header-btn theme-toggle" id="themeToggle" type="button" aria-label="Toggle theme">
+                <span class="icon-sun" data-icon="sun"></span>
+                <span class="icon-moon" data-icon="moon"></span>
             </button>
         </div>
     </header>
@@ -425,41 +326,41 @@ td:last-child { padding-right: 0; width: 38px; }
         <h1 class="page-title">HTTP echo response</h1>
         <p class="page-subtitle">Build a mock HTTP response. Your edits are encoded in the URL fragment as you type, then served when this responder is hit with <code>?c=&hellip;</code>.</p>
 
-        <section class="card">
-            <label for="description">Description <span class="label-hint">(saved in URL, not sent in response)</span></label>
+        <section class="su-panel card">
+            <label class="field-label" for="description">Description <span class="label-hint">(saved in URL, not sent in response)</span></label>
             <textarea id="description" class="textarea textarea-sm" placeholder="What is this mock for? Notes for whoever opens the share link."></textarea>
         </section>
 
-        <section class="card">
-            <label for="status">Status code</label>
+        <section class="su-panel card">
+            <label class="field-label" for="status">Status code</label>
             <input id="status" class="input input-status" type="number" min="100" max="599" value="200">
         </section>
 
-        <section class="card">
+        <section class="su-panel card" aria-labelledby="headersLabel">
             <div class="row-head">
-                <label>Headers</label>
-                <button id="add" type="button" class="btn">+ Add header</button>
+                <h2 id="headersLabel" class="field-label">Headers</h2>
+                <button id="add" type="button" class="btn btn-sm"><span data-icon="plus"></span>Add header</button>
             </div>
             <table id="headers"><tbody></tbody></table>
             <div id="empty" class="empty" hidden>No headers. <code>Content-Type: text/plain; charset=utf-8</code> will be added automatically.</div>
         </section>
 
-        <section class="card">
-            <label for="body">Body</label>
+        <section class="su-panel card">
+            <label class="field-label" for="body">Body</label>
             <textarea id="body" class="textarea" placeholder="Response body (text)"></textarea>
         </section>
 
-        <section class="card">
-            <label for="preview">Mock URL</label>
+        <section class="su-panel card">
+            <label class="field-label" for="preview">Mock URL</label>
             <input id="preview" class="input input-mono" readonly>
             <div class="actions">
-                <button id="open" type="button" class="btn btn-primary">Open mock response</button>
+                <button id="open" type="button" class="btn btn-primary"><span data-icon="external"></span>Open mock response</button>
                 <button id="copy" type="button" class="btn" title="Copy the mock URL to your clipboard">
-                    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="9" height="10" rx="1.5"/><path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H10"/></svg>
+                    <span data-icon="copy"></span>
                     <span class="btn-label">Copy URL</span>
                 </button>
                 <span class="spacer"></span>
-                <button id="reset" type="button" class="btn">Reset</button>
+                <button id="reset" type="button" class="btn btn-empty"><span data-icon="refresh"></span>Reset</button>
             </div>
         </section>
 
@@ -477,7 +378,7 @@ td:last-child { padding-right: 0; width: 38px; }
         <header class="su-dialog-header">
             <h2 id="privacyDialogTitle">Privacy</h2>
             <button type="button" class="su-dialog-close" id="privacyClose" aria-label="Close">
-                <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13"/></svg>
+                <span data-icon="cross"></span>
             </button>
         </header>
         <div class="su-dialog-body">
@@ -491,7 +392,9 @@ td:last-child { padding-right: 0; width: 38px; }
         <span id="toastMsg"></span>
     </div>
 
-<script>
+<script type="module">
+import { icon, hydrateIcons } from './shared/icons.js';
+hydrateIcons();
 const $ = (id) => document.getElementById(id);
 
 const els = Object.freeze({
@@ -636,12 +539,14 @@ const renderHeaders = () => {
         const nameInput = document.createElement('input');
         nameInput.className = 'input input-mono';
         nameInput.placeholder = 'Header name';
+        nameInput.setAttribute('aria-label', 'Header name');
         nameInput.value = row[0];
         nameInput.setAttribute('list', 'hdr-names');
 
         const valueInput = document.createElement('input');
         valueInput.className = 'input input-mono';
         valueInput.placeholder = 'Header value';
+        valueInput.setAttribute('aria-label', 'Header value');
         valueInput.value = row[1];
 
         const valueDatalist = document.createElement('datalist');
@@ -664,10 +569,10 @@ const renderHeaders = () => {
         const tdRm = document.createElement('td');
         const btn = document.createElement('button');
         btn.type = 'button';
-        btn.className = 'btn btn-icon';
+        btn.className = 'icon-btn';
         btn.title = 'Remove header';
         btn.setAttribute('aria-label', 'Remove header');
-        btn.textContent = '\u00d7';
+        btn.innerHTML = icon('cross');
         btn.addEventListener('click', () => {
             state.h.splice(i, 1);
             renderHeaders();

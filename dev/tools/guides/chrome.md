@@ -1,6 +1,9 @@
 # Visual chrome
 
-The shared look of every tool page: brand colors, typography, header, theme toggle, buttons, two-pane layouts, bottom CTA, footer, analytics, responsive rules, resource priority, and exported documents. Read before changing a tool's layout or styling, or building a new tool's page. `md.html` is the reference implementation.
+Read before changes to tool layout, analytics, resource priority, or exported documents.
+MARS and ECHO use [design-system.md](design-system.md) for visual primitives.
+That guide takes precedence over the color, button, and icon snippets here for migrated tools.
+The snippets below describe legacy tool chrome, with `md.html` as the reference.
 
 ## Brand Colors (from Elastic EUI theme-borealis)
 

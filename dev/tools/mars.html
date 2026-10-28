@@ -217,27 +217,30 @@
         <p class="su-noscript"><strong>MARS</strong> &mdash; Markdown Annotation &amp; Review System: highlight and comment on Markdown, keep reviews in folders, and share them. Requires JavaScript; please enable it. Source on <a href="https://github.com/secutils-dev/secutils/blob/main/dev/tools/mars.html">GitHub</a>.</p>
     </noscript>
 
-    <header class="mars-header">
-        <div class="mars-header-section">
-            <button id="navToggle" type="button" class="mars-header-btn" aria-controls="sidebar" aria-expanded="true" title="Toggle documents sidebar" aria-label="Toggle documents sidebar"><span data-icon="menu"></span></button>
-            <a class="mars-logo" href="./" aria-label="MARS home">
-                <svg class="mars-logo-mark" viewBox="84 36 152 152" width="26" height="26" aria-hidden="true">
+    <header class="su-header">
+        <div class="su-header-section">
+            <button id="navToggle" type="button" class="su-header-btn" aria-controls="sidebar" aria-expanded="true" title="Toggle documents sidebar" aria-label="Toggle documents sidebar"><span data-icon="menu"></span></button>
+            <a class="su-app-brand" href="./" aria-label="MARS home">
+                <svg class="su-app-icon mars-logo-mark" viewBox="84 36 152 152" width="32" height="32" aria-hidden="true">
                     <defs><linearGradient id="mars-mark-g" x1=".15" y1="0" x2=".8" y2="1"><stop offset="0" stop-color="#ff6240"/><stop offset=".55" stop-color="#d43a32"/><stop offset="1" stop-color="#8b202d"/></linearGradient><clipPath id="mars-mark-c"><circle cx="160" cy="112" r="76"/></clipPath></defs>
                     <circle cx="160" cy="112" r="76" fill="url(#mars-mark-g)"/>
                     <g fill="#fffaf4"><rect x="110" y="78" width="68" height="10" rx="5"/><rect x="110" y="102" width="96" height="10" rx="5"/><rect x="110" y="126" width="53" height="10" rx="5"/></g>
                     <g clip-path="url(#mars-mark-c)"><path d="M158 187 C170 164 188 153 207 153 C225 153 237 168 242 188 L242 207 L145 207 Z" fill="#d84a38"/><ellipse cx="207" cy="177" rx="9" ry="13" transform="rotate(-25 207 177)" fill="#a92a30" opacity=".6"/><ellipse cx="178" cy="191" rx="5" ry="3.5" fill="#a92a30" opacity=".55"/></g>
                 </svg>
-                <span class="mars-wordmark">MARS</span>
+                <span class="su-app-brand-copy">
+                    <span class="su-app-name">MARS</span>
+                    <span class="su-app-publisher">Secutils.dev</span>
+                </span>
             </a>
             <nav class="mars-crumbs" aria-label="Breadcrumb">
                 <ol id="crumbs"></ol>
                 <span id="docTitle" class="doc-title" spellcheck="false" title="Rename">MARS</span>
             </nav>
         </div>
-        <div class="mars-header-section">
+        <div class="su-header-section">
             <span id="saveState" class="save-state" role="status" aria-live="polite"></span>
             <a id="skillLink" class="skill-link" href="#" target="_blank" rel="noopener" title="View AI agent skill (skill.md, opens in new tab)" aria-label="View AI agent skill (opens in new tab)"><span data-icon="sparkles"></span><span>Skill</span></a>
-            <button class="mars-header-btn theme-toggle" id="themeToggle" type="button" aria-label="Toggle theme" title="Toggle theme"><span class="icon-sun" data-icon="sun"></span><span class="icon-moon" data-icon="moon"></span></button>
+            <button class="su-header-btn theme-toggle" id="themeToggle" type="button" aria-label="Toggle theme" title="Toggle theme"><span class="icon-sun" data-icon="sun"></span><span class="icon-moon" data-icon="moon"></span></button>
         </div>
     </header>
 

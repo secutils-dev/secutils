@@ -126,6 +126,31 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     await assertSkillMd(request, tool);
   });
 
+  test('app identity stays stacked beside the breadcrumbs on desktop and phones', async ({ page }) => {
+    await page.goto(fileLink('# Untitled\n\nA shared document.', 'header-identity', 'Untitled'));
+    const brand = page.getByRole('link', { name: 'MARS home', exact: true });
+    await expect(page.locator('#docTitle')).toHaveText('Untitled');
+    for (const theme of ['dark', 'light']) {
+      await page.evaluate((value) => document.documentElement.setAttribute('data-theme', value), theme);
+      for (const width of [1280, 390, 320]) {
+        await page.setViewportSize({ width, height: 800 });
+        await expect(brand.locator('.su-app-name')).toHaveText('MARS');
+        await expect(brand.locator('.su-app-name')).toBeVisible();
+        await expect(brand.locator('.su-app-publisher')).toHaveText('Secutils.dev');
+        await expect(brand.locator('.su-app-publisher')).toBeVisible();
+        const icon = (await brand.locator('svg').boundingBox())!;
+        const name = (await brand.locator('.su-app-name').boundingBox())!;
+        const publisher = (await brand.locator('.su-app-publisher').boundingBox())!;
+        expect(icon.width).toBe(32);
+        expect(icon.height).toBe(32);
+        expect(name.x).toBeGreaterThan(icon.x + icon.width);
+        expect(publisher.x).toBe(name.x);
+        expect(publisher.y).toBeGreaterThanOrEqual(name.y + name.height);
+        expect(await page.locator('.su-header').evaluate((header) => header.scrollWidth > innerWidth)).toBe(false);
+      }
+    }
+  });
+
   test('documents persist in the sidebar across reloads', async ({ page }) => {
     await page.goto(tool.path);
     await expect(page.locator('#emptyState')).toBeVisible();

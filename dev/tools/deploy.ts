@@ -3,9 +3,11 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { gzipSync } from "node:zlib";
+import { fileURLToPath } from "node:url";
 import { minify } from "html-minifier-terser";
+import { inlineSharedAssets } from "./shared-assets.ts";
 
-const TOOLS_DIR = resolve(dirname(process.argv[1]));
+const TOOLS_DIR = dirname(fileURLToPath(import.meta.url));
 // Each sub-directory under `dev/tools/js/` is an isolated build of one JS
 // bundle (own package.json + lockfile + Vite/Rollup config). The deploy
 // pipeline inlines these into HTML responders that reference them via a
@@ -211,7 +213,11 @@ function ensureBundleBuilt(name: string): string {
   }
   const distPath = resolve(bundleDir, "dist", `${name}.js`);
   const exclude = new Set(["dist", "node_modules"]);
-  const sourceMtime = newestMtimeUnder(bundleDir, exclude);
+  // MARS imports the shared chrome and glyphs from outside its sub-package.
+  const sourceMtime = Math.max(
+    newestMtimeUnder(bundleDir, exclude),
+    name === "mars" ? newestMtimeUnder(resolve(TOOLS_DIR, "shared"), exclude) : 0,
+  );
   let needsBuild = !existsSync(distPath);
   if (!needsBuild) {
     const distMtime = statSync(distPath).mtimeMs;
@@ -664,7 +670,7 @@ async function buildHtmlTarget(
   // `removeScriptTypeAttributes` would strip `type="text/javascript"` but
   // intentionally leaves non-default types like `text/plain` (which we use
   // for `data-su-bundle` placeholders) intact, so the convention survives.
-  const minified = await minify(templated, MINIFY_OPTIONS);
+  const minified = await minify(inlineSharedAssets(templated), MINIFY_OPTIONS);
   // Inline `data-su-bundle` payloads *after* minification: the bundle source
   // is already minified by Vite, and bypassing the HTML minifier avoids any
   // chance of `collapseWhitespace` / `minifyJS` corrupting the inlined ESM

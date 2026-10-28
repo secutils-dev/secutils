@@ -2,7 +2,7 @@
 
 // tools-verify: the pre-deploy checks for dev/tools HTML apps that deploy.ts can't
 // catch (it minifies and PUTs; it never parses the JS):
-//  1. every inline <script> parses (modules are checked as async function bodies;
+//  1. every inline <script> parses (modules use Node's module syntax check;
 //     JSON-LD and `text/plain` bundle placeholders are skipped);
 //  2. the `@su:responder-script` block, if any, parses as the expression deploy.ts ships;
 //  3. html-minifier-terser accepts the page with deploy.ts's exact options.
@@ -11,11 +11,13 @@
 // Read-only, no browser, no network. Exits non-zero on any failure.
 
 import { readdir, readFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as vm from "node:vm";
 import { minify } from "html-minifier-terser";
 import { MINIFY_OPTIONS } from "../dev/tools/deploy.ts";
+import { inlineSharedAssets } from "../dev/tools/shared-assets.ts";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const TOOLS_DIR = resolve(REPO_ROOT, "dev/tools");
@@ -35,8 +37,11 @@ for (const file of files) {
   for (const [, attrs, code] of html.matchAll(/<script((?:[^>])*)>([\s\S]*?)<\/script>/g)) {
     index++;
     if (!code.trim() || /\bsrc\s*=/.test(attrs) || /type\s*=\s*["'](application\/ld\+json|text\/plain)["']/i.test(attrs)) continue;
-    const source = /type\s*=\s*["']module["']/i.test(attrs) ? `(async () => {\n${code}\n})` : code;
-    try { new vm.Script(source, { filename: `${name}#script${index}` }); }
+    try {
+      if (/type\s*=\s*["']module["']/i.test(attrs)) {
+        execFileSync(process.execPath, ["--check", "--input-type=module"], { input: code, stdio: ["pipe", "pipe", "pipe"] });
+      } else new vm.Script(code, { filename: `${name}#script${index}` });
+    }
     catch (err) { errors.push(`script #${index}: ${(err as Error).message}`); }
   }
 
@@ -46,7 +51,7 @@ for (const file of files) {
     catch (err) { errors.push(`responder script: ${(err as Error).message}`); }
   }
 
-  try { await minify(html, MINIFY_OPTIONS); }
+  try { await minify(inlineSharedAssets(html), MINIFY_OPTIONS); }
   catch (err) { errors.push(`minifier: ${(err as Error).message}`); }
 
   if (errors.length) {

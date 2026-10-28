@@ -9,10 +9,16 @@ on:
     branches: [ main ]
     paths:
       - 'dev/tools/js/mars/**'
+      - 'dev/tools/shared/**'
+      - 'dev/tools/shared-assets.ts'
+      - 'scripts/tools-shared.test.ts'
       - '.github/workflows/mars.yml'
   pull_request:
     paths:
       - 'dev/tools/js/mars/**'
+      - 'dev/tools/shared/**'
+      - 'dev/tools/shared-assets.ts'
+      - 'scripts/tools-shared.test.ts'
       - '.github/workflows/mars.yml'
 
 jobs:
@@ -39,8 +45,13 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Build
+        run: npm run build
+
       - name: Test
-        run: npm test
+        run: |
+          npm test
+          node --test ../../../../scripts/tools-shared.test.ts
 
       # Best quality (EmbeddingGemma 2, about 200 MB) is checked locally; see README.md#evaluation.
       - name: Cache the Best speed model

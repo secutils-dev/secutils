@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80">
+  <!-- The isolated ECHO tile from og-template.html: yellow background and bolt. -->
+  <rect width="80" height="80" rx="16" fill="#fed047"/>
+  <g transform="translate(16 16) scale(2)" fill="none" stroke="#1a1410" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+  </g>
+</svg>

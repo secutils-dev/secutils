@@ -1,12 +1,10 @@
 // Small EUI-like toolset: icon hydration, a context menu, a modal, clipboard, and downloads.
 import { icon, type IconName } from './icons.ts';
+export { hydrateIcons } from '../../../../shared/icons.js';
+import { hydrateIcons } from '../../../../shared/icons.js';
 
 export const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 export const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-
-export function hydrateIcons(root: ParentNode = document) {
-    for (const el of root.querySelectorAll<HTMLElement>('[data-icon]:empty')) el.innerHTML = icon(el.dataset.icon as IconName);
-}
 
 export interface MenuItem {
     label: string;
