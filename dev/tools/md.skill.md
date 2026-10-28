@@ -129,6 +129,7 @@ replaces only that block's source text, so the rest of the file stays byte-ident
   **Strikethrough**, **Highlight** (`==text==`), and **Inline code**. Applying a format to text
   that already has it removes the format from the selection. A selection that partly covers
   text with the same format gets one combined run. `Ctrl/Cmd+B` and `Ctrl/Cmd+I` also work.
+  Selections across wrapped lines in one list paragraph preserve source indentation.
 - **Edit a block** - double-click it, or use **Edit**. The block becomes a small Markdown
   editor. `Esc`, `Ctrl/Cmd+Enter`, or clicking elsewhere commits it and renders it again.
   An unchanged or empty result changes nothing.

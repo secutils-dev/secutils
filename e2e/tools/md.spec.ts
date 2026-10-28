@@ -5,7 +5,7 @@ import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 
 import { assertSeoBasics, assertSkillMd, getTool } from './_helpers';
-import { selectionToolbarTests } from './_markdown_selection';
+import { listItemTests, selectionToolbarTests } from './_markdown_selection';
 
 const tool = getTool('md');
 const modelFixture = (name: string) => resolve(__dirname, `fixtures/3mf/${name}.3mf`);
@@ -40,6 +40,12 @@ async function setMarkdown(page: Page, md: string): Promise<void> {
 }
 
 test.describe(`${tool.name} (${tool.path})`, () => {
+  listItemTests(async (page, markdown) => {
+    await page.goto(tool.path);
+    await setMarkdown(page, markdown);
+    await expect(page.locator('#previewArticle p').first()).toHaveText('Plain words here.');
+  });
+
   selectionToolbarTests(async (page, markdown) => {
     await page.goto(tool.path);
     await setMarkdown(page, markdown);

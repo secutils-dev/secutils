@@ -78,3 +78,123 @@ export function selectionToolbarTests(load: (page: Page, markdown: string) => Pr
     }
   }
 }
+
+export function listItemTests(load: (page: Page, markdown: string) => Promise<void>) {
+  const source = (page: Page) =>
+    page.evaluate(() => (window as unknown as { __suEditorAPI: { getText(): string } }).__suEditorAPI.getText());
+
+  for (const { marker, loose } of [
+    { marker: '1.', loose: true },
+    { marker: '12)', loose: false },
+    { marker: '-', loose: true },
+    { marker: '*', loose: false },
+  ]) {
+    test(`selection formatting preserves wrapped list source (${marker}, ${loose ? 'loose' : 'tight'})`, async ({
+      page,
+    }) => {
+      const indent = ' '.repeat(marker.length + 1);
+      const text = [
+        '**Review item.** Updated the comment in `config.ts`.',
+        'The minimum stays one minute and the default stays one hour.',
+        'The temporary token has a different maximum.',
+        'Checked `TokenConfig.Access` and `application.properties` against the current revision.',
+        'The regression cases cover both limits.',
+      ].join(`\n${indent}`);
+      const item = `${marker} ${text}`;
+      const md = `Plain words here.\n\n${item}\n${loose ? '\n' : ''}${marker} Keep this item.\n`;
+      await load(page, md);
+      const first = page.locator('#previewArticle li').first();
+      await first.evaluate((element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element.querySelector('p') ?? element);
+        getSelection()!.removeAllRanges();
+        getSelection()!.addRange(range);
+      });
+      const selected = await page.evaluate(() => getSelection()!.toString());
+      const strike = page.locator('#formatBar').getByRole('button', { name: 'Strikethrough' });
+      await strike.click();
+      await expect.poll(() => source(page)).toBe(md.replace(item, `${marker} ~~${text}~~`));
+      await expect(first.locator('del')).toHaveCount(1);
+      await expect(first.locator('strong')).toHaveText('Review item.');
+      await expect(first.locator('code')).toHaveCount(3);
+      await expect.poll(() => page.evaluate(() => getSelection()!.toString())).toBe(selected);
+      await strike.click();
+      await expect.poll(() => source(page)).toBe(md);
+
+      // A selection in a continuation line changes only that line, not its indentation.
+      await first.evaluate((element) => {
+        const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+        for (let node; (node = walker.nextNode()); ) {
+          const from = node.textContent!.indexOf('regression cases');
+          if (from < 0) continue;
+          getSelection()!.setBaseAndExtent(node, from, node, from + 'regression cases'.length);
+          break;
+        }
+      });
+      await strike.click();
+      await expect.poll(() => source(page)).toBe(md.replace('regression cases', '~~regression cases~~'));
+      await strike.click();
+      await expect.poll(() => source(page)).toBe(md);
+    });
+  }
+
+  test('selection formatting skips list markers and task state', async ({ page }) => {
+    const md = 'Plain words here.\n\n1. 1st item.\n2. [x] x marks the spot.\n';
+    await load(page, md);
+    let expected = md;
+    for (const [index, text] of ['1st item.', 'x marks the spot.'].entries()) {
+      const item = page.locator('#previewArticle li').nth(index);
+      await item.evaluate((element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        getSelection()!.removeAllRanges();
+        getSelection()!.addRange(range);
+      });
+      const strike = page.locator('#formatBar').getByRole('button', { name: 'Strikethrough' });
+      await strike.click();
+      expected = expected.replace(text, `~~${text}~~`);
+      await expect.poll(() => source(page)).toBe(expected);
+      await expect(item.locator('del')).toHaveText(text);
+    }
+    await expect(page.locator('#previewArticle').getByRole('checkbox')).toBeChecked();
+  });
+
+  for (const { name, item, next } of [
+    {
+      name: 'numbered',
+      item: '1. **Review item.** Read `config.ts`.\n   Keep this continuation.',
+      next: '2. Next item.',
+    },
+    { name: 'bulleted', item: '+ Review item.\n  Keep this continuation.', next: '+ Next item.' },
+    { name: 'nested', item: '- Parent item.\n  - Child item.', next: '- Next item.' },
+  ]) {
+    test(`regular ${name} list items have no Mark done action or automatic checkbox`, async ({ page }) => {
+      const md = `Plain words here.\n\n${item}\n\n${next}\n`;
+      await load(page, md);
+      const first = page.locator('#previewArticle li').first();
+      await first.hover({ position: { x: 40, y: 10 } });
+      await page.locator('#blockGripBtn').click();
+      await expect(page.getByRole('menuitem', { name: 'Edit', exact: true })).toBeVisible();
+      await expect(page.getByRole('menuitem', { name: /^Mark (?:not )?done$/ })).toHaveCount(0);
+      await page.keyboard.press('Escape');
+      await expect.poll(() => source(page)).toBe(md);
+      await expect(first.getByRole('checkbox')).toHaveCount(0);
+    });
+  }
+
+  test('existing task checkboxes retain Mark done and Mark not done', async ({ page }) => {
+    const md = 'Plain words here.\n\n- [ ] Existing task.\n';
+    await load(page, md);
+    const item = page.locator('#previewArticle li').first();
+    for (const [action, expected] of [
+      ['Mark done', md.replace('[ ]', '[x]')],
+      ['Mark not done', md],
+    ]) {
+      await item.hover();
+      await page.locator('#blockGripBtn').click();
+      await page.getByRole('menuitem', { name: action, exact: true }).click();
+      await expect.poll(() => source(page)).toBe(expected);
+    }
+    await expect(item.getByRole('checkbox')).not.toBeChecked();
+  });
+}

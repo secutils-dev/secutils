@@ -2821,7 +2821,8 @@ function selectionSourceRange({ range, block }, fits) {
     // (a link URL, say); the render check below rejects most such misses.
     const map = [];
     const space = /\s/g;
-    for (let i = 0, j = 0; i < text.length; i++) {
+    const prefix = block.matches('li') ? raw.match(LIST_ITEM_RE)?.[0].length ?? 0 : 0;
+    for (let i = 0, j = prefix; i < text.length; i++) {
         space.lastIndex = j;
         const k = /\s/.test(text[i]) ? (space.exec(raw)?.index ?? -1) : raw.indexOf(text[i], j);
         map.push(k);
@@ -2830,7 +2831,10 @@ function selectionSourceRange({ range, block }, fits) {
     const a = map[rs], b = map[re - 1] + 1;
     if (re <= rs || a < 0 || b <= 0) return null;
     const covered = (s, e) => map.reduce((t, k, i) => (k >= s && k < e ? t + text[i] : t), '');
-    const renders = (s, e) => inlineText(raw.slice(s, e)).trim() === covered(s, e).trim();
+    // List continuations lose their indentation in the preview; compare visible whitespace,
+    // but keep the original source offsets so formatting preserves every untouched byte.
+    const normalize = (s) => s.replace(/\s+/g, ' ').trim();
+    const renders = (s, e) => normalize(inlineText(raw.slice(s, e))) === normalize(covered(s, e));
     const widen = (s, e) => {
         const mapped = new Set(map);
         // ponytail: widening stops at 16 unrendered characters per side, enough for nested markers.
