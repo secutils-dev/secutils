@@ -44,6 +44,7 @@ export const ICONS = Object.freeze({
     home: "<path fill-rule=\"evenodd\" d=\"M13 9.414V13.5a.5.5 0 0 1-.5.5h-9a.5.5 0 0 1-.5-.5V9.414l1-1V13h2v-3a1 1 0 0 1 1-1h2l.103.005A1 1 0 0 1 10 10v3h2V8.414l1 1ZM7 13h2v-3H7v3Z\" clip-rule=\"evenodd\"/> <path d=\"M8.048 2.002a1.002 1.002 0 0 1 .659.291l6 6L14 9 8 3 2 9l-.707-.707 6-6 .076-.068a.994.994 0 0 1 .679-.223ZM13 5.172l-1-1V2h1v3.172Z\"/>",
     pause: "<path fill-rule=\"evenodd\" d=\"M6.103 1.005A1 1 0 0 1 7 2v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h2l.103.005ZM4 14h2V2H4v12Zm8.102-12.995A1 1 0 0 1 13 2v12a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h2l.102.005ZM10 14h2V2h-2v12Z\" clip-rule=\"evenodd\"/>",
     play: "<path fill-rule=\"evenodd\" d=\"M3 2a1 1 0 0 1 1.514-.858l10 6a1 1 0 0 1 0 1.715l-10 6A1 1 0 0 1 3 14V2Zm1 12 10-6L4 2v12Z\" clip-rule=\"evenodd\"/>",
+    clock: "<path d=\"M8.5 7.5V4h-1v4.5H12v-1H8.5Z\"/><path fill-rule=\"evenodd\" d=\"M15 8A7 7 0 1 1 1 8a7 7 0 0 1 14 0Zm-1 0A6 6 0 1 1 2 8a6 6 0 0 1 12 0Z\" clip-rule=\"evenodd\"/>",
 });
 
 // EUI's app logos are drawn on a 32x32 grid; every other glyph is 16x16.

@@ -15,6 +15,15 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     await assertSkillMd(request, tool);
   });
 
+  test('header shows the WEBHOOKS app identity and inline app icon', async ({ page }) => {
+    await page.goto(tool.path);
+    const brand = page.getByRole('link', { name: 'WEBHOOKS by Secutils.dev (opens in new tab)' });
+    await expect(brand.locator('.su-app-name')).toHaveText('WEBHOOKS');
+    await expect(brand.locator('.su-app-publisher')).toHaveText('Secutils.dev');
+    await expect(brand.locator('img')).toHaveAttribute('src', /^data:image\/svg\+xml;base64,/);
+    await expect(page.locator('.su-header')).toHaveCSS('height', '48px');
+  });
+
   test('renders the session controls and mints a fresh webhook on first visit', async ({ page }) => {
     await page.goto(tool.path);
 

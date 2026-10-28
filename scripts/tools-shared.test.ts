@@ -5,18 +5,20 @@ import { inlineSharedAssets } from '../dev/tools/shared-assets.ts';
 import { ICONS, icon } from '../dev/tools/shared/icons.js';
 
 test('shared styles and glyph modules inline without external asset requests', () => {
-    const source = readFileSync(new URL('../dev/tools/echo.html', import.meta.url), 'utf8');
+  for (const name of ['echo', 'webhook']) {
+    const source = readFileSync(new URL(`../dev/tools/${name}.html`, import.meta.url), 'utf8');
     const html = inlineSharedAssets(source);
     assert.match(html, /<style data-su-style="tokens">/);
     assert.match(html, /--eui-plain: #0b1628/);
     assert.match(html, /from 'data:text\/javascript;base64,/);
     assert.doesNotMatch(html, /href="\.\/shared\//);
     assert.doesNotMatch(html, /from '\.\/shared\//);
-    assert.doesNotMatch(html, /src="\.\/echo\/assets\//);
+    assert.doesNotMatch(html, /src="\.\/(echo|webhook)\/assets\//);
     assert.match(html, /src="data:image\/svg\+xml;base64,/);
     const encoded = html.match(/from 'data:text\/javascript;base64,([^']+)'/)![1];
     assert.equal(Buffer.from(encoded, 'base64').toString(), readFileSync(new URL('../dev/tools/shared/icons.js', import.meta.url), 'utf8'));
     assert.equal(inlineSharedAssets(html), html);
+  }
 });
 
 test('legacy pages and responder comments remain byte-identical', () => {
@@ -59,4 +61,19 @@ test('EUI glyphs retain their grid, color, and decorative accessibility contract
         assert.match(svg, new RegExp(`viewBox="0 0 ${name.startsWith('logo') ? '32 32' : '16 16'}"`));
     }
     assert.throws(() => icon('missing' as keyof typeof ICONS), /Unknown EUI icon/);
+});
+
+test('the WEBHOOKS app icon uses SU colors and the Secutils Webhooks glyph', () => {
+    const svg = readFileSync(new URL('../dev/tools/webhook/assets/webhook-app-icon.svg', import.meta.url), 'utf8');
+    const template = readFileSync(new URL('../dev/tools/og-template.html', import.meta.url), 'utf8');
+    const webhook = template.match(/webhook:\s*'([^']+)'/)![1];
+    const paths = (source: string) => [...source.matchAll(/<path\s+[^>]*\/>/g)].map(([path]) => path.replace(/\s+/g, ' '));
+    assert.deepEqual(paths(svg), paths(webhook));
+    assert.equal(paths(svg).length, 1);
+    assert.match(webhook, /viewBox="0 0 16 16"/);
+    assert.match(svg, /fill="#fed047"/);
+    assert.match(svg, /fill="#642340"/);
+    assert.match(svg, /viewBox="0 0 80 80"/);
+    const app = readFileSync(new URL('../components/secutils-webui/src/pages/workspace/utils/index.ts', import.meta.url), 'utf8');
+    assert.match(app, /case UTIL_HANDLES.webhooksResponders:\s*return 'vectorTriangle'/);
 });

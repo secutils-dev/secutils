@@ -13,7 +13,7 @@
     path   = URL path on tools host   (e.g. "/jwt")
     desc   = single-line description  (e.g. "Decode, verify, sign HMAC JWTs.")
     accent = hex color for accent bar (e.g. "%237b6ff7" -> "#7b6ff7"); default brand yellow
-    icon   = symbolic id for the inline SVG icon (key | shield | cert | doc | bolt | id | grid | pdf | chart | mars)
+    icon   = symbolic id for the inline SVG icon (key | shield | cert | doc | bolt | id | grid | pdf | chart | mars | webhook)
     theme  = "dark" (default, brand) or "light"
     layout = "app" for an own-host app: centered logo and name, no path chip
 
@@ -141,6 +141,7 @@ body {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+.tool-icon svg.webhook-icon { fill: var(--brand-plum); stroke: none; }
 
 .tool-name {
   font-size: 64px;
@@ -244,7 +245,7 @@ body.app .footer-host::after { content: ' · by Secutils.dev'; }
 
 <script>
 // Inline icon library. Keys map to symbolic ids passed via `?icon=`.
-// All icons are designed for stroke=currentColor on a 24x24 viewBox.
+// Default glyphs use strokes on a 24x24 grid; app-specific glyphs keep their own grid and fill.
 const ICONS = {
   key:    '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="M10.85 12.15 19 4"/><path d="M18 5l3 3"/><path d="M15 8l3 3"/></svg>',
   shield: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>',
@@ -253,6 +254,8 @@ const ICONS = {
   bolt:   '<svg viewBox="0 0 24 24" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
   id:     '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="12" r="2.5"/><path d="M5.5 17.5c.6-1.6 2-2.5 3.5-2.5s2.9.9 3.5 2.5"/><line x1="15" y1="10" x2="19" y2="10"/><line x1="15" y1="14" x2="18" y2="14"/></svg>',
   grid:   '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3"  width="7" height="7" rx="1"/><rect x="14" y="3"  width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>',
+  // EUI vectorTriangle, the Secutils Webhooks glyph (SSPL v1 / Elastic License 2.0).
+  webhook: '<svg class="webhook-icon" viewBox="0 0 16 16" aria-hidden="true"><path fill-rule="evenodd" d="M9 2a1 1 0 0 1 1 1v2a.995.995 0 0 1-.327.736L12.339 10H14a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1v-.499H5V13a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1v-2a1 1 0 0 1 1-1h1.661l2.664-4.264A.996.996 0 0 1 6 5V3a1 1 0 0 1 1-1h2ZM2 13h2v-2H2v2Zm10 0h2v-2h-2v2Zm-7.325-2.736c.2.183.325.444.325.736v.501h6V11c0-.292.125-.553.324-.736L8.66 6H7.341l-2.666 4.264ZM7 5h2V3H7v2Z" clip-rule="evenodd"/></svg>',
   // Document with a downward-extract arrow, evoking "pull text out of a PDF".
   pdf:    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M12 12v6"/><path d="M9 15l3 3 3-3"/></svg>',
   // The MARS app icon, a copy of dev/tools/mars/assets/mars-app-icon.svg (full color, used with layout=app).

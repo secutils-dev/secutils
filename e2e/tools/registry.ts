@@ -34,7 +34,7 @@ export interface Tool {
    *  with its SKILL.md at `/llms.txt`, and absent from the tools-host sitemap. */
   host?: string;
   /** Symbolic icon id understood by `dev/tools/og-template.html`. */
-  icon: 'key' | 'shield' | 'cert' | 'doc' | 'bolt' | 'id' | 'grid' | 'pdf' | 'chart' | 'mars';
+  icon: 'key' | 'shield' | 'cert' | 'doc' | 'bolt' | 'id' | 'grid' | 'pdf' | 'chart' | 'mars' | 'webhook';
 }
 
 export const TOOLS: readonly Tool[] = [
@@ -124,8 +124,8 @@ export const TOOLS: readonly Tool[] = [
     description: 'Ephemeral webhook URL that captures and decrypts incoming HTTP requests live.',
     applicationCategory: 'DeveloperApplication',
     promote: true,
-    accent: '#34d399',
-    icon: 'grid',
+    accent: '#fed047',
+    icon: 'webhook',
   },
   {
     slug: 'forecast',

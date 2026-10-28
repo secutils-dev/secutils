@@ -3,7 +3,8 @@
 Read this guide before changes to `dev/tools/shared/`, MARS chrome, or a migration of another tool.
 The shared foundation reproduces the lightweight EUI look of MARS with CSS and native HTML.
 It includes Borealis neutrals and EUI glyphs, without EUI components or React.
-MARS and ECHO consume this foundation. Other tools keep their existing styles until their migration.
+MARS, ECHO, and Webhook Inspector consume this foundation.
+Other tools keep their existing styles until their migration.
 
 ## Ownership
 
@@ -13,6 +14,7 @@ MARS and ECHO consume this foundation. Other tools keep their existing styles un
 | Header, buttons, fields, panels, groups, menus, dialogs, toast, footer | `../shared/components.css` |
 | EUI glyphs, SVG renderer, icon hydration | `../shared/icons.js` |
 | ECHO app icon, isolated from its OG tile | `../echo/assets/echo-app-icon.svg` |
+| WEBHOOKS app icon, Secutils Webhooks glyph in SU colors | `../webhook/assets/webhook-app-icon.svg` |
 | Source-to-responder asset inclusion | `../shared-assets.ts` |
 | MARS coral identity and document colors | `../js/mars/src/ui/tokens.css` |
 | MARS sidebar and document layout | `../js/mars/src/ui/components.css` |
@@ -69,7 +71,7 @@ Keep EUI glyph attribution in `icons.js` when moving or adding glyphs.
 - Use `.btn` for a 32px button, `.btn-sm` for 28px, and `.btn-xs` for 24px.
 - Use `.btn-primary`, `.btn-empty`, and `.btn-danger` for action emphasis.
 - Use `.icon-btn` for a 28px icon button with an accessible label.
-- Use `.input`, `.input-mono`, and `.textarea` for native fields.
+- Use `.input`, `.input-mono`, `.textarea`, and `.select` for native fields.
 - Use `.field-label` with an associated field or section heading.
 - Use `.su-panel` for a content surface and `.su-dialog` for a native modal.
 - Use `.toast` with a live region for action feedback.
@@ -80,7 +82,7 @@ Keep EUI glyph attribution in `icons.js` when moving or adding glyphs.
 
 The shared foundation owns component geometry and neutral colors.
 An app identity can override `--brand*` and `--focus` in both themes.
-MARS keeps its coral identity. ECHO uses the default Secutils yellow/maroon identity.
+MARS keeps its coral identity. ECHO and Webhook Inspector use the default Secutils yellow/maroon identity.
 Use contrast-safe `--brand-text` for links in both themes.
 Use `--brand-on` for text on filled primary buttons.
 
@@ -107,15 +109,31 @@ Deployment embeds the SVG as a data URL, so the served header needs no asset req
 Keep the decorative icon label empty when the adjacent text identifies the app.
 Keep shared OG and header artwork aligned through an icon parity test.
 
+## SVG viewport clipping
+
+Firefox can clip curved artwork that touches an inline SVG's `viewBox` at fractional display scales (for example, 125%).
+MARS exposed this with its edge-aligned circle.
+The shared `svg.su-app-icon` rule uses `overflow: visible` to preserve the edge without changing the 32px layout.
+
+ECHO uses an SVG through `<img>`, with an inset bolt and an edge-aligned square tile.
+It does not show the same circle defect.
+Page CSS cannot change the internal SVG viewport of an `<img>`.
+
+- Use explicit `clipPath` elements for artwork that must stay inside a shape.
+- For file-backed artwork that needs edge bleed, expand the SVG's `viewBox` or inset the artwork.
+- After logo changes, inspect Firefox at 100%, 125%, and 150% display scales in both themes.
+- Keep this protection specific to app icons, rather than all SVGs or regular EUI glyphs.
+
 ## Verification
 
 Run these commands from the repository root:
 
 ```bash
 node --test scripts/tools-shared.test.ts
-make tools-verify ARGS="dev/tools/echo.html dev/tools/mars.html"
+make tools-verify ARGS="dev/tools/echo.html dev/tools/mars.html dev/tools/webhook.html"
 make tools-check
 make e2e-standalone-test ARGS="tools_shared_ui.spec.ts --browser=all"
+make e2e-standalone-test ARGS="webhook_shared_ui.spec.ts --browser=all"
 ```
 
 For shared CSS or glyph changes, also run the MARS checks in [mars.md](mars.md#verify-a-change).

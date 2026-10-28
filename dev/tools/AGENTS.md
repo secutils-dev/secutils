@@ -22,7 +22,8 @@ Run the tool verification and browser gates below locally.
   and the tool keeps working without it; otherwise stay on the existing pattern.
   Limited Availability features are out of scope, except the File System Access API as a feature-detected enhancement in `md.html` and MARS.
 - **Page**: `<title>Tool Name | Secutils.dev</title>`, `data-theme="dark"` on `<html>` with a theme toggle, and the shared chrome.
-  MARS and ECHO use the [shared design system](guides/design-system.md). `md.html` remains the reference for unmigrated tools.
+  MARS, ECHO, and Webhook Inspector use the [shared design system](guides/design-system.md).
+  `md.html` remains the reference for unmigrated tools.
   Known deviations: `mock-saml-idp.html` (pre-banner chrome), and `index.html` and `certificate-decoder.html` (ES5 syntax).
 
 ## Guides

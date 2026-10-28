@@ -1,7 +1,7 @@
 # Visual chrome
 
 Read before changes to tool layout, analytics, resource priority, or exported documents.
-MARS and ECHO use [design-system.md](design-system.md) for visual primitives.
+MARS, ECHO, and Webhook Inspector use [design-system.md](design-system.md) for visual primitives.
 That guide takes precedence over the color, button, and icon snippets here for migrated tools.
 The snippets below describe legacy tool chrome, with `md.html` as the reference.
 

@@ -11,7 +11,7 @@
     --bg: var(--eui-subdued); --surface: var(--eui-plain); --surface-hover: var(--eui-lightest);
     --border: var(--eui-border); --text: var(--eui-text); --text-muted: var(--eui-text-subdued);
     --primary: var(--brand-text); --primary-hover: var(--brand-hover); --primary-text: var(--brand-on);
-    --danger: var(--eui-danger);
+    --danger: var(--eui-danger); --success: var(--eui-success);
     --publisher-text: #dca4bb;
     --badge-bg: #2b394f; --badge-text: #98a8c3;
     --shadow-s: 0 1px 2px rgba(0, 0, 0, 0.5);

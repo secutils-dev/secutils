@@ -64,15 +64,15 @@ svg.su-app-icon { overflow: visible; }
 .options-popover { padding: 14px 16px; }
 
 /* Form controls (EuiFieldText / EuiSelect, compressed). */
-.input, .input-mono, .textarea { width: 100%; padding: 0 10px; border: 1px solid var(--eui-border-plain); border-radius: var(--radius-s); background: var(--surface); color: var(--text); font-size: 14px; }
-.input, .input-mono { height: 32px; }
+.input, .input-mono, .textarea, .select { width: 100%; padding: 0 10px; border: 1px solid var(--eui-border-plain); border-radius: var(--radius-s); background: var(--surface); color: var(--text); font-size: 14px; }
+.input, .input-mono, .select { height: 32px; }
 .url-form input, .options-popover select, .options-popover input[type="number"] { height: 32px; padding: 0 10px; border: 1px solid var(--eui-border-plain); border-radius: var(--radius-s); background: var(--surface); color: var(--text); font-size: 14px; }
 .url-form input:focus, .options-popover :is(select, input[type="number"]):focus { outline: none; border-color: var(--focus); box-shadow: inset 0 0 0 1px var(--focus); }
 .input-mono, .textarea { font-family: var(--mono); font-size: 13px; }
 .textarea { padding: 8px 10px; line-height: 1.5; resize: vertical; }
-.input:focus, .input-mono:focus, .textarea:focus { outline: none; border-color: var(--focus); box-shadow: inset 0 0 0 1px var(--focus); }
+.input:focus, .input-mono:focus, .textarea:focus, .select:focus { outline: none; border-color: var(--focus); box-shadow: inset 0 0 0 1px var(--focus); }
 .input:user-invalid, .input-mono:user-invalid, .textarea:user-invalid { border-color: var(--danger); box-shadow: inset 0 0 0 1px var(--danger); }
-.input[readonly] { color: var(--text-muted); cursor: text; }
+.input[readonly], .input-mono[readonly] { color: var(--text-muted); cursor: text; }
 .field-label { display: block; margin-bottom: 8px; color: var(--eui-heading); font-size: 14px; font-weight: 600; }
 .su-panel { padding: 16px; border: 1px solid var(--eui-border); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-s); }
 .page-title { color: var(--eui-heading); font-size: 24px; font-weight: 700; text-wrap: balance; }
@@ -90,6 +90,7 @@ svg.su-app-icon { overflow: visible; }
 .su-dialog-body code { font-family: var(--mono); background: var(--surface-hover); padding: 1px 5px; border-radius: 4px; font-size: .85em; }
 .su-dialog-body a { color: var(--primary); }
 .su-dialog-fineprint { font-size: 12px; color: var(--text-muted); }
+.su-dialog-footer { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; padding: 0 24px 20px; }
 .su-credits-list { margin: 0 0 12px; padding-left: 20px; }
 .su-credits-list li { margin-bottom: 6px; }
 .su-footer-link { background: none; border: none; padding: 0; color: inherit; font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
