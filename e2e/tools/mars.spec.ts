@@ -138,6 +138,7 @@ test.describe(`${tool.name} (${tool.path})`, () => {
         await expect(brand.locator('.su-app-name')).toBeVisible();
         await expect(brand.locator('.su-app-publisher')).toHaveText('Secutils.dev');
         await expect(brand.locator('.su-app-publisher')).toBeVisible();
+        await expect(brand.locator('svg')).toHaveCSS('overflow', 'visible');
         const icon = (await brand.locator('svg').boundingBox())!;
         const name = (await brand.locator('.su-app-name').boundingBox())!;
         const publisher = (await brand.locator('.su-app-publisher').boundingBox())!;

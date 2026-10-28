@@ -78,6 +78,23 @@ test('deployed ECHO is self-contained and keeps its state and served mock contra
   expect(errors).toEqual([]);
 });
 
+test('shared inline app icons preserve their viewport edges and internal clips', async ({ page }) => {
+  await page.goto(`${origin}/echo`);
+  await expect(page.getByLabel('Header name', { exact: true })).toBeVisible();
+  const mars = readFileSync(join(root, 'dev/tools/mars.html'), 'utf8');
+  const mark = mars.match(/<svg class="su-app-icon mars-logo-mark"[\s\S]*?<\/svg>/)![0];
+  // Only the shared styles are loaded here, not MARS's app stylesheet.
+  await page.locator('img.su-app-icon').evaluate((image, markup) => {
+    image.outerHTML = markup;
+  }, mark);
+  const icon = page.locator('svg.su-app-icon');
+  await expect(icon).toHaveCSS('overflow', 'visible');
+  await expect(icon.locator('g[clip-path]')).toHaveAttribute('clip-path', 'url(#mars-mark-c)');
+  const box = (await icon.boundingBox())!;
+  expect(box.width).toBe(32);
+  expect(box.height).toBe(32);
+});
+
 for (const theme of ['dark', 'light']) {
   for (const width of [1280, 390, 320]) {
     test(`shared chrome, dynamic headers, and native dialog work in ${theme} at ${width}px`, async ({ page }) => {

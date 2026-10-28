@@ -98,6 +98,8 @@ Use the full Secutils.dev logo SVG (SU icon + "SECUTILS.DEV" text as one SVG). T
 - The "SECUTILS.DEV" text path must have `class="logo-text-fill"` so its fill adapts to the theme via CSS: `.logo-svg .logo-text-fill { fill: var(--text); }`
 - The SU icon rect is always `fill="#fed047"` and the SU letters are always `fill="#642340"`
 
+For SVG artwork that touches its viewport edges, read [SVG viewport clipping](design-system.md#svg-viewport-clipping).
+
 ### Tool Name Badge (next to logo)
 
 Styled as an EUI application breadcrumb:

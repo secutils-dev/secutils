@@ -19,6 +19,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .su-app-brand { flex: none; display: inline-flex; align-items: center; gap: 10px; height: 40px; padding: 0 8px 0 4px; border-radius: var(--radius); color: var(--eui-heading); text-decoration: none; }
 .su-app-brand:hover { background: var(--eui-hover); }
 .su-app-icon { display: block; flex: none; width: 32px; height: 32px; object-fit: contain; }
+/* Preserve viewBox-edge artwork at fractional Firefox scales. SVG clipPaths still apply. */
+svg.su-app-icon { overflow: visible; }
 .su-app-brand-copy { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; white-space: nowrap; }
 .su-app-name { font-size: 15px; line-height: 18px; font-weight: 700; letter-spacing: .16em; }
 .su-app-publisher { font-size: 11px; line-height: 13px; font-weight: 600; color: var(--publisher-text); }
