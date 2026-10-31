@@ -57,6 +57,10 @@ test.describe('Web scraping guide screenshots', () => {
   });
 
   test('Create a page tracker', async ({ page }) => {
+    // The live extraction can fail only after its own 30s locator timeout (e.g., Hacker News
+    // answering CI runners with 503), and the mocked fallback must still fit in the test budget.
+    test.setTimeout(90_000);
+
     const extractorScript = [
       'export async function execute(page) {',
       '  // Navigate to the Hacker News homepage.',
