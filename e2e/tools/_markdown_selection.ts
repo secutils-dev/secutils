@@ -170,7 +170,7 @@ export function listItemTests(load: (page: Page, markdown: string) => Promise<vo
       // A selection in a continuation line changes only that line, not its indentation.
       await first.evaluate((element) => {
         const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-        for (let node; (node = walker.nextNode()); ) {
+        for (let node; (node = walker.nextNode());) {
           const from = node.textContent!.indexOf('regression cases');
           if (from < 0) continue;
           getSelection()!.setBaseAndExtent(node, from, node, from + 'regression cases'.length);

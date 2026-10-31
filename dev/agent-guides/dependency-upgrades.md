@@ -47,7 +47,8 @@ Without requested commits, report the uncommitted Retrack changes and pending pa
 ### Playwright coordination
 
 Inspect the actual pins in scraper/Web UI `playwright-core`, E2E `@playwright/test`, and Camoufox's PyPI `playwright`.
-Use exact pins and keep all four on the same minor.
+Use exact pins. Keep the scraper on Camoufox's minor: its Playwright server rejects other minors with HTTP 428.
+When the `camoufox` wrapper caps Playwright, Web UI and E2E may use a newer minor. Otherwise keep all four on one minor.
 Use the selected patch across consumers where compatible. Record any required patch difference.
 Update consumers in stages 3, 4, 8, and 11 before completion.
 Run the standalone suite first after the coordinated bump.
