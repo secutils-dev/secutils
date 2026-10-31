@@ -12,8 +12,8 @@
     "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
-    "@types/node": "^24.19.1",
+    "@types/node": "^26.6.6",
     "typescript": "^6.0.3",
-    "vite": "^8.3.2"
+    "vite": "^8.3.5"
   }
 }

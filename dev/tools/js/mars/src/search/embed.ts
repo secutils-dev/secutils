@@ -97,7 +97,7 @@ function call(msg: Record<string, unknown>, progress?: (p: { file: string; loade
 let gpu: Promise<Gpu> | null = null;
 export function gpuInfo() {
     type Adapter = { isFallbackAdapter?: boolean; info?: { isFallbackAdapter?: boolean }; features?: Set<string> } | null;
-    const nav = navigator as Navigator & { gpu?: { requestAdapter(): Promise<Adapter> } };
+    const nav = navigator as unknown as { gpu?: { requestAdapter(): Promise<Adapter> } };
     gpu ??= (nav.gpu?.requestAdapter() ?? Promise.resolve(null))
         .then((a) => {
             const ok = !!a && !a.isFallbackAdapter && !a.info?.isFallbackAdapter;

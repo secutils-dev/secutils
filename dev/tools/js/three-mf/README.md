@@ -2,7 +2,7 @@
 
 This bundle imports 3MF packages in a dedicated worker. The tool loads the bundle on first import or `su-mesh` use.
 
-Dependencies are pinned: `fflate` 0.8.3 (MIT), `saxes` 6.0.0 (ISC), and build-only `esbuild` 0.25.12 (MIT).
+Dependencies are pinned: `fflate` 0.8.3 (MIT), `saxes` 6.0.0 (ISC), and build-only `esbuild` 0.28.2 (MIT).
 The bundle includes their license notices. It needs no CDN or network access.
 
 ## Compatibility decision

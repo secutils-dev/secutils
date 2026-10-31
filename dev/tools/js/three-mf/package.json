@@ -5,5 +5,5 @@
   "type": "module",
   "scripts": { "build": "node build.mjs", "test": "node --test src/import.test.mjs" },
   "dependencies": { "fflate": "0.8.3", "saxes": "6.0.0" },
-  "devDependencies": { "esbuild": "0.25.12" }
+  "devDependencies": { "esbuild": "0.28.2" }
 }
