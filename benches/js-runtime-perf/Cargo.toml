@@ -14,11 +14,11 @@ anyhow = "1.0.104"
 clap = { version = "4.6.7", features = ["derive"] }
 futures = "0.3.34"
 hdrhistogram = "7.6.0"
-httpmock = "0.8.3"
-libc = "0.2.190"
+httpmock = "0.9.0"
+libc = "0.2.191"
 secutils = { path = "../.." }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_bytes = "0.11.19"
 serde_json = "1.0.154"
-tokio = { version = "1.53.2", features = ["macros", "rt", "rt-multi-thread", "sync", "time"] }
+tokio = { version = "1.54.1", features = ["macros", "rt", "rt-multi-thread", "sync", "time"] }
 url = "2.5.8"
