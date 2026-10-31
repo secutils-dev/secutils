@@ -28,6 +28,7 @@ function buildTemplateUrl(tool: Tool, theme: 'dark' | 'light'): string {
     host: tool.host ?? TOOLS_HOST,
     theme,
     layout: tool.host ? 'app' : '',
+    ...(tool.slug === 'mars-stats' ? { badges: 'Owner only|Read-only|Storage telemetry' } : {}),
   });
   return `${TEMPLATE_FILE_URL}?${params.toString()}`;
 }

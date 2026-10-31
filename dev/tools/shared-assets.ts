@@ -10,11 +10,12 @@ export function inlineSharedAssets(html: string): string {
     // Explicit opt-in: older tool pages keep their existing chrome.
     html = html.replace(/<!--[\s\S]*?-->|<link\b[^>]*\bdata-su-style="([a-z-]+)"[^>]*>/g, (tag, name: string) => {
         if (tag.startsWith('<!--')) return tag;
-        if (!['tokens', 'components'].includes(name)) throw new Error(`Unknown data-su-style: ${name}`);
-        if (!tag.includes(`href="./shared/${name}.css"`) || !tag.includes('rel="stylesheet"')) {
-            throw new Error(`data-su-style="${name}" must reference ./shared/${name}.css`);
+        const path = name === 'mars' ? './js/mars/src/ui/tokens.css' : `./shared/${name}.css`;
+        if (!['tokens', 'components', 'mars'].includes(name)) throw new Error(`Unknown data-su-style: ${name}`);
+        if (!tag.includes(`href="${path}"`) || !tag.includes('rel="stylesheet"')) {
+            throw new Error(`data-su-style="${name}" must reference ${path}`);
         }
-        const css = readFileSync(resolve(SHARED_DIR, `${name}.css`), 'utf8');
+        const css = readFileSync(resolve(TOOLS_DIR, path), 'utf8');
         if (/<\/style/i.test(css)) throw new Error(`Shared stylesheet ${name} contains </style`);
         return `<style data-su-style="${name}">${css}</style>`;
     });

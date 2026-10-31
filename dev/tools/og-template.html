@@ -265,6 +265,11 @@ const ICONS = {
 };
 
 const params = new URLSearchParams(location.search);
+// Private tools can describe their access model instead of the public-tool defaults.
+if (params.has('badges')) {
+    const labels = params.get('badges').split('|');
+    for (const [i, badge] of [...document.querySelectorAll('.badge')].entries()) badge.textContent = labels[i] || '';
+}
 
 const name   = params.get('name')   || 'Free developer tool';
 const path   = params.get('path')   || '/';

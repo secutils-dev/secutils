@@ -6,6 +6,7 @@ import { gzipSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
 import { minify } from "html-minifier-terser";
 import { inlineSharedAssets } from "./shared-assets.ts";
+import { configureMarsStatsScript, MARS_STATS_HEADERS, MARS_STATS_SECRETS } from "./mars-stats-config.ts";
 
 const TOOLS_DIR = dirname(fileURLToPath(import.meta.url));
 // Each sub-directory under `dev/tools/js/` is an isolated build of one JS
@@ -627,6 +628,7 @@ type DeployTarget = {
     | "application/json";
   // Only HTML responders carry a `script`; static text responders are body-only.
   script?: string;
+  secrets?: { type: 'selected'; secrets: string[] };
   // Extra response headers (Link headers on the index page, ...). These are
   // merged with the implicit Content-Type header.
   extraHeaders?: [string, string][];
@@ -666,7 +668,11 @@ async function buildHtmlTarget(
   extraHeaders?: [string, string][],
 ): Promise<DeployTarget> {
   const templated = substituteToolsHost(rawHtml, toolsHost);
-  const responderScript = inlineOgImage(extractResponderScript(templated, label), filename);
+  let responderScript = inlineOgImage(extractResponderScript(templated, label), filename);
+  if (filename === 'mars-stats.html') {
+    if (!responderScript) throw new Error('MARS stats requires a responder script');
+    responderScript = configureMarsStatsScript(responderScript);
+  }
   // `removeScriptTypeAttributes` would strip `type="text/javascript"` but
   // intentionally leaves non-default types like `text/plain` (which we use
   // for `data-su-bundle` placeholders) intact, so the convention survives.
@@ -684,6 +690,7 @@ async function buildHtmlTarget(
     body: withBundles,
     contentType: "text/html",
     script: finalScript,
+    ...(filename === 'mars-stats.html' ? { secrets: MARS_STATS_SECRETS } : {}),
     extraHeaders,
     originalSize: Buffer.byteLength(templated, "utf-8"),
     bundleBytes: bundleBytes.size > 0 ? bundleBytes : undefined,
@@ -766,6 +773,7 @@ async function putResponder(
     body: string;
     headers?: [string, string][];
     script?: string;
+    secrets?: { type: 'selected'; secrets: string[] };
   } = {
     requestsToTrack: 0,
     statusCode: 200,
@@ -792,6 +800,7 @@ async function putResponder(
   if (target.extraHeaders) headers.push(...target.extraHeaders);
   if (headers.length > 0) settings.headers = headers;
   if (target.script) settings.script = target.script;
+  if (target.secrets) settings.secrets = target.secrets;
 
   const url = `${apiDomain}/api/webhooks/responders/${responderId}`;
   let res: Response;
@@ -968,7 +977,7 @@ async function main() {
         // The index responder also gets the RFC 8288 Link headers pointing
         // at the discovery surfaces; per-tool responders don't need them
         // because the index already advertises everything an agent needs.
-        const extraHeaders = slug === "index" ? indexLinkHeaders : slug === "mars" ? CROSS_ORIGIN_ISOLATION : undefined;
+        const extraHeaders = slug === "index" ? indexLinkHeaders : slug === "mars" ? CROSS_ORIGIN_ISOLATION : slug === 'mars-stats' ? MARS_STATS_HEADERS : undefined;
         target = await buildHtmlTarget(file, raw, TOOLS_HOST, label, mdPath, extraHeaders);
       } else {
         target = buildSkillTarget(file, raw, TOOLS_HOST);

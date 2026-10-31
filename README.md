@@ -48,6 +48,23 @@ A handful of focused, no-signup, browser-only tools is hosted at [tools.secutils
 
 The aggregate index of all skills (including specialized ones not listed above) is published at [tools.secutils.dev/llms.txt](https://tools.secutils.dev/llms.txt) following the [llmstxt.org](https://llmstxt.org/) convention. Source HTML for every tool lives in [`dev/tools/`](dev/tools/) (see [`dev/tools/AGENTS.md`](dev/tools/AGENTS.md) for the deploy/SEO recipe).
 
+## Private MARS telemetry
+
+`dev/tools/mars-stats.html` provides the owner-only **MARS Observatory** at `/mars-stats` on the tools host.
+It uses the MARS design system and shows storage capacity, entry counts, expiration, and usage charts.
+A separate responder stores thirty-minute snapshots for thirty days, so telemetry uses none of MARS's storage quota.
+A scheduled API tracker collects snapshots while the dashboard is closed.
+Failed scheduled runs receive up to three retries with exponential backoff.
+Charts mark missing periods with dashed bridges, and the dashboard labels cached snapshots as stale during outages.
+The dashboard uses a read-only access token, and the account API key stays in the selected `MARS_STATS_API_KEY` secret.
+The dashboard runs no analytics and is absent from public discovery indexes.
+
+The responder IDs, collector ID, and `SECUTILS_MARS_STATS_VIEW_TOKEN` live in `.env`.
+Run `make deploy-tools ARGS="mars-stats"` to publish the page and its companion skill.
+Collector settings come from `marsStatsCollectorSettings()` in `dev/tools/mars-stats-config.ts`.
+Open `https://tools.secutils.dev/mars-stats#key=<dashboard-token>` to view the dashboard.
+The [companion skill](dev/tools/mars-stats.skill.md) describes the statistics API and its measurement limits.
+
 ## Prerequisites
 
 - [Rust](https://www.rust-lang.org/tools/install) (stable toolchain)

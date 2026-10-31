@@ -139,6 +139,17 @@ export const TOOLS: readonly Tool[] = [
     icon: 'chart',
   },
   {
+    slug: 'mars-stats',
+    source: 'mars-stats.html',
+    name: 'MARS Observatory',
+    path: '/mars-stats',
+    description: 'Private MARS storage statistics, capacity, expiration, and thirty days of usage history.',
+    applicationCategory: 'DeveloperApplication',
+    promote: false,
+    accent: '#d43a32',
+    icon: 'mars',
+  },
+  {
     slug: 'mock-saml-idp',
     source: 'mock-saml-idp.html',
     name: 'Mock SAML IdP',

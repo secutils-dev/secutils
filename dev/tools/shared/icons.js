@@ -2,6 +2,9 @@
 // source dev/tools already inlines icons from (EUI license: SSPL v1 / Elastic License 2.0).
 // Add glyphs with the procedure in dev/tools/guides/design-system.md.
 export const ICONS = Object.freeze({
+    lock: '<path fill-rule="evenodd" d="M4 7V5a4 4 0 1 1 8 0v2h1a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h1Zm1-2a3 3 0 0 1 6 0v2H5V5Zm-2 9V8h10v6H3Z" clip-rule="evenodd"/>',
+    chartLine: '<path d="M1 1v13a1 1 0 0 0 1 1h13v-1H2V1H1Z"/><path d="m9.5 9.207 4.854-4.853-.707-.708L9.5 7.793l-2-2-4.854 4.853.708.708L7.5 7.207l2 2Z"/>',
+    calendar: '<path d="M4 12H3v-1h1v1Zm3 0H6v-1h1v1Zm3 0H9v-1h1v1Zm3 0h-1v-1h1v1Zm-9-2H3V9h1v1Zm3 0H6V9h1v1Zm3 0H9V9h1v1Zm3 0h-1V9h1v1ZM4 8H3V7h1v1Zm3 0H6V7h1v1Zm3 0H9V7h1v1Zm3 0h-1V7h1v1Z"/><path fill-rule="evenodd" d="M5 2h6V1h1v1h2a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h2V1h1v1ZM2 13h12V6H2v7Zm0-8h12V3h-2v1h-1V3H5v1H4V3H2v2Z" clip-rule="evenodd"/>',
     menu: "<path d=\"M14 11v1H2v-1h12Zm0-3.5v1H2v-1h12ZM14 4v1H2V4h12Z\"/>",
     folder: "<path d=\"M1 13V3a1 1 0 0 1 1-1h4.191a1 1 0 0 1 .894.553L7.809 4H14a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1Zm1 0h12V5H7.191l-.138-.276L6.19 3H2v10Z\"/>",
     folderOpen: "<path d=\"M5.191 2a1 1 0 0 1 .894.553L6.809 4H13a1 1 0 0 1 1 1v1.5h-1V5H6.191l-.138-.276L5.19 3H1v8.751l-.317 1.111a.5.5 0 0 0 .48.638h11.96a.5.5 0 0 0 .48-.362L14 11.75V13a1 1 0 0 1-1 1H1a1 1 0 0 1-.995-.898L0 13V3a1 1 0 0 1 1-1h4.191Z\"/> <path d=\"M14.837 6a1 1 0 0 1 .962 1.274l-1.715 6a1 1 0 0 1-.961.726H1.163a1 1 0 0 1-.962-1.274l1.715-6A1 1 0 0 1 2.877 6h11.96ZM1.163 13h11.96l1.714-6H2.877l-1.714 6Z\"/>",
