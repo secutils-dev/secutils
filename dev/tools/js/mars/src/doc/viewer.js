@@ -379,7 +379,11 @@ async function replaceMermaidBlock(codeEl, forExport) {
         const fig = document.createElement('figure');
         fig.className = 'su-mermaid';
         fig.innerHTML = svg;
-        if (!forExport) fig.insertAdjacentHTML('beforeend', '<div class="su-diagram-controls"><div class="su-diagram-actions"><button type="button" class="su-mermaid-fullscreen" title="Toggle diagram fullscreen" aria-label="Toggle diagram fullscreen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></svg></button></div></div>');
+        if (!forExport) {
+            const viewport = document.createElement('div'), stage = document.createElement('div');
+            viewport.className = 'su-mermaid-viewport'; stage.className = 'su-mermaid-stage';
+            stage.appendChild(fig.firstElementChild); viewport.appendChild(stage); fig.appendChild(viewport);
+        }
         pre.replaceWith(fig);
     } catch (err) {
         if (err && err.__suMermaidUnavailable) {
@@ -394,6 +398,127 @@ async function replaceMermaidBlock(codeEl, forExport) {
             + `<pre class="su-mermaid-error-msg">${escHTML(msg)}</pre>`
             + `<pre class="su-mermaid-error-src">${escHTML(src)}</pre>`;
         pre.replaceWith(box);
+    }
+}
+
+// Keep SVG sizing and native scrollbars in sync: zoom changes dimensions, never a transform.
+// This helper and its styles are mirrored in md.html; exported Mermaid stays a static SVG.
+function initMermaids(root) {
+    for (const fig of root.querySelectorAll('figure.su-mermaid')) {
+        const viewport = fig.querySelector('.su-mermaid-viewport');
+        if (!viewport || fig.__suMermaidReady) continue;
+        fig.__suMermaidReady = true;
+        const stage = viewport.firstElementChild, svg = stage.firstElementChild;
+        const box = svg.viewBox.baseVal;
+        const width = box.width || 800, height = box.height || 400;
+        const abort = new AbortController();
+        const listen = (el, type, fn, options = {}) => el.addEventListener(type, fn, { ...options, signal: abort.signal });
+        viewport.tabIndex = 0;
+        viewport.setAttribute('role', 'region');
+        viewport.setAttribute('aria-label', 'Mermaid diagram. Arrow keys pan. Plus and minus zoom. Zero fits the diagram.');
+        const tools = document.createElement('div');
+        tools.className = 'su-mermaid-tools';
+        tools.setAttribute('role', 'group'); tools.setAttribute('aria-label', 'Diagram controls');
+        const hint = document.createElement('span');
+        hint.className = 'su-mermaid-hint'; hint.textContent = 'Drag to pan · Ctrl/⌘ + scroll to zoom';
+        tools.appendChild(hint); fig.appendChild(tools);
+        const button = (label, text, action) => {
+            const b = document.createElement('button');
+            b.type = 'button'; b.title = label; b.setAttribute('aria-label', label); b.textContent = text;
+            listen(b, 'click', action); tools.appendChild(b); return b;
+        };
+        let zoom = 1, fitting = true, size = '', drag = null;
+        const fitScale = () => Math.max(0.001, Math.min(1, (viewport.clientWidth - 32) / width, (viewport.clientHeight - 32) / height));
+        const offset = (scale) => [Math.max(16, (viewport.clientWidth - width * scale) / 2), Math.max(16, (viewport.clientHeight - height * scale) / 2)];
+        const draw = () => {
+            const [x, y] = offset(zoom);
+            stage.style.width = `${Math.max(viewport.clientWidth, width * zoom + 32)}px`;
+            stage.style.height = `${Math.max(viewport.clientHeight, height * zoom + 32)}px`;
+            svg.style.width = `${width * zoom}px`; svg.style.height = `${height * zoom}px`;
+            svg.style.maxWidth = 'none'; svg.style.margin = `${y}px 0 0 ${x}px`;
+            actual.textContent = `${Math.round(zoom * 1000) / 10}%`;
+            actual.setAttribute('aria-label', `Zoom ${actual.textContent}. Show actual size`);
+            out.disabled = zoom <= Math.min(0.1, fitScale()); inside.disabled = zoom >= 8;
+        };
+        const scale = (next, point = [viewport.clientWidth / 2, viewport.clientHeight / 2]) => {
+            const old = offset(zoom);
+            const anchor = [(viewport.scrollLeft + point[0] - old[0]) / zoom, (viewport.scrollTop + point[1] - old[1]) / zoom];
+            zoom = Math.max(Math.min(0.1, fitScale()), Math.min(8, next)); fitting = false;
+            draw();
+            const now = offset(zoom);
+            viewport.scrollLeft = anchor[0] * zoom + now[0] - point[0];
+            viewport.scrollTop = anchor[1] * zoom + now[1] - point[1];
+        };
+        const fit = () => { fitting = true; zoom = fitScale(); draw(); viewport.scrollLeft = viewport.scrollTop = 0; };
+        const out = button('Zoom out', '−', () => scale(zoom / 1.25));
+        const actual = button('Show actual size', '100%', () => scale(1));
+        actual.className = 'su-mermaid-zoom';
+        const inside = button('Zoom in', '+', () => scale(zoom * 1.25));
+        button('Fit diagram', 'Fit', fit);
+        const full = button('Toggle diagram fullscreen', '', async () => {
+            try { if (document.fullscreenElement === fig) await document.exitFullscreen(); else await fig.requestFullscreen(); }
+            catch (error) { toast(`Fullscreen failed: ${error?.message ?? error}`); }
+        });
+        // EUI fullScreen / fullScreenExit glyphs, matching the shared catalog.
+        const fullscreenState = () => {
+            const on = document.fullscreenElement === fig;
+            full.setAttribute('aria-pressed', String(on)); full.title = on ? 'Exit diagram fullscreen' : 'Toggle diagram fullscreen';
+            full.innerHTML = `<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">${on
+                ? '<path d="M6 12H5v-2H3V9h3v3Zm7-2h-2v2h-1V9h3v1ZM6 7H3V6h2V4h1v3Zm5-1h2v1h-3V4h1v2Z"/><path fill-rule="evenodd" d="M14.102 2.005A1 1 0 0 1 15 3v10a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h12l.102.005ZM2 13h12V3H2v10Z"/>'
+                : '<path d="M2 13h2v1H1v-3h1v2Zm13 1h-3v-1h2v-2h1v3Z"/><path fill-rule="evenodd" d="M12.102 4.005A1 1 0 0 1 13 5v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h8l.102.005ZM4 11h8V5H4v6Z"/><path d="M4 3H2v2H1V2h3v1Zm11 2h-1V3h-2V2h3v3Z"/>'}</svg>`;
+        };
+        fullscreenState(); listen(document, 'fullscreenchange', fullscreenState);
+        let resizeFrame = 0;
+        const resize = new ResizeObserver(() => {
+            // Size writes in the observer delivery can trigger a resize-loop error in WebKit.
+            cancelAnimationFrame(resizeFrame);
+            resizeFrame = requestAnimationFrame(() => {
+                if (!viewport.clientWidth || !viewport.clientHeight) return;
+                viewport.style.setProperty('--su-mermaid-height', `${Math.min(480, Math.max(120, height * Math.min(1, (viewport.clientWidth - 32) / width) + 32))}px`);
+                const nextSize = `${viewport.clientWidth}:${viewport.clientHeight}`;
+                if (size === nextSize) return;
+                size = nextSize;
+                if (fitting) fit(); else scale(zoom);
+            });
+        });
+        resize.observe(viewport);
+        // Leave touch scrolling and touch page-zoom native, including momentum and scrollbars.
+        listen(viewport, 'pointerdown', (event) => {
+            const r = viewport.getBoundingClientRect();
+            if (event.pointerType !== 'mouse' || event.button !== 0 || event.target.closest('a')
+                || event.clientX - r.left >= viewport.clientWidth || event.clientY - r.top >= viewport.clientHeight) return;
+            event.preventDefault(); viewport.focus({ preventScroll: true });
+            drag = { id: event.pointerId, x: event.clientX, y: event.clientY };
+            viewport.setPointerCapture(event.pointerId); viewport.classList.add('su-panning');
+        });
+        listen(viewport, 'pointermove', (event) => {
+            if (!drag || drag.id !== event.pointerId) return;
+            viewport.scrollLeft -= event.clientX - drag.x; viewport.scrollTop -= event.clientY - drag.y;
+            drag.x = event.clientX; drag.y = event.clientY;
+        });
+        const endDrag = () => { drag = null; viewport.classList.remove('su-panning'); };
+        listen(viewport, 'pointerup', endDrag); listen(viewport, 'pointercancel', endDrag); listen(viewport, 'lostpointercapture', endDrag);
+        listen(viewport, 'wheel', (event) => {
+            if (!event.ctrlKey && !event.metaKey) return;
+            event.preventDefault();
+            const r = viewport.getBoundingClientRect();
+            const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? viewport.clientHeight : 1);
+            scale(zoom * Math.exp(-Math.max(-100, Math.min(100, delta)) * 0.01), [event.clientX - r.left, event.clientY - r.top]);
+        }, { passive: false });
+        listen(viewport, 'keydown', (event) => {
+            if (event.target !== viewport || event.ctrlKey || event.metaKey || event.altKey) return;
+            if (event.key === '+' || event.key === '=') { event.preventDefault(); scale(zoom * 1.25); }
+            else if (event.key === '-') { event.preventDefault(); scale(zoom / 1.25); }
+            else if (event.key === '0') { event.preventDefault(); fit(); }
+            // Arrow keys scroll natively. Do not intercept Tab or Escape.
+        });
+        listen(viewport, 'dblclick', (event) => {
+            if (event.target.closest('a')) return;
+            event.preventDefault();
+            const r = viewport.getBoundingClientRect();
+            scale(zoom * (event.shiftKey ? 0.5 : 2), [event.clientX - r.left, event.clientY - r.top]);
+        });
+        fig.__suDispose = () => { abort.abort(); resize.disconnect(); cancelAnimationFrame(resizeFrame); };
     }
 }
 
@@ -1206,7 +1331,7 @@ async function updatePreview() {
     const generation = ++previewGeneration;
     pendingHydration = false;
     if (!markdown.trim()) {
-        for (const fig of els.previewArticle.querySelectorAll('.su-diagram')) fig.__suDispose?.();
+        for (const fig of els.previewArticle.querySelectorAll('.su-diagram, .su-mermaid')) fig.__suDispose?.();
         els.previewArticle.innerHTML = '';
         renderedMarkdown = markdown;
         blockEditor = null;
@@ -1225,13 +1350,14 @@ async function updatePreview() {
     if (generation !== previewGeneration) return;
     if (source.length > 1000000) await yieldToMain();
     if (generation !== previewGeneration) return;
-    for (const fig of els.previewArticle.querySelectorAll('.su-diagram')) fig.__suDispose?.();
+    for (const fig of els.previewArticle.querySelectorAll('.su-diagram, .su-mermaid')) fig.__suDispose?.();
     for (const fig of content.querySelectorAll('figure.su-diagram')) fig.__suDocument = source;
     const hovered = hoverTarget && `${hoverTarget.matches('li') ? 'li' : '.su-block'}[data-start="${hoverTarget.dataset.start}"]`;
     els.previewArticle.replaceChildren(...content.childNodes);
     renderedMarkdown = source;
     if (blockEditor && !blockEditor.wrap.isConnected) blockEditor = null;
     initDiagrams(els.previewArticle);
+    initMermaids(els.previewArticle);
     decorateBlocks();
     restoreScrollAnchor();
     updatePanes();
@@ -1333,14 +1459,6 @@ document.addEventListener('fullscreenchange', () => {
     const entering = !!document.fullscreenElement;
     els.fullscreenEnterIcon.style.display = entering ? 'none' : 'block';
     els.fullscreenExitIcon.style.display = entering ? 'block' : 'none';
-});
-document.addEventListener('click', async (e) => {
-    const fig = e.target.closest?.('.su-mermaid-fullscreen')?.closest('.su-mermaid');
-    if (!fig) return;
-    try {
-        if (document.fullscreenElement === fig) await document.exitFullscreen();
-        else await fig.requestFullscreen();
-    } catch (err) { toast(`Fullscreen failed: ${err?.message ?? err}`); }
 });
 
 // ---- Anchor links inside the preview (slug navigation + copy) ----
@@ -2144,6 +2262,7 @@ function fillCommentBody(body, md) {
     if (typeof cached === 'string') {
         body.innerHTML = cached;
         initDiagrams(body);
+        initMermaids(body);
     } else {
         body.innerHTML = marked.parse(md, { renderer: commentRenderer });
         for (const code of body.querySelectorAll('pre code')) { try { hljs.highlightElement(code); } catch {} }
@@ -2202,7 +2321,7 @@ function renderRail() {
     // Unsent replies survive rebuilds triggered elsewhere.
     const pending = [...els.commentsRail.querySelectorAll('.cm-composer:not([data-edit]) textarea')]
         .filter((ta) => ta.value).map((ta) => [ta.closest('.cm-card').dataset.id, ta.value]);
-    for (const fig of els.commentsRail.querySelectorAll('.su-diagram')) fig.__suDispose?.();
+    for (const fig of els.commentsRail.querySelectorAll('.su-diagram, .su-mermaid')) fig.__suDispose?.();
     els.commentsRail.replaceChildren(els.railResizer, ...all.map(buildCard));
     for (const [id, value] of pending) {
         const ta = threadCard(id)?.querySelector('.cm-composer textarea');

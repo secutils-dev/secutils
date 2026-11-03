@@ -48,6 +48,10 @@ A handful of focused, no-signup, browser-only tools is hosted at [tools.secutils
 
 The aggregate index of all skills (including specialized ones not listed above) is published at [tools.secutils.dev/llms.txt](https://tools.secutils.dev/llms.txt) following the [llmstxt.org](https://llmstxt.org/) convention. Source HTML for every tool lives in [`dev/tools/`](dev/tools/) (see [`dev/tools/AGENTS.md`](dev/tools/AGENTS.md) for the deploy/SEO recipe).
 
+MARS and Markdown Preview support Mermaid zoom and pan in the preview and fullscreen.
+Each diagram has zoom buttons, an actual-size percentage button, and **Fit**.
+Readers can drag, scroll, or swipe to pan. Ctrl/⌘ + scroll and trackpad pinch zoom at the pointer.
+
 ## Private MARS telemetry
 
 `dev/tools/mars-stats.html` provides the owner-only **MARS Observatory** at `/mars-stats` on the tools host.

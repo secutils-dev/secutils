@@ -34,6 +34,18 @@ The edit preserves source indentation, list markers, and text outside the select
 Regular list items support manual strikethrough through the selection toolbar.
 These edits support undo and redo.
 
+## Mermaid navigation
+
+Mermaid diagrams have zoom buttons, a percentage button for actual size, and **Fit**.
+The controls remain visible in fullscreen.
+Readers can drag with a mouse, scroll with a trackpad, or swipe on a touchscreen to pan.
+Ctrl/⌘ + scroll and trackpad pinch zoom at the pointer.
+Double-click zooms in. Shift + double-click zooms out.
+The focused diagram supports arrow keys for pan, `+` and `-` for zoom, and `0` for fit.
+Touchscreen pinch keeps the browser's page zoom.
+Zoom and pan do not change the Markdown or shared links.
+Markdown Preview uses the same navigation. Its HTML and PDF exports keep the complete static SVG.
+
 ## Source editor
 
 CodeMirror draws selection backgrounds below the text lines. The active-line tint stays

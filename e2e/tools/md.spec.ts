@@ -6,6 +6,7 @@ import { expect, test } from '@playwright/test';
 
 import { assertSeoBasics, assertSkillMd, getTool } from './_helpers';
 import { listItemTests, selectionToolbarTests, sourceSelectionTests } from './_markdown_selection';
+import { mermaidNavigationTests } from './_mermaid_navigation';
 
 const tool = getTool('md');
 const modelFixture = (name: string) => resolve(__dirname, `fixtures/3mf/${name}.3mf`);
@@ -40,6 +41,10 @@ async function setMarkdown(page: Page, md: string): Promise<void> {
 }
 
 test.describe(`${tool.name} (${tool.path})`, () => {
+  mermaidNavigationTests(async (page, markdown) => {
+    await page.goto(tool.path);
+    await setMarkdown(page, markdown);
+  });
   sourceSelectionTests(async (page, markdown) => {
     await page.goto(tool.path);
     await setMarkdown(page, markdown);
@@ -439,6 +444,15 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     await expect.poll(() => page.evaluate(() => document.fullscreenElement?.className)).toBe('su-mermaid');
     await figure.getByRole('button', { name: 'Toggle diagram fullscreen' }).click();
     await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull();
+
+    // View navigation must not crop or scale the static Mermaid export.
+    const viewBox = await figure.locator('.su-mermaid-stage > svg').getAttribute('viewBox');
+    await figure.getByRole('button', { name: /Show actual size/ }).click();
+    await figure.getByRole('button', { name: 'Zoom in', exact: true }).click();
+    await page.getByRole('button', { name: 'HTML', exact: true }).click();
+    const exported = page.frameLocator('#htmlPreview').locator('figure.su-mermaid');
+    await expect(exported.locator(':scope > svg')).toHaveAttribute('viewBox', viewBox!);
+    await expect(exported.locator('.su-mermaid-viewport, .su-mermaid-tools')).toHaveCount(0);
   });
 
   test('GitHub maps and STL models remain interactive in offline HTML exports', async ({ page }) => {

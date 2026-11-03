@@ -73,6 +73,7 @@ export const TOOLS: readonly Tool[] = [
   },
   {
     slug: 'md',
+    // Mermaid: zoom, native scrolling, drag-to-pan, and fit in preview and fullscreen.
     source: 'md.html',
     name: 'Markdown Preview',
     path: '/md',
@@ -84,6 +85,7 @@ export const TOOLS: readonly Tool[] = [
   },
   {
     slug: 'mars',
+    // Mermaid: zoom, native scrolling, drag-to-pan, and fit in preview and fullscreen.
     source: 'mars.html',
     name: 'MARS',
     path: '/',

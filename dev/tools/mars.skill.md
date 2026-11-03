@@ -144,6 +144,10 @@ as a 4-byte little-endian u32 → base64url without padding.
 
 ## What the reviewer sees
 
+- Mermaid diagrams support zoom and pan in the preview and fullscreen. **Fit** restores the complete diagram.
+- Readers can drag, scroll, or swipe to pan. Ctrl/⌘ + scroll and trackpad pinch zoom at the pointer.
+- The focused diagram supports arrow keys for pan, `+` and `-` for zoom, and `0` for fit.
+- The percentage button shows the diagram at actual size. View changes do not alter the Markdown or shared links.
 - **Pause indexing** survives reloads and pauses all MARS tabs in the same browser. **Resume indexing** resumes those tabs. Search still uses the stored index while paused.
 - Selection formatting works across wrapped lines within one list paragraph and preserves source indentation.
 - **Mark done** applies only to headings and existing task checkboxes. Regular list items support manual strikethrough through the selection toolbar.

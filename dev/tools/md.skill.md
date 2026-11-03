@@ -28,7 +28,11 @@ available on demand.
 - **Syntax highlighting** - fenced code blocks via highlight.js, with a
   language label and copy button in exports.
 - **Mermaid diagrams** - fenced ```` ```mermaid ```` blocks render to inline
-  SVG (pre-rendered, so identical in preview, HTML export, and PDF).
+  SVG. The preview supports zoom, drag-to-pan, and **Fit**, including in fullscreen.
+  Ctrl/⌘ + scroll and trackpad pinch zoom at the pointer. Touch swipes pan with native scrolling.
+  The focused diagram supports arrow keys for pan, `+` and `-` for zoom, and `0` for fit.
+  The percentage button shows actual size. HTML and PDF exports retain the complete static SVG.
+  View changes do not alter the Markdown or shared links.
 - **GeoJSON and TopoJSON maps** - fenced `geojson` and `topojson` blocks display
   interactive longitude/latitude maps. Drag to pan, use arrow keys, or use the zoom and reset buttons.
   Feature properties appear in hover tooltips. Maps use an OpenStreetMap basemap with a Web Mercator projection.
