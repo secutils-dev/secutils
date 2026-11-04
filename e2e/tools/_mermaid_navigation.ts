@@ -16,7 +16,122 @@ const DIAGRAM = [
   '```',
 ].join('\n');
 
+const FIRST_DIAGRAM = DIAGRAM.match(/```mermaid\n[\s\S]*?\n```/)![0];
+const STATE_DOCUMENT = `${DIAGRAM.replace('# Diagrams', '# Diagram state\n\nUnrelated paragraph.')}\n\n${FIRST_DIAGRAM}`;
+
+const views = (page: Page) =>
+  page.locator('#previewArticle figure.su-mermaid').evaluateAll((figures) =>
+    figures.map((fig) => {
+      const viewport = fig.querySelector('.su-mermaid-viewport')!;
+      return {
+        zoom: fig.querySelector('.su-mermaid-zoom')!.textContent,
+        left: viewport.scrollLeft,
+        top: viewport.scrollTop,
+      };
+    }),
+  );
+
+async function zoomAndPan(page: Page) {
+  const figures = page.locator('#previewArticle figure.su-mermaid');
+  await expect(figures).toHaveCount(3);
+  for (let i = 0; i < 3; i++) {
+    const fig = figures.nth(i);
+    await fig.getByRole('button', { name: /Show actual size/ }).click();
+    for (let n = 0; n <= i; n++) await fig.getByRole('button', { name: 'Zoom in', exact: true }).click();
+    await fig.locator('.su-mermaid-viewport').evaluate((viewport, index) => {
+      viewport.scrollLeft = 300 + index * 50;
+      viewport.scrollTop = 150 + index * 40;
+    }, i);
+  }
+  return views(page);
+}
+
+async function sourceEdit(page: Page, text: string) {
+  await page.evaluate((md) => {
+    (window as unknown as { __suEditorAPI: { setText(t: string): void } }).__suEditorAPI.setText(md);
+  }, text);
+}
+
 export function mermaidNavigationTests(open: (page: Page, markdown: string) => Promise<void>) {
+  test('Mermaid navigation: unrelated block and Source edits retain independent views', async ({ page }) => {
+    await open(page, STATE_DOCUMENT);
+    const before = await zoomAndPan(page);
+    const article = page.locator('#previewArticle');
+    await article.getByText('Unrelated paragraph.', { exact: true }).dblclick();
+    await expect(page.locator('.su-block-editor')).toBeVisible();
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.type('Edited unrelated **paragraph**.');
+    await page.keyboard.press('Escape');
+    await expect(article.locator('strong')).toHaveText('paragraph');
+    await expect.poll(() => views(page)).toEqual(before);
+
+    // Hiding the preview must retain pan even when several renders happen while hidden.
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    for (const paragraph of ['First Source edit.', 'Second Source edit.']) {
+      await sourceEdit(page, STATE_DOCUMENT.replace('Unrelated paragraph.', paragraph));
+      await expect(article.locator(':scope > .su-block > p').filter({ hasText: paragraph })).toHaveText(paragraph);
+    }
+    await page.getByRole('button', { name: 'Preview', exact: true }).click();
+    await expect.poll(() => views(page)).toEqual(before);
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.getByRole('button', { name: 'Preview', exact: true }).click();
+    await expect.poll(() => views(page)).toEqual(before);
+  });
+
+  test('Mermaid navigation: changed diagrams and newly opened documents reset only their own views', async ({
+    page,
+  }) => {
+    await open(page, STATE_DOCUMENT);
+    const before = await zoomAndPan(page);
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await sourceEdit(page, STATE_DOCUMENT.replace('N0["Start<br/>', 'N0["Changed start<br/>'));
+    await page.getByRole('button', { name: 'Preview', exact: true }).click();
+    const figures = page.locator('#previewArticle figure.su-mermaid');
+    await expect(figures.first()).toContainText('Changed start');
+    await expect.poll(async () => (await views(page)).slice(1)).toEqual(before.slice(1));
+    await expect.poll(async () => (await views(page))[0].zoom).not.toBe(before[0].zoom);
+    expect((await views(page))[0]).toMatchObject({ left: 0, top: 0 });
+
+    // The unchanged duplicate must still obey Fit after restoration.
+    await figures.last().getByRole('button', { name: 'Fit diagram', exact: true }).click();
+    await sourceEdit(
+      page,
+      STATE_DOCUMENT.replace('N0["Start<br/>', 'N0["Changed start<br/>').replace(
+        'Unrelated paragraph.',
+        'Another edit.',
+      ),
+    );
+    await expect(page.locator('#previewArticle').getByText('Another edit.', { exact: true })).toBeVisible();
+    await expect.poll(async () => (await views(page))[2].left).toBe(0);
+    await expect.poll(async () => (await views(page))[2].top).toBe(0);
+
+    await page.locator('#fileInput').setInputFiles({
+      name: 'Another document.md',
+      mimeType: 'text/markdown',
+      buffer: Buffer.from(STATE_DOCUMENT.replace('# Diagram state', '# Another document')),
+    });
+    // MARS recognizes the shared diagram source as a possible updated copy.
+    if (await page.getByRole('tree', { name: 'Documents', exact: true }).count()) {
+      await page.getByRole('button', { name: 'Add as new', exact: true }).click();
+    }
+    await expect(page.locator('#previewArticle h1')).toContainText('Another document');
+    await expect
+      .poll(() =>
+        figures.evaluateAll((items) =>
+          items.every(
+            (fig) =>
+              (fig as HTMLElement & { __suReadMermaidView: () => { fitting: boolean } }).__suReadMermaidView().fitting,
+          ),
+        ),
+      )
+      .toBe(true);
+    expect((await views(page)).map(({ left, top }) => ({ left, top }))).toEqual([
+      { left: 0, top: 0 },
+      { left: 0, top: 0 },
+      { left: 0, top: 0 },
+    ]);
+  });
+
   test('Mermaid navigation: zoom, pan, fit, fullscreen, and independent diagrams', async ({ page }) => {
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));

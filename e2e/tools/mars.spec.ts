@@ -5,6 +5,7 @@ import type { Browser, BrowserContext, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 
 import { assertSeoBasics, assertSkillMd, getTool } from './_helpers';
+import { previewLinkTests } from './_markdown_links';
 import { listItemTests, selectionToolbarTests, sourceSelectionTests } from './_markdown_selection';
 import { indexingTests } from './_mars_indexing';
 import { mermaidNavigationTests } from './_mermaid_navigation';
@@ -96,6 +97,10 @@ function freshContext(browser: Browser): Promise<BrowserContext> {
 }
 
 test.describe(`${tool.name} (${tool.path})`, () => {
+  previewLinkTests(async (page, markdown) => {
+    await page.goto(tool.path);
+    await newDoc(page, markdown);
+  });
   indexingTests(tool.path);
   mermaidNavigationTests(async (page, markdown) => {
     await page.goto(tool.path);

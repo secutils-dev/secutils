@@ -28,6 +28,10 @@ planet) and the favicon data URIs. The `--mars-*` / `--brand*` tokens in
 
 ## Preview edits
 
+Document links in Preview open in a new tab with `noopener noreferrer`.
+This includes Markdown links, autolinks, and embedded HTML links.
+Fragment links still scroll within the document. Source text and exported links stay unchanged.
+
 Selection formatting supports wrapped list items with bold text and inline code.
 The edit preserves source indentation, list markers, and text outside the selection.
 **Mark done** is available only for headings and existing task checkboxes.
@@ -44,6 +48,9 @@ Double-click zooms in. Shift + double-click zooms out.
 The focused diagram supports arrow keys for pan, `+` and `-` for zoom, and `0` for fit.
 Touchscreen pinch keeps the browser's page zoom.
 Zoom and pan do not change the Markdown or shared links.
+Unchanged diagrams retain zoom, pan, and Fit mode after unrelated block or Source edits.
+Identical diagrams keep separate views. A changed diagram starts in Fit mode.
+Opening a document or reloading the page starts fresh views. Exports and links do not store these views.
 Markdown Preview uses the same navigation. Its HTML and PDF exports keep the complete static SVG.
 
 ## Source editor

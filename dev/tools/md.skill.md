@@ -33,6 +33,8 @@ available on demand.
   The focused diagram supports arrow keys for pan, `+` and `-` for zoom, and `0` for fit.
   The percentage button shows actual size. HTML and PDF exports retain the complete static SVG.
   View changes do not alter the Markdown or shared links.
+  Unchanged diagrams retain zoom, pan, and Fit mode after unrelated block or Source edits.
+  Changed diagrams start in Fit mode. Opening a document or reloading the page starts fresh views.
 - **GeoJSON and TopoJSON maps** - fenced `geojson` and `topojson` blocks display
   interactive longitude/latitude maps. Drag to pan, use arrow keys, or use the zoom and reset buttons.
   Feature properties appear in hover tooltips. Maps use an OpenStreetMap basemap with a Web Mercator projection.
@@ -68,6 +70,8 @@ toolbar to rename the document. The URL fragment records the new name.
 - **Read** - the rendered preview fills the page. Use **Find** (the search
   icon, or `Ctrl/Cmd+F`) to search within the document; Enter / Shift+Enter
   cycle matches.
+- **Links in Preview** - Markdown links, autolinks, and embedded HTML links open in a new tab.
+  Fragment links still scroll within the document. Source text and exported links stay unchanged.
 - **Edit** - edit blocks directly in the preview (see "Editing in the
   preview"), or click **Source** (or `Ctrl/Cmd+E`) to swap to a CodeMirror
   pane; edits update the preview live. `Esc` returns to the preview.

@@ -1418,6 +1418,7 @@ async function replaceMermaidBlock(codeEl, forExport) {
         fig.className = 'su-mermaid';
         fig.innerHTML = svg;
         if (!forExport) {
+            fig.__suMermaidSource = src;
             const viewport = document.createElement('div'), stage = document.createElement('div');
             viewport.className = 'su-mermaid-viewport'; stage.className = 'su-mermaid-stage';
             stage.appendChild(fig.firstElementChild); viewport.appendChild(stage); fig.appendChild(viewport);
@@ -1439,9 +1440,36 @@ async function replaceMermaidBlock(codeEl, forExport) {
     }
 }
 
+// Match unchanged diagrams, not their source offsets (unrelated edits move those offsets).
+// Prefix/suffix matches keep duplicate diagrams distinct when one of them is edited.
+function mermaidViews(previousRoot, nextRoot) {
+    const previous = [...previousRoot.querySelectorAll('figure.su-mermaid')];
+    const next = [...nextRoot.querySelectorAll('figure.su-mermaid')];
+    const views = new Map();
+    const same = (a, b) => a.__suMermaidSource !== undefined && a.__suMermaidSource === b.__suMermaidSource;
+    const match = (a, b) => { const view = a.__suReadMermaidView?.(); if (view) views.set(b, view); };
+    let start = 0, oldEnd = previous.length, newEnd = next.length;
+    while (start < oldEnd && start < newEnd && same(previous[start], next[start])) {
+        match(previous[start], next[start]); start++;
+    }
+    while (oldEnd > start && newEnd > start && same(previous[oldEnd - 1], next[newEnd - 1])) {
+        match(previous[--oldEnd], next[--newEnd]);
+    }
+    const remaining = new Map();
+    for (const fig of previous.slice(start, oldEnd)) {
+        const queue = remaining.get(fig.__suMermaidSource) ?? [];
+        queue.push(fig); remaining.set(fig.__suMermaidSource, queue);
+    }
+    for (const fig of next.slice(start, newEnd)) {
+        const old = remaining.get(fig.__suMermaidSource)?.shift();
+        if (old && same(old, fig)) match(old, fig);
+    }
+    return views;
+}
+
 // Keep SVG sizing and native scrollbars in sync: zoom changes dimensions, never a transform.
 // This helper and its styles are mirrored in md.html; exported Mermaid stays a static SVG.
-function initMermaids(root) {
+function initMermaids(root, views = new Map()) {
     for (const fig of root.querySelectorAll('figure.su-mermaid')) {
         const viewport = fig.querySelector('.su-mermaid-viewport');
         if (!viewport || fig.__suMermaidReady) continue;
@@ -1465,7 +1493,20 @@ function initMermaids(root) {
             b.type = 'button'; b.title = label; b.setAttribute('aria-label', label); b.textContent = text;
             listen(b, 'click', action); tools.appendChild(b); return b;
         };
-        let zoom = 1, fitting = true, size = '', drag = null;
+        const initial = views.get(fig);
+        const state = initial ?? { zoom: 1, fitting: true, left: 0, top: 0 };
+        let { zoom, fitting } = state;
+        let size = '', drag = null, restore = !!initial;
+        const saveView = () => {
+            state.zoom = zoom; state.fitting = fitting;
+            // Hidden Source/HTML views have no scroll geometry. Keep the last visible pan.
+            if (!restore && viewport.clientWidth && viewport.clientHeight) {
+                state.left = viewport.scrollLeft; state.top = viewport.scrollTop;
+            }
+        };
+        fig.__suReadMermaidView = () => { saveView(); return { ...state }; };
+        fig.__suSuspendMermaid = () => { saveView(); restore = true; size = ''; };
+        listen(viewport, 'scroll', saveView, { passive: true });
         const fitScale = () => Math.max(0.001, Math.min(1, (viewport.clientWidth - 32) / width, (viewport.clientHeight - 32) / height));
         const offset = (scale) => [Math.max(16, (viewport.clientWidth - width * scale) / 2), Math.max(16, (viewport.clientHeight - height * scale) / 2)];
         const draw = () => {
@@ -1481,13 +1522,14 @@ function initMermaids(root) {
         const scale = (next, point = [viewport.clientWidth / 2, viewport.clientHeight / 2]) => {
             const old = offset(zoom);
             const anchor = [(viewport.scrollLeft + point[0] - old[0]) / zoom, (viewport.scrollTop + point[1] - old[1]) / zoom];
-            zoom = Math.max(Math.min(0.1, fitScale()), Math.min(8, next)); fitting = false;
+            zoom = Math.max(Math.min(0.1, fitScale()), Math.min(8, next)); fitting = false; restore = false;
             draw();
             const now = offset(zoom);
             viewport.scrollLeft = anchor[0] * zoom + now[0] - point[0];
             viewport.scrollTop = anchor[1] * zoom + now[1] - point[1];
+            saveView();
         };
-        const fit = () => { fitting = true; zoom = fitScale(); draw(); viewport.scrollLeft = viewport.scrollTop = 0; };
+        const fit = () => { fitting = true; restore = false; zoom = fitScale(); draw(); viewport.scrollLeft = viewport.scrollTop = 0; saveView(); };
         const out = button('Zoom out', '−', () => scale(zoom / 1.25));
         const actual = button('Show actual size', '100%', () => scale(1));
         actual.className = 'su-mermaid-zoom';
@@ -1516,7 +1558,10 @@ function initMermaids(root) {
                 const nextSize = `${viewport.clientWidth}:${viewport.clientHeight}`;
                 if (size === nextSize) return;
                 size = nextSize;
-                if (fitting) fit(); else scale(zoom);
+                if (restore && !fitting) {
+                    draw(); viewport.scrollLeft = state.left; viewport.scrollTop = state.top;
+                } else if (fitting) fit(); else scale(zoom);
+                restore = false; saveView();
             });
         });
         resize.observe(viewport);
@@ -2246,6 +2291,18 @@ function renderSourceBlocks(md, renderer) {
     return html;
 }
 
+// Keep the review open when following a document link. Fragment links still scroll locally.
+function enhancePreviewLinks(root) {
+    for (const a of root.querySelectorAll('a[href]')) {
+        if (a.getAttribute('href').startsWith('#')) continue;
+        a.setAttribute('target', '_blank');
+        const rel = new Set((a.getAttribute('rel') ?? '').split(/\s+/).filter(Boolean));
+        rel.delete('opener');
+        rel.add('noopener'); rel.add('noreferrer');
+        a.setAttribute('rel', [...rel].join(' '));
+    }
+}
+
 // `comment` escapes raw HTML and skips heading ids, which would collide with the document's.
 async function render(md, forExport = true, comment = false) {
     const el = document.createElement('div');
@@ -2306,7 +2363,7 @@ async function render(md, forExport = true, comment = false) {
     if (needsMath(md)) { try { await enhanceMath(el); } catch {} }
     enhanceWideTables(el);
     if (!comment) enhanceHeadingAnchors(el);
-    if (!forExport) return el;
+    if (!forExport) { enhancePreviewLinks(el); return el; }
     initDiagrams(el);
     const html = el.innerHTML;
     for (const fig of el.querySelectorAll('.su-diagram')) fig.__suDispose?.();
@@ -2373,6 +2430,7 @@ function updatePanes() {
 }
 
 let previewGeneration = 0;
+let documentEpoch = 0, renderedDocumentEpoch = -1;
 async function updatePreview() {
     const generation = ++previewGeneration;
     pendingHydration = false;
@@ -2380,6 +2438,7 @@ async function updatePreview() {
         for (const fig of els.previewArticle.querySelectorAll('.su-diagram, .su-mermaid')) fig.__suDispose?.();
         els.previewArticle.innerHTML = '';
         renderedMarkdown = markdown;
+        renderedDocumentEpoch = documentEpoch;
         blockEditor = null;
         updatePanes();
         anchorThreads();
@@ -2391,18 +2450,21 @@ async function updatePreview() {
         return;
     }
     const source = markdown;
+    const epoch = documentEpoch;
     const content = await render(source, false);
-    if (generation !== previewGeneration) return;
+    if (generation !== previewGeneration || epoch !== documentEpoch) return;
     if (source.length > 1000000) await yieldToMain();
-    if (generation !== previewGeneration) return;
+    if (generation !== previewGeneration || epoch !== documentEpoch) return;
+    const views = epoch === renderedDocumentEpoch ? mermaidViews(els.previewArticle, content) : new Map();
     for (const fig of els.previewArticle.querySelectorAll('.su-diagram, .su-mermaid')) fig.__suDispose?.();
     for (const fig of content.querySelectorAll('figure.su-diagram')) fig.__suDocument = source;
     const hovered = hoverTarget && `${hoverTarget.matches('li') ? 'li' : '.su-block'}[data-start="${hoverTarget.dataset.start}"]`;
     els.previewArticle.replaceChildren(...content.childNodes);
     renderedMarkdown = source;
+    renderedDocumentEpoch = epoch;
     if (blockEditor && !blockEditor.wrap.isConnected) blockEditor = null;
     initDiagrams(els.previewArticle);
-    initMermaids(els.previewArticle);
+    initMermaids(els.previewArticle, views);
     decorateBlocks();
     restoreScrollAnchor();
     updatePanes();
@@ -2472,7 +2534,10 @@ window.__suEditorReady = () => {
 // ---- View mode (preview / html / source) ----
 function setViewMode(mode) {
     if (mode === 'html' && !markdown.trim()) mode = 'preview';
-    if (mode !== 'preview') { commitBlockEditor(); closeBlockMenu(); hideHandle(); hideFormatBar(); }
+    if (mode !== 'preview') {
+        commitBlockEditor(); closeBlockMenu(); hideHandle(); hideFormatBar();
+        for (const fig of els.previewArticle.querySelectorAll('figure.su-mermaid')) fig.__suSuspendMermaid?.();
+    }
     viewMode = mode;
     document.body.classList.toggle('su-view-edit', mode === 'edit');
     document.body.classList.toggle('su-view-html', mode === 'html');
@@ -4399,6 +4464,7 @@ function adoptEol(text) {
 // Starts a new document: resets history and binds (or unbinds) the source file.
 function loadDocument(text, handle = null, stamp = 0) {
     commitBlockEditor();
+    documentEpoch++;
     text = adoptEol(text);
     fileHandle = handle;
     fileStamp = stamp;

@@ -5,6 +5,7 @@ import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 
 import { assertSeoBasics, assertSkillMd, getTool } from './_helpers';
+import { LINK_MARKDOWN, previewLinkTests } from './_markdown_links';
 import { listItemTests, selectionToolbarTests, sourceSelectionTests } from './_markdown_selection';
 import { mermaidNavigationTests } from './_mermaid_navigation';
 
@@ -41,6 +42,10 @@ async function setMarkdown(page: Page, md: string): Promise<void> {
 }
 
 test.describe(`${tool.name} (${tool.path})`, () => {
+  previewLinkTests(async (page, markdown) => {
+    await page.goto(tool.path);
+    await setMarkdown(page, markdown);
+  });
   mermaidNavigationTests(async (page, markdown) => {
     await page.goto(tool.path);
     await setMarkdown(page, markdown);
@@ -121,6 +126,24 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     await expect(page.locator('#previewArticle h1')).toContainText('Hello');
     await expect(page.locator('#previewArticle ul li')).toHaveCount(2);
     await expect(page.locator('#emptyState')).toBeHidden();
+  });
+
+  test('preview link targets do not change exported HTML links', async ({ page }) => {
+    await page.goto(tool.path);
+    await setMarkdown(page, LINK_MARKDOWN);
+    const preview = page.locator('#previewArticle');
+    await expect(preview.getByRole('link', { name: 'Markdown site', exact: true })).toHaveAttribute('target', '_blank');
+    await page.getByRole('button', { name: 'HTML', exact: true }).click();
+    const exported = page.frameLocator('#htmlPreview').locator('article');
+    await expect(exported.getByRole('link', { name: 'Markdown site', exact: true })).not.toHaveAttribute(
+      'target',
+      '_blank',
+    );
+    await expect(exported.getByRole('link', { name: 'HTML site', exact: true })).toHaveAttribute('target', '_self');
+    await expect(exported.getByRole('link', { name: 'HTML site', exact: true })).toHaveAttribute(
+      'rel',
+      'nofollow opener',
+    );
   });
 
   test('Share menu offers a full link and an expiring short link', async ({ page }) => {

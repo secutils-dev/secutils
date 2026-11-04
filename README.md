@@ -50,7 +50,9 @@ The aggregate index of all skills (including specialized ones not listed above) 
 
 MARS and Markdown Preview support Mermaid zoom and pan in the preview and fullscreen.
 Each diagram has zoom buttons, an actual-size percentage button, and **Fit**.
+Unchanged diagrams retain their views after unrelated block or Source edits in both apps.
 Readers can drag, scroll, or swipe to pan. Ctrl/⌘ + scroll and trackpad pinch zoom at the pointer.
+Document links in both previews open in a new tab. Fragment links still scroll within the document.
 
 ## Private MARS telemetry
 
