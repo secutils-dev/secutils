@@ -1901,9 +1901,25 @@ const blockActions = {
     delete: deleteTarget,
 };
 
-// A list's left padding (where the handle sits) belongs to the list block, so
-// the item at the pointer's height wins; otherwise reaching for the handle
-// would retarget it to the whole list.
+// Gaps belong to adjacent siblings, not to the list/ancestor block. Keep the
+// currently hovered neighbor until the pointer enters another item's content.
+function listHoverTarget(rows, y, preferred) {
+    const byItem = new Map(rows.map((row) => [row.item, row]));
+    let hit = null, gap = null;
+    for (const row of rows) {
+        if (row.bottom <= row.top) continue;
+        if (y >= row.top && y < row.bottom) hit = row.item;
+        let next = byItem.get(row.next);
+        while (next && next.bottom <= next.top) next = byItem.get(next.next);
+        if (next && y >= row.bottom && y < next.top) {
+            gap = preferred === row.item || preferred === next.item ? preferred
+                : y <= (row.bottom + next.top) / 2 ? row.item : next.item;
+        }
+    }
+    // A nested gap must win over the containing parent item's bounding box.
+    return gap ?? hit;
+}
+
 function blockTargetAt(el, x, y) {
     const article = els.previewArticle.getBoundingClientRect();
     const scroll = els.previewScroll.getBoundingClientRect();
@@ -1918,11 +1934,12 @@ function blockTargetAt(el, x, y) {
         });
     }
     if (!target) return null;
-    const items = [target, ...target.querySelectorAll('li[data-start]')].filter((item) => {
+    const owner = target.matches('li') ? target.parentElement : target;
+    const rows = [...owner.querySelectorAll('li[data-start]')].map((item) => {
         const r = item.getBoundingClientRect();
-        return item.matches('li') && y >= r.top && y < r.bottom;
+        return { item, next: item.nextElementSibling, top: r.top, bottom: r.bottom };
     });
-    return items.at(-1) ?? target;
+    return listHoverTarget(rows, y, hoverTarget) ?? target;
 }
 els.previewScroll.addEventListener('mousemove', (e) => {
     if (blockEditor || !els.blockMenu.hidden || drag) return;

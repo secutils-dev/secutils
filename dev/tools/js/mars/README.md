@@ -40,6 +40,7 @@ These edits support undo and redo.
 
 Block controls occupy a reserved left gutter at every reading width.
 Hover over a block or its left-side whitespace to show **Add** and **Block actions**.
+Between items, controls stay with the hovered neighbor until the pointer enters another item.
 Dragging works past multiline and nested list items. Holding the pointer near an edge scrolls the preview.
 Ordered-list moves renumber the Markdown from the list's original starting number and preserve the marker style.
 Continuation indentation adjusts when a number gains or loses a digit. Nested text and code remain unchanged.

@@ -129,6 +129,7 @@ replaces only that block's source text, so the rest of the file stays byte-ident
 - **Task checkboxes** - click to toggle `[ ]` and `[x]` in the source.
 - **Block handle** - hover a block or list item to show `+` and a grip in the left margin.
   The controls have a reserved gutter at every reading width. Left-side block whitespace also activates them.
+  Between-item gaps keep the adjacent item's controls active, including in nested lists.
   - `+` adds a block below. On a list item, it adds a sibling item with the same marker.
   - Click the grip to open the actions: **Edit**, **Mark done**, **Copy text**, **Move up**,
     **Move down**, and **Delete**.

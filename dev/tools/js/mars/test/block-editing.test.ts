@@ -60,3 +60,26 @@ test('renumbering preserves nested text and code while adjusting continuation co
     assert.equal(renumber('100. Item\n\t continuation', 99), '99. Item\n\tcontinuation');
     assert.equal(renumber('- Bullet\n  continuation', 2), '- Bullet\n  continuation');
 });
+
+test('list gaps retain adjacent targets, including nested and hidden items', () => {
+    const hover = runInNewContext(`(${section(viewer, 'function listHoverTarget', 'function blockTargetAt')})`);
+    const parent = {}, one = {}, two = {}, three = {}, hidden = {};
+    const rows = [
+        { item: parent, next: null, top: 0, bottom: 200 },
+        { item: one, next: two, top: 10, bottom: 30 },
+        { item: two, next: three, top: 40, bottom: 60 },
+        { item: three, next: null, top: 80, bottom: 100 },
+    ];
+    assert.equal(hover(rows, 65, two), two);
+    assert.equal(hover(rows, 75, two), two);
+    assert.equal(hover(rows, 65, three), three);
+    assert.equal(hover(rows, 65, one), two);
+    assert.equal(hover(rows, 75, one), three);
+    assert.equal(hover(rows, 70, null), two);
+    assert.equal(hover(rows, 80, two), three);
+    assert.equal(hover(rows, 45, three), two);
+    assert.equal(hover([
+        rows[0], rows[1], { ...rows[2], next: hidden },
+        { item: hidden, next: three, top: 0, bottom: 0 }, rows[3],
+    ], 70, two), two);
+});

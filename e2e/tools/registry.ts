@@ -73,7 +73,7 @@ export const TOOLS: readonly Tool[] = [
   },
   {
     slug: 'md',
-    // Block controls reserve a gutter; nested/multiline list moves preserve content and renumber ordered source.
+    // Block controls reserve a gutter and retain adjacent items in gaps; ordered moves renumber source.
     // Document links open in a new tab in Preview; fragment links still scroll locally.
     // Mermaid: zoom, pan, and fit in preview/fullscreen; unchanged diagrams retain views after edits.
     source: 'md.html',
@@ -87,7 +87,7 @@ export const TOOLS: readonly Tool[] = [
   },
   {
     slug: 'mars',
-    // Block controls reserve a gutter; nested/multiline list moves preserve content and renumber ordered source.
+    // Block controls reserve a gutter and retain adjacent items in gaps; ordered moves renumber source.
     // Document links open in a new tab in Preview; fragment links still scroll locally.
     // Mermaid: zoom, pan, and fit in preview/fullscreen; unchanged diagrams retain views after edits.
     source: 'mars.html',

@@ -85,6 +85,59 @@ export function blockInteractionTests(load: (page: Page, md: string) => Promise<
     await expect.poll(() => source(page)).toBe(md.replace('- Last item.', '- Inserted item.\n- Last item.'));
   });
 
+  for (const nested of [false, true]) {
+    test(`block controls: ${nested ? 'nested' : 'ordered'} list gaps retain adjacent item controls`, async ({
+      page,
+    }) => {
+      const second = nested ? '   - Second item.' : '2. Second item.';
+      const md = nested
+        ? `# Review\n\n1. Parent\n\n   - First item.  \n     Continuation.\n\n${second}\n\n   - Third item.\n\n2. Outside.\n`
+        : `# Review\n\n1. First item.  \n   Continuation.\n\n${second}\n\n3. Third item.\n`;
+      await load(page, md);
+      const items = page.locator(nested ? '#previewArticle ol ul > li' : '#previewArticle > .su-block > ol > li');
+      await expect(items).toHaveCount(3);
+      await gutterHover(page, items.nth(1));
+      const before = (await page.locator('#blockHandle').boundingBox())!;
+      const two = (await items.nth(1).boundingBox())!;
+      const three = (await items.nth(2).boundingBox())!;
+      const article = (await page.locator('#previewArticle').boundingBox())!;
+      const gap = three.y - (two.y + two.height);
+      expect(gap).toBeGreaterThan(0);
+      for (const part of [0.1, 0.5, 0.9]) {
+        await page.mouse.move(article.x - 12, two.y + two.height + gap * part);
+        expect(Math.abs((await page.locator('#blockHandle').boundingBox())!.y - before.y)).toBeLessThan(1);
+      }
+
+      // The controls must still edit item 2, rather than the entire list.
+      await page.locator('#blockGripBtn').click();
+      await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
+      await page.keyboard.press('ControlOrMeta+a');
+      await page.keyboard.type(second.replace('Second item.', 'Revised target.'));
+      await page.keyboard.press('Escape');
+      await expect.poll(() => source(page)).toBe(md.replace('Second item.', 'Revised target.'));
+      await page.locator('#docStats').click();
+      await page.keyboard.press('ControlOrMeta+z');
+      await expect(items.nth(1)).toContainText('Second item.');
+
+      // Entering the same gap from item 3 keeps item 3 selected.
+      await gutterHover(page, items.nth(2));
+      const reverse = (await page.locator('#blockHandle').boundingBox())!;
+      await page.mouse.move(article.x - 12, two.y + two.height + gap / 2);
+      expect(Math.abs((await page.locator('#blockHandle').boundingBox())!.y - reverse.y)).toBeLessThan(1);
+
+      // A direct hover from outside the list picks an adjacent item, never item 1/parent.
+      await gutterHover(page, page.locator('#previewArticle h1'));
+      await page.mouse.move(article.x - 12, two.y + two.height + gap * 0.25);
+      expect(Math.abs((await page.locator('#blockHandle').boundingBox())!.y - before.y)).toBeLessThan(1);
+      await page.locator('#blockAddBtn').click();
+      await page.keyboard.type('Inserted after second.');
+      await page.keyboard.press('Escape');
+      await expect(items).toHaveCount(4);
+      await expect(items.nth(2)).toContainText('Inserted after second.');
+      await expect(items.nth(3)).toContainText('Third item.');
+    });
+  }
+
   test('block controls: comment rails keep a separate full-width gutter', async ({ page }) => {
     await load(page, '# Setup\n\nOpen a different document.');
     const thread = [

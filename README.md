@@ -54,6 +54,7 @@ Unchanged diagrams retain their views after unrelated block or Source edits in b
 Readers can drag, scroll, or swipe to pan. Ctrl/⌘ + scroll and trackpad pinch zoom at the pointer.
 Document links in both previews open in a new tab. Fragment links still scroll within the document.
 Block controls stay in a reserved left gutter and also activate over left-side whitespace.
+Whitespace between list items keeps the adjacent item's controls active.
 List dragging works past multiline items and renumbers ordered-list source from its original starting number.
 
 ## Private MARS telemetry
