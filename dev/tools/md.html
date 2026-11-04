@@ -4030,6 +4030,7 @@ if (!('popover' in HTMLElement.prototype) || !('commandForElement' in HTMLButton
 
 const READING_WIDTH_MIN = 320;
 const READING_WIDTH_MAX = 2400;
+const READING_WIDTH_KEY = 'su-md-reading-width';
 let customReadingWidth = 800;
 
 function normalizeReadingWidth(value) {
@@ -4042,28 +4043,52 @@ function readReadingWidth() {
     return els.optReadingWidth.value === 'custom' ? customReadingWidth : normalizeReadingWidth(els.optReadingWidth.value);
 }
 
-function applyReadingWidth() {
+function applyReadingWidth(remember = false) {
     const width = readReadingWidth();
     document.documentElement.style.setProperty('--su-reading-width', width === 'full' ? 'none' : `${width}px`);
     document.documentElement.style.setProperty('--su-reading-track', width === 'full' ? '1fr' : `${width}px`);
+    if (remember) try { localStorage.setItem(READING_WIDTH_KEY, JSON.stringify({ width, customWidth: customReadingWidth })); } catch {}
     if (viewMode === 'html') renderHtmlPreview();
+}
+
+function restoreReadingWidth() {
+    customReadingWidth = normalizeReadingWidth(els.optReadingCustom.value);
+    let width = readReadingWidth();
+    try {
+        const raw = localStorage.getItem(READING_WIDTH_KEY);
+        if (raw !== null) {
+            const saved = JSON.parse(raw);
+            width = normalizeReadingWidth(saved?.width);
+            const custom = normalizeReadingWidth(saved?.customWidth);
+            customReadingWidth = typeof custom === 'number' ? custom : 800;
+        }
+    } catch {}
+    const value = String(width);
+    els.optReadingWidth.value = [...els.optReadingWidth.options].some((option) => option.value === value) ? value : 'custom';
+    if (els.optReadingWidth.value === 'custom') customReadingWidth = width;
+    els.optReadingCustom.value = String(customReadingWidth);
+    els.optReadingCustomWrap.hidden = els.optReadingWidth.value !== 'custom';
+    applyReadingWidth();
 }
 
 els.optReadingWidth.addEventListener('change', () => {
     els.optReadingCustomWrap.hidden = els.optReadingWidth.value !== 'custom';
-    applyReadingWidth();
+    applyReadingWidth(true);
     if (!els.optReadingCustomWrap.hidden) els.optReadingCustom.focus();
 });
 els.optReadingCustom.addEventListener('input', () => {
     const width = Number(els.optReadingCustom.value);
     if (els.optReadingCustom.value.trim() && Number.isInteger(width) && width >= READING_WIDTH_MIN && width <= READING_WIDTH_MAX) {
         customReadingWidth = width;
-        applyReadingWidth();
+        applyReadingWidth(true);
     }
 });
 els.optReadingCustom.addEventListener('change', () => {
     els.optReadingCustom.value = String(customReadingWidth);
 });
+// Apply before rendering, then again after native form restoration or a bfcache return.
+restoreReadingWidth();
+window.addEventListener('pageshow', restoreReadingWidth);
 
 function readOptions() {
     return { toc: els.optToc.checked, pdf: els.optPdf.checked, find: els.optFind.checked, source: els.optSource.checked, readingWidth: readReadingWidth() };

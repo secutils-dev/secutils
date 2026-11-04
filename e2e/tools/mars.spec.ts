@@ -7,6 +7,7 @@ import { expect, test } from '@playwright/test';
 import { assertSeoBasics, assertSkillMd, getTool } from './_helpers';
 import { blockInteractionTests } from './_markdown_blocks';
 import { previewLinkTests } from './_markdown_links';
+import { readingWidthTests } from './_markdown_reading_width';
 import { listItemTests, selectionToolbarTests, sourceSelectionTests } from './_markdown_selection';
 import { indexingTests } from './_mars_indexing';
 import { mermaidNavigationTests } from './_mermaid_navigation';
@@ -98,6 +99,10 @@ function freshContext(browser: Browser): Promise<BrowserContext> {
 }
 
 test.describe(`${tool.name} (${tool.path})`, () => {
+  readingWidthTests(async (page, markdown) => {
+    await page.goto(tool.path);
+    await newDoc(page, markdown);
+  });
   blockInteractionTests(async (page, markdown) => {
     await page.goto(tool.path);
     await newDoc(page, markdown);

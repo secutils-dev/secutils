@@ -117,6 +117,7 @@ toolbar to rename the document. The URL fragment records the new name.
   Comfortable (800px, default), Wide (1100px), Full width, or a custom
   320–2400px width. The same panel controls exported HTML features: table of
   contents, PDF export button, in-page find, and embedded Markdown source.
+  The selected reading width persists across reloads and new tabs in this browser.
 - **Reading settings in exported HTML** - readers can change the width or
   restore the document default from the toolbar. Their choice lasts for the
   current page visit; reloading restores the width selected at export time.

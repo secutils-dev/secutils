@@ -7,6 +7,7 @@ import { expect, test } from '@playwright/test';
 import { assertSeoBasics, assertSkillMd, getTool } from './_helpers';
 import { blockInteractionTests } from './_markdown_blocks';
 import { LINK_MARKDOWN, previewLinkTests } from './_markdown_links';
+import { readingWidthTests } from './_markdown_reading_width';
 import { listItemTests, selectionToolbarTests, sourceSelectionTests } from './_markdown_selection';
 import { mermaidNavigationTests } from './_mermaid_navigation';
 
@@ -43,6 +44,10 @@ async function setMarkdown(page: Page, md: string): Promise<void> {
 }
 
 test.describe(`${tool.name} (${tool.path})`, () => {
+  readingWidthTests(async (page, markdown) => {
+    await page.goto(tool.path);
+    await setMarkdown(page, markdown);
+  });
   blockInteractionTests(async (page, markdown) => {
     await page.goto(tool.path);
     await setMarkdown(page, markdown);

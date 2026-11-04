@@ -55,6 +55,7 @@ Readers can drag, scroll, or swipe to pan. Ctrl/⌘ + scroll and trackpad pinch 
 Document links in both previews open in a new tab. Fragment links still scroll within the document.
 Block controls stay in a reserved left gutter and also activate over left-side whitespace.
 Whitespace between list items keeps the adjacent item's controls active.
+Both apps restore the selected reading width after reload, including full and custom widths.
 List dragging works past multiline items and renumbers ordered-list source from its original starting number.
 
 ## Private MARS telemetry
