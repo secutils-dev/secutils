@@ -89,7 +89,9 @@ body.su-view-edit #editorMount { display: block; }
 .preview-article .su-hl { background: var(--hl-bg); color: var(--hl-text); padding: 0 3px; border-radius: 3px; }
 .preview-article .su-hl code { background: transparent; color: inherit; }
 /* Block editing */
-#previewScroll { position: relative; }
+#previewScroll { position: relative; padding-inline-start: 64px; }
+#previewArticle ol { padding-left: max(26px, var(--su-list-marker-width, 3ch)); }
+@media (max-width: 760px) { #previewScroll { padding-inline: 60px 16px; } }
 .preview-article li input[type="checkbox"]:enabled { cursor: pointer; accent-color: var(--primary); }
 .preview-article li.su-checked > :is(p, input) ~ *:not(ul, ol), .preview-article li.su-checked { color: var(--text-muted); }
 .preview-article .su-done > :is(h1, h2, h3, h4, h5, h6) { cursor: pointer; color: var(--text-muted); }
@@ -97,8 +99,10 @@ body.su-view-edit #editorMount { display: block; }
 .preview-article .su-done.su-expanded > :is(h1, h2, h3, h4, h5, h6)::before { content: '\25BE\00A0'; }
 .preview-article .su-collapsed, .preview-article.su-hide-done :is(.su-done-section, li.su-checked), .su-copying .su-anchor { display: none; }
 .block-handle { position: absolute; z-index: 5; display: flex; gap: 2px; padding-top: 2px; }
+.block-handle, .block-drop-line { transition-property: none; }
 .block-handle[hidden], .block-menu[hidden], .block-menu [hidden], .block-drop-line[hidden], #toastAction[hidden] { display: none; }
-#blockGripBtn { cursor: grab; touch-action: none; }
+#blockGripBtn { cursor: grab; touch-action: none; -webkit-user-select: none; user-select: none; }
+#blockGripBtn.su-grip-dragging { cursor: grabbing; }
 .block-drop-line { position: absolute; z-index: 5; height: 2px; border-radius: 1px; background: var(--primary); pointer-events: none; }
 .preview-article .su-dragging { opacity: .4; }
 /* Override the shared menu sizing even when only Comment is visible. */
@@ -110,7 +114,7 @@ body.su-view-edit #editorMount { display: block; }
 .format-bar button svg { vertical-align: middle; }
 .format-sep { width: 1px; margin: 4px 2px; background: var(--border); }
 .format-bar[hidden], .format-sep[hidden] { display: none; }
-.block-handle button { width: 22px; height: 22px; padding: 3px; border: none; border-radius: 4px; background: none; color: var(--text-muted); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.block-handle button { width: 24px; height: 24px; padding: 4px; border: none; border-radius: 4px; background: none; color: var(--text-muted); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
 .block-handle button:hover, .block-handle button[aria-expanded="true"] { background: var(--surface-hover); color: var(--text); }
 .block-handle button:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
 .block-handle svg { width: 16px; height: 16px; }

@@ -153,6 +153,8 @@ as a 4-byte little-endian u32 → base64url without padding.
 - Diagram views last until the reader opens a document or reloads the page. Shared links do not store these views.
 - **Pause indexing** survives reloads and pauses all MARS tabs in the same browser. **Resume indexing** resumes those tabs. Search still uses the stored index while paused.
 - Selection formatting works across wrapped lines within one list paragraph and preserves source indentation.
+- Block controls stay in a separate left gutter at every reading width. Hovering over left-side block whitespace also shows them.
+- List items can move past multiline siblings. Ordered-list moves renumber the source and preserve the starting number, marker style, and nested content.
 - **Mark done** applies only to headings and existing task checkboxes. Regular list items support manual strikethrough through the selection toolbar.
 - When a document they reviewed comes back with new text, **Review changes** marks added and edited blocks, highlights inserted words, and shows the old text on request.
 - A thread whose quoted words you rewrote, without re-quoting it, follows them to the inserted words of the edited block and is labeled as changed. A thread you re-quoted stays attached exactly.

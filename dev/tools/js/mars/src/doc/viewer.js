@@ -25,6 +25,7 @@ const FRONTMATTER_TITLE_RE = /^title:\s*['"]?(.+?)['"]?\s*$/m;
 
 const $ = (id) => document.getElementById(id);
 const els = {
+    pageHeader: document.querySelector('body > header'),
     previewPane: $('previewPane'),
     previewWrap: $('previewWrap'),
     previewScroll: $('previewScroll'),
@@ -1214,27 +1215,78 @@ function enhanceHeadingAnchors(root) {
 // The preview wraps every top-level block in an element that carries its exact
 // source range, so edits splice the Markdown instead of re-serializing it.
 const LIST_ITEM_RE = /^([ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]+)(\[[ xX]\])?/;
+// Nested list tokens are dedented by marked. Recover their original lines without
+// discarding source indentation or including the next sibling's leading spaces.
+function listItemSourceRange(md, raw, from, limit = md.length, allowInline = false) {
+    if (typeof raw !== 'string' || !raw) return null;
+    const lines = raw.split('\n');
+    const first = lines[0].trimStart();
+    if (!first) return null;
+    const pos = md.indexOf(first, from);
+    if (pos < 0 || pos >= limit) return null;
+    const start = md.lastIndexOf('\n', pos - 1) + 1;
+    const indent = md.slice(start, pos);
+    const inline = !!indent.trim();
+    if (inline && !allowInline) return null;
+    const columns = (text) => [...text].reduce((n, c) => n + (c === '\t' ? 4 - n % 4 : 1), 0);
+    const enclosing = columns(indent) - columns(lines[0].slice(0, lines[0].length - first.length));
+    if (enclosing < 0) return null;
+    const normalize = (text, remove = 0) => text.replace(/^[ \t]*/, (prefix) => ' '.repeat(Math.max(0, columns(prefix) - remove)));
+    let end = inline ? pos : start;
+    for (const [i, line] of lines.entries()) {
+        if (i === lines.length - 1 && !line) break;
+        const newline = md.indexOf('\n', end);
+        const stop = newline < 0 ? md.length : newline;
+        const original = md.slice(end, stop);
+        const content = inline && !i ? normalize(original) : normalize(original, enclosing);
+        const expected = inline && !i ? line.trimStart() : normalize(line);
+        if (line.trim() ? content !== expected : original.trim()) return null;
+        if (i < lines.length - 1) {
+            if (newline < 0) return null;
+            end = newline + 1;
+        } else end = stop;
+        if (end > limit) return null;
+    }
+    return { start, end, pos };
+}
+
 function renderSourceBlocks(md, renderer) {
     const tokens = marked.lexer(md);
     escapeUnmatchedInlineHtml(tokens);
     const options = { ...marked.defaults, renderer };
     const defaultListitem = renderer.listitem;
-    let cursor = 0, itemCursor = 0;
+    let cursor = 0, itemCursor = 0, itemLimit = md.length, itemHeader = null;
+    // Literal list markers inside code/HTML must not be mistaken for later items.
+    for (const kind of ['code', 'html']) {
+        const renderToken = renderer[kind];
+        renderer[kind] = function (token) {
+            let from = itemCursor;
+            if (itemHeader && itemCursor <= itemHeader.end && typeof token.raw === 'string') {
+                const first = token.raw.split('\n', 1)[0].trimStart();
+                const pos = md.indexOf(first, itemHeader.start);
+                if (first && pos >= itemHeader.start && pos < itemHeader.end) from = itemHeader.start;
+            }
+            const range = listItemSourceRange(md, token.raw, from, itemLimit, true);
+            if (range) itemCursor = range.end;
+            return renderToken.call(this, token);
+        };
+    }
     renderer.listitem = function (item) {
-        const firstLine = item.raw.split('\n', 1)[0];
+        const firstLine = item.raw.split('\n', 1)[0].trimStart();
         const pos = md.indexOf(firstLine, itemCursor);
-        if (pos < 0) return defaultListitem.call(this, item);
+        if (pos < 0 || pos >= itemLimit) return defaultListitem.call(this, item);
         itemCursor = pos + firstLine.length;
-        const exact = md.startsWith(item.raw, pos);
-        const lineStart = md.lastIndexOf('\n', pos - 1) + 1;
+        const range = listItemSourceRange(md, item.raw, pos, itemLimit);
         const marker = firstLine.match(LIST_ITEM_RE);
         const attrs = [];
         if (item.task && marker?.[2]) attrs.push(`data-check="${pos + marker[1].length}"`);
-        // Whole-item ranges need an exact match and a whitespace-only indent. Items
-        // in blockquotes or with dedented nested continuations stay checkbox-only.
-        if (exact && !md.slice(lineStart, pos).trim()) attrs.push(`data-start="${lineStart}" data-end="${pos + item.raw.length}"`);
+        // Items in blockquotes remain checkbox-only; their quote prefix is not a list indent.
+        if (range) attrs.push(`data-start="${range.start}" data-end="${range.end}"`);
+        const previousHeader = itemHeader;
+        itemHeader = { start: pos, end: itemCursor };
         const html = defaultListitem.call(this, item);
-        if (exact) itemCursor = Math.max(itemCursor, pos + item.raw.length);
+        itemHeader = previousHeader;
+        if (range) itemCursor = Math.max(itemCursor, range.end);
         return attrs.length ? html.replace(/^<li/, `<li ${attrs.join(' ')}`) : html;
     };
     let html = '';
@@ -1244,6 +1296,7 @@ function renderSourceBlocks(md, renderer) {
         // instead of summing raw lengths. Unlocatable blocks render read-only.
         const start = md.indexOf(token.raw, cursor);
         itemCursor = start < 0 ? cursor : start;
+        itemLimit = start < 0 ? md.length : start + token.raw.length;
         const out = marked.parser(Object.assign([token], { links: tokens.links }), options);
         if (start < 0) { html += out; continue; }
         cursor = start + token.raw.length;
@@ -1485,6 +1538,7 @@ window.__suEditorReady = () => {
 // ---- View mode (preview / source) ----
 export function setViewMode(mode) {
     if (mode !== 'preview') {
+        endDrag();
         commitBlockEditor(); closeBlockMenu(); hideHandle(); hideFormatBar();
         for (const fig of els.previewArticle.querySelectorAll('figure.su-mermaid')) fig.__suSuspendMermaid?.();
     }
@@ -1666,10 +1720,54 @@ function siblingTarget(el, dir) {
     return sibling?.matches(el.matches('li') ? 'li[data-start]' : '.su-block[data-start]') ? sibling : null;
 }
 
-// Moves `el` past `count` siblings with chained swaps. A swap keeps the length of
-// the span it touches, so sibling ranges read from the DOM stay valid throughout.
+// Renumber only the item marker. Continuation and nested content keep their indentation
+// relative to the marker, including when a move crosses 9/10 or 99/100.
+function renumberListItem(raw, number) {
+    const marker = raw.match(/^([ \t]*)(\d{1,9})([.)])([ \t]+)/);
+    if (!marker) return raw;
+    const [, indent, old, delimiter, gap] = marker;
+    const columns = (text) => [...text].reduce((n, c) => n + (c === '\t' ? 4 - n % 4 : 1), 0);
+    const oldWidth = columns(`${indent}${old}${delimiter}${gap}`);
+    const delta = columns(`${indent}${number}${delimiter}${gap}`) - oldWidth;
+    const lines = raw.split('\n');
+    lines[0] = `${indent}${number}${delimiter}${gap}${lines[0].slice(marker[0].length)}`;
+    if (delta) for (let i = 1; i < lines.length; i++) {
+        if (!lines[i].trim()) continue;
+        const prefix = lines[i].match(/^[ \t]*/)[0];
+        const width = columns(prefix);
+        if (width < oldWidth) continue; // Lazy continuation lines need no reindent.
+        const target = width + delta;
+        let kept = prefix;
+        while (columns(kept) > target) kept = kept.slice(0, -1);
+        lines[i] = `${kept}${' '.repeat(target - columns(kept))}${lines[i].slice(prefix.length)}`;
+    }
+    return lines.join('\n');
+}
+
+function moveOrderedItem(el, dir, count) {
+    const list = el.matches('li') && el.parentElement;
+    if (!list || list.tagName !== 'OL') return false;
+    const items = [...list.children].filter((item) => item.matches('li'));
+    if (items.some((item) => !item.hasAttribute('data-start'))) return false;
+    const ranges = items.map(blockRange);
+    if (ranges.some(([start, end], i) => end < start || (i && start < ranges[i - 1][1]))) return false;
+    if (list.start + items.length - 1 > 999999999) {
+        toast('Cannot renumber this list beyond nine-digit Markdown markers.'); return true;
+    }
+    const cores = ranges.map(([start, end]) => markdown.slice(start, end).replace(/\n*$/, ''));
+    const gaps = ranges.map(([start], i) => markdown.slice(start + cores[i].length, ranges[i + 1]?.[0] ?? ranges[i][1]));
+    const from = items.indexOf(el), to = Math.max(0, Math.min(items.length - 1, from + dir * count));
+    const reordered = [...cores];
+    reordered.splice(to, 0, ...reordered.splice(from, 1));
+    const text = reordered.map((core, i) => renumberListItem(core, list.start + i) + gaps[i]).join('');
+    editSource(ranges[0][0], ranges.at(-1)[1], text, el);
+    return true;
+}
+
+// Unordered blocks use length-preserving swaps; ordered lists use one renumbered edit.
 function moveTarget(el, dir, count = 1) {
     if (!siblingTarget(el, dir)) { toast(dir < 0 ? 'Already at the top' : 'Already at the bottom'); return; }
+    if (moveOrderedItem(el, dir, count)) return;
     const range = isHeadingBlock(el) ? sectionRange : blockRange;
     // Trailing newlines stay in place so separators survive the swap.
     const split = (s) => { const tail = s.match(/\n*$/)[0]; return [s.slice(0, s.length - tail.length), tail]; };
@@ -1695,6 +1793,15 @@ async function copyTarget(el) {
 // Checkbox state, done sections (struck-through headings), and collapsing.
 function decorateBlocks() {
     const root = els.previewArticle;
+    // Wide ordered markers must fit inside the list, not spill into its controls.
+    for (const list of root.querySelectorAll('ol')) {
+        let number = list.start, digits = String(number).length;
+        for (const item of list.children) if (item.matches('li')) {
+            if (item.hasAttribute('value')) number = item.value;
+            digits = Math.max(digits, String(number++).length);
+        }
+        list.style.setProperty('--su-list-marker-width', `${digits + 2}ch`);
+    }
     for (const box of root.querySelectorAll('li[data-check] input[type="checkbox"]')) {
         const li = box.closest('li');
         if (!li.hasAttribute('data-check')) continue;
@@ -1738,14 +1845,23 @@ function progressSummary() {
 }
 
 // ---- Block handle (+ and grip) and actions menu ----
+function blockViewport() {
+    const rect = els.previewScroll.getBoundingClientRect();
+    const header = document.fullscreenElement ? 0 : els.pageHeader?.getBoundingClientRect().bottom ?? 0;
+    return { top: Math.max(rect.top, header, 0), bottom: Math.min(rect.bottom, window.innerHeight) };
+}
+
 function showHandle(target) {
     hoverTarget = target;
     const scroll = els.previewScroll.getBoundingClientRect();
     const rect = target.getBoundingClientRect();
-    const indent = target.matches('li') ? 20 : 0; // clear the list marker
+    const left = (target.matches('li') ? target.parentElement : target).getBoundingClientRect().left;
     els.blockHandle.style.top = `${rect.top - scroll.top + els.previewScroll.scrollTop}px`;
-    els.blockHandle.style.left = `${Math.max(0, rect.left - scroll.left - indent - 50)}px`;
     els.blockHandle.hidden = false;
+    const viewport = blockViewport();
+    const top = Math.min(Math.max(rect.top, viewport.top + 4), viewport.bottom - els.blockHandle.offsetHeight - 4);
+    els.blockHandle.style.top = `${top - scroll.top + els.previewScroll.scrollTop}px`;
+    els.blockHandle.style.left = `${left - scroll.left + els.previewScroll.scrollLeft - els.blockHandle.offsetWidth - 8}px`;
 }
 function hideHandle() {
     hoverTarget = null;
@@ -1788,19 +1904,30 @@ const blockActions = {
 // A list's left padding (where the handle sits) belongs to the list block, so
 // the item at the pointer's height wins; otherwise reaching for the handle
 // would retarget it to the whole list.
-function blockTargetAt(el, y) {
-    const target = el.closest?.(BLOCK_TARGET);
-    if (!target || !els.previewArticle.contains(target)) return null;
+function blockTargetAt(el, x, y) {
+    const article = els.previewArticle.getBoundingClientRect();
+    const scroll = els.previewScroll.getBoundingClientRect();
+    if (x < scroll.left || x > article.right || !article.width) return null;
+    if (els.blockHandle.contains(el) && hoverTarget?.isConnected) return hoverTarget;
+    let target = el.closest?.(BLOCK_TARGET);
+    if (!target || !els.previewArticle.contains(target)) {
+        target = [...els.previewArticle.children].find((block) => {
+            if (!block.matches('.su-block[data-start]')) return false;
+            const r = block.getBoundingClientRect();
+            return r.height > 0 && y >= r.top && y < r.bottom;
+        });
+    }
+    if (!target) return null;
     const items = [target, ...target.querySelectorAll('li[data-start]')].filter((item) => {
         const r = item.getBoundingClientRect();
         return item.matches('li') && y >= r.top && y < r.bottom;
     });
-    return items.at(-1) ?? (target.contains(hoverTarget) ? hoverTarget : target);
+    return items.at(-1) ?? target;
 }
-els.previewArticle.addEventListener('mousemove', (e) => {
+els.previewScroll.addEventListener('mousemove', (e) => {
     if (blockEditor || !els.blockMenu.hidden || drag) return;
-    const target = blockTargetAt(e.target, e.clientY);
-    if (target && target !== hoverTarget) showHandle(target);
+    const target = blockTargetAt(e.target, e.clientX, e.clientY);
+    if (target) showHandle(target); else hideHandle();
 });
 els.previewScroll.addEventListener('mouseleave', (e) => {
     if (els.blockMenu.hidden && !drag && !els.blockHandle.contains(e.relatedTarget)) hideHandle();
@@ -1810,6 +1937,7 @@ els.previewScroll.addEventListener('mouseleave', (e) => {
 // visit; a plain click opens the menu.
 let drag = null;
 let gripDragged = false;
+let dragScrollFrame = 0;
 function dropPosition(source, y) {
     const list = [source];
     for (let s = siblingTarget(source, -1); s; s = siblingTarget(s, -1)) list.unshift(s);
@@ -1826,36 +1954,59 @@ function dropPosition(source, y) {
     return index > from ? { dir: 1, count: index - from - 1, lineY } : { dir: -1, count: from - index, lineY };
 }
 function endDrag() {
+    cancelAnimationFrame(dragScrollFrame);
+    if (drag?.active) gripDragged = true;
     drag?.source.classList.remove('su-dragging');
+    els.blockGripBtn.classList.remove('su-grip-dragging');
     els.blockDropLine.hidden = true;
     drag = null;
+}
+function updateDragDrop() {
+    if (!drag?.active) return;
+    const scroll = els.previewScroll.getBoundingClientRect();
+    drag.drop = dropPosition(drag.source, drag.clientY);
+    const rect = drag.source.getBoundingClientRect();
+    Object.assign(els.blockDropLine.style, {
+        top: `${drag.drop.lineY - scroll.top + els.previewScroll.scrollTop - 1}px`,
+        left: `${rect.left - scroll.left + els.previewScroll.scrollLeft}px`,
+        width: `${rect.width}px`,
+    });
+    els.blockDropLine.hidden = false;
+}
+function scrollDrag(time) {
+    if (!drag?.active) return;
+    if (!drag.source.isConnected || markdown !== renderedMarkdown || viewMode !== 'preview') { endDrag(); return; }
+    const r = blockViewport();
+    const pressure = drag.clientY < r.top + 40 ? -Math.min(1, (r.top + 40 - drag.clientY) / 40)
+        : drag.clientY > r.bottom - 40 ? Math.min(1, (drag.clientY - r.bottom + 40) / 40) : 0;
+    const scroller = els.previewScroll.scrollHeight > els.previewScroll.clientHeight ? els.previewScroll : document.scrollingElement;
+    const before = scroller.scrollTop;
+    scroller.scrollTop += pressure * 640 * Math.max(0, Math.min(time - drag.time, 50)) / 1000;
+    drag.time = time;
+    if (scroller.scrollTop !== before) updateDragDrop();
+    dragScrollFrame = requestAnimationFrame(scrollDrag);
 }
 els.blockGripBtn.addEventListener('pointerdown', (e) => {
     gripDragged = false;
     if (e.button !== 0 || !hoverTarget) return;
-    drag = { source: hoverTarget, x: e.clientX, y: e.clientY, active: false, drop: null };
+    e.preventDefault();
+    els.blockGripBtn.focus({ preventScroll: true });
+    drag = { source: hoverTarget, x: e.clientX, y: e.clientY, clientY: e.clientY, active: false, drop: null, time: performance.now() };
     els.blockGripBtn.setPointerCapture(e.pointerId);
 });
 els.blockGripBtn.addEventListener('pointermove', (e) => {
     if (!drag) return;
+    drag.clientY = e.clientY;
     if (!drag.active) {
         if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 4 || !previewInSync()) return;
         drag.active = true;
         closeBlockMenu();
         drag.source.classList.add('su-dragging');
+        els.blockGripBtn.classList.add('su-grip-dragging');
+        drag.time = performance.now();
+        dragScrollFrame = requestAnimationFrame(scrollDrag);
     }
-    const scroll = els.previewScroll.getBoundingClientRect();
-    // ponytail: edge scrolling only advances while the pointer moves.
-    if (e.clientY < scroll.top + 40) els.previewScroll.scrollTop -= 20;
-    else if (e.clientY > scroll.bottom - 40) els.previewScroll.scrollTop += 20;
-    drag.drop = dropPosition(drag.source, e.clientY);
-    const rect = drag.source.getBoundingClientRect();
-    Object.assign(els.blockDropLine.style, {
-        top: `${drag.drop.lineY - scroll.top + els.previewScroll.scrollTop - 1}px`,
-        left: `${rect.left - scroll.left}px`,
-        width: `${rect.width}px`,
-    });
-    els.blockDropLine.hidden = false;
+    updateDragDrop();
 });
 els.blockGripBtn.addEventListener('pointerup', () => {
     const { active, source, drop } = drag ?? {};
@@ -1865,6 +2016,8 @@ els.blockGripBtn.addEventListener('pointerup', () => {
     if (drop?.count && source.isConnected && previewInSync()) moveTarget(source, drop.dir, drop.count);
 });
 els.blockGripBtn.addEventListener('pointercancel', endDrag);
+els.blockGripBtn.addEventListener('lostpointercapture', endDrag);
+window.addEventListener('blur', endDrag);
 els.blockGripBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     if (gripDragged) { gripDragged = false; return; }

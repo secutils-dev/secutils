@@ -128,11 +128,15 @@ replaces only that block's source text, so the rest of the file stays byte-ident
 
 - **Task checkboxes** - click to toggle `[ ]` and `[x]` in the source.
 - **Block handle** - hover a block or list item to show `+` and a grip in the left margin.
+  The controls have a reserved gutter at every reading width. Left-side block whitespace also activates them.
   - `+` adds a block below. On a list item, it adds a sibling item with the same marker.
   - Click the grip to open the actions: **Edit**, **Mark done**, **Copy text**, **Move up**,
     **Move down**, and **Delete**.
   - Drag the grip to move the block. A line shows where it lands. List items move within
     their list. Headings move their whole section past sections of the same level.
+    Multiline items remain movable. Holding the pointer near an edge scrolls the preview.
+    Ordered-list moves renumber the source from its original starting number and preserve the marker style.
+    Continuation indentation adjusts when a number gains or loses a digit. Nested text and code remain unchanged.
 - **Format selected text** - select words in one block to show a toolbar: **Bold**, **Italic**,
   **Strikethrough**, **Highlight** (`==text==`), and **Inline code**. Applying a format to text
   that already has it removes the format from the selection. A selection that partly covers

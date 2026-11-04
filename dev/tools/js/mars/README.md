@@ -38,6 +38,13 @@ The edit preserves source indentation, list markers, and text outside the select
 Regular list items support manual strikethrough through the selection toolbar.
 These edits support undo and redo.
 
+Block controls occupy a reserved left gutter at every reading width.
+Hover over a block or its left-side whitespace to show **Add** and **Block actions**.
+Dragging works past multiline and nested list items. Holding the pointer near an edge scrolls the preview.
+Ordered-list moves renumber the Markdown from the list's original starting number and preserve the marker style.
+Continuation indentation adjusts when a number gains or loses a digit. Nested text and code remain unchanged.
+Undo restores the original order and numbers.
+
 ## Mermaid navigation
 
 Mermaid diagrams have zoom buttons, a percentage button for actual size, and **Fit**.
