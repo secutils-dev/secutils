@@ -26,6 +26,21 @@ favicons rendered from them). `mars.html` inlines copies: the header mark (the w
 planet) and the favicon data URIs. The `--mars-*` / `--brand*` tokens in
 `src/ui/tokens.css` follow the logo's reds.
 
+## Document browser actions
+
+Right-click a document for the MARS action menu, as before.
+**Shift + right-click** its name or icon for the native browser link menu.
+Ctrl/Cmd + click, middle-click, and Shift + click keep their native browser behavior.
+These links open the stored document in the same browser profile, not a shared copy.
+They also work in search results. The `⋮` button always opens MARS actions.
+Private windows and other profiles cannot read the original browser storage.
+Split-view commands depend on the browser. MARS does not add entries to native menus.
+
+The document link uses `#doc=<id>`, without compression or server storage.
+Pointer navigation flushes pending edits before another tab reads the document.
+The sidebar keeps the anchor until the gesture finishes, so that save does not cancel navigation.
+Keyboard navigation, renaming, and tree dragging retain their existing behavior.
+
 ## Preview edits
 
 Document links in Preview open in a new tab with `noopener noreferrer`.

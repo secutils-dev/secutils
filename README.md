@@ -60,6 +60,11 @@ List dragging works past multiline items and renumbers ordered-list source from 
 All five selection styles work in GitHub alert bodies and preserve quote prefixes in both apps.
 Generated alert titles offer **Comment** only.
 
+MARS keeps its custom document context menu by default.
+Shift + right-click a sidebar document for native browser link actions.
+Modified clicks and middle-click open the stored document through normal browser navigation, including from search results.
+The document links work in the same browser profile. Use Share for another profile or a private window.
+
 ## Private MARS telemetry
 
 `dev/tools/mars-stats.html` provides the owner-only **MARS Observatory** at `/mars-stats` on the tools host.

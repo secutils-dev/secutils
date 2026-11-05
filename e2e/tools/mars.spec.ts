@@ -191,6 +191,203 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     await expect(page.locator('#previewArticle h1')).toHaveText(/^Welcome to MARS/);
   });
 
+  test('native document links keep the custom menu by default and allow Shift right-click', async ({ page }) => {
+    await page.goto(tool.path);
+    await newDoc(page, '# Native menus\n\nSome document text.');
+    const doc = row(page, 'Untitled');
+    const link = doc.getByRole('link', { name: 'Untitled', exact: true });
+    await expect(link).toHaveAttribute('href', /^\/#doc=[\w-]+$/);
+    await expect(link).toHaveAttribute('aria-current', 'page');
+    expect(await doc.getByRole('button').evaluate((button) => button.closest('a'))).toBeNull();
+
+    await link.click({ button: 'right' });
+    await expect(page.locator('#marsMenu')).toBeVisible();
+    await expect(page.locator('#marsMenu')).toContainText('Shift + right-click for browser actions');
+    await page.keyboard.press('Escape');
+
+    // DOM dispatch checks cancellation even in Firefox, which bypasses this event for the real gesture.
+    expect(
+      await link.evaluate((el) => el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))),
+    ).toBe(false);
+    await page.keyboard.press('Escape');
+    expect(
+      await link.evaluate((el) =>
+        el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, shiftKey: true })),
+      ),
+    ).toBe(true);
+    await expect(page.locator('#marsMenu')).toBeHidden();
+    await link.click({ button: 'right', modifiers: ['Shift'] });
+    await expect(page.locator('#marsMenu')).toBeHidden();
+    await page.keyboard.press('Escape');
+
+    await doc.getByRole('button', { name: 'Actions for Untitled' }).click();
+    await expect(page.getByRole('menuitem', { name: 'Rename', exact: true })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'New document, folder, or import' }).click();
+    await page.getByRole('menuitem', { name: 'New folder', exact: true }).click();
+    await page.locator('.tree-rename').fill('Folder');
+    await page.keyboard.press('Enter');
+    const folder = row(page, 'Folder');
+    expect(
+      await folder.evaluate((el) =>
+        el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, shiftKey: true })),
+      ),
+    ).toBe(false);
+    await expect(page.locator('#marsMenu')).not.toContainText('Shift + right-click');
+  });
+
+  test('native document links open normal tabs without changing the source selection', async ({
+    page,
+    context,
+    browserName,
+  }) => {
+    await page.goto(tool.path);
+    await newDoc(page, '# One\n\nOriginal.');
+    await newDoc(page, '# Two\n\nSecond document.');
+    const first = row(page, 'Untitled');
+    const link = first.getByRole('link', { name: 'Untitled', exact: true });
+    const href = (await link.getAttribute('href'))!;
+    const sourceUrl = page.url();
+
+    for (const gesture of ['middle', 'modified', 'window'] as const) {
+      // Playwright's WebKit host navigates the current page for these gestures, even on a plain anchor.
+      // Check uncanceled events and same-profile route access there; browser chrome needs a Safari manual check.
+      if (browserName === 'webkit') {
+        expect(
+          await link.evaluate(
+            (el, kind) =>
+              el.dispatchEvent(
+                new MouseEvent(kind === 'middle' ? 'auxclick' : 'click', {
+                  bubbles: true,
+                  cancelable: true,
+                  button: kind === 'middle' ? 1 : 0,
+                  metaKey: kind === 'modified',
+                  shiftKey: kind === 'window',
+                }),
+              ),
+            gesture,
+          ),
+        ).toBe(true);
+        continue;
+      }
+      const opened = context.waitForEvent('page');
+      if (gesture === 'middle') await link.click({ button: 'middle' });
+      else
+        await link.click({
+          modifiers: [gesture === 'window' ? 'Shift' : process.platform === 'darwin' ? 'Meta' : 'Control'],
+        });
+      const other = await opened;
+      await expect(other).toHaveURL(new URL(href, MARS_BASE_URL).href);
+      await expect(other.locator('#previewArticle h1')).toHaveText(/^One/);
+      await expect(docRows(other)).toHaveCount(2);
+      await expect(page).toHaveURL(sourceUrl);
+      await expect(page.locator('#previewArticle h1')).toHaveText(/^Two/);
+      await other.close();
+    }
+
+    await link.click();
+    await expect(page.locator('#previewArticle h1')).toHaveText(/^One/);
+    // Navigate before the 500ms autosave debounce. A new tab must receive the latest source.
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await setMarkdown(page, '# One\n\nEdited immediately before navigation.');
+    let other: Page;
+    if (browserName === 'webkit') {
+      await link.dispatchEvent('pointerdown', { button: 1 });
+      other = await context.newPage();
+      await other.goto(new URL(href, MARS_BASE_URL).href);
+      await link.dispatchEvent('pointerup', { button: 1 });
+    } else {
+      const opened = context.waitForEvent('page');
+      await link.click({ button: 'middle' });
+      other = await opened;
+    }
+    await expect(other.locator('#previewArticle')).toContainText('Edited immediately before navigation.');
+    await expect(docRows(other)).toHaveCount(2);
+    await other.close();
+  });
+
+  test('native document links preserve search, keyboard focus, rename, and dragging', async ({ page }) => {
+    await page.goto(tool.path);
+    await newDoc(page, '# One\n\nSearchable passage.');
+    await newDoc(page, '# Two');
+    const first = row(page, 'Untitled');
+    const second = row(page, 'Untitled (2)');
+    await first.getByRole('link').focus();
+    await page.keyboard.press('ArrowDown');
+    await expect(second.getByRole('link')).toBeFocused();
+    await page.keyboard.press('Home');
+    await expect(first.getByRole('link')).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#previewArticle h1')).toHaveText(/^One/);
+    await expect(first.getByRole('link')).toBeFocused();
+    await expect(page.locator('#tree [tabindex="0"]')).toHaveCount(1);
+    await page.keyboard.press('ContextMenu');
+    await expect(page.locator('#marsMenu')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(first.getByRole('link')).toBeFocused();
+    await page.keyboard.press('F2');
+    await expect(first.getByRole('link')).toHaveCount(0);
+    await page.locator('.tree-rename').fill('Renamed');
+    await page.keyboard.press('Enter');
+    const renamed = row(page, 'Renamed');
+    await expect(renamed.getByRole('link')).toBeFocused();
+    await renamed.getByRole('link').dblclick();
+    await expect(page.locator('.tree-rename')).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    await page.getByRole('searchbox', { name: 'Search documents' }).fill('Searchable');
+    const result = renamed.getByRole('link', { name: 'Renamed', exact: true });
+    await expect(result).toContainText('Searchable passage.');
+    expect(
+      await result.evaluate((el) =>
+        el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, shiftKey: true })),
+      ),
+    ).toBe(true);
+    await result.click();
+    await expect(page.locator('#findInput')).toHaveValue('searchable');
+    await page.getByRole('searchbox', { name: 'Search documents' }).fill('');
+    await page.getByRole('button', { name: 'New document, folder, or import' }).click();
+    await page.getByRole('menuitem', { name: 'New folder', exact: true }).click();
+    await page.locator('.tree-rename').fill('Folder');
+    await page.keyboard.press('Enter');
+    await renamed.getByRole('link').dragTo(row(page, 'Folder'));
+    await expect(renamed).toHaveAttribute('aria-level', '2');
+    await expect(renamed.getByRole('link')).toHaveAttribute('href', /^\/#doc=[\w-]+$/);
+  });
+
+  test('native document links keep phone actions and both themes usable', async ({ browser }) => {
+    const context = await browser.newContext({
+      baseURL: MARS_BASE_URL,
+      hasTouch: true,
+      viewport: { width: 390, height: 800 },
+    });
+    const page = await context.newPage();
+    try {
+      await page.goto(tool.path);
+      await page.getByRole('button', { name: 'Toggle documents sidebar' }).tap();
+      await newDoc(page, '# Phone document');
+      for (const theme of ['light', 'dark']) {
+        await page.evaluate((value) => document.documentElement.setAttribute('data-theme', value), theme);
+        await page.getByRole('button', { name: 'Toggle documents sidebar' }).tap();
+        const doc = row(page, 'Untitled');
+        await doc.getByRole('button', { name: 'Actions for Untitled' }).tap();
+        await expect(page.getByRole('menuitem', { name: 'Rename', exact: true })).toBeVisible();
+        if (await page.evaluate(() => matchMedia('(hover: none)').matches)) {
+          await expect(page.locator('.mars-menu-hint')).toBeHidden();
+        }
+        await page.keyboard.press('Escape');
+        await doc.getByRole('link').tap();
+        await expect(page.locator('#previewArticle h1')).toHaveText(/^Phone document/);
+        await expect(page.getByRole('button', { name: 'Toggle documents sidebar' })).toHaveAttribute(
+          'aria-expanded',
+          'false',
+        );
+      }
+    } finally {
+      await context.close();
+    }
+  });
+
   test('folders: create, rename, move by drag, and delete with undo', async ({ page }) => {
     await page.goto(tool.path);
     await newDoc(page, '# Plan\n\nBody.');

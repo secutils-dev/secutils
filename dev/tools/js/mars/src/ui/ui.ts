@@ -14,7 +14,7 @@ export interface MenuItem {
     disabled?: boolean;
     run?: () => void;
 }
-export type MenuEntry = MenuItem | 'separator';
+export type MenuEntry = MenuItem | 'separator' | { hint: string };
 
 const menuEl = () => $('marsMenu');
 let menuCleanup: (() => void) | null = null;
@@ -31,6 +31,7 @@ export function openMenu(anchor: Element | { x: number; y: number }, entries: Me
     menu.setAttribute('aria-label', label);
     menu.replaceChildren(...entries.map((entry) => {
         if (entry === 'separator') return Object.assign(document.createElement('hr'), { className: 'menu-sep' });
+        if ('hint' in entry) return Object.assign(document.createElement('p'), { className: 'mars-menu-hint', textContent: entry.hint });
         const b = document.createElement('button');
         b.type = 'button';
         b.className = `export-item${entry.danger ? ' danger' : ''}`;

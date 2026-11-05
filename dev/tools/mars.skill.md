@@ -144,6 +144,10 @@ as a 4-byte little-endian u32 → base64url without padding.
 
 ## What the reviewer sees
 
+- Right-click a document in the sidebar for MARS actions. **Shift + right-click** its name or icon for browser actions.
+- Ctrl/Cmd + click, middle-click, and Shift + click retain native browser navigation, including in document search results.
+- Sidebar links open the stored document in the same browser profile. Use Share for another profile or a private window.
+- The `⋮` button always opens MARS actions. Native split-view commands depend on the browser.
 - Document links in Preview open in a new tab. Fragment links still scroll within the document.
 - Mermaid diagrams support zoom and pan in the preview and fullscreen. **Fit** restores the complete diagram.
 - Readers can drag, scroll, or swipe to pan. Ctrl/⌘ + scroll and trackpad pinch zoom at the pointer.

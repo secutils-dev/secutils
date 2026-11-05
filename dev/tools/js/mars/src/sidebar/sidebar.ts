@@ -3,7 +3,7 @@
 import * as app from '../app.ts';
 import { ancestors, canMove, childrenOf, textBytes, type TreeNode } from '../tree/model.ts';
 import { icon } from '../ui/icons.ts';
-import { $, confirmDanger, esc, modal, openMenu, type MenuEntry } from '../ui/ui.ts';
+import { $, closeMenu, confirmDanger, esc, modal, openMenu, type MenuEntry } from '../ui/ui.ts';
 import * as viewer from '../doc/viewer.js';
 import { setViewMode, toast } from '../doc/viewer.js';
 import { onUpdate, smartMatches, textMatches } from '../search/search.ts';
@@ -107,6 +107,9 @@ const labelHtml = (n: TreeNode) => (renaming === n.id
     : `<span class="tree-label" title="${esc(n.name)}${n.handle ? ` · linked to ${esc(n.handle.name)}` : ''}">${esc(n.name)}</span>`);
 const badgesHtml = (n: TreeNode) => `${n.pending ? '<span class="tree-dot" title="Changed since your last review" aria-label="Changed since your last review"></span>' : ''}${n.threads ? `<span class="tree-badge" title="${n.threads} open thread${n.threads === 1 ? '' : 's'}">${n.threads}</span>` : ''}`;
 const moreHtml = (n: TreeNode) => `<button type="button" class="tree-more" tabindex="-1" aria-label="Actions for ${esc(n.name)}" title="Actions">${icon('boxesVertical')}</button>`;
+// Local routes are real links, so the browser can open them in another tab/window.
+// Keep action buttons and rename inputs outside the anchor.
+const docLink = (n: TreeNode, content: string) => `<a class="tree-link" href="${esc(location.pathname)}#doc=${encodeURIComponent(n.id)}" tabindex="-1" draggable="false" aria-label="${esc(n.name)}"${n.id === app.state.currentId ? ' aria-current="page"' : ''}>${content}</a>`;
 
 function rowHtml({ n, depth }: { n: TreeNode; depth: number }) {
     const folder = n.kind === 'folder';
@@ -114,8 +117,9 @@ function rowHtml({ n, depth }: { n: TreeNode; depth: number }) {
     const selected = n.id === app.state.currentId || (folder && !app.state.currentId && n.id === app.state.folderId);
     const chevron = `<span class="tree-chevron${hasKids ? '' : ' leaf'}">${icon(n.open ? 'chevronDown' : 'chevronRight')}</span>`;
     const glyph = `<span class="tree-icon">${icon(folder ? (n.open ? 'folderOpen' : 'folder') : 'document')}</span>`;
+    const content = `${folder ? chevron : '<span class="tree-chevron leaf"></span>'}${glyph}${labelHtml(n)}${folder ? '' : badgesHtml(n)}`;
     return `<div class="tree-row" role="treeitem" data-id="${n.id}" data-kind="${n.kind}" style="--depth:${depth}" tabindex="-1" draggable="${renaming === n.id ? 'false' : 'true'}"
-${folder ? `aria-expanded="${!!n.open}"` : ''} aria-selected="${selected}" aria-level="${depth + 1}">${folder ? chevron : '<span class="tree-chevron leaf"></span>'}${glyph}${labelHtml(n)}${folder ? '' : badgesHtml(n)}${moreHtml(n)}</div>`;
+${folder ? `aria-expanded="${!!n.open}"` : ''} aria-selected="${selected}" aria-level="${depth + 1}">${!folder && renaming !== n.id ? docLink(n, content) : content}${moreHtml(n)}</div>`;
 }
 
 function resultHtml(r: Result) {
@@ -123,13 +127,17 @@ function resultHtml(r: Result) {
     const glyph = r.smart
         ? `<span class="tree-icon smart" title="Matches by meaning" aria-label="Matches by meaning">${icon('sparkles')}</span>`
         : `<span class="tree-icon">${icon('document')}</span>`;
-    return `<div class="tree-row result${r.snippet ? ' has-snippet' : ''}" role="treeitem" data-id="${r.n.id}" data-kind="doc"${r.start === undefined ? '' : ` data-start="${r.start}"`} tabindex="-1" draggable="false" aria-selected="${r.n.id === app.state.currentId}" aria-level="1">${glyph}${labelHtml(r.n)}${path ? `<span class="tree-path" title="${esc(path)}">${esc(path)}</span>` : ''}${badgesHtml(r.n)}${moreHtml(r.n)}${r.snippet ? `<span class="tree-snippet">${esc(r.snippet)}</span>` : ''}</div>`;
+    const content = `${glyph}${labelHtml(r.n)}${path ? `<span class="tree-path" title="${esc(path)}">${esc(path)}</span>` : ''}${badgesHtml(r.n)}${r.snippet ? `<span class="tree-snippet">${esc(r.snippet)}</span>` : ''}`;
+    return `<div class="tree-row result${r.snippet ? ' has-snippet' : ''}" role="treeitem" data-id="${r.n.id}" data-kind="doc"${r.start === undefined ? '' : ` data-start="${r.start}"`} tabindex="-1" draggable="false" aria-selected="${r.n.id === app.state.currentId}" aria-level="1">${renaming !== r.n.id ? docLink(r.n, content) : content}${moreHtml(r.n)}</div>`;
 }
 
 // A render while a rename is in progress replaces the input; the typed name and the
 // selection carry over, and the focusout from removing the old input doesn't commit it.
 let rendering = false;
+let linkGesture = false, renderPending = false;
 export function render() {
+    // A save must not replace the anchor between pointerdown and its native navigation.
+    if (linkGesture) { renderPending = true; return; }
     const q = filterText();
     const typing = tree.querySelector<HTMLInputElement>('.tree-rename');
     const draft = typing && { value: typing.value, start: typing.selectionStart, end: typing.selectionEnd };
@@ -153,14 +161,15 @@ export function render() {
     if (input) {
         input.focus();
         if (draft) { input.value = draft.value; input.setSelectionRange(draft.start, draft.end); } else input.select();
-    } else if (focusedRow) rowEl(focusedRow)?.focus();
-    const focus = rowEl(focusId ?? app.state.currentId);
-    if (focus) focus.tabIndex = 0; else (tree.querySelector('.tree-row') as HTMLElement | null)?.setAttribute('tabindex', '0');
+    } else if (focusedRow) focusTarget(rowEl(focusedRow))?.focus();
+    const focus = focusTarget(rowEl(focusId ?? app.state.currentId) ?? tree.querySelector<HTMLElement>('.tree-row'));
+    if (focus) focus.tabIndex = 0;
     renderCrumbs();
     renderUsage();
 }
 
 const rowEl = (id: string | null) => (id ? tree.querySelector<HTMLElement>(`.tree-row[data-id="${id}"]`) : null);
+const focusTarget = (row: HTMLElement | null) => row?.querySelector<HTMLAnchorElement>('.tree-link') ?? row;
 const rowNode = (el: Element | null) => app.node((el?.closest('.tree-row') as HTMLElement | null)?.dataset.id ?? null);
 
 function renderCrumbs() {
@@ -215,7 +224,7 @@ async function finishRename(commit: boolean) {
     renaming = null;
     if (id && input && commit) await app.rename(id, input.value);
     render();
-    if (id) { focusId = id; rowEl(id)?.focus(); }
+    if (id) { focusId = id; focusTarget(rowEl(id))?.focus(); }
 }
 
 async function deleteNode(n: TreeNode) {
@@ -266,6 +275,7 @@ function menuFor(n: TreeNode): MenuEntry[] {
         { label: 'Download .md', icon: 'download', run: () => io.downloadDoc(n.id) },
         'separator',
         { label: 'Delete', icon: 'trash', danger: true, run: () => deleteNode(n) },
+        { hint: 'Shift + right-click for browser actions' },
     ];
 }
 
@@ -284,6 +294,24 @@ async function activate(n: TreeNode, row?: HTMLElement | null) {
     closeOverlay();
 }
 
+tree.addEventListener('pointerdown', (e) => {
+    if (!(e.target as HTMLElement).closest('.tree-link')) return;
+    linkGesture = true;
+    // Start the IDB write before a new tab reads this document, without canceling the gesture.
+    viewer.flush();
+});
+const endLinkGesture = () => {
+    if (!linkGesture) return;
+    // Native click/auxclick follows pointerup in the same task. Keep its anchor until then.
+    setTimeout(() => {
+        linkGesture = false;
+        if (renderPending) { renderPending = false; render(); }
+    }, 0);
+};
+document.addEventListener('pointerup', endLinkGesture);
+document.addEventListener('pointercancel', endLinkGesture);
+window.addEventListener('blur', endLinkGesture);
+
 tree.addEventListener('click', (e) => {
     const target = e.target as HTMLElement;
     if (target.closest('[data-new-doc]')) { newDoc(null); return; }
@@ -292,6 +320,10 @@ tree.addEventListener('click', (e) => {
     if (!n) return;
     if (target.closest('.tree-more')) { openMenu(target.closest('.tree-more')!, menuFor(n), `Actions for ${n.name}`); return; }
     if (target.closest('.tree-chevron') && n.kind === 'folder') { app.setOpen(n.id, !n.open); return; }
+    if (target.closest('.tree-link')) {
+        if (e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+        e.preventDefault();
+    }
     activate(n, target.closest<HTMLElement>('.tree-row'));
 });
 tree.addEventListener('dblclick', (e) => {
@@ -301,6 +333,8 @@ tree.addEventListener('dblclick', (e) => {
 tree.addEventListener('contextmenu', (e) => {
     const n = rowNode(e.target as HTMLElement);
     if (!n || renaming) return;
+    // Firefox bypasses this event for Shift + right-click. Other engines need this branch.
+    if (e.shiftKey && (e.target as HTMLElement).closest('.tree-link')) { closeMenu(); return; }
     e.preventDefault();
     openMenu({ x: e.clientX, y: e.clientY }, menuFor(n), `Actions for ${n.name}`);
 });
@@ -311,10 +345,19 @@ tree.addEventListener('keydown', (e) => {
         return;
     }
     const rows = [...tree.querySelectorAll<HTMLElement>('.tree-row')];
-    const el = (document.activeElement as HTMLElement)?.closest<HTMLElement>('.tree-row') ?? rows.find((r) => r.tabIndex === 0) ?? rows[0];
+    const el = (document.activeElement as HTMLElement)?.closest<HTMLElement>('.tree-row') ?? rows.find((r) => focusTarget(r)?.tabIndex === 0) ?? rows[0];
     const n = rowNode(el);
     if (!el || !n) return;
-    const go = (to: HTMLElement | undefined) => { if (!to) return; el.tabIndex = -1; to.tabIndex = 0; to.focus(); focusId = to.dataset.id ?? null; };
+    const go = (to: HTMLElement | undefined) => {
+        if (!to) return;
+        focusTarget(el)!.tabIndex = -1;
+        const target = focusTarget(to)!;
+        target.tabIndex = 0;
+        target.focus();
+        focusId = to.dataset.id ?? null;
+    };
+    // Let a focused link retain the browser's modified Enter behavior.
+    if ((e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) && e.key === 'Enter' && (e.target as HTMLElement).closest('.tree-link')) return;
     const i = rows.indexOf(el);
     switch (e.key) {
         case 'ArrowDown': e.preventDefault(); go(rows[i + 1]); break;
@@ -333,7 +376,7 @@ tree.addEventListener('keydown', (e) => {
         case 'Enter': case ' ': e.preventDefault(); activate(n, el); break;
         case 'F2': e.preventDefault(); startRename(n.id); break;
         case 'Delete': case 'Backspace': e.preventDefault(); deleteNode(n); break;
-        case 'ContextMenu': e.preventDefault(); openMenu(el, menuFor(n), `Actions for ${n.name}`); break;
+        case 'ContextMenu': e.preventDefault(); openMenu(focusTarget(el)!, menuFor(n), `Actions for ${n.name}`); break;
     }
 });
 tree.addEventListener('focusout', (e) => {
@@ -381,14 +424,14 @@ function clearDrop() {
 
 tree.addEventListener('dragstart', (e) => {
     const n = rowNode(e.target as HTMLElement);
-    if (!n || !e.dataTransfer) return;
+    if (!n || !e.dataTransfer || renaming || filterText()) { e.preventDefault(); return; }
     dragId = n.id;
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('application/x-mars-node', n.id);
     e.dataTransfer.setData('text/plain', n.name);
     rowEl(n.id)?.classList.add('dragging');
 });
-tree.addEventListener('dragend', () => { rowEl(dragId)?.classList.remove('dragging'); dragId = null; clearDrop(); });
+tree.addEventListener('dragend', () => { rowEl(dragId)?.classList.remove('dragging'); dragId = null; clearDrop(); endLinkGesture(); });
 tree.addEventListener('dragover', (e) => {
     const files = e.dataTransfer?.types.includes('Files');
     if (!dragId && !files) return;
@@ -406,6 +449,7 @@ tree.addEventListener('dragover', (e) => {
 tree.addEventListener('dragleave', (e) => { if (!tree.contains(e.relatedTarget as Node)) clearDrop(); });
 tree.addEventListener('drop', async (e) => {
     e.preventDefault();
+    endLinkGesture();
     const drop = dropTarget(e);
     clearDrop();
     if (dragId) {

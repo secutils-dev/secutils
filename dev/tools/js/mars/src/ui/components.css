@@ -59,6 +59,12 @@ body.sb-collapsed .mars-sidebar { display: none; }
 .tree-row[aria-selected="true"] { background: var(--brand-select); color: var(--eui-heading); font-weight: 500; }
 .tree-row[aria-selected="true"]::before { content: ''; position: absolute; left: 0; top: 6px; bottom: 6px; width: 3px; border-radius: 2px; background: var(--brand); }
 .tree-row:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.tree-row:has(.tree-link:focus-visible) { outline: 2px solid var(--focus); outline-offset: -2px; }
+.tree-row:has(> .tree-link) { padding-left: 0; }
+.tree-link { display: flex; align-items: center; gap: 6px; align-self: stretch; flex: 1; min-width: 0; padding-left: calc(6px + var(--depth, 0) * 16px); color: inherit; text-decoration: none; outline: none; }
+.tree-row.result .tree-link { flex-wrap: wrap; padding-left: 6px; row-gap: 2px; }
+.tree-row.result:has(> .tree-link) { flex-wrap: nowrap; }
+.tree-row.result:has(> .tree-link) .tree-more { align-self: flex-start; }
 .tree-row .tree-chevron { width: 16px; height: 16px; display: inline-flex; color: var(--text-muted); }
 .tree-row .tree-chevron.leaf { visibility: hidden; }
 .tree-row .tree-icon { color: var(--text-muted); }
@@ -125,6 +131,8 @@ body.sb-collapsed .mars-sidebar { display: none; }
 /* Context menus and popovers (EuiContextMenu / EuiPopover) */
 .mars-menu { position: fixed; z-index: 160; min-width: 200px; max-width: calc(100vw - 16px); }
 .mars-menu[hidden] { display: none; }
+.mars-menu-hint { margin: 4px 6px 2px; padding-top: 6px; border-top: 1px solid var(--eui-border); color: var(--text-muted); font-size: 11px; }
+@media (hover: none) { .mars-menu-hint { display: none; } }
 .share-menu { min-width: 300px; }
 .share-ttl { padding: 0 10px 0 36px; }
 

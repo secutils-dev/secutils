@@ -36,9 +36,18 @@ export default defineConfig({
     {
       name: 'firefox',
       testMatch: '**/{mars,md}.spec.ts',
-      grep: /source selection|admonition selection|app identity|Mermaid navigation|preview links|block controls|list dragging|reading width/,
+      grep: /source selection|admonition selection|app identity|Mermaid navigation|preview links|block controls|list dragging|reading width|native document links/,
       use: {
         ...devices['Desktop Firefox'],
+        viewport: { width: 1280, height: 800 },
+      },
+    },
+    {
+      name: 'webkit',
+      testMatch: '**/mars.spec.ts',
+      grep: /native document links/,
+      use: {
+        ...devices['Desktop Safari'],
         viewport: { width: 1280, height: 800 },
       },
     },

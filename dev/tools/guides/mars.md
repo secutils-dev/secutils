@@ -18,6 +18,11 @@ It is promoted like any tool, linked by that host. In-app URLs derive from `loca
   Reusable primitives and glyphs live in `shared/` ([design-system.md](design-system.md)). The brand ramp
   (`--mars-*`, `--brand*`) follows the logo and lives in `js/mars/src/ui/tokens.css`. The logo artwork lives in
   `mars/assets/`; the header mark and data-URI favicons in `mars.html` are copies of it.
+- **Sidebar links**: documents and search results contain real anchors to `#doc=<id>`. Ordinary right-click opens MARS
+  actions. Shift + right-click exposes the browser link menu. Modified clicks retain browser navigation.
+  The action button and rename input stay outside the anchor. The link is the document's keyboard focus target.
+  Pointer navigation flushes pending edits and defers tree replacement until the gesture finishes.
+  Links require the same browser profile. Private-window storage and native split-view availability belong to the browser.
 - **Viewer**: `js/mars/src/doc/viewer.js` is a copy of `md.html`'s live script, minus HTML/PDF export, the HTML view, and
   fragment autosave; `viewer.d.ts` is its host API. A fix to rendering, block editing, formatting, or comments in
   either file lands in both: after porting, diff the shared sections of the two scripts. The "Review changes hooks"
