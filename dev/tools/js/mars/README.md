@@ -38,6 +38,9 @@ The edit preserves source indentation, list markers, and text outside the select
 Regular list items support manual strikethrough through the selection toolbar.
 These edits support undo and redo.
 
+All five selection styles work in GitHub alert bodies, including nested blockquotes.
+Formatting preserves alert directives and quote prefixes. Generated alert titles offer **Comment** only.
+
 The reading width in **Options** persists in browser storage.
 Reloads and new tabs restore the selected width, including full and custom widths.
 

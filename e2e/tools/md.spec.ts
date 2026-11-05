@@ -8,7 +8,7 @@ import { assertSeoBasics, assertSkillMd, getTool } from './_helpers';
 import { blockInteractionTests } from './_markdown_blocks';
 import { LINK_MARKDOWN, previewLinkTests } from './_markdown_links';
 import { readingWidthTests } from './_markdown_reading_width';
-import { listItemTests, selectionToolbarTests, sourceSelectionTests } from './_markdown_selection';
+import { alertSelectionTests, listItemTests, selectionToolbarTests, sourceSelectionTests } from './_markdown_selection';
 import { mermaidNavigationTests } from './_mermaid_navigation';
 
 const tool = getTool('md');
@@ -73,6 +73,12 @@ test.describe(`${tool.name} (${tool.path})`, () => {
   });
 
   selectionToolbarTests(async (page, markdown) => {
+    await page.goto(tool.path);
+    await setMarkdown(page, markdown);
+    await expect(page.locator('#previewArticle p').first()).toHaveText('Plain words here.');
+  });
+
+  alertSelectionTests(async (page, markdown) => {
     await page.goto(tool.path);
     await setMarkdown(page, markdown);
     await expect(page.locator('#previewArticle p').first()).toHaveText('Plain words here.');

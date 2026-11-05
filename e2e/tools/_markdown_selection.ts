@@ -125,6 +125,178 @@ export function selectionToolbarTests(load: (page: Page, markdown: string) => Pr
   }
 }
 
+export function alertSelectionTests(load: (page: Page, markdown: string) => Promise<void>) {
+  const source = (page: Page) =>
+    page.evaluate(() => (window as unknown as { __suEditorAPI: { getText(): string } }).__suEditorAPI.getText());
+  const formats = [
+    { name: 'Bold', marker: '**', tag: 'strong' },
+    { name: 'Italic', marker: '*', tag: 'em' },
+    { name: 'Strikethrough', marker: '~~', tag: 'del' },
+    { name: 'Highlight', marker: '==', tag: 'mark.su-hl' },
+    { name: 'Inline code', marker: '`', tag: 'code' },
+  ];
+
+  test.describe('admonition selection', () => {
+    for (const type of ['NOTE', 'TIP', 'IMPORTANT', 'WARNING', 'CAUTION']) {
+      test(`all quick styles toggle on the ${type} body without changing its title`, async ({ page }) => {
+        const text = 'Copy only the public draft into GitHub. Keep private planning links out.';
+        const md = `Plain words here.\n\n> [!${type}]\n> ${text}\n\nKeep this paragraph.\n`;
+        await load(page, md);
+        const alert = page.locator('#previewArticle .markdown-alert');
+        const body = alert.locator('p:not(.markdown-alert-title)');
+        await expect(body).toHaveText(text);
+        await body.evaluate((element) => {
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          getSelection()!.removeAllRanges();
+          getSelection()!.addRange(range);
+        });
+        for (const { name, marker, tag } of formats) {
+          const button = page.locator('#formatBar').getByRole('button', { name, exact: true });
+          await button.click();
+          await expect.poll(() => source(page)).toBe(md.replace(text, `${marker}${text}${marker}`));
+          await expect(body.locator(tag)).toHaveText(text);
+          await expect(alert.locator('.markdown-alert-title')).toHaveText(type[0] + type.slice(1).toLowerCase());
+          await expect.poll(() => page.evaluate(() => getSelection()!.toString())).toBe(text);
+          await button.click();
+          await expect.poll(() => source(page)).toBe(md);
+        }
+      });
+    }
+
+    for (const prefix of ['>', '> >']) {
+      test(`wrapped quoted content preserves quote prefixes (${prefix}) and supports undo`, async ({ page }) => {
+        const text = '**Review item.** Read `config.ts`.\n' + `${prefix} Keep this continuation.`;
+        const md = `Plain words here.\n\n${prefix} [!CAUTION]\n${prefix} ${text}\n${prefix}\n${prefix} Another paragraph.\n\nUntouched.\n`;
+        await load(page, md);
+        const body = page.locator('#previewArticle .markdown-alert p:not(.markdown-alert-title)').first();
+        await expect(body).toContainText('Keep this continuation.');
+        await body.evaluate((element) => {
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          getSelection()!.removeAllRanges();
+          getSelection()!.addRange(range);
+        });
+        const selected = await page.evaluate(() => getSelection()!.toString());
+        for (const { name, marker, tag } of formats.filter((format) => format.tag !== 'code')) {
+          const button = page.locator('#formatBar').getByRole('button', { name, exact: true });
+          await button.click();
+          // Bold merges the existing run into one; other styles keep its markers.
+          const inner = tag === 'strong' ? text.replace(/\*\*/g, '') : text;
+          const expected = md.replace(text, `${marker}${inner}${marker}`);
+          await expect.poll(() => source(page)).toBe(expected);
+          await expect(body.locator(tag)).toContainText('Keep this continuation.');
+          await expect.poll(() => page.evaluate(() => getSelection()!.toString())).toBe(selected);
+          await page.keyboard.press('ControlOrMeta+z');
+          await expect.poll(() => source(page)).toBe(md);
+          await page.keyboard.press('ControlOrMeta+Shift+z');
+          await expect.poll(() => source(page)).toBe(expected);
+          await page.keyboard.press('ControlOrMeta+z');
+          await expect.poll(() => source(page)).toBe(md);
+          // Undo clears the browser selection when replacing the preview.
+          await body.evaluate((element) => {
+            const range = document.createRange();
+            range.selectNodeContents(element);
+            getSelection()!.removeAllRanges();
+            getSelection()!.addRange(range);
+          });
+        }
+      });
+    }
+
+    test('partial selections in later paragraphs stack styles and keep repeated titles in the body', async ({
+      page,
+    }) => {
+      const md =
+        'Plain words here.\n\n> [!CAUTION]\n> Caution: Keep this paragraph.\n>\n> Caution: Keep private planning links out.\n';
+      await load(page, md);
+      const body = page.locator('#previewArticle .markdown-alert p:not(.markdown-alert-title)').nth(1);
+      await expect(body).toHaveText('Caution: Keep private planning links out.');
+      await body.evaluate((element) => {
+        const node = element.firstChild as Text;
+        const from = node.data.indexOf('private planning links');
+        getSelection()!.setBaseAndExtent(node, from, node, from + 'private planning links'.length);
+      });
+      const bar = page.locator('#formatBar');
+      for (const [name, replacement] of [
+        ['Highlight', '==private planning links=='],
+        ['Strikethrough', '~~==private planning links==~~'],
+        ['Highlight', '~~private planning links~~'],
+        ['Strikethrough', 'private planning links'],
+      ]) {
+        await bar.getByRole('button', { name, exact: true }).click();
+        await expect.poll(() => source(page)).toBe(md.replace('private planning links', replacement));
+        await expect.poll(() => page.evaluate(() => getSelection()!.toString())).toBe('private planning links');
+      }
+    });
+
+    test('wrapped inline code preserves nested quote markers rather than rendering them', async ({ page }) => {
+      const text = 'Read the public draft.\n> > Keep private links out.';
+      const md = `Plain words here.\n\n> > [!NOTE]\n> > ${text}\n`;
+      await load(page, md);
+      const body = page.locator('#previewArticle .markdown-alert p:not(.markdown-alert-title)');
+      await expect(body).toContainText('Keep private links out.');
+      await body.evaluate((element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        getSelection()!.removeAllRanges();
+        getSelection()!.addRange(range);
+      });
+      const button = page.locator('#formatBar').getByRole('button', { name: 'Inline code', exact: true });
+      await button.click();
+      await expect.poll(() => source(page)).toBe(md.replace(text, '`' + text + '`'));
+      await expect(body.locator('code')).toHaveText('Read the public draft. Keep private links out.');
+      await expect
+        .poll(() => page.evaluate(() => getSelection()!.toString()))
+        .toBe('Read the public draft. Keep private links out.');
+      await button.click();
+      await expect.poll(() => source(page)).toBe(md);
+    });
+
+    test('same-line directives and compact nested quote prefixes stay outside the selected body', async ({ page }) => {
+      const md = 'Plain words here.\n\n>>[!caution] Caution stays useful.\n>>Keep this continuation.\n';
+      await load(page, md);
+      const body = page.locator('#previewArticle .markdown-alert p:not(.markdown-alert-title)');
+      await expect(body).toContainText('Caution stays useful.');
+      await body.evaluate((element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        getSelection()!.removeAllRanges();
+        getSelection()!.addRange(range);
+      });
+      const button = page.locator('#formatBar').getByRole('button', { name: 'Strikethrough', exact: true });
+      await button.click();
+      const expected = md.replace(
+        'Caution stays useful.\n>>Keep this continuation.',
+        '~~Caution stays useful.\n>>Keep this continuation.~~',
+      );
+      await expect.poll(() => source(page)).toBe(expected);
+      await button.click();
+      await expect.poll(() => source(page)).toBe(md);
+    });
+
+    test('generated titles and selections crossing a title offer only Comment', async ({ page }) => {
+      const md = 'Plain words here.\n\n> [!CAUTION]\n> Keep this body.\n';
+      await load(page, md);
+      const alert = page.locator('#previewArticle .markdown-alert');
+      await expect(alert).toBeVisible();
+      for (const selector of ['.markdown-alert-title', '.markdown-alert']) {
+        await page.locator(`#previewArticle ${selector}`).evaluate((element) => {
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          getSelection()!.removeAllRanges();
+          getSelection()!.addRange(range);
+        });
+        const bar = page.getByRole('toolbar', { name: 'Format selection' });
+        await expect(bar).toBeVisible();
+        await expect(bar.getByRole('button')).toHaveCount(1);
+        await expect(bar.getByRole('button', { name: 'Comment', exact: true })).toBeVisible();
+        await expect.poll(() => source(page)).toBe(md);
+      }
+    });
+  });
+}
+
 export function listItemTests(load: (page: Page, markdown: string) => Promise<void>) {
   const source = (page: Page) =>
     page.evaluate(() => (window as unknown as { __suEditorAPI: { getText(): string } }).__suEditorAPI.getText());

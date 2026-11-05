@@ -153,6 +153,8 @@ as a 4-byte little-endian u32 → base64url without padding.
 - Diagram views last until the reader opens a document or reloads the page. Shared links do not store these views.
 - **Pause indexing** survives reloads and pauses all MARS tabs in the same browser. **Resume indexing** resumes those tabs. Search still uses the stored index while paused.
 - Selection formatting works across wrapped lines within one list paragraph and preserves source indentation.
+- **Bold**, **Italic**, **Strikethrough**, **Highlight**, and **Inline code** work in GitHub alert bodies, including nested blockquotes.
+  Formatting preserves alert directives and quote prefixes. Generated alert titles offer **Comment** only.
 - Block controls stay in a separate left gutter at every reading width. Hovering over left-side block whitespace also shows them.
 - The reading width in **Options** persists across reloads and new tabs, including full and custom widths.
 - Between-item gaps keep the adjacent item's controls active, including in nested lists.

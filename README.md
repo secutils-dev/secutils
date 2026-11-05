@@ -57,6 +57,8 @@ Block controls stay in a reserved left gutter and also activate over left-side w
 Whitespace between list items keeps the adjacent item's controls active.
 Both apps restore the selected reading width after reload, including full and custom widths.
 List dragging works past multiline items and renumbers ordered-list source from its original starting number.
+All five selection styles work in GitHub alert bodies and preserve quote prefixes in both apps.
+Generated alert titles offer **Comment** only.
 
 ## Private MARS telemetry
 

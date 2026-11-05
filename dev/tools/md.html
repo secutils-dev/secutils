@@ -3148,6 +3148,9 @@ const FORMATS = {
     highlight: { tag: 'mark.su-hl', markers: ['=='] },
     code: { tag: 'code', markers: ['`'] },
 };
+const FORMAT_IGNORED = '.su-anchor, .markdown-alert-title';
+const QUOTE_PREFIX_RE = /^(?: {0,3}>[ \t]?)+/gm;
+const QUOTE_ALERT_RE = /^(?: {0,3}>[ \t]?)+\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\][ \t]*/gim;
 let selectingWithMouse = false;
 let formatTimer;
 let pendingSelection = null;
@@ -3161,18 +3164,29 @@ function selectionTarget() {
     const el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
     const block = el?.closest(BLOCK_TARGET);
     if (!block || !els.previewArticle.contains(block) || el.closest('pre, .katex, .su-diagram, .su-mermaid, .su-anchor')) return null;
+    // Alert titles are generated from the directive, not editable source text.
+    if ([...block.querySelectorAll('.markdown-alert-title')].some((title) => range.intersectsNode(title))) return null;
     const text = range.toString().trim();
     return text ? { range, el, block, text } : null;
 }
 
-// Rendered text of `block` up to a boundary point, without heading anchors.
+const formatTextNode = (node, root) => {
+    const parent = node.parentElement ?? root;
+    return !parent.closest(FORMAT_IGNORED)
+        && (node.nodeValue.trim() || !parent.matches('.su-block, blockquote, ul, ol'));
+};
+
+// Rendered text of `block` up to a boundary point, without generated labels or layout whitespace.
 function renderedText(block, container = block, offset = block.childNodes.length) {
     const range = document.createRange();
     range.setStart(block, 0);
     range.setEnd(container, offset);
     const frag = range.cloneContents();
-    for (const anchor of frag.querySelectorAll('.su-anchor')) anchor.remove();
-    return frag.textContent;
+    for (const generated of frag.querySelectorAll(FORMAT_IGNORED)) generated.remove();
+    const walker = document.createTreeWalker(frag, NodeFilter.SHOW_TEXT);
+    let text = '';
+    for (let node; (node = walker.nextNode());) if (formatTextNode(node, block)) text += node.nodeValue;
+    return text;
 }
 
 function inlineText(md) {
@@ -3189,6 +3203,11 @@ function inlineText(md) {
 function selectionSourceRange({ range, block }, fits) {
     const [start, end] = blockRange(block);
     const raw = markdown.slice(start, end);
+    const quoted = !!block.querySelector(':scope > blockquote');
+    // Mask quote syntax without moving offsets, including the removed alert directive.
+    const mask = (s) => '\0'.repeat(s.length);
+    const source = quoted ? raw.replace(QUOTE_ALERT_RE, mask).replace(QUOTE_PREFIX_RE, mask) : raw;
+    const sourceText = (s) => inlineText(quoted ? s.replace(QUOTE_PREFIX_RE, '') : s);
     const text = renderedText(block);
     let rs = renderedText(block, range.startContainer, range.startOffset).length;
     let re = renderedText(block, range.endContainer, range.endOffset).length;
@@ -3201,7 +3220,7 @@ function selectionSourceRange({ range, block }, fits) {
     const prefix = block.matches('li') ? raw.match(LIST_ITEM_RE)?.[0].length ?? 0 : 0;
     for (let i = 0, j = prefix; i < text.length; i++) {
         space.lastIndex = j;
-        const k = /\s/.test(text[i]) ? (space.exec(raw)?.index ?? -1) : raw.indexOf(text[i], j);
+        const k = /\s/.test(text[i]) ? (space.exec(source)?.index ?? -1) : source.indexOf(text[i], j);
         map.push(k);
         if (k >= 0) j = k + 1;
     }
@@ -3211,13 +3230,14 @@ function selectionSourceRange({ range, block }, fits) {
     // List continuations lose their indentation in the preview; compare visible whitespace,
     // but keep the original source offsets so formatting preserves every untouched byte.
     const normalize = (s) => s.replace(/\s+/g, ' ').trim();
-    const renders = (s, e) => normalize(inlineText(raw.slice(s, e))) === normalize(covered(s, e));
+    const renders = (s, e) => source[s] !== '\0' && source[e - 1] !== '\0'
+        && normalize(sourceText(raw.slice(s, e))) === normalize(covered(s, e));
     const widen = (s, e) => {
         const mapped = new Set(map);
         // ponytail: widening stops at 16 unrendered characters per side, enough for nested markers.
         let lo = s, hi = e;
-        while (lo > 0 && s - lo < 16 && !mapped.has(lo - 1)) lo--;
-        while (hi < raw.length && hi - e < 16 && !mapped.has(hi)) hi++;
+        while (lo > 0 && s - lo < 16 && !mapped.has(lo - 1) && source[lo - 1] !== '\0') lo--;
+        while (hi < raw.length && hi - e < 16 && !mapped.has(hi) && source[hi] !== '\0') hi++;
         let best = [s, e];
         for (let x = lo; x <= s; x++) {
             for (let y = hi; y >= e; y--) {
@@ -3265,7 +3285,7 @@ function restoreFormatSelection() {
     pendingSelection = null;
     const block = pending && els.previewArticle.querySelector(pending.selector);
     if (!block) return;
-    const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT, { acceptNode: (n) => (n.parentElement.closest('.su-anchor') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) });
+    const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT, { acceptNode: (n) => (formatTextNode(n, block) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT) });
     const points = [];
     for (let pos = 0, node; points.length < 4 && (node = walker.nextNode()); pos += node.length) {
         if (!points.length && pos + node.length > pending.start) points.push(node, pending.start - pos);
@@ -3309,8 +3329,16 @@ function applyFormat(kind) {
     let inner = '', pos = at;
     for (const [s, e] of cuts) { inner += markdown.slice(pos, s); pos = e; }
     inner += markdown.slice(pos, end);
+    // Inline-code conversion must not turn quote prefixes into literal code or drop them.
+    let codeText = text;
+    if (kind === 'code') {
+        const quoted = !!sel.block.querySelector(':scope > blockquote');
+        const prefixes = quoted ? [...text.matchAll(/\n((?: {0,3}>[ \t]?)+)/g)].map((m) => m[1]) : [];
+        codeText = inlineText(quoted ? text.replace(QUOTE_PREFIX_RE, '') : text)
+            .replace(/\n/g, () => `\n${prefixes.shift() ?? ''}`);
+    }
     // ponytail: rendered text containing a backtick needs a longer code fence.
-    editSource(at, end, wrapMarker(kind === 'code' ? inlineText(text) : inner, format.markers[0]), sel.block);
+    editSource(at, end, wrapMarker(kind === 'code' ? codeText : inner, format.markers[0]), sel.block);
 }
 
 const COARSE_POINTER = matchMedia('(pointer: coarse)');

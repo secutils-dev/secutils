@@ -18,6 +18,7 @@ test('source mapping and block controls match Markdown Preview', () => {
         ['const LIST_ITEM_RE', '// Keep the review open'],
         ['function renumberListItem', 'async function copyTarget'],
         ['// ---- Block handle', '// ---- Selection formatting toolbar'],
+        ['// ---- Selection formatting toolbar', '// ---- Review comments'],
     ]) assert.equal(section(viewer, start, end), section(md, start, end));
 });
 

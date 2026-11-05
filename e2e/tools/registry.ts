@@ -73,6 +73,7 @@ export const TOOLS: readonly Tool[] = [
   },
   {
     slug: 'md',
+    // All selection styles work in GitHub alert bodies; generated titles offer Comment only.
     // Reading width restores across reloads and new tabs, including full/custom widths and comment rails.
     // Block controls reserve a gutter and retain adjacent items in gaps; ordered moves renumber source.
     // Document links open in a new tab in Preview; fragment links still scroll locally.
@@ -88,6 +89,7 @@ export const TOOLS: readonly Tool[] = [
   },
   {
     slug: 'mars',
+    // All selection styles work in GitHub alert bodies; generated titles offer Comment only.
     // Reading width restores across reloads and new tabs, including full/custom widths and comment rails.
     // Block controls reserve a gutter and retain adjacent items in gaps; ordered moves renumber source.
     // Document links open in a new tab in Preview; fragment links still scroll locally.
