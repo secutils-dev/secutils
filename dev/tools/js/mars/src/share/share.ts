@@ -6,7 +6,6 @@ import { ancestors, descendants, textBytes, type TreeNode } from '../tree/model.
 import { $, copyRich, esc, modal } from '../ui/ui.ts';
 import * as viewer from '../doc/viewer.js';
 import { type Bundle, decodeState, deriveShortLink, encodeState, fromBase64Url, hashText, openSealed, parseBundle, sealBundle, SHORT_MAX_CHARS, toBase64Url } from './codec.ts';
-import { downloadDoc } from '../io/io.ts';
 import { joinComments, mergeDocuments, openThreads, splitComments, type Thread } from './merge.ts';
 import { matchScore } from './match.ts';
 
@@ -181,11 +180,6 @@ $('shortTtl').addEventListener('click', (e) => {
 });
 $('copyShortLinkBtn').addEventListener('click', () => { hideMenu(); if (app.state.currentId) copyNodeLink(app.state.currentId, 'short'); });
 $('copyFullLinkBtn').addEventListener('click', () => { hideMenu(); if (app.state.currentId) copyNodeLink(app.state.currentId, 'full'); });
-$('downloadMdBtn').addEventListener('click', async () => {
-    hideMenu();
-    await viewer.flush();
-    if (app.state.currentId) downloadDoc(app.state.currentId);
-});
 $('copySlackBtn').addEventListener('click', async () => {
     hideMenu();
     const data = currentBundle().then(async ({ id, bundle }) => {

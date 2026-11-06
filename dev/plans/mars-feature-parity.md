@@ -2,7 +2,8 @@
 
 Date: 2026-11-05
 Status: Phase 0 implemented, deployed, and checked. Manual browser-chrome checks remain pending.
-Phases 1–3 are planned, not implemented.
+Phase 1 is implemented and deployed. Manual system print/save checks remain pending.
+Phases 2–3 are planned, not implemented.
 
 ## Goal and scope
 
@@ -195,13 +196,11 @@ Keep folder ZIP export and folder export to disk unchanged.
 ### Desktop layout
 
 ```text
-┌ Export document                                      [Close] ┐
-│ Document name                                               │
-│ [ HTML ] [ PDF ]                                            │
+┌ Export “Document name”                                [Close] ┐
 ├─────────────────────────┬───────────────────────────────────┤
-│ Format-specific settings│ Output preview                    │
-│                         │                                   │
-│ More settings ▸         │ Rendered document or PDF pages    │
+│     [ HTML ] [ PDF ]     │ Output preview                    │
+│ Format-specific settings│                                   │
+│ All settings visible    │ Rendered document or PDF pages    │
 │                         │                                   │
 ├─────────────────────────┴───────────────────────────────────┤
 │ Download Markdown       Close   Copy HTML   Download HTML   │
@@ -212,7 +211,9 @@ The PDF tab replaces the HTML actions with `Print / Save PDF`.
 The browser print dialog supplies Save as PDF and printer selection.
 MARS does not claim that it downloads PDF bytes directly or knows whether the user saved the file.
 
-Use a wide dialog with a compact settings column and a flexible preview column.
+Use a dialog that occupies most of the viewport, with a compact settings column and a flexible preview column.
+Center the format tabs above the settings column.
+Use the document name in the main heading, without a separate name subtitle.
 Keep the action footer visible while the dialog body scrolls.
 Use shared tokens, fields, buttons, tabs, and dialog styling.
 Use a dedicated export dialog instead of expanding the small generic confirmation modal.
@@ -239,16 +240,15 @@ Avoid horizontal scrolling as the normal way to reach export actions.
 
 ### HTML settings
 
-The first view exposes reading width and table of contents.
-An initially collapsed `More settings` section contains the three additional choices.
+List all five HTML settings together, without a disclosure section.
 
 | Setting | Default | Placement |
 | --- | --- | --- |
 | Reading width | Current MARS reading width | Main settings |
 | Table of contents | On | Main settings |
-| In-page find | On | More settings |
-| PDF action in exported HTML | On | More settings |
-| Embed Markdown source | Off | More settings |
+| In-page find | On | Main settings |
+| PDF action in exported HTML | On | Main settings |
+| Embed Markdown source | Off | Main settings |
 
 Reading width retains Comfortable, Wide, Full width, and Custom.
 The custom range remains 320–2400px.
@@ -409,7 +409,7 @@ After a print request, use print-specific feedback without claiming that a PDF f
 
 - The toolbar gains one Export control and no additional permanent format toggles.
 - HTML and PDF settings remain separate from the document gear.
-- A standard export works without opening More settings.
+- All HTML settings remain directly available.
 - HTML preview and downloaded HTML match the same prepared document.
 - PDF preview and print output use the same page preparation.
 - HTML, Copy HTML, PDF, and Markdown actions work for the current document.
@@ -420,6 +420,78 @@ After a print request, use print-specific feedback without claiming that a PDF f
 - Cancellation and superseded preparations cannot trigger stale downloads or print requests.
 - Desktop, phone, both themes, keyboard focus, and reduced-motion checks pass.
 - Export from document fullscreen remains visible and usable.
+
+### Phase 1 implementation record (2026-11-06)
+
+The implementation adds one Export control and a dedicated native dialog.
+The dialog uses 94% of the desktop viewport, with centered format tabs above the settings column.
+All HTML settings appear together, and the document name appears only in the main heading.
+PDF pages intentionally remain white in both MARS themes.
+HTML, Copy HTML, PDF preparation, and Markdown download use an immutable document snapshot.
+Document action menus can export a non-current document without changing the selection.
+Settings drafts commit to `mars.exportSettings` after an output action.
+The Share menu no longer contains Markdown download.
+Folder exports and the IndexedDB schema remain unchanged.
+
+The new `src/export/` modules own the workspace and standalone output.
+`src/doc/diagrams.js` supplies the shared map/model runtime through an explicit module boundary.
+The build compiles standalone reader and print runtimes to inline source strings.
+HTML needs no additional external export library.
+Paged.js 0.4.3 loads only when PDF pagination is needed, including through the PDF action in standalone HTML.
+Later preparations use the browser HTTP cache.
+The HTML preview does not fetch Paged.js.
+
+Both previews use opaque sandboxed frames without `allow-same-origin`.
+Their message bridge checks the current source window and operation identifier.
+PDF readiness follows explicit pagination completion after required images and fonts are ready.
+Print actions reuse prepared pages and do not repeat model processing or pagination.
+The print frame also provides a directly activated print control.
+Screen scaling runs after Paged.js processes the print styles and is disabled for printing.
+Cancellation disposes frames and listeners, stops export model workers, and ignores superseded results.
+
+Local checks:
+
+- MARS unit tests: 36 passed.
+- Type checking, build, and deploy-equivalent preview build: passed.
+- Full MARS and export browser suites: 169 passed, 2 skipped across Chromium, Firefox, and WebKit.
+- Final export-only suite: 58 passed, 2 skipped after the standalone-reader PDF and print-media checks were added.
+- After the export workspace UX review: full suites passed 172 cases, with the same 2 GPU cases skipped.
+- The skipped cases require Chromium's software GPU for color-pixel assertions.
+- Offline map and STL files, complete Mermaid SVGs, and sandboxed PDF pages passed in all three engines.
+- Saved 3MF views and color PNGs passed in Chromium, including actual offline HTML files.
+- A4, Letter, Portrait, and Landscape page-dimension checks passed in all three engines.
+- Shared ECHO/Webhook UI suites: 66 passed across the three engines.
+- Responder smoke tests: 20 passed. Shared-asset unit tests: 6 passed.
+- Affected Markdown Preview rendering/export cases: 8 passed.
+- Shared reading-width cases and the Markdown Preview width/export case: 10 passed across Chromium and Firefox.
+- E2E lint, tools verification, and repository tools checks: passed.
+- Marketing-site synchronization: skipped because `SECUTILS_TOOLS_PROMO_HOME_INDEX` is not set.
+
+The initial full run found ambiguous test locators for reading-width fields.
+The shared helper now scopes them to the document options popover.
+The full suite passed after this change.
+
+Automated print cases intercept the print request instead of opening a system dialog.
+Real print/save output still needs manual checks in supported desktop browsers.
+Searchable PDF text, saved page dimensions, page numbers, diagram completeness, and model colors remain part of that manual gate.
+Deployment (2026-11-06):
+
+```bash
+make deploy-tools ARGS=mars
+```
+
+The deployment published MARS, its companion skill, and the four tools-host discovery aggregates.
+The application is live at <https://mars.secutils.dev/>.
+The deployed MARS bundle matches the checked local build byte-for-byte.
+Its SHA-256 is `f44008ad15af30f7bc1a75b5f70e94ded17386f68c99c6019c5b28ba12924bda`.
+The live response retains COOP `same-origin` and COEP `credentialless`.
+Post-deploy browser checks passed: 172 cases across Chromium, Firefox, and WebKit, with the same 2 GPU cases skipped.
+
+```bash
+make e2e-tools-test ARGS="mars.spec.ts mars-export.spec.ts --workers=3"
+```
+
+URL-import unification, PDF Extractor handoffs, and retirement work remain outside Phase 1.
 
 ## Phase 2: Consistent URL import and source reopening
 
@@ -513,13 +585,14 @@ Do not run deployment targets without a deployment request.
 - [x] Shift + right-click leaves document-link context menus uncanceled.
 - [x] Native normal-tab/window navigation opens the same stored document in Chromium and Firefox.
 - [ ] Manual Safari/Edge native menu contents and browser split-view commands checked.
-- [ ] The main toolbar gains only one Export control.
-- [ ] The export workspace separates HTML and PDF settings.
-- [ ] The actual output previews remain isolated from the MARS library.
-- [ ] HTML download, Copy HTML, PDF printing, and Markdown download work.
-- [ ] Exported HTML retains reader controls and interactive maps/models.
-- [ ] PDF retains readable vector text, diagrams, and colored model snapshots.
-- [ ] Export preparation leaves the source, threads, and saved views unchanged.
+- [x] The main toolbar gains only one Export control.
+- [x] The export workspace separates HTML and PDF settings.
+- [x] The actual output previews remain isolated from the MARS library.
+- [x] HTML download, Copy HTML, Markdown download, and automated PDF print requests work.
+- [ ] Manual system printing and saved PDF output pass the desktop-browser gate.
+- [x] Exported HTML retains reader controls and interactive maps/models.
+- [x] PDF previews retain readable vector text, diagrams, and colored model snapshots.
+- [x] Export preparation leaves the source, threads, and saved views unchanged.
 - [ ] URL form and query imports use consistent extraction and naming.
 - [ ] Exported embedded source reopens as editable Markdown.
 - [ ] PDF Extractor can hand its useful output to MARS.

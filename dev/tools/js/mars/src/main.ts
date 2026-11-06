@@ -4,6 +4,7 @@ import * as viewer from './doc/viewer.js';
 import * as app from './app.ts';
 import './sidebar/sidebar.ts';
 import './doc/changes.ts';
+import './export/dialog.ts';
 import * as share from './share/share.ts';
 import * as io from './io/io.ts';
 import * as db from './store/db.ts';

@@ -10,6 +10,7 @@ import { onUpdate, smartMatches, textMatches } from '../search/search.ts';
 import * as io from '../io/io.ts';
 import * as share from '../share/share.ts';
 import * as db from '../store/db.ts';
+import { openExport } from '../export/dialog.ts';
 
 const tree = $('tree');
 const filterInput = $<HTMLInputElement>('sbFilter');
@@ -273,6 +274,7 @@ function menuFor(n: TreeNode): MenuEntry[] {
         { label: 'Copy short link', icon: 'link', run: () => share.copyNodeLink(n.id, 'short') },
         { label: 'Copy full link', icon: 'documents', run: () => share.copyNodeLink(n.id, 'full') },
         { label: 'Download .md', icon: 'download', run: () => io.downloadDoc(n.id) },
+        { label: 'Export…', icon: 'download', disabled: n.size === 0, run: () => openExport(n.id) },
         'separator',
         { label: 'Delete', icon: 'trash', danger: true, run: () => deleteNode(n) },
         { hint: 'Shift + right-click for browser actions' },

@@ -23,11 +23,20 @@ It is promoted like any tool, linked by that host. In-app URLs derive from `loca
   The action button and rename input stay outside the anchor. The link is the document's keyboard focus target.
   Pointer navigation flushes pending edits and defers tree replacement until the gesture finishes.
   Links require the same browser profile. Private-window storage and native split-view availability belong to the browser.
-- **Viewer**: `js/mars/src/doc/viewer.js` is a copy of `md.html`'s live script, minus HTML/PDF export, the HTML view, and
-  fragment autosave; `viewer.d.ts` is its host API. A fix to rendering, block editing, formatting, or comments in
+- **Viewer**: `js/mars/src/doc/viewer.js` is a copy of `md.html`'s live script, without its output UI or fragment autosave.
+  `viewer.d.ts` is its host API. Maps and models now use `src/doc/diagrams.js`, shared with standalone export runtimes.
+  A fix to rendering, block editing, formatting, or comments in
   either file lands in both: after porting, diff the shared sections of the two scripts. The "Review changes hooks"
   section of `viewer.js` (`onRendered`, `setThreadHooks`, `blockText`, `requote`, and the few call sites in
   `updatePreview`, `anchorThreads`, and the thread cards) is MARS-only and stays out of `md.html`.
+- **Export**: `src/export/` owns the HTML/PDF workspace. It captures one immutable document and shares export-safe rendering
+  across formats. HTML previews and downloads use the same output. PDF preview and printing use the same prepared pages.
+  Settings drafts remain separate from document state and commit to `mars.exportSettings` after an output action.
+  Reader and print runtimes compile separately to inline source strings. Paged.js loads only for PDF pagination.
+  Preview frames use opaque origins, with source-window and operation checks on messages.
+  Keep print-only CSS compatible with the Paged.js parser: expand heading selectors instead of using comma lists in `:is()`.
+  Add screen preview scaling after pagination, so Paged.js does not rewrite its media rules.
+  Read [the package export section](../js/mars/README.md#export-workspace) for lifecycle and network contracts.
 - **Incoming copies** (`share.updateExisting`): a link, a `mars` re-open, or a file from Open or a drop that matches a
   stored document by origin, by file handle (`isSameEntry`), or, after the reader confirms, by content
   (`share/match.ts`). The text is decided against `opened`: only the source changed takes it, only the stored copy
@@ -73,7 +82,7 @@ It is promoted like any tool, linked by that host. In-app URLs derive from `loca
    cached in a local browser profile).
 2. `npm run serve` builds the deploy-equivalent page and serves it at `http://localhost:7373/` and `/llms.txt`, with the
    responder script on an in-memory KV.
-3. From the root: `MARS_BASE_URL=http://localhost:7373 make e2e-tools-test ARGS=mars.spec.ts`.
+3. From the root: `MARS_BASE_URL=http://localhost:7373 make e2e-tools-test ARGS="mars.spec.ts mars-export.spec.ts"`.
 4. Run steps 2, 4, and 5 of "Change a tool" in [`../AGENTS.md`](../AGENTS.md); for a viewer change, also the affected
    `md.spec.ts` cases.
 5. After a deploy, `make e2e-tools-test ARGS=mars.spec.ts` (`MARS_BASE_URL` defaults to `https://mars.secutils.dev`).

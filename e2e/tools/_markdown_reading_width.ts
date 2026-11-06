@@ -7,9 +7,10 @@ export function readingWidthTests(load: (page: Page, markdown: string) => Promis
       await load(page, '# Reading layout\n\nA paragraph for the saved reading width.');
       await expect(page.locator('#previewArticle h1')).toContainText('Reading layout');
       const options = page.getByRole('button', { name: /^(Document options|Options)$/ });
+      const fields = page.locator('#optionsPopover');
       await options.click();
-      await page.getByLabel('Reading width', { exact: true }).selectOption(width);
-      if (width === 'custom') await page.getByLabel('Custom width (px)', { exact: true }).fill('980');
+      await fields.getByLabel('Reading width', { exact: true }).selectOption(width);
+      if (width === 'custom') await fields.getByLabel('Custom width (px)', { exact: true }).fill('980');
       const maxWidth = width === 'full' ? 'none' : width === 'custom' ? '980px' : '1100px';
       await expect(page.locator('#previewArticle')).toHaveCSS('max-width', maxWidth);
       await options.click();
@@ -18,9 +19,9 @@ export function readingWidthTests(load: (page: Page, markdown: string) => Promis
       await page.reload();
       await expect(page.locator('#previewArticle h1')).toContainText('Reading layout');
       await options.click();
-      await expect(page.getByLabel('Reading width', { exact: true })).toHaveValue(width);
+      await expect(fields.getByLabel('Reading width', { exact: true })).toHaveValue(width);
       await expect(page.locator('#previewArticle')).toHaveCSS('max-width', maxWidth);
-      if (width === 'custom') await expect(page.getByLabel('Custom width (px)', { exact: true })).toHaveValue('980');
+      if (width === 'custom') await expect(fields.getByLabel('Custom width (px)', { exact: true })).toHaveValue('980');
       const track = await page.evaluate(() => document.documentElement.style.getPropertyValue('--su-reading-track'));
       expect(track).toBe(width === 'full' ? '1fr' : maxWidth);
       await options.click();
@@ -51,7 +52,7 @@ export function readingWidthTests(load: (page: Page, markdown: string) => Promis
     await expect(page.locator('.cm-card')).toBeVisible();
     const options = page.getByRole('button', { name: /^(Document options|Options)$/ });
     await options.click();
-    await page.getByLabel('Reading width', { exact: true }).selectOption('full');
+    await page.locator('#optionsPopover').getByLabel('Reading width', { exact: true }).selectOption('full');
     await options.click();
     await expect(page).toHaveURL(/#.+/);
     await page.reload();

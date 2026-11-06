@@ -1,5 +1,7 @@
 // Host API of the ported md.html viewer (viewer.js).
 import type { Comment, Thread } from '../share/merge.ts';
+import type { ExportSnapshot } from '../export/snapshot.ts';
+import type { ReadingWidth } from '../export/settings.ts';
 
 export interface ViewerDoc {
     text: string;
@@ -29,6 +31,9 @@ export function endLoading(alert?: boolean): void;
 export function currentName(): string;
 export function currentText(): string;
 export function currentThreads(): Thread[];
+export function captureExportSnapshot(): Promise<ExportSnapshot>;
+export function exportReadingWidth(): ReadingWidth;
+export function renderExportBody(body: string, signal?: AbortSignal): Promise<string>;
 export function toast(msg: string, action?: { label: string; run: () => void }): void;
 
 // Review changes hooks (MARS only; md.html has none of these).

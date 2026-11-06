@@ -3,6 +3,24 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 
+// Compile the standalone module graphs to source strings, with all closures resolved.
+// Only these small runtimes are embedded; Paged.js remains an on-demand CDN dependency.
+const runtimes = new Map();
+const runtimePlugin = {
+    name: 'standalone-runtimes',
+    setup(builder) {
+        builder.onResolve({ filter: /^mars-runtime:(reader|print)$/ }, ({ path }) => ({ path: path.split(':')[1], namespace: 'runtime' }));
+        builder.onLoad({ filter: /.*/, namespace: 'runtime' }, async ({ path }) => {
+            if (!runtimes.has(path)) runtimes.set(path, build({
+                entryPoints: [`src/export/${path}-runtime.ts`], bundle: true, minify: true,
+                format: 'iife', target: 'es2023', write: false, loader: { '.css': 'text' }, plugins: [runtimePlugin],
+                legalComments: 'inline',
+            }).then((result) => result.outputFiles[0].text));
+            return { contents: `export default ${JSON.stringify(await runtimes.get(path))}`, loader: 'js' };
+        });
+    },
+};
+
 await build({
     entryPoints: ['src/main.ts'],
     bundle: true,
@@ -11,6 +29,7 @@ await build({
     target: 'es2023',
     outfile: 'dist/mars.js',
     loader: { '.css': 'text' },
+    plugins: [runtimePlugin],
     legalComments: 'inline',
     logLevel: 'warning',
 });

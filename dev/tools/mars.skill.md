@@ -19,6 +19,44 @@ the Markdown file as one trailing HTML comment that GitHub and other renderers
 hide, so an agent reads and writes them with ordinary file edits. The format is
 shared with the Secutils.dev Markdown Preview tool.
 
+## HTML, PDF, and Markdown output
+
+1. Open the document in MARS.
+2. Click **Export…** beside **Share**.
+3. For standalone reading output, select **HTML**.
+4. Use **Download HTML** or **Copy HTML** after the preview is ready.
+5. For PDF output, select **PDF** or press `Ctrl/Cmd+P`.
+6. Select A4 or Letter, with Portrait or Landscape orientation.
+7. Click **Print / Save PDF** after pagination is complete.
+8. In the browser print dialog, select Save as PDF or a printer.
+
+MARS does not download PDF bytes or detect whether the reader saved a file.
+**Download Markdown** in the export dialog retains frontmatter, line endings, and review threads.
+The Share menu keeps review handoffs and links.
+Document action menus can export another document without changing the current selection.
+
+The HTML tab lists reading width, table of contents, in-page find, a PDF action, and embedded Markdown source together.
+Export width remains separate from the MARS reading width.
+The PDF action in exported HTML uses the paper settings from the PDF tab.
+Embedded source is readable document-body text, without frontmatter or review threads.
+It is not a full backup.
+
+HTML and PDF exclude review threads and review marks.
+Both retain complete Mermaid SVGs and saved model views from fence metadata.
+HTML maps and models remain interactive without an external renderer.
+PDF uses vector text and static color images for WebGL models.
+PDF pages always use a light theme, independently of the MARS theme.
+Temporary viewer navigation does not change the saved model view.
+
+Paged.js loads only when PDF pagination is needed.
+HTML preview and Markdown download do not fetch it.
+Images, fonts, math styles, basemap tiles, and PDF pagination can require network access.
+An unavailable PDF dependency leaves HTML and Markdown downloads available.
+
+Export settings commit after an output action.
+Closing the dialog discards later draft changes.
+A document reload shows **Refresh preview**, while the current preview retains its captured version.
+
 ## Review threads
 
 The `su-comments` block is the last thing in the file, after a blank line:

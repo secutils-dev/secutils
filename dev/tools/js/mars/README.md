@@ -88,6 +88,52 @@ CodeMirror draws selection backgrounds below the text lines. The active-line tin
 translucent so it does not hide selected text. The gutter keeps its opaque background.
 The shared browser tests check painted selection pixels in Firefox and Chromium, in both themes.
 
+## Export workspace
+
+**Export…** opens a native dialog with HTML and PDF tabs.
+The heading identifies the document without a separate subtitle.
+The dialog uses most of the viewport, with the format tabs centered above the settings column.
+The HTML preview shows the same standalone document that **Copy HTML** and **Download HTML** use.
+HTML settings include reading width, table of contents, find, a PDF action, and optional embedded source.
+All HTML settings appear together, without a disclosure section.
+Export width does not change the reading width in MARS.
+Embedded source contains the document body, without frontmatter or review threads.
+**Download Markdown** retains the complete document, including frontmatter, line endings, and review threads.
+
+The PDF tab prepares pages for A4 or Letter, in Portrait or Landscape orientation.
+**Print / Save PDF** sends these prepared pages to the browser print dialog.
+MARS does not download PDF bytes or know whether the reader saved a file.
+`Ctrl/Cmd+P` opens this tab and exits document fullscreen first.
+Document action menus can export another document without changing the current selection.
+Folder ZIP exports and exports to disk remain unchanged.
+
+The dialog keeps an immutable snapshot and separate draft settings.
+An output action commits settings to `mars.exportSettings` (version 1).
+Closing the dialog discards later draft changes.
+A document reload shows **Refresh preview**, rather than replacing the snapshot silently.
+
+`src/export/` owns settings, snapshots, standalone output, and the dialog.
+The viewer commits a block edit and flushes storage through `captureExportSnapshot()`.
+`renderExportBody()` uses export-safe rendering without changing the current name or review threads.
+HTML and PDF share one render per snapshot, including saved model views and complete Mermaid SVGs.
+`src/doc/diagrams.js` supplies the shared map and model runtime.
+The build compiles reader and print runtimes separately, then embeds their source strings.
+
+Preview frames have opaque origins and no access to MARS storage or its DOM.
+Their message bridge checks both the source window and the operation identifier.
+Closing or replacing a preview disposes its frame and listeners.
+Cancellation stops export model workers and ignores superseded preparation results.
+
+Paged.js 0.4.3 loads from jsDelivr only when PDF pagination is needed.
+App startup, HTML preview, and Markdown download do not fetch it.
+Subsequent preparations use the browser HTTP cache.
+Exported maps and models need no external renderer, but basemap tiles, images, fonts, and math styles can need network access.
+PDF uses light styling, vector text, complete Mermaid diagrams, and static color images for WebGL models.
+The dialog follows the MARS theme, but PDF pages remain white in every theme.
+
+The export browser cases live in `e2e/tools/mars-export.spec.ts` and run against the deploy-equivalent local server.
+System print dialogs and saved PDF files still require manual browser checks.
+
 ## Search
 
 The sidebar search box matches document names, folder names, document text, and review

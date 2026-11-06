@@ -65,6 +65,13 @@ Shift + right-click a sidebar document for native browser link actions.
 Modified clicks and middle-click open the stored document through normal browser navigation, including from search results.
 The document links work in the same browser profile. Use Share for another profile or a private window.
 
+MARS provides an **Export…** workspace for standalone HTML, Copy HTML, PDF printing, and Markdown download.
+HTML and PDF previews use the prepared output, without review comments.
+PDF supports A4 and Letter, in Portrait or Landscape orientation.
+The browser print dialog supplies Save as PDF.
+Paged.js loads only when PDF pagination is needed.
+Markdown downloads retain frontmatter, line endings, and review threads.
+
 ## Private MARS telemetry
 
 `dev/tools/mars-stats.html` provides the owner-only **MARS Observatory** at `/mars-stats` on the tools host.
