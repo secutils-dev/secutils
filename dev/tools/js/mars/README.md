@@ -196,6 +196,7 @@ Embedded source contains the document body, without frontmatter or review thread
 The PDF tab prepares pages for A4 or Letter, in Portrait or Landscape orientation.
 The preview centers the pages and scales them to fit without changing their print dimensions.
 **Print / Save PDF** sends these prepared pages to the browser print dialog.
+After the browser print dialog closes, focus returns to this action if the same PDF workspace remains open.
 Only the dialog footer contains this action. The preview frame contains no print button.
 The status appears during preparation or after a failure, but disappears when the preview is ready.
 MARS does not download PDF bytes or know whether the reader saved a file.

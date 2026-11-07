@@ -59,6 +59,21 @@ test.describe('temporary sessions', () => {
     await expect(page.locator('#saveState')).toHaveText('Temporary');
   });
 
+  test('fallback source and block editors retain accessible names and editable content', async ({ page }) => {
+    await page.route('https://esm.sh/**', (route) => route.abort());
+    await open(page, link(DOC, true));
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await expect(page.getByRole('textbox', { name: 'Markdown source', exact: true })).toHaveValue(DOC);
+    await page.getByRole('button', { name: 'Preview', exact: true }).click();
+    await page.locator('#previewArticle p').filter({ hasText: 'Original paragraph.' }).dblclick();
+    const editor = page.getByRole('textbox', { name: 'Edit Markdown block', exact: true });
+    await expect(editor).toBeFocused();
+    await editor.fill('Accessible fallback edit.');
+    await editor.press('Escape');
+    await expect(page.locator('#previewArticle')).toContainText('Accessible fallback edit.');
+    await expect.poll(() => source(page)).toBe(DOC.replace('Original paragraph.', 'Accessible fallback edit.'));
+  });
+
   test('explicit temporary links never open IndexedDB and edits reopen in another profile', async ({
     page,
     browser,
@@ -146,7 +161,7 @@ test.describe('temporary sessions', () => {
     await page.getByRole('button', { name: 'Save current to library', exact: true }).click();
     await expect(page.locator('#temporarySession')).toBeHidden();
     await expect(page.locator('#saveState')).toHaveText('Saved');
-    expect(await source(page)).toBe(DOC.replace('Original', 'Temporary edit'));
+    await expect.poll(() => source(page)).toBe(DOC.replace('Original', 'Temporary edit'));
     await page.reload();
     await expect(page.locator('#previewArticle')).toContainText('Temporary edit paragraph.');
   });

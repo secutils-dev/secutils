@@ -126,7 +126,9 @@ if (pdfButton) pdfButton.addEventListener('click', () => {
     let prepared: PreparedFrame | null = null;
     const operation = crypto.randomUUID();
     try {
-        prepared = prepareFrame(preview, printDocument(originalContent, document.title, config.pdf, operation), operation, 'pdf');
+        prepared = prepareFrame(preview, printDocument(originalContent, document.title, config.pdf, operation), operation, 'pdf', undefined, () => {
+            setTimeout(() => { if (dialog.open) action.focus(); }, 0);
+        });
         prepared.ready.then(() => { action.disabled = false; status.textContent = 'Ready. Use the browser print dialog to save a PDF.'; }, (error) => { if (dialog.open) status.textContent = error.message; });
         action.addEventListener('click', () => { prepared?.print(); toast('Print requested. Choose Save as PDF in the browser dialog.'); });
     } catch (error) { status.textContent = (error as Error).message; }

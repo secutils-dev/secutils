@@ -86,6 +86,11 @@ async function prepare() {
         const prepared = prepareFrame(containers[activeFormat], html, operation, activeFormat, () => {
             if (!dialog.open || captured !== value) return;
             commitSettings(draft); viewer.toast('Print requested. Choose Save as PDF in the browser dialog.');
+        }, () => {
+            // Safari does not restore the parent control after an opaque frame prints.
+            setTimeout(() => {
+                if (dialog.open && captured === value && format === activeFormat && activeFormat === 'pdf') print.focus();
+            }, 0);
         });
         const output = { key, html, prepared, ready: false };
         outputs[activeFormat] = output;

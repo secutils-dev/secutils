@@ -1,15 +1,17 @@
-# MARS temporary reading: paused handoff
+# MARS temporary reading: verification record
 
 Date: 2026-11-07
-Status: implementation committed and deployed. Native verification is incomplete and paused at the user's request.
+Status: native browser checks passed. The user skipped the remaining VoiceOver checks. Final deployment and regression results follow.
 
 ## Current outcome
 
-- Implementation commit: `09d70e06 feat(mars): add temporary reading and storage fallback`.
-- Deployment: `make deploy-tools ARGS=mars` succeeded for the MARS page, skill, and discovery aggregates.
-- Deployed bundle matches the local build. SHA-256: `a1014666a6b8b7890a36a49f3c0b23217fabac5ac8cb0aca0e07ddc6fcd80c8d`.
-- The current request authorizes commit and deployment, not another push. The implementation commit remains local.
-- Markdown Preview, legacy-link migration, and unrelated plans remain unchanged.
+- Initial implementation commit, before the final rebase: `09d70e06 feat(mars): add temporary reading and storage fallback`.
+- The initial deployment succeeded for the MARS page, skill, and discovery aggregates.
+- Initial deployed bundle SHA-256: `a1014666a6b8b7890a36a49f3c0b23217fabac5ac8cb0aca0e07ddc6fcd80c8d`.
+- Final local bundle SHA-256: `0ffb97edefd0a804d08c2ad1089a87a4b77ec0ee6420a2f33d33cc1819b2ec35`.
+- The resumed request authorizes fixes, commits, deployment, and a push.
+- Markdown Preview retains its behavior. Its shared block-editor fallback receives the same accessible name as MARS.
+- Legacy-link migration and unrelated plans remain unchanged.
 
 ## Implemented behavior
 
@@ -25,6 +27,9 @@ Status: implementation committed and deployed. Native verification is incomplete
 - Opening a file temporarily does not link it for autosave. Automatic file writes stay disabled in temporary mode.
 - Temporary short-link deletion tokens stay in memory. Full and short shares retain the temporary-mode hint.
 - Source editors have accessible names. Download anchors remain connected inside the active dialog until navigation completes.
+- The plain-text block-editor fallback now has the name **Edit Markdown block**, like its CodeMirror counterpart.
+- Authenticated `afterprint` messages restore focus after a requested print operation.
+  Closed, replaced, and inactive format workspaces do not receive this focus change.
 
 ## Export policy
 
@@ -44,7 +49,14 @@ The cleanup is not a complete HTML sanitizer. Controlled third-party embeds rema
   Both selectors were corrected. All six affected cases then passed across the three engines.
 - Storage-denial tests also deny BroadcastChannel access. All three engines passed after that final guard.
 - Post-deployment live Chromium smoke: three passed for URL recovery, storage-denial export, and library isolation/promotion.
-- A clean full regression after all final changes remains pending.
+- The first resumed regression passed 359 cases, with 12 expected skips and one premature WebKit promotion assertion.
+  The assertion now waits for the edited content. The promotion case passed five consecutive WebKit runs.
+- A clean resumed regression passed 360 cases, with 12 expected skips.
+- The fallback-editor case passed across Chromium, Firefox, and WebKit after its selector correction.
+- The print-completion focus case passed across all three engines.
+- The changed Markdown Preview fallback passed against its local source across all three engines.
+- The final full regression after the native focus fix remains pending.
+- `sh .husky/pre-push` passed, including Web UI tests, SQLx schema verification, nightly Rust formatting, Clippy, and 1,173 Rust tests.
 - Promo-site synchronization remains skipped by the default `tools-check` command. The sibling site's known missing links are unrelated.
 
 ## Native browser results
@@ -56,31 +68,54 @@ PDFKit found one A4 page (595 x 842 points), readable document text, and no MARS
 The normal Safari Markdown download also matched the complete source byte-for-byte.
 Safari requested download permission for localhost, which was allowed for this verification.
 
-The keyboard Save shortcut, cancellation/focus-return flows, and broader native format combinations remain pending.
+The normal Safari application also passed these checks three consecutive times after the final focus fix:
+
+- `Cmd+S` in Source downloaded the complete Markdown source byte-for-byte.
+- Escape closed the export dialog and restored focus to **Export document**.
+- Cancel closed the native print dialog and retained the export workspace.
+- Focus returned to **Print / Save PDF** when Safari was active again.
+- The export workspace closed and reopened successfully after cancellation.
+
+The native helper activates the owned Safari window before its focus assertion.
+This excludes unrelated application switching from the page-focus result.
+Safari native PDF evidence covers A4 portrait. The engine regression covers all four paper/orientation combinations.
 The download helper was hardened during verification. The original no-file observation also involved Safari's download permission prompt.
 Do not claim that the original failure had only one established cause.
 
 ### Edge 157.0.4341.42
 
 Edge was installed with the user's permission through `brew install --cask microsoft-edge`.
-A headed Edge session prepared PDF pages and invoked the MARS print action.
-That session closed before the native preview/save workflow completed. Native PDF save and File System Access save remain unverified.
+An isolated normal Edge profile completed the actual print/save workflow.
+The helper selected **Save as PDF**, never the physical printer action.
+PDFKit verified one page, the document text, no application chrome, and these dimensions:
+
+| Settings | Dimensions (points) |
+| --- | --- |
+| A4 portrait | 594.96 x 841.92 |
+| A4 landscape | 841.92 x 594.96 |
+| Letter portrait | 612 x 792 |
+| Letter landscape | 792 x 612 |
+
+The actual File System Access picker saved Markdown that matched the source byte-for-byte.
+Cancel retained the source. Later edits in the temporary session did not automatically change the saved file.
+The owned Edge process closed after every attempt.
 
 ### Assistive technology
 
-The user enabled Accessibility access. Actual VoiceOver interaction has not run.
-Accessible names were added to the source editor and the CodeMirror block editor.
-Inspect the plain-text block-editor fallback during the remaining accessibility checks.
+The user enabled Accessibility access and the separate VoiceOver AppleScript permission.
+VoiceOver ran briefly and produced actual navigation speech for temporary status and the named source editor.
+The user then requested that the remaining VoiceOver checks be skipped because they were too slow.
+VoiceOver stopped. Full spoken navigation, announcements, editing, export-tab, modal-focus, and dismissal coverage remains unverified.
+Engine tests and accessibility-tree inspection do not replace those checks.
 
-## Resume next
+## Final publication checks
 
-1. Start one local preview server with `npm --prefix dev/tools/js/mars run serve`.
-2. Complete headed Edge native Save as PDF and file-save workflows. Inspect the resulting files.
-3. Run real VoiceOver with normal Safari through source editing, temporary status, export tabs, modal focus, and dismissal.
-4. Complete Safari keyboard-save and cancellation/focus-return checks.
-5. Run a clean local regression and the required post-deployment regression.
-6. Record actual results without substituting engine tests or accessibility-tree inspection for native/VoiceOver checks.
-7. Commit any verification fixes and redeploy only if application artifacts change.
+1. Complete the final local regression after the native focus fix.
+2. Deploy MARS and the shared Markdown Preview fallback label.
+3. Compare the deployed artifacts with the local build.
+4. Complete the required production regression.
+5. Record the results, rebase unpublished commits onto the current remote branch, and push.
+6. Stop the owned preview server.
 
 Use the three-engine suites from the repository root:
 
@@ -98,6 +133,12 @@ MARS_BASE_URL=http://localhost:7373 make e2e-tools-test ARGS="mars.spec.ts mars-
 - The active keyboard layout is not Latin. `keystroke` produced garbled path text during one native save.
   Use physical key codes and layout-independent value/paste operations. Preserve the user's clipboard if used.
 - The incorrectly named test PDF was moved from Applications to the approved artifact directory. No unrelated files were removed.
+- Edge's Fluent print-preview buttons required native keyboard activation after Accessibility focus.
+  An Accessibility press reported success without opening the native Save dialog.
+- The final Safari focus helper uses a zero-delay task after `afterprint`, not an animation frame.
+  Safari can pause animation frames while another application is active.
+- Each clean local regression started with a fresh in-memory preview fixture.
+  Production tests retain the short-link limit of 20 creations per hour.
 
 Native helpers and artifacts remain under the approved OpenCode temporary directory:
 
@@ -110,8 +151,17 @@ Native helpers and artifacts remain under the approved OpenCode temporary direct
   mars-native-artifacts.json
   mars-native-1794028470013/safari-native-print.pdf
   mars-native-1794028470013/safari-native-markdown.md
+  mars-safari-1794052295621/results.json
+  mars-safari-1794052295621/safari-keyboard-save.md
+  mars-edge-1794051863147/results.json
+  mars-edge-1794051863147/a4-portrait.pdf
+  mars-edge-1794051863147/a4-landscape.pdf
+  mars-edge-1794051863147/letter-portrait.pdf
+  mars-edge-1794051863147/letter-landscape.pdf
+  mars-edge-1794051863147/Edge native completion.md
 ```
 
-The owned Safari verification window (ID 54592) is closed, and the preview server on port 7373 is stopped.
-No test shell remains running. Unrelated browser windows and Docker services remain unchanged.
+The owned Safari verification windows and Edge processes are closed. VoiceOver is off.
+Final publication checks still use one owned preview server on port 7373.
+Unrelated browser windows and Docker services remain unchanged.
 Preserve the unrelated untracked files `dev/plans/markdown-viewer-colored-models.md` and `dev/plans/responder-kv-counters.md`.

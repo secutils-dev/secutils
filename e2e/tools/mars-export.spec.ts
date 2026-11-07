@@ -389,9 +389,20 @@ test.describe('export workspace', () => {
       expect(dimensions.height).toBeCloseTo((expected[1] * 96) / 25.4, 0);
     }
     const prepared = await page.locator('#exportPdfPreview iframe').getAttribute('srcdoc');
+    const paper = dlg(page).getByLabel('Paper size', { exact: true });
+    await paper.focus();
+    await pdfFrame(page)
+      .locator('body')
+      .evaluate(() => window.dispatchEvent(new Event('afterprint')));
+    await expect(paper).toBeFocused();
     await dlg(page).getByRole('button', { name: 'Print / Save PDF', exact: true }).click();
     await expect(pdfFrame(page).locator('html')).toHaveAttribute('data-print-requests', '1');
     await expect(page.locator('#toast')).toContainText('Print requested');
+    await paper.focus();
+    await pdfFrame(page)
+      .locator('body')
+      .evaluate(() => window.dispatchEvent(new Event('afterprint')));
+    await expect(dlg(page).getByRole('button', { name: 'Print / Save PDF', exact: true })).toBeFocused();
     await dlg(page).getByRole('tab', { name: 'HTML', exact: true }).click();
     await expect(dlg(page).getByRole('button', { name: 'Download HTML', exact: true })).toBeEnabled();
     await readyPdf(page);

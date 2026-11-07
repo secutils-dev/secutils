@@ -3860,6 +3860,7 @@ function createTextareaEditor(parent, text) {
     const ta = document.createElement('textarea');
     ta.className = 'editor-fallback';
     ta.spellcheck = false;
+    ta.setAttribute('aria-label', 'Edit Markdown block');
     ta.value = text;
     const fit = () => { ta.style.height = 'auto'; ta.style.height = `${ta.scrollHeight}px`; };
     ta.addEventListener('input', fit);
