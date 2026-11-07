@@ -40,7 +40,7 @@ A handful of focused, no-signup, browser-only tools is hosted at [tools.secutils
 | [SAML Decoder](https://tools.secutils.dev/saml)              | Inspect SAML responses, requests, and metadata                              | [`/saml.md`](https://tools.secutils.dev/saml.md)         |
 | [PEM Certificate Decoder](https://tools.secutils.dev/pem)    | Inspect PEM-encoded X.509 certificate chains                                | [`/pem.md`](https://tools.secutils.dev/pem.md)           |
 | [Markdown Preview](https://tools.secutils.dev/md)            | Preview Markdown, Mermaid, GeoJSON/TopoJSON, STL, and math, export HTML/PDF | [`/md.md`](https://tools.secutils.dev/md.md)             |
-| [MARS](https://mars.secutils.dev/)                           | Review Markdown: threaded comments, folders, and shareable review links     | [`/llms.txt`](https://mars.secutils.dev/llms.txt)        |
+| [MARS](https://mars.secutils.dev/)                           | Read, edit, and review Markdown with comments, folders, and HTML/PDF export | [`/llms.txt`](https://mars.secutils.dev/llms.txt)        |
 | [PDF Extractor](https://tools.secutils.dev/pdf)              | Extract spatial text and structured JSON from PDFs, in-browser              | [`/pdf.md`](https://tools.secutils.dev/pdf.md)           |
 | [HTTP Echo / Mock Response](https://tools.secutils.dev/echo) | Build a customizable HTTP response, served as a shareable URL               | [`/echo.md`](https://tools.secutils.dev/echo.md)         |
 | [Webhook Inspector](https://tools.secutils.dev/webhook)      | Ephemeral webhook URL that captures incoming HTTP requests, E2E-encrypted   | [`/webhook.md`](https://tools.secutils.dev/webhook.md)   |
@@ -71,6 +71,11 @@ PDF supports A4 and Letter, in Portrait or Landscape orientation.
 The browser print dialog supplies Save as PDF.
 Paged.js loads only when PDF pagination is needed.
 Markdown downloads retain frontmatter, line endings, and review threads.
+
+PDF Extractor's **Export > Open in MARS** sends the active Text or Markdown output to MARS in a new tab.
+The handoff retains the PDF document name and exact extracted text in the URL fragment.
+JSON, Outline, and Screenshots do not offer this handoff.
+MARS processes documents locally and stores only encrypted data for short links.
 
 ## Private MARS telemetry
 

@@ -145,6 +145,7 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     const response = await page.goto(tool.path);
     expect(response?.ok()).toBeTruthy();
     await assertSeoBasics(page, tool);
+    await expect(page.locator('meta[name="su-tool-description"]')).toHaveAttribute('content', tool.description);
   });
 
   test('skill .md is reachable with required frontmatter', async ({ request }) => {

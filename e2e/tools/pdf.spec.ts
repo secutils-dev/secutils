@@ -1,10 +1,13 @@
-import { deflateRawSync } from 'node:zlib';
+import { readFile } from 'node:fs/promises';
+import { deflateRawSync, inflateRawSync } from 'node:zlib';
 
 import { expect, test } from '@playwright/test';
 
 import { assertSeoBasics, assertSkillMd, getTool } from './_helpers';
+import { MARS_HOST } from './registry';
 
 const tool = getTool('pdf');
+if (process.env.PDF_BASE_URL) test.use({ baseURL: process.env.PDF_BASE_URL });
 
 test('Markdown export keeps backslashes, pipes, and link delimiters inside their cells', async ({ page }) => {
   await page.goto(tool.path);
@@ -200,17 +203,84 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     await expect(page.locator('#exportBtn')).toBeEnabled();
 
     // The Export button now opens a contextual menu (replaces the old
-    // dedicated Download + Open-in-Markdown-Preview buttons). Verify both
-    // entries are present and that the "Open in Markdown Preview" item
+    // dedicated download and preview buttons). Verify both
+    // entries are present and that the "Open in MARS" item
     // is enabled on the Markdown tab (it's disabled on JSON/Outline).
     await page.locator('#exportBtn').click();
     await expect(page.locator('#exportMenu')).toBeVisible();
     await expect(page.locator('#exportDownload')).toBeEnabled();
     await expect(page.locator('#exportDownloadDesc')).toContainText('.md');
-    await expect(page.locator('#exportOpenMd')).toBeEnabled();
+    await expect(page.getByRole('menuitem', { name: 'Open in MARS', exact: false })).toBeEnabled();
     // Escape closes the menu (mirrors the OCR options popover pattern).
     await page.keyboard.press('Escape');
     await expect(page.locator('#exportMenu')).toBeHidden();
+  });
+
+  for (const format of ['text', 'md'] as const) {
+    test(`MARS handoff preserves the ${format} payload, source name, and browser-only transport`, async ({
+      page,
+      context,
+    }) => {
+      const text = '# A different heading\r\n\r\nRésumé & notes.\r\n\r\n  column A    column B\r\n';
+      const name = 'PDF report & notes';
+      if (process.env.MARS_BASE_URL) {
+        const response = await page.request.get(process.env.MARS_BASE_URL);
+        await context.route(`https://${MARS_HOST}/`, (route) => route.fulfill({ response }));
+      }
+      await page.goto(
+        `${tool.path}#${buildPdfFragment({ v: 2, f: format, s: name, [format === 'text' ? 't' : 'm']: text })}`,
+      );
+      await expect(page.locator(format === 'text' ? '#resultText' : '#resultMd')).toHaveValue(
+        text.replaceAll('\r\n', '\n'),
+      );
+      const sourceUrl = page.url();
+      await page.getByRole('button', { name: 'Export', exact: true }).click();
+      const pending = page.waitForEvent('popup');
+      await page.getByRole('menuitem', { name: 'Open in MARS', exact: false }).click();
+      const mars = await pending;
+      try {
+        await mars.waitForLoadState('domcontentloaded');
+        const url = new URL(mars.url());
+        expect(url.origin).toBe(`https://${MARS_HOST}`);
+        expect(url.pathname).toBe('/');
+        expect(url.search).toBe('');
+        const params = new URLSearchParams(url.hash.slice(1));
+        expect(params.get('name')).toBe(name);
+        const encoded = Buffer.from(params.get('md')!, 'base64url');
+        expect(encoded.readUInt32LE(0)).toBe(Buffer.byteLength(text));
+        expect(inflateRawSync(encoded.subarray(4)).toString('utf8')).toBe(text);
+        await expect(mars.locator('#docTitle')).toHaveText(name);
+        await expect(mars.locator('#saveState')).toHaveText('Saved');
+        expect(await mars.evaluate(() => window.opener)).toBeNull();
+        expect(page.url()).toBe(sourceUrl);
+        await mars.getByRole('button', { name: 'Export document', exact: true }).click();
+        const exported = mars.getByRole('dialog', { name: /^Export / });
+        await expect(exported.getByRole('button', { name: 'Download Markdown', exact: true })).toBeEnabled();
+        const download = mars.waitForEvent('download');
+        await exported.getByRole('button', { name: 'Download Markdown', exact: true }).click();
+        expect(await readFile(await (await download).path(), 'utf8')).toBe(text);
+      } finally {
+        await mars.close();
+      }
+    });
+  }
+
+  test('MARS handoff stays unavailable for JSON, Outline, Screenshots, and unfinished Markdown', async ({ page }) => {
+    await page.goto(
+      `${tool.path}#${buildPdfFragment({ v: 3, f: 'json', s: 'report', j: { pages: [] }, o: [{ title: 'One', level: 0, page: 1, children: [] }] })}`,
+    );
+    for (const tab of ['JSON', 'Outline']) {
+      await page.getByRole('tab', { name: tab, exact: true }).click();
+      await page.getByRole('button', { name: 'Export', exact: true }).click();
+      await expect(page.getByRole('menuitem', { name: 'Open in MARS', exact: false })).toBeDisabled();
+      await page.keyboard.press('Escape');
+    }
+    await page.getByRole('tab', { name: 'Screenshots', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Export', exact: true })).toBeDisabled();
+    const unfinished = await page.evaluate(
+      'markdownCache = null; activeTab = "md"; syncExportMenuItems(); document.getElementById("exportOpenMars").disabled',
+    );
+    expect(unfinished).toBe(true);
   });
 
   test('hydrates the Outline tab from a shared v3 URL fragment', async ({ page }) => {

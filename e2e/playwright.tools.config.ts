@@ -35,8 +35,8 @@ export default defineConfig({
     },
     {
       name: 'firefox',
-      testMatch: '**/{mars,md,mars-export,mars-import}.spec.ts',
-      grep: /source selection|admonition selection|app identity|Mermaid navigation|preview links|block controls|list dragging|reading width|native document links|export workspace|source import/,
+      testMatch: '**/{mars,md,mars-export,mars-import,mars-models,pdf}.spec.ts',
+      grep: /source selection|admonition selection|app identity|Mermaid navigation|preview links|block controls|list dragging|reading width|native document links|export workspace|source import|model parity|MARS handoff/,
       use: {
         ...devices['Desktop Firefox'],
         viewport: { width: 1280, height: 800 },
@@ -44,8 +44,8 @@ export default defineConfig({
     },
     {
       name: 'webkit',
-      testMatch: '**/{mars,mars-export,mars-import}.spec.ts',
-      grep: /native document links|export workspace|source import/,
+      testMatch: '**/{mars,mars-export,mars-import,mars-models,pdf}.spec.ts',
+      grep: /native document links|export workspace|source import|model parity|MARS handoff/,
       use: {
         ...devices['Desktop Safari'],
         viewport: { width: 1280, height: 800 },

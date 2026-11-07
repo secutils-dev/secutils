@@ -188,6 +188,7 @@ test.describe('export workspace', () => {
     await expect(page.locator('.toolbar [role=tab]')).toHaveCount(0);
     await expect(dlg(page).getByRole('heading')).toHaveText('Export “Internal title”');
     await expect(dlg(page).locator('#exportDocumentName, details')).toHaveCount(0);
+    await expect(dlg(page).locator('#exportTocHint')).toHaveCount(0);
     await expect(dlg(page).getByRole('button', { name: 'Reset settings', exact: true })).toHaveCount(0);
     await expect(dlg(page).getByText('Shown when the document has useful headings.', { exact: true })).toHaveCount(0);
     await expect(
@@ -230,6 +231,18 @@ test.describe('export workspace', () => {
     expect(await readFile(await (await pending).path(), 'utf8')).toBe(TEXT);
     await dlg(page).getByRole('button', { name: 'Close export' }).click();
     await expect(page.locator('#exportBtn')).toBeFocused();
+  });
+
+  test('omits table-of-contents hints even when the document has no section headings', async ({ page }) => {
+    await openDoc(page, '# Short document\n\nJust a paragraph.', 'Short.md');
+    await openExport(page);
+    await expect(dlg(page).locator('#exportTocHint')).toHaveCount(0);
+    await expect(
+      dlg(page).getByText('This document has too few section headings for a table of contents.', { exact: true }),
+    ).toHaveCount(0);
+    await expect(dlg(page).getByLabel('Table of contents', { exact: true })).toBeEnabled();
+    await expect(htmlFrame(page).getByRole('navigation', { name: 'Table of contents', exact: true })).toHaveCount(0);
+    expect((await htmlDownload(page)).text).not.toContain('id="toc"');
   });
 
   test('keeps drafts separate, validates custom width, and commits only output actions', async ({ page }) => {

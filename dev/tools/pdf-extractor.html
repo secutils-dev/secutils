@@ -578,11 +578,11 @@ main { flex: 1; min-height: 0; padding: 24px 16px; display: flex; flex-direction
                                         <span class="export-menu-desc" id="exportDownloadDesc">Save the current view as a file</span>
                                     </span>
                                 </button>
-                                <button id="exportOpenMd" class="export-menu-item" role="menuitem" type="button">
+                                <button id="exportOpenMars" class="export-menu-item" role="menuitem" type="button">
                                     <svg class="export-menu-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg>
                                     <span class="export-menu-body">
-                                        <span class="export-menu-title">Open in Markdown Preview</span>
-                                        <span class="export-menu-desc" id="exportOpenMdDesc">Render the current text in the sibling tool</span>
+                                        <span class="export-menu-title">Open in MARS</span>
+                                        <span class="export-menu-desc" id="exportOpenMarsDesc">Read, review, or export the current text in MARS</span>
                                     </span>
                                 </button>
                             </div>
@@ -805,8 +805,8 @@ const els = {
     exportMenu: $('exportMenu'),
     exportDownload: $('exportDownload'),
     exportDownloadDesc: $('exportDownloadDesc'),
-    exportOpenMd: $('exportOpenMd'),
-    exportOpenMdDesc: $('exportOpenMdDesc'),
+    exportOpenMars: $('exportOpenMars'),
+    exportOpenMarsDesc: $('exportOpenMarsDesc'),
     fullscreenBtn: $('fullscreenBtn'),
     fullscreenEnterIcon: $('fullscreenEnterIcon'),
     fullscreenExitIcon: $('fullscreenExitIcon'),
@@ -1466,12 +1466,12 @@ function syncExportMenuItems() {
     } else {
         els.exportDownloadDesc.textContent = 'Nothing to download from this tab';
     }
-    // Markdown Preview only makes sense for free-form text or Markdown (it
+    // MARS only makes sense for free-form text or Markdown (it
     // renders the latter natively; the spatial text is handed over verbatim).
-    const canOpenMd = !!result && (activeTab === 'text' || (activeTab === 'md' && markdownCache != null));
-    els.exportOpenMd.disabled = !canOpenMd;
-    els.exportOpenMdDesc.textContent = canOpenMd
-        ? 'Render the current text in the sibling tool'
+    const canOpenMars = !!result && (activeTab === 'text' || (activeTab === 'md' && markdownCache != null));
+    els.exportOpenMars.disabled = !canOpenMars;
+    els.exportOpenMarsDesc.textContent = canOpenMars
+        ? 'Read, review, or export the current text in MARS'
         : 'Only available for the Text and Markdown tabs';
 }
 
@@ -2711,7 +2711,7 @@ els.tabJson.addEventListener('click', refreshShareAvailability);
 els.tabMd.addEventListener('click', refreshShareAvailability);
 els.tabOutline.addEventListener('click', refreshShareAvailability);
 
-// ----- Share / Copy / Download / Open-in-Markdown-Preview ----------------
+// ----- Share / Copy / Download / Open-in-MARS ---------------------------
 
 // URL state shape (v3; v1 / v2 are read for backward-compat in the
 // hydrate block):
@@ -2775,7 +2775,7 @@ els.shareBtn.addEventListener('click', async () => {
 });
 
 // Per-tab payload + presentation metadata for the Copy / Download / Open-
-// in-Markdown-Preview buttons. Returns null when the active tab has nothing
+// in-MARS buttons. Returns null when the active tab has nothing
 // (yet) to export -- the Markdown tab during the lazy build, the Outline
 // tab before the bookmarks have been fetched, etc.
 function currentExportPayload() {
@@ -2824,8 +2824,7 @@ els.copyBtn.addEventListener('click', async () => {
 });
 
 // ----- Export dropdown ---------------------------------------------------
-// The Export button replaces the old standalone Download + Open-in-Markdown-
-// Preview buttons. The same payload selector (currentExportPayload) feeds both menu
+// The same payload selector (currentExportPayload) feeds both menu
 // items; syncExportMenuItems() is responsible for keeping their enabled
 // state + descriptions in sync with the active tab.
 
@@ -2874,26 +2873,20 @@ els.exportDownload.addEventListener('click', () => {
     closeExportMenu();
 });
 
-// Open the current text (spatial Text tab) or the heuristic Markdown
-// reconstruction in the Markdown Preview tool. /md's wire format is the
-// encodeState'd text directly (no JSON wrapper), shared with this tool.
-// The Markdown payload renders natively; the spatial text usually looks
-// better wrapped in a fenced code block on the other side, but we hand off
-// the raw string for symmetry with the existing Text behaviour.
-els.exportOpenMd.addEventListener('click', async () => {
+// Both Text and Markdown travel verbatim in MARS's full-link fragment.
+// The explicit source name keeps the PDF filename instead of inferring a heading.
+els.exportOpenMars.addEventListener('click', async () => {
     if (!result || (activeTab !== 'text' && activeTab !== 'md')) return;
-    const payload = activeTab === 'md' ? markdownCache : result.text;
-    if (payload == null) return;
+    const payload = currentExportPayload();
+    if (!payload) return;
+    const name = result.srcName || 'document';
     closeExportMenu();
     try {
-        // Best-effort: if the payload is too big for /md's fragment either,
-        // still open it (/md will silently skip the fragment and start empty
-        // -- not great, but better than blocking the click).
-        const encoded = await encodeState(payload);
-        const url = `${location.origin}/md#${encoded}`;
+        const encoded = await encodeState(payload.text);
+        const url = `https://{{MARS_HOST}}/#${new URLSearchParams({ name, md: encoded })}`;
         window.open(url, '_blank', 'noopener');
     } catch (err) {
-        toast(`Open in Markdown Preview failed: ${err.message ?? err}`);
+        toast(`Open in MARS failed: ${err.message ?? err}`);
     }
 });
 

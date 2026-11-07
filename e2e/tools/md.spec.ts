@@ -787,6 +787,7 @@ endsolid corner
     const model = page.locator('figure[data-kind="su-mesh"]');
     await expect(model.locator('canvas')).toBeVisible({ timeout: 15000 });
     await expect(model.locator('figcaption')).toHaveCount(0);
+    await expect.poll(async () => (await modelPixels(page)).red).toBeGreaterThan(100);
     const colors = await modelPixels(page);
     expect(colors.red).toBeGreaterThan(100);
     expect(colors.blue).toBeGreaterThan(100);

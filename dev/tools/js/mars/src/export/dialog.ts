@@ -2,7 +2,7 @@ import * as app from '../app.ts';
 import * as viewer from '../doc/viewer.js';
 import * as db from '../store/db.ts';
 import { $, closeMenu, copyRich, download, fileSafe } from '../ui/ui.ts';
-import { htmlDocument, hasToc } from './html.ts';
+import { htmlDocument } from './html.ts';
 import { prepareFrame, printDocument, type PreparedFrame } from './pdf.ts';
 import { commitSettings, loadSettings, validWidth, type ExportFormat, type ExportSettings } from './settings.ts';
 import { renderKey, snapshot, type ExportSnapshot } from './snapshot.ts';
@@ -81,7 +81,6 @@ async function prepare() {
         }
         const content = await rendered.promise;
         if (operationGeneration !== generation || !dialog.open || captured !== value) return;
-        $('exportTocHint').hidden = hasToc(content);
         const operation = crypto.randomUUID();
         const html = activeFormat === 'html' ? htmlDocument(captured, content, draft, operation) : printDocument(content, captured.name, draft.pdf, operation);
         const prepared = prepareFrame(containers[activeFormat], html, operation, activeFormat, () => {

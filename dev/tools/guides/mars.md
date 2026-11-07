@@ -45,6 +45,8 @@ It is promoted like any tool, linked by that host. In-app URLs derive from `loca
   Check it after asynchronous reads and before selecting or changing a document.
   Both URL entry points use `share.receiveUrl()`, with browser-side fetches and the existing incoming-copy decisions.
   Unchanged Markdown and review blocks retain their original bytes on download.
+  PDF Extractor sends Text and Markdown through a full link with an explicit source name.
+  Keep the handoff browser-side, with exact text in the fragment and no PDF bytes.
 - **Incoming copies** (`share.updateExisting`): a link, a `mars` re-open, or a file from Open or a drop that matches a
   stored document by origin, by file handle (`isSameEntry`), or, after the reader confirms, by content
   (`share/match.ts`). The text is decided against `opened`: only the source changed takes it, only the stored copy
@@ -90,7 +92,8 @@ It is promoted like any tool, linked by that host. In-app URLs derive from `loca
    cached in a local browser profile).
 2. `npm run serve` builds the deploy-equivalent page and serves it at `http://localhost:7373/` and `/llms.txt`, with the
    responder script on an in-memory KV.
-3. From the root: `MARS_BASE_URL=http://localhost:7373 make e2e-tools-test ARGS="mars.spec.ts mars-export.spec.ts mars-import.spec.ts"`.
+3. From the root: `MARS_BASE_URL=http://localhost:7373 make e2e-tools-test ARGS="mars.spec.ts mars-export.spec.ts mars-import.spec.ts mars-models.spec.ts"`.
+   After handoff changes, run `pdf.spec.ts` against the changed PDF Extractor page.
 4. Run steps 2, 4, and 5 of "Change a tool" in [`../AGENTS.md`](../AGENTS.md); for a viewer change, also the affected
    `md.spec.ts` cases.
 5. After a deploy, `make e2e-tools-test ARGS=mars.spec.ts` (`MARS_BASE_URL` defaults to `https://mars.secutils.dev`).

@@ -3,10 +3,12 @@ name: mars-review
 description: >-
   MARS (Markdown Annotation & Review System) at https://{{MARS_HOST}}/: open
   Markdown for review with `#name=<name>&md=<state>&o=<origin>` or
-  `?url=<public-md>`; write Markdown with review threads anchored to its text;
-  reply to or address the review threads in a file's trailing `su-comments`
+  `?url=<public-md>`. Read or edit Markdown, export standalone HTML or PDF,
+  and write review threads anchored to its text.
+  Reply to or address the review threads in a file's trailing `su-comments`
   block. Trigger on "review this markdown", "open in MARS", "add review
-  comments to the doc", "address the review comments", or mars.secutils.dev.
+  comments to the doc", "address the review comments", "export Markdown in MARS",
+  "preview Markdown in MARS", or mars.secutils.dev.
 ---
 
 # MARS: Markdown Annotation & Review System (Secutils.dev)
@@ -18,6 +20,18 @@ thread, then reply, resolve, and share. Documents live in the reader's browser
 the Markdown file as one trailing HTML comment that GitHub and other renderers
 hide, so an agent reads and writes them with ordinary file edits. The format is
 shared with the Secutils.dev Markdown Preview tool.
+
+## Read and edit
+
+1. Open a Markdown file, a shared document, or a public URL in MARS.
+2. Use **Preview** for rendered text, diagrams, math, maps, and models.
+3. Use **Source** for Markdown edits, or double-click a text block in Preview.
+4. Select rendered text to add a review comment.
+5. Use **Export…** for standalone HTML, PDF, or Markdown output.
+
+Completion: the document stays in the browser library, and the header shows **Saved** after an edit.
+PDF Extractor's **Export > Open in MARS** opens its Text or Markdown output under the original document name.
+The handoff preserves exact text through the URL fragment and uploads no PDF bytes.
 
 ## HTML, PDF, and Markdown output
 
@@ -56,6 +70,8 @@ An unavailable PDF dependency leaves HTML and Markdown downloads available.
 Export settings commit after an output action.
 Closing the dialog discards later draft changes.
 A document reload shows **Refresh preview**, while the current preview retains its captured version.
+The PDF preview centers its pages. Only the dialog footer contains **Print / Save PDF**.
+The status appears during preparation or after a failure, and disappears when the preview is ready.
 
 ## Review threads
 

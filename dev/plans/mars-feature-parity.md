@@ -4,7 +4,7 @@ Date: 2026-11-05
 Status: Phase 0 implemented, deployed, and checked. Manual browser-chrome checks remain pending.
 Phase 1 is implemented and deployed. Manual system print/save checks remain pending.
 Phase 2 is implemented, committed, deployed, and checked.
-Phase 3 is planned, not implemented.
+Phase 3 is deployed, and its application checks passed. Manual browser gates and two unrelated registry failures remain pending.
 
 ## Goal and scope
 
@@ -496,7 +496,7 @@ URL-import unification, PDF Extractor handoffs, and retirement work remain outsi
 ### Export UX follow-up (2026-11-07)
 
 The settings omit the generic table-of-contents hint and the explanation about PDF-tab settings.
-The table-of-contents hint appears only if the document lacks enough section headings.
+The later follow-up also removes the conditional hint for documents with too few section headings.
 The dialog no longer contains a Reset settings button.
 Saved settings and cancellation behavior remain unchanged.
 
@@ -643,6 +643,123 @@ These updates describe current features.
 They do not require legacy endpoint maintenance, redirects, or a separate retirement phase.
 Leave unrelated plans and Markdown Preview files unchanged unless a separately approved cleanup requires them.
 
+### Phase 3 implementation record (2026-11-07)
+
+PDF Extractor's Export menu now provides **Open in MARS**.
+Text and Markdown retain their exact payloads and the source PDF document name.
+The destination uses `#name=<source-name>&md=<encoded-text>` on the MARS host.
+The browser sends neither PDF bytes nor extracted text to a server.
+The action remains unavailable for JSON, Outline, Screenshots, and unfinished Markdown.
+Both payloads opened actual MARS documents and downloaded unchanged Markdown in Chromium, Firefox, and WebKit.
+
+`e2e/tools/mars-models.spec.ts` adds MARS-focused coverage for binary/ASCII STL, large meshes, ZIP64, and interpolated colors.
+The cases also cover component and slicer files, broken archives, invalid geometry, invalid views, and worker cancellation.
+Offline checks use actual exported HTML files, and color checks read rendered pixels.
+The existing 3MF fixtures remain in place.
+The shared importer unit suite passed all 10 cases, including archive and geometry limits.
+
+Export unit tests now switch each optional HTML reader feature independently.
+The earlier phases already cover immutable snapshots, title/source escaping, isolated previews, page dimensions, cancellation, Retry, and keyboard focus.
+Native-link regression cases remain in the full MARS suite.
+The ZIP64 Markdown Preview reference case now waits for the first painted pixels before sampling the canvas.
+The original Markdown Preview implementation remains unchanged.
+
+The MARS and PDF Extractor skills describe the handoff, reading, editing, exports, and native browser actions.
+The MARS guide, package README, root README, tools index, metadata, and registry describe reading, review, and HTML/PDF export.
+The dark/light MARS OG images and own-host JPEG were regenerated and reviewed.
+The privacy statements about local processing and encrypted short links remain unchanged.
+
+Final local checks:
+
+- MARS unit tests: 44 passed.
+- Shared 3MF importer unit tests: 10 passed.
+- Shared-asset unit tests: 6 passed.
+- Type checking, build, preview build, E2E lint, tools verification, and repository tools checks: passed.
+- Responder smoke cases: 20 passed.
+- Affected Markdown Preview reference cases: 9 passed, including ZIP64 after its pixel-readiness correction.
+- Full MARS, export, import, model, and PDF Extractor browser suites: 285 passed, 10 skipped across Chromium, Firefox, and WebKit.
+- The 10 skips cover GPU-dependent canvas/color assertions outside Chromium. The corresponding Chromium cases passed.
+- `git diff --check`: passed.
+- Marketing-site synchronization: skipped because `SECUTILS_TOOLS_PROMO_HOME_INDEX` is not set.
+
+```bash
+PDF_BASE_URL=http://localhost:7374 MARS_BASE_URL=http://localhost:7373 make e2e-tools-test ARGS="mars.spec.ts mars-export.spec.ts mars-import.spec.ts mars-models.spec.ts pdf.spec.ts --workers=3 --output=test-results/mars-phase3-full"
+```
+
+The PDF Extractor preview serves the changed source with its bundled parser at `/pdf` and its skill at `/pdf.md`.
+Handoff cases route the MARS destination to the local deploy-equivalent page.
+The user requested phase 3 deployment on 2026-11-07.
+
+### Phase 3 deployment record (2026-11-07)
+
+```bash
+make deploy-tools ARGS="mars pdf-extractor index"
+```
+
+The deployment published MARS, PDF Extractor, both companion skills, the tools index, and four discovery aggregates.
+MARS is live at <https://mars.secutils.dev/>.
+PDF Extractor is live at <https://tools.secutils.dev/pdf>.
+The tools index is live at <https://tools.secutils.dev/>.
+
+The deployed MARS and PDF parser bundles match the local builds byte-for-byte.
+The MARS bundle SHA-256 remains `6f7fb49dd1d0e4071d1aed3a375db5dd33cafdddaa37a15c36b7527671718614`.
+Both deployed skills match their local sources after host substitution.
+Their discovery digests also match.
+
+The deployed MARS OG JPEG matches the regenerated artifact.
+Its SHA-256 is `284f40dea0299988a2e063a86ef3aad3f445c2a45659770c6003a72f55b48f74`.
+The live MARS response retains COOP `same-origin` and COEP `credentialless`.
+The PDF Extractor handoff and updated MARS description are present in the live pages.
+
+Post-deploy checks used the live hosts without local preview overrides:
+
+- MARS, export, import, model, and PDF Extractor suites: 285 passed, 10 GPU-specific cases skipped.
+- Tools index and registry suites: 31 passed, 2 failed.
+- Complete run: 316 passed, 10 skipped, 2 failed.
+
+Both failures concern the unrelated SAML tool, which this deployment did not publish.
+`https://tools.secutils.dev/elastic/saml/idp-login.md` returns 404 instead of a skill.
+`https://tools.secutils.dev/elastic/saml/idp-login` returns 404 instead of the expected Markdown-negotiation redirect.
+Direct HTTP checks reproduced both 404 responses.
+The broader registry verification therefore remains incomplete.
+No SAML source, responder, or registry entry changed to bypass these failures.
+
+```bash
+env -u MARS_BASE_URL -u PDF_BASE_URL -u BASE_URL make e2e-tools-test ARGS="mars.spec.ts mars-export.spec.ts mars-import.spec.ts mars-models.spec.ts pdf.spec.ts index.spec.ts registry.spec.ts --workers=3 --output=test-results/mars-phase3-post-deploy"
+```
+
+### Conditional export-hint removal and redeployment (2026-11-07)
+
+The remaining table-of-contents hint and its display handler are removed entirely.
+The Table of contents setting and heading-based output behavior remain unchanged.
+A new regression case covers documents without section headings.
+
+`make deploy-tools ARGS=mars` republished MARS, its skill, and the four discovery aggregates.
+The live page contains neither the hint text nor its element, and the deployed bundle contains no hint handler.
+The bundle matches the local build byte-for-byte.
+Its SHA-256 is `dc1cd5a0eac43cb317edd4c205b313ba79f7beb195fdecb5fc9ba10e8f5fa5e9`.
+
+Local checks passed 44 unit cases and 73 export browser cases, with 2 GPU-specific cases skipped.
+Type checking, preview build, lint, tools verification, and repository tools checks passed.
+Post-deploy MARS, export, import, and model suites passed 266 cases, with 10 GPU-specific cases skipped.
+The new hint-removal case passed in Chromium, Firefox, and WebKit on the live host.
+
+### Remaining environment-dependent checks
+
+The browser tools cannot inspect Safari/Edge browser-chrome menus or operate native system print/save dialogs.
+The two manual acceptance items therefore remain unchecked.
+They are not automated successes.
+
+1. In Safari and Edge, use Shift + right-click on a stored MARS document.
+   Inspect the native link menu and the browser's supported split-view commands.
+   Opening a normal tab or window must retain the document and leave the source tab unchanged.
+2. Open a document with text, Mermaid diagrams, and a colored 3MF model.
+   In supported desktop browsers, open its PDF export workspace.
+   Save A4/Letter output in both orientations through the system print dialog.
+   Inspect searchable text, page dimensions, page numbers, title footers, complete diagrams, and model colors.
+3. Set `SECUTILS_TOOLS_PROMO_HOME_INDEX` to the marketing site's `index.html` and run `make tools-check`.
+   Marketing-site synchronization remains unverified while this variable is unset.
+
 ### Command gate
 
 Run checks for each completed phase, rather than postponing all checks until the final phase.
@@ -685,8 +802,8 @@ Do not run deployment targets without a deployment request.
 - [x] Export preparation leaves the source, threads, and saved views unchanged.
 - [x] URL form and query imports use consistent extraction and naming.
 - [x] Exported embedded source reopens as editable Markdown.
-- [ ] PDF Extractor can hand its useful output to MARS.
-- [ ] All phased regression checks pass, and blocked manual checks remain explicit.
+- [x] PDF Extractor can hand its useful output to MARS.
+- [x] All automated phased regression checks pass, and blocked manual checks remain explicit.
 - [x] No compatibility or legacy-link migration work enters Phase 0.
 
 ## Research references

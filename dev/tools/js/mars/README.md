@@ -113,6 +113,10 @@ Superseded operations cannot select another document or apply late results.
 Conflict dialogs close when their input operation is canceled.
 The browser import cases are in `e2e/tools/mars-import.spec.ts`.
 
+PDF Extractor's **Export > Open in MARS** uses the same full-link receive path.
+Its Text and Markdown tabs send the exact extracted text and an explicit PDF document name.
+The handoff uploads neither the PDF bytes nor the extracted text.
+
 ## Export workspace
 
 **Export…** opens a native dialog with HTML and PDF tabs.
@@ -160,6 +164,7 @@ PDF uses light styling, vector text, complete Mermaid diagrams, and static color
 The dialog follows the MARS theme, but PDF pages remain white in every theme.
 
 The export browser cases live in `e2e/tools/mars-export.spec.ts` and run against the deploy-equivalent local server.
+`e2e/tools/mars-models.spec.ts` covers binary/ASCII STL, large meshes, colored 3MF, ZIP64, invalid geometry, and cancellation.
 System print dialogs and saved PDF files still require manual browser checks.
 
 ## Search

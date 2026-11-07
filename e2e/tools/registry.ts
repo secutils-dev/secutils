@@ -98,7 +98,8 @@ export const TOOLS: readonly Tool[] = [
     name: 'MARS',
     path: '/',
     host: MARS_HOST,
-    description: 'Markdown Annotation & Review System: comment on, organize, and share Markdown reviews.',
+    description:
+      'Read, edit, and review Markdown with threaded comments, a local document library, and HTML/PDF export.',
     applicationCategory: 'DeveloperApplication',
     promote: true,
     accent: '#d43a32',

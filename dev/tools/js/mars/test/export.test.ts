@@ -68,6 +68,23 @@ test('HTML assembly escapes titles/source, retains reader features, and excludes
     assert.match(embedSource('</SCRIPT><script>x</script>'), /<\\\/SCRIPT>/);
 });
 
+test('each optional HTML reader feature switches independently without changing other features', () => {
+    const captured = snapshot('doc', 'Report', '## Body', 800);
+    const content = '<h2>One</h2><h2>Two</h2><h3>Three</h3>';
+    const ids = { toc: 'toc', find: 'find-btn', pdf: 'pdf-btn', source: 'su-md-source' } as const;
+    for (const key of Object.keys(ids) as (keyof typeof ids)[]) {
+        for (const enabled of [false, true]) {
+            const settings = defaults();
+            settings.html.source = true;
+            settings.html[key] = enabled;
+            const output = htmlDocument(captured, content, settings, 'operation');
+            for (const other of Object.keys(ids) as (keyof typeof ids)[]) {
+                assert.equal(output.includes(`id="${ids[other]}"`), other === key ? enabled : true);
+            }
+        }
+    }
+});
+
 test('print CSS retains dimension, footer, light, and vector layout contracts', () => {
     for (const paper of ['A4', 'Letter'] as const) for (const orientation of ['portrait', 'landscape'] as const) {
         const dimensions = pageDimensions({ paper, orientation });
