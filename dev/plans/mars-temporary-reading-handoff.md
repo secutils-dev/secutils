@@ -1,7 +1,7 @@
 # MARS temporary reading: verification record
 
 Date: 2026-11-07
-Status: native browser checks passed. The user skipped the remaining VoiceOver checks. Final deployment and regression results follow.
+Status: native browser checks and final local/production regressions passed. The fixes are deployed. The user skipped the remaining VoiceOver checks.
 
 ## Current outcome
 
@@ -9,6 +9,12 @@ Status: native browser checks passed. The user skipped the remaining VoiceOver c
 - The initial deployment succeeded for the MARS page, skill, and discovery aggregates.
 - Initial deployed bundle SHA-256: `a1014666a6b8b7890a36a49f3c0b23217fabac5ac8cb0aca0e07ddc6fcd80c8d`.
 - Final local bundle SHA-256: `0ffb97edefd0a804d08c2ad1089a87a4b77ec0ee6420a2f33d33cc1819b2ec35`.
+- Final deployment: `make deploy-tools ARGS="mars md"` deployed both pages, their skills, and the discovery aggregates.
+- Both live bodies match the local production assembly byte-for-byte (gzip level 9).
+- The live MARS bundle matches the final local bundle.
+- Both live skills match their local source. MARS Markdown content negotiation returns the correct skill location.
+- MARS body: 262,935 bytes. SHA-256: `50438b5cde546ca8dee4bd2c208c906333c369966087c65db89e9480bc72c8a7`.
+- Markdown Preview body: 252,303 bytes. SHA-256: `9e0d2abd1871098101783d9d358b6c9168ca2b5867abc82d0da4650f11735df9`.
 - The resumed request authorizes fixes, commits, deployment, and a push.
 - Markdown Preview retains its behavior. Its shared block-editor fallback receives the same accessible name as MARS.
 - Legacy-link migration and unrelated plans remain unchanged.
@@ -55,7 +61,9 @@ The cleanup is not a complete HTML sanitizer. Controlled third-party embeds rema
 - The fallback-editor case passed across Chromium, Firefox, and WebKit after its selector correction.
 - The print-completion focus case passed across all three engines.
 - The changed Markdown Preview fallback passed against its local source across all three engines.
-- The final full regression after the native focus fix remains pending.
+- The final local regression after the native focus fix passed 363 cases, with 12 expected GPU/touch-driver skips.
+- The final production regression passed the same 363 cases, with the same 12 expected skips.
+- The production Markdown Preview block-edit, undo, and reload case passed.
 - `sh .husky/pre-push` passed, including Web UI tests, SQLx schema verification, nightly Rust formatting, Clippy, and 1,173 Rust tests.
 - Promo-site synchronization remains skipped by the default `tools-check` command. The sibling site's known missing links are unrelated.
 
@@ -108,16 +116,16 @@ The user then requested that the remaining VoiceOver checks be skipped because t
 VoiceOver stopped. Full spoken navigation, announcements, editing, export-tab, modal-focus, and dismissal coverage remains unverified.
 Engine tests and accessibility-tree inspection do not replace those checks.
 
-## Final publication checks
+## Publication results
 
-1. Complete the final local regression after the native focus fix.
-2. Deploy MARS and the shared Markdown Preview fallback label.
-3. Compare the deployed artifacts with the local build.
-4. Complete the required production regression.
-5. Record the results, rebase unpublished commits onto the current remote branch, and push.
-6. Stop the owned preview server.
+The implementation and fix commits use the current remote branch as their base.
+The deployment and production regression are complete. All owned verification windows, processes, and preview servers are closed.
 
-Use the three-engine suites from the repository root:
+The deployment-size report now distinguishes source bytes, body bytes, included HTML/bundle sizes, and separate responder-script bytes.
+It does not report a savings percentage for assembled pages. Three size-report unit tests passed.
+
+Before a local run, start the preview server with `npm --prefix dev/tools/js/mars run serve`.
+In another terminal, run the three-engine suites from the repository root:
 
 ```bash
 MARS_BASE_URL=http://localhost:7373 make e2e-tools-test ARGS="mars.spec.ts mars-export.spec.ts mars-import.spec.ts mars-models.spec.ts mars-tables.spec.ts mars-temporary.spec.ts --workers=3"
@@ -162,6 +170,6 @@ Native helpers and artifacts remain under the approved OpenCode temporary direct
 ```
 
 The owned Safari verification windows and Edge processes are closed. VoiceOver is off.
-Final publication checks still use one owned preview server on port 7373.
+The owned preview server on port 7373 is stopped.
 Unrelated browser windows and Docker services remain unchanged.
 Preserve the unrelated untracked files `dev/plans/markdown-viewer-colored-models.md` and `dev/plans/responder-kv-counters.md`.
