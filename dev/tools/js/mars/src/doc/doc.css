@@ -93,6 +93,7 @@ body.su-view-edit #editorMount { display: block; }
 .su-table-selected { outline: 2px solid var(--primary); outline-offset: -1px; }
 .su-table-tools { position: fixed; z-index: 130; pointer-events: none; }
 .su-table-tools, .su-table-grip, .su-table-grip-face, .su-table-axis-menu, .su-table-drop-line { transition-property: none; }
+.su-table-cell-editing, .su-table-cell-editor, .su-table-cell-editor textarea { transition-property: none; }
 .su-table-grip { position: absolute; width: 28px; height: 28px; padding: 0; border: 0; background: transparent; cursor: pointer; pointer-events: auto; touch-action: none; -webkit-user-select: none; user-select: none; }
 .su-table-row-grip { width: 24px; }
 .su-table-column-grip { height: 24px; }
@@ -115,20 +116,19 @@ body.su-view-edit #editorMount { display: block; }
 .su-table-axis-menu .btn { display: flex; justify-content: flex-start; gap: 8px; width: 100%; min-height: 28px; padding: 4px 6px; background: transparent; font-size: 12px; }
 .su-table-axis-menu .btn:is(:hover, :focus-visible) { background: var(--surface-hover); }
 .su-table-alignment { display: flex; gap: 2px; min-width: 0; border: 0; padding: 4px 6px; }
-.su-table-alignment legend { padding-bottom: 4px; font: 11px var(--font); color: var(--text-muted); }
-.su-table-alignment label { position: relative; flex: 1; padding: 6px 4px; border-radius: 4px; text-align: center; font-size: 12px; cursor: pointer; background: var(--surface-hover); }
+.su-table-alignment label { position: relative; flex: 1; display: grid; place-items: center; min-width: 28px; min-height: 28px; padding: 4px; border-radius: 4px; color: var(--text-muted); cursor: pointer; background: var(--surface-hover); }
 .su-table-alignment input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
-.su-table-alignment label:has(:checked) { background: var(--eui-border-plain); color: var(--text); font-weight: 600; }
+.su-table-alignment label:has(:checked) { background: var(--eui-border-plain); color: var(--text); }
 .su-table-alignment label:has(:focus-visible) { outline: 2px solid var(--primary); outline-offset: 1px; }
-.su-table-cell-editor { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.su-table-cell-editor textarea { display: block; width: 100%; min-width: 0; min-height: 72px; padding: 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--text); font: 13px/1.5 var(--mono); resize: vertical; }
+.su-table-cell-editor { min-width: 0; }
+.su-table-cell-editor textarea { display: block; width: 100%; min-width: 0; min-height: 72px; padding: 4px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--text); font: 13px/1.5 var(--mono); resize: vertical; }
 .su-table-cell-editor textarea:focus { outline: 2px solid var(--primary); outline-offset: 1px; }
-.su-table-cell-editing { vertical-align: top; }
+.preview-article .su-table-cell-editing { padding: 4px; vertical-align: top; }
 .su-table-tools .su-table-grip.su-table-dragging { cursor: grabbing; }
 .su-table-drop-line { position: fixed; z-index: 131; background: var(--primary); pointer-events: none; }
 .su-table-tools[hidden], .su-table-drop-line[hidden] { display: none; }
 @media (pointer: coarse) { .su-table-resize { width: 24px; right: -12px; } .su-table-resize::after { inset-inline: 11px; } .su-table-row-grip { height: 44px; } .su-table-column-grip { width: 44px; } .su-table-grip-face { width: 8px; height: 26px; } .su-table-column-grip .su-table-grip-face { width: 26px; height: 8px; } .su-table-axis-menu .btn { min-height: 44px; } }
-@media (pointer: coarse) { .su-table-alignment label { min-height: 44px; display: grid; place-items: center; } }
+@media (pointer: coarse) { .su-table-alignment label { min-width: 44px; min-height: 44px; } }
 @media (max-width: 640px) { .su-table-edit-scroll th, .su-table-edit-scroll td { padding-inline: 6px; } }
 @media print { .su-table-tools, .su-table-resize, .su-table-drop-line { display: none !important; } }
 .preview-article ul, .preview-article ol { margin: 0 0 14px; padding-left: 26px; }

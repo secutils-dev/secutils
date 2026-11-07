@@ -124,7 +124,8 @@ Like block editing, Escape or Ctrl/Cmd+Enter applies the edit without separate A
 Enter inserts a line break, stored as `<br>`. Literal pipes are escaped automatically.
 Clicking outside, switching views, sharing, and exporting apply the current cell edit.
 With a cell focused, Enter opens its editor. Arrow keys inside the editor move the caret.
-Column actions include **Left**, **Center**, and **Right** alignment for the whole column, including its header.
+Column actions include EUI alignment icons for **Left**, **Center**, and **Right**, with accessible names and tooltips.
+Alignment applies to the whole column, including its header.
 Alignment changes only the GFM divider colons. Each cell edit or alignment change is one undo step.
 Header boundary handles resize adjacent columns with mouse or touch.
 Insert/remove buttons edit rows and columns, and grips reorder rows vertically or columns horizontally.

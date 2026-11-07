@@ -791,6 +791,72 @@ test.describe('table editing', () => {
   for (const hasTouch of [false, true]) {
     test.describe(`compact grips ${hasTouch ? 'touch' : 'desktop'}`, () => {
       test.use({ hasTouch, viewport: { width: hasTouch ? 390 : 1280, height: 844 } });
+      test('cell editors have compact equal gutters and alignment uses accessible EUI icons', async ({ page }) => {
+        const long = Array.from({ length: 12 }, (_, i) => `Wrapped evidence ${i + 1}`).join('<br>');
+        const text = `| Name | Evidence |\n| --- | --- |\n| Alice | ${long} |\n| Bob | Next |\n`;
+        await boot(page, text);
+        await cell(page, 1, 0).dblclick();
+        const editor = page.getByRole('textbox', { name: 'Edit table cell', exact: true });
+        const spacing = () =>
+          editor.evaluate((input) => {
+            const cell = input.closest('td')!,
+              rect = cell.getBoundingClientRect(),
+              box = input.getBoundingClientRect();
+            const style = getComputedStyle(cell),
+              inner = getComputedStyle(input);
+            return {
+              padding: [style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft].map(parseFloat),
+              inner: [inner.paddingTop, inner.paddingRight, inner.paddingBottom, inner.paddingLeft].map(parseFloat),
+              gaps: [box.top - rect.top, rect.right - box.right, rect.bottom - box.bottom, box.left - rect.left],
+            };
+          });
+        await expect.poll(async () => (await spacing()).padding).toEqual([4, 4, 4, 4]);
+        await expect.poll(async () => (await spacing()).inner).toEqual([4, 4, 4, 4]);
+        await expect
+          .poll(async () => {
+            const { gaps } = await spacing();
+            return Math.max(...gaps) - Math.min(...gaps);
+          })
+          .toBeLessThanOrEqual(0.5);
+        const gutters = (await spacing()).gaps;
+        expect(gutters.every((gap) => gap >= 4 && gap <= 5)).toBe(true);
+        // Native textarea resizing must still grow the row without uneven lower padding.
+        const height = (await editor.boundingBox())!.height;
+        await editor.evaluate((input, height) => {
+          (input as HTMLElement).style.height = `${height + 120}px`;
+        }, height);
+        expect((await editor.boundingBox())!.height).toBeGreaterThanOrEqual(height + 119);
+        await expect
+          .poll(async () => {
+            const { gaps } = await spacing();
+            return Math.max(...gaps) - Math.min(...gaps);
+          })
+          .toBeLessThanOrEqual(0.5);
+        await editor.press('Escape');
+        await cell(page, 1, 0).click();
+        const menu = await openActions(page, 'column');
+        const group = menu.getByRole('group', { name: 'Column alignment', exact: true });
+        await expect(group).toHaveCount(1);
+        await expect(group.locator('legend')).toHaveClass('sr-only');
+        for (const [value, path] of [
+          ['left', 'M2 4V3h6v1H2Zm0 3V6h10v1H2Zm0 3V9h6v1H2Zm0 3v-1h10v1H2Z'],
+          ['center', 'M5 4V3h6v1H5ZM3 7V6h10v1H3Zm2 3V9h6v1H5Zm-2 3v-1h10v1H3Z'],
+          ['right', 'M8 4V3h6v1H8ZM4 7V6h10v1H4Zm4 3V9h6v1H8Zm-4 3v-1h10v1H4Z'],
+        ]) {
+          const radio = group.getByRole('radio', { name: `Align column ${value}`, exact: true });
+          await expect(radio).toHaveAttribute('title', `Align column ${value}`);
+          const label = radio.locator('..');
+          expect(await label.evaluate((label) => label.textContent!.trim())).toBe('');
+          await expect(label.locator('svg')).toHaveAttribute('aria-hidden', 'true');
+          await expect(label.locator('svg path')).toHaveAttribute('d', path);
+          const box = (await radio.boundingBox())!;
+          expect(box.width).toBeGreaterThanOrEqual(hasTouch ? 44 : 28);
+          expect(box.height).toBeGreaterThanOrEqual(hasTouch ? 44 : 28);
+        }
+        await group.getByRole('radio', { name: 'Align column center', exact: true }).check();
+        await expect(cell(page, 1, 0)).toHaveCSS('text-align', 'center');
+        expect(await source(page)).toBe(text.replace('| --- | --- |', '| :---: | --- |'));
+      });
       test('button-free cell editing and three-state alignment retain phone interaction', async ({ page }) => {
         await boot(page, sized([0.5, 0.5]));
         await cell(page, 2, 1).dblclick();
@@ -1059,6 +1125,22 @@ test.describe('table editing', () => {
             `${state}: column grip on painted top border`,
           ).toBeLessThanOrEqual(1);
         }
+        await cell(page, 1, 1).dblclick();
+        const editor = page.getByRole('textbox', { name: 'Edit table cell', exact: true });
+        await expect
+          .poll(() =>
+            editor.evaluate((input) => {
+              const cell = input.closest('td')!.getBoundingClientRect(),
+                box = input.getBoundingClientRect();
+              const gaps = [box.top - cell.top, cell.right - box.right, cell.bottom - box.bottom, box.left - cell.left];
+              return (Math.max(...gaps) - Math.min(...gaps)) * devicePixelRatio;
+            }),
+          )
+          .toBeLessThanOrEqual(1);
+        await expect(editor).toHaveCSS('padding', '4px');
+        const path = testInfo.outputPath(`cell-editor-${scale}.png`);
+        await page.screenshot({ path, animations: 'disabled' });
+        await testInfo.attach(`cell-editor-${scale}`, { path, contentType: 'image/png' });
       } finally {
         await browser.close();
       }

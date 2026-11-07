@@ -44,14 +44,17 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
         buttons.set(`Drag ${axis} to reorder`, grips[axis]);
     }
     const alignment = document.createElement('fieldset'), legend = document.createElement('legend');
-    alignment.className = 'su-table-alignment'; legend.textContent = 'Content alignment'; alignment.append(legend);
+    alignment.className = 'su-table-alignment'; legend.className = 'sr-only'; legend.textContent = 'Column alignment'; alignment.append(legend);
     const alignmentName = `su-table-align-${crypto.randomUUID()}`;
     const alignments = new Map<TableAlignment, HTMLInputElement>();
+    const alignmentGlyphs = { left: 'textAlignLeft', center: 'textAlignCenter', right: 'textAlignRight' } as const;
     for (const value of ['left', 'center', 'right'] as const) {
         const label = document.createElement('label'), input = document.createElement('input');
         input.type = 'radio'; input.name = alignmentName; input.value = value;
         input.setAttribute('aria-label', `Align column ${value}`);
-        label.append(input, value[0].toUpperCase() + value.slice(1)); alignment.append(label);
+        input.title = label.title = `Align column ${value}`;
+        const glyph = document.createElement('span'); glyph.innerHTML = icon(alignmentGlyphs[value]);
+        label.append(input, glyph); alignment.append(label);
         alignments.set(value, input); buttons.set(`Align column ${value}`, input);
         input.addEventListener('change', () => {
             if (!input.checked || !owned()) return;
@@ -75,7 +78,12 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
     const closePanels = () => { for (const panel of Object.values(panels)) if (panel.matches(':popover-open')) panel.hidePopover(); };
     const position = () => {
         if (!owned()) return;
-        if (cellEditor) { closePanels(); toolbar.hidden = true; return; }
+        if (cellEditor) {
+            const { cell, input } = cellEditor, rect = cell.getBoundingClientRect(), box = input.getBoundingClientRect();
+            const height = Math.max(72, rect.height - 2 * (box.top - rect.top));
+            if (Math.abs(box.height - height) > 0.1) input.style.height = `${height}px`;
+            closePanels(); toolbar.hidden = true; return;
+        }
         const s = selected!, viewport = window.visualViewport, paneRect = pane.getBoundingClientRect();
         const left = Math.max(viewport?.offsetLeft ?? 0, paneRect.left) + 8;
         const right = Math.min((viewport?.offsetLeft ?? 0) + (viewport?.width ?? innerWidth), paneRect.right) - 8;
@@ -165,6 +173,7 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
         const ed = cellEditor;
         if (!ed) return false;
         cellEditor = null;
+        layoutObserver.unobserve(ed.input);
         const value = ed.input.value, s = ed.selection;
         ed.form.remove(); ed.cell.append(ed.content); ed.cell.classList.remove('su-table-cell-editing');
         if (owned(s) && value !== ed.original) {
@@ -184,6 +193,7 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
         if (!owned()) return;
         host.startCell(); window.getSelection()?.removeAllRanges(); closePanels();
         const s = selected!, original = (s.row ? s.model.rows[s.row - 1] : s.model.header).cells[s.column].trim();
+        const originalHeight = cell.getBoundingClientRect().height;
         const content = document.createDocumentFragment(); content.append(...cell.childNodes);
         const form = document.createElement('div'), label = document.createElement('label'), input = document.createElement('textarea');
         const help = document.createElement('span');
@@ -193,7 +203,10 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
         help.textContent = 'Escape or Ctrl/Cmd+Enter applies the edit. Clicking away also applies it. Enter adds a line break.';
         input.setAttribute('aria-describedby', help.id); input.value = original; input.cols = 1; input.rows = 3; input.spellcheck = false;
         form.append(label, help, input); cell.append(form); cell.classList.add('su-table-cell-editing');
+        const inset = input.getBoundingClientRect().top - cell.getBoundingClientRect().top;
+        input.style.height = `${Math.max(72, originalHeight - 2 * inset)}px`;
         cellEditor = { selection: s, cell, form, input, content, original };
+        layoutObserver.observe(input);
         form.addEventListener('keydown', (event) => {
             if (event.isComposing || event.keyCode === 229) return;
             if (event.key !== 'Escape' && !(event.key === 'Enter' && (event.metaKey || event.ctrlKey))) return;

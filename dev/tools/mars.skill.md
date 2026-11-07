@@ -73,7 +73,7 @@ Use Escape or `Ctrl/Cmd+Enter` to apply the edit, as with block editing. There a
 Use Enter for a line break. MARS stores line breaks as `<br>` and escapes literal pipes.
 Clicking outside, sharing, exporting, and switching views apply the current cell edit.
 
-In **Column actions**, choose **Left**, **Center**, or **Right** under **Content alignment**.
+In **Column actions**, use the EUI alignment icons. Their accessible names and tooltips are **Align column left**, **Align column center**, and **Align column right**.
 The selected alignment applies to the whole column, including its header.
 Arrow keys switch the focused alignment control. Cell edits and alignment changes support `Ctrl/Cmd+Z`.
 
