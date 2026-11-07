@@ -34,11 +34,18 @@ async function boot(page: Page, text = DOC) {
   await expect(page.locator('#saveState')).toHaveText('Saved');
 }
 async function ratio(page: Page, index = 0) {
-  await expect(table(page, index)).toBeVisible();
-  return table(page, index)
-    .locator('thead th')
-    .first()
-    .evaluate((cell) => cell.getBoundingClientRect().width / cell.closest('table')!.getBoundingClientRect().width);
+  let value = 0;
+  await expect
+    .poll(async () => {
+      value = await page.evaluate((index) => {
+        const table = document.querySelectorAll<HTMLTableElement>('#previewArticle table')[index];
+        const width = table?.getBoundingClientRect().width ?? 0;
+        return width ? table.rows[0].cells[0].getBoundingClientRect().width / width : 0;
+      }, index);
+      return value;
+    })
+    .toBeGreaterThan(0);
+  return value;
 }
 async function resize(page: Page, delta = 80, index = 0) {
   const handle = table(page, index).getByRole('separator', { name: 'Resize column 1', exact: true });
@@ -51,15 +58,24 @@ async function resize(page: Page, delta = 80, index = 0) {
   await expect(table(page, index)).toHaveClass(/su-sized-table/);
 }
 async function firstColumnLines(page: Page, index: number) {
-  await expect(table(page, index)).toBeVisible();
-  await table(page, index).scrollIntoViewIfNeeded();
-  return table(page, index).evaluate((table: HTMLTableElement) =>
-    [...table.tBodies[0].rows].map((row) => {
-      const range = document.createRange();
-      range.selectNodeContents(row.cells[0]);
-      return new Set([...range.getClientRects()].map((rect) => rect.top)).size;
-    }),
-  );
+  let lines: number[] = [];
+  await expect
+    .poll(async () => {
+      // Sample one live DOM tree without retaining elements across preview replacement.
+      lines = await page.evaluate((index) => {
+        const table = document.querySelectorAll<HTMLTableElement>('#previewArticle table')[index];
+        if (!table?.getBoundingClientRect().width) return [];
+        table.scrollIntoView({ block: 'nearest' });
+        return [...table.tBodies[0].rows].map((row) => {
+          const range = document.createRange();
+          range.selectNodeContents(row.cells[0]);
+          return new Set([...range.getClientRects()].map((rect) => rect.top)).size;
+        });
+      }, index);
+      return lines.length > 0 && lines.every((count) => count > 0);
+    })
+    .toBe(true);
+  return lines;
 }
 async function exportDialog(page: Page) {
   await page.getByRole('button', { name: 'Export document', exact: true }).click();
