@@ -106,7 +106,10 @@ source of truth for both halves, embed the responder script in an HTML comment w
 `deploy.ts` takes the first comment whose content starts with `@su:responder-script` and PUTs its body as
 `settings.script`, next to the minified HTML as `settings.body`; the minifier strips the comment from the page.
 `ResponderSettings` is replaced wholesale, so a file without the marker clears any script on its responder.
-The deploy log reports the script size beside the body size, and warns when a file has more than one marker.
+The deploy log reports source bytes and assembled body bytes for HTML pages.
+The HTML shell and inline bundle sizes are included in the body total.
+The responder script is separate from the body. These sizes do not describe HTTP transfer compression.
+The log warns when a file has more than one marker.
 
 Rules:
 

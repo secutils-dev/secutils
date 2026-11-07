@@ -632,14 +632,35 @@ type DeployTarget = {
   // Extra response headers (Link headers on the index page, ...). These are
   // merged with the implicit Content-Type header.
   extraHeaders?: [string, string][];
-  // Reported as `original -> minified` in the deploy log. For Markdown / text
-  // we don't minify so original == minified.
+  // Source-file bytes, before shared assets and bundle payloads are assembled.
   originalSize: number;
+  // Minified HTML shell, excluding embedded bundle payloads.
+  htmlSize?: number;
   // Inlined `data-su-bundle` payload sizes, keyed by bundle name. Reported
   // alongside the body size so a 2 MB liteparse blob is visible in the deploy
   // log instead of mysteriously inflating the "minified" number.
   bundleBytes?: Map<string, number>;
 };
+
+export function formatDeploySize(
+  target: Pick<DeployTarget, "body" | "originalSize" | "htmlSize" | "bundleBytes" | "script">,
+): string {
+  const bodySize = Buffer.byteLength(target.body, "utf-8");
+  let info = target.htmlSize === undefined
+    ? formatSize(bodySize)
+    : `source ${formatSize(target.originalSize)} -> body ${formatSize(bodySize)}`;
+  if (target.bundleBytes?.size) {
+    const parts = [`HTML ${formatSize(target.htmlSize ?? bodySize)}`];
+    for (const [name, bytes] of target.bundleBytes) {
+      parts.push(`inline ${name} ${formatSize(bytes)}`);
+    }
+    info += ` (${parts.join(" + ")}; included in body)`;
+  }
+  if (target.script) {
+    info += ` + separate responder script ${formatSize(Buffer.byteLength(target.script, "utf-8"))}`;
+  }
+  return info;
+}
 
 // html-minifier-terser options for every HTML responder body (also used by
 // scripts/tools-verify.ts for the pre-deploy dry run).
@@ -693,6 +714,7 @@ async function buildHtmlTarget(
     ...(filename === 'mars-stats.html' ? { secrets: MARS_STATS_SECRETS } : {}),
     extraHeaders,
     originalSize: Buffer.byteLength(templated, "utf-8"),
+    htmlSize: Buffer.byteLength(minified, "utf-8"),
     bundleBytes: bundleBytes.size > 0 ? bundleBytes : undefined,
   };
 }
@@ -988,25 +1010,7 @@ async function main() {
       continue;
     }
 
-    const minifiedSize = Buffer.byteLength(target.body, "utf-8");
-    let sizeInfo: string;
-    if (target.originalSize === minifiedSize) {
-      sizeInfo = `${formatSize(target.originalSize)}`;
-    } else {
-      const savedPct = (
-        ((target.originalSize - minifiedSize) / target.originalSize) *
-        100
-      ).toFixed(1);
-      sizeInfo = `${formatSize(target.originalSize)} -> ${formatSize(minifiedSize)} ${ANSI.dim(`(${savedPct}% saved)`)}`;
-    }
-    if (target.script) {
-      sizeInfo += ` ${ANSI.dim(`+ script ${formatSize(Buffer.byteLength(target.script, "utf-8"))}`)}`;
-    }
-    if (target.bundleBytes) {
-      for (const [name, bytes] of target.bundleBytes) {
-        sizeInfo += ` ${ANSI.dim(`+ bundle ${name} ${formatSize(bytes)}`)}`;
-      }
-    }
+    const sizeInfo = formatDeploySize(target);
 
     const result = await putResponder(API_DOMAIN, API_KEY, responderId, target);
     if (result.ok) {
