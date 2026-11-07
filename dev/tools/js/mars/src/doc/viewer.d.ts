@@ -11,6 +11,7 @@ export interface ViewerDoc {
     stamp: number;
     // Browser edits are newer than the linked file.
     dirty: boolean;
+    readingWidth?: ReadingWidth;
 }
 
 export interface ViewerHost {
@@ -18,6 +19,7 @@ export interface ViewerHost {
     persist(doc: ViewerDoc): Promise<void>;
     // New content is replacing a non-empty document; the next persist creates a new entry.
     detach(): void;
+    readingWidthChanged?(width: ReadingWidth): Promise<void>;
     // Extracted source from Open or a drop; converted HTML never retains a writable handle.
     openFile?(file: { name: string; text: string; handle: FileSystemFileHandle | null; stamp: number }, input?: InputOperation): Promise<void>;
     openUrl?(url: string): Promise<void>;
@@ -35,6 +37,8 @@ export function currentText(): string;
 export function currentThreads(): Thread[];
 export function captureExportSnapshot(): Promise<ExportSnapshot>;
 export function exportReadingWidth(): ReadingWidth;
+export function defaultReadingWidth(): ReadingWidth;
+export function setDocumentReadingWidth(width?: ReadingWidth): void;
 export function renderExportBody(body: string, signal?: AbortSignal): Promise<string>;
 export function toast(msg: string, action?: { label: string; run: () => void }): void;
 

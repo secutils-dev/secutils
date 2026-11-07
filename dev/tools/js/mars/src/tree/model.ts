@@ -1,4 +1,6 @@
 // Pure tree helpers over the flat node list stored in IndexedDB.
+import type { ReadingWidth } from '../export/settings.ts';
+
 export interface TreeNode {
     id: string;
     parentId: string | null;
@@ -22,6 +24,8 @@ export interface TreeNode {
     opened?: true;
     // UTF-8 bytes of the stored text, for the sidebar footer.
     size?: number;
+    // Shared document layout, separate from the reader's browser-wide preference.
+    readingWidth?: ReadingWidth;
 }
 
 export const newId = () => crypto.randomUUID();

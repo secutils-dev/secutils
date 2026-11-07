@@ -3,23 +3,24 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { marked } from 'marked';
+import { installTableRanges } from '../src/doc/table-renderer.ts';
 
 const viewer = readFileSync(new URL('../src/doc/viewer.js', import.meta.url), 'utf8');
 const md = readFileSync(new URL('../../../md.html', import.meta.url), 'utf8');
 const section = (text: string, start: string, end: string) => text.slice(text.indexOf(start), text.indexOf(end, text.indexOf(start)));
 const mapping = section(viewer, 'const LIST_ITEM_RE', '// Keep the review open');
-const render = runInNewContext(`${mapping}\nrenderSourceBlocks`, { marked, escapeUnmatchedInlineHtml: () => {} });
+const render = runInNewContext(`${mapping}\nrenderSourceBlocks`, { marked, installTableRanges, escapeUnmatchedInlineHtml: () => {} });
 const renumber = runInNewContext(`(${section(viewer, 'function renumberListItem', 'function moveOrderedItem')})`);
 const itemRanges = (source: string) => [...render(source, new marked.Renderer()).matchAll(/<li\b[^>]*data-start="(\d+)" data-end="(\d+)"[^>]*>/g)]
     .map((match) => ({ start: Number(match[1]), text: source.slice(Number(match[1]), Number(match[2])) }));
 
-test('source mapping and block controls match Markdown Preview', () => {
+test('shared source mapping and block controls match Markdown Preview apart from MARS table hooks', () => {
     for (const [start, end] of [
         ['const LIST_ITEM_RE', '// Keep the review open'],
         ['function renumberListItem', 'async function copyTarget'],
         ['// ---- Block handle', '// ---- Selection formatting toolbar'],
         ['// ---- Selection formatting toolbar', '// ---- Review comments'],
-    ]) assert.equal(section(viewer, start, end), section(md, start, end));
+    ]) assert.equal(section(viewer, start, end).replace(/^.*\/\/ MARS-only table mapping\.\n/gm, ''), section(md, start, end));
 });
 
 test('nested multiline list items retain original source ranges and indentation', () => {
@@ -41,6 +42,20 @@ test('list markers in code fences do not steal subsequent nested item ranges', (
     const inline = '- ```md\n  - Child\n  ```\n\n  - Child\n- Outside\n';
     const actual = itemRanges(inline).find(({ text }) => text.trimStart().startsWith('- Child'))!;
     assert.equal(actual.start, inline.lastIndexOf('  - Child'));
+});
+
+test('table ranges skip identical examples in inline list fences and stop before later fences', () => {
+    const table = '| Name | State |\n| --- | --- |\n| Alice | Ready |';
+    const quoted = (prefix: string) => table.split('\n').map((line) => `${prefix}${line}\n`).join('');
+    for (const prefix of ['', '> ']) {
+        const example = `${prefix}- \`\`\`md\n${quoted(`${prefix}  `)}${prefix}  \`\`\`\n${prefix}\n`;
+        const actual = quoted(`${prefix}  `);
+        const source = example + actual + `${prefix}\n` + example;
+        const ranges = [...render(source, new marked.Renderer()).matchAll(/data-table-start="(\d+)" data-table-end="(\d+)"/g)];
+        assert.equal(ranges.length, 1);
+        assert.equal(Number(ranges[0][1]), example.length);
+        assert.equal(source.slice(Number(ranges[0][1]), Number(ranges[0][2])).trimEnd(), actual.trimEnd());
+    }
 });
 
 test('nested tab-indented items map to original characters, not expanded token columns', () => {

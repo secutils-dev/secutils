@@ -8,6 +8,8 @@ import { commentKey, splitComments, type Comment, type Thread } from '../share/m
 import { $ } from '../ui/ui.ts';
 import { diffBlocks, diffWords } from './diff.ts';
 import * as viewer from './viewer.js';
+import { tableReviewBlocks } from './table.ts';
+import { applyTableLayouts } from './table-layout.ts';
 
 const FRONTMATTER_RE = /^---\r?\n[\s\S]*?\r?\n---\r?\n/;
 // Rendered widgets whose text doesn't line up with their source get the block bar only.
@@ -40,7 +42,7 @@ const doneBtn = $('changesDone'), closeBtn = $('changesClose'), swapBtn = $('cha
 
 function parseBase(id: string, mode: Mode, text: string): Base {
     const { body, threads } = splitComments(text.replace(/\r\n?/g, '\n'));
-    const raws = marked.lexer(body.replace(FRONTMATTER_RE, '')).filter((t) => t.type !== 'space').map((t) => t.raw);
+    const raws = tableReviewBlocks(body.replace(FRONTMATTER_RE, ''));
     return { id, mode, raws, texts: new Map(), comments: new Set(threads.flatMap((t) => t.comments.map(commentKey))) };
 }
 
@@ -192,6 +194,7 @@ function showBefore() {
     if (!c || !base) return;
     if (before.matches(':popover-open')) { hideBefore(); return; }
     before.innerHTML = `<div class="diff-before-head">${base.mode === 'opened' ? 'As opened' : 'Before your last review'}</div><div class="preview-article">${c.old.map(oldHtml).join('')}</div>`;
+    applyTableLayouts(before, true);
     before.showPopover();
     const r = c.el.getBoundingClientRect(), { width, height } = before.getBoundingClientRect();
     before.style.left = `${Math.round(Math.min(Math.max(8, r.left), innerWidth - width - 8))}px`;

@@ -10,6 +10,7 @@ import { joinComments, mergeDocuments, openThreads, splitComments, type Thread }
 import { matchScore } from './match.ts';
 import { beginInput, checkInput, type InputOperation } from '../io/input.ts';
 import { readSource, sourceUrl, urlFileName } from '../io/source.ts';
+import { validWidth, type ReadingWidth } from '../export/settings.ts';
 
 export const SHARED_FOLDER = 'Shared with me';
 const SHORT_TTLS = [86400, 604800, 1209600];
@@ -27,12 +28,14 @@ const fmtSize = (chars: number) => (chars < 1024 ? `${chars} B` : chars < 104857
 async function bundleFor(id: string): Promise<Bundle | null> {
     const n = app.node(id);
     if (!n) return null;
-    if (n.kind === 'doc') return { v: 1, kind: 'doc', name: n.name, docs: [{ path: [], name: n.name, originId: n.originId ?? n.id, text: await app.docText(n.id) }] };
+    const widthFor = (doc: TreeNode) => doc.id === app.state.currentId ? viewer.exportReadingWidth() : doc.readingWidth ?? viewer.defaultReadingWidth();
+    if (n.kind === 'doc') return { v: 1, kind: 'doc', name: n.name, docs: [{ path: [], name: n.name, originId: n.originId ?? n.id, text: await app.docText(n.id), readingWidth: widthFor(n) }] };
     const docs = [];
     for (const d of descendants(app.state.nodes, n.id)) {
         if (d.kind !== 'doc') continue;
         const path = ancestors(app.state.nodes, d.id).slice(ancestors(app.state.nodes, n.id).length + 1).map((f) => f.name);
-        docs.push({ path, name: d.name, originId: d.originId ?? d.id, text: await app.docText(d.id) });
+        const readingWidth = widthFor(d);
+        docs.push({ path, name: d.name, originId: d.originId ?? d.id, text: await app.docText(d.id), readingWidth });
     }
     return { v: 1, kind: 'folder', name: n.name, originId: n.originId ?? n.id, docs };
 }
@@ -40,7 +43,9 @@ async function bundleFor(id: string): Promise<Bundle | null> {
 async function fullLink(bundle: Bundle) {
     if (bundle.kind === 'doc') {
         const d = bundle.docs[0];
-        return `${base()}#${new URLSearchParams({ name: d.name, md: await encodeState(d.text), o: d.originId })}`;
+        const params = new URLSearchParams({ name: d.name, md: await encodeState(d.text), o: d.originId });
+        if (validWidth(d.readingWidth)) params.set('w', String(d.readingWidth));
+        return `${base()}#${params}`;
     }
     return `${base()}#b=${await encodeState(JSON.stringify(bundle))}`;
 }
@@ -92,8 +97,10 @@ async function shortLink(nodeId: string, bundle: Bundle) {
 
 // Copies a link for a tree node. The clipboard write starts synchronously (Safari).
 export async function copyNodeLink(id: string, kind: 'short' | 'full') {
-    if (id === app.state.currentId) await viewer.flush();
-    const bundle = bundleFor(id);
+    const bundle = (async () => {
+        if (id === app.state.currentId) await viewer.flush();
+        return bundleFor(id);
+    })();
     const url = bundle.then(async (b) => {
         if (!b) throw new Error('Nothing to share');
         return kind === 'full' ? fullLink(b) : (await shortLink(id, b)).url;
@@ -247,7 +254,7 @@ const sharedRoot = () => app.findOrCreateFolder(SHARED_FOLDER, null);
 async function saveText(n: TreeNode, text: string) {
     Object.assign(n, { size: textBytes(text), threads: openThreads(text), updatedAt: Date.now() });
     await db.putNodes([n], { [n.id]: text });
-    if (n.id === app.state.currentId) viewer.openDocument({ text, name: n.name, handle: n.handle ?? null, stamp: n.stamp ?? 0, dirty: !!n.dirty });
+    if (n.id === app.state.currentId) viewer.openDocument({ text, name: n.name, handle: n.handle ?? null, stamp: n.stamp ?? 0, dirty: !!n.dirty, readingWidth: n.readingWidth });
 }
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -257,7 +264,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 // changed it is taken (and the changes marked), when only the stored copy changed it stays,
 // and when both changed (or the source text is unknown) the reader decides. `link` attaches
 // the file an incoming copy was opened from.
-async function updateExisting(existing: TreeNode, text: string, link?: { handle: FileSystemFileHandle; stamp: number }, input?: InputOperation) {
+async function updateExisting(existing: TreeNode, text: string, link?: { handle: FileSystemFileHandle; stamp: number }, input?: InputOperation, readingWidth?: ReadingWidth) {
     checkInput(input);
     await viewer.flush();
     checkInput(input);
@@ -295,12 +302,16 @@ async function updateExisting(existing: TreeNode, text: string, link?: { handle:
     }
     checkInput(input);
     if (choice === 'copy') {
-        await app.createDoc({ name: app.uniqueName(`${existing.name} (new)`, existing.parentId), text, parentId: existing.parentId, opened: true, handle: link?.handle, stamp: link?.stamp, input });
+        await app.createDoc({ name: app.uniqueName(`${existing.name} (new)`, existing.parentId), text, parentId: existing.parentId, opened: true, handle: link?.handle, stamp: link?.stamp, input, readingWidth: readingWidth ?? existing.readingWidth });
         checkInput(input);
         viewer.toast(`Saved the incoming copy next to "${existing.name}"`);
         return;
     }
     if (!choice) return;
+    if (validWidth(readingWidth) && (choice === 'theirs' || existing.readingWidth === undefined)) {
+        existing.readingWidth = readingWidth;
+        viewer.setDocumentReadingWidth(readingWidth);
+    }
     if (link) Object.assign(existing, { handle: link.handle, stamp: link.stamp, dirty: choice === 'mine' && !merged.sameBody });
     await app.setOpened(existing, text);
     checkInput(input);
@@ -340,10 +351,10 @@ async function findLikely(name: string, text: string, originId?: string, input?:
 async function receiveDoc(doc: Bundle['docs'][0], input?: InputOperation) {
     const existing = findDoc(doc.originId) ?? (await findLikely(doc.name, doc.text, doc.originId, input));
     checkInput(input);
-    if (existing) { await updateExisting(existing, doc.text, undefined, input); return; }
+    if (existing) { await updateExisting(existing, doc.text, undefined, input, doc.readingWidth); return; }
     const parent = await sharedRoot();
     checkInput(input);
-    await app.createDoc({ name: app.uniqueName(doc.name || 'Untitled', parent.id), text: doc.text, parentId: parent.id, originId: doc.originId, opened: true, input });
+    await app.createDoc({ name: app.uniqueName(doc.name || 'Untitled', parent.id), text: doc.text, parentId: parent.id, originId: doc.originId, opened: true, input, readingWidth: doc.readingWidth });
     checkInput(input);
     viewer.toast(`Added "${doc.name}" to ${SHARED_FOLDER}`);
 }
@@ -382,18 +393,21 @@ async function receiveFolder(bundle: Bundle, input?: InputOperation) {
         checkInput(input);
         const existing = findDoc(doc.originId);
         if (existing) {
+            const addWidth = existing.readingWidth === undefined && validWidth(doc.readingWidth);
+            if (addWidth) existing.readingWidth = doc.readingWidth;
             const local = (await db.getText(existing.id)) ?? '';
             checkInput(input);
             const m = mergeDocuments(local, doc.text);
             if (!m.sameBody) differ++;
             if (m.added) { merged += m.added; await saveText(existing, m.mine); }
+            else if (addWidth) await db.putNodes([existing]);
             first ??= existing.id;
             continue;
         }
         let parentId = target.id;
         for (const seg of doc.path) parentId = (await app.findOrCreateFolder(seg, parentId)).id;
         checkInput(input);
-        const created = await app.createDoc({ name: app.uniqueName(doc.name, parentId), text: doc.text, parentId, originId: doc.originId, open: false, opened: true, input });
+        const created = await app.createDoc({ name: app.uniqueName(doc.name, parentId), text: doc.text, parentId, originId: doc.originId, open: false, opened: true, input, readingWidth: doc.readingWidth });
         first ??= created.id;
         added++;
     }
@@ -497,6 +511,9 @@ export async function openFromLocation(address = location.href): Promise<boolean
             return false;
         }
         input.check();
+        // A fragment hint also supplies layout for older links whose bundle has no width.
+        const readingWidth = params.get('w') === 'full' ? 'full' : Number(params.get('w'));
+        if (validWidth(readingWidth)) for (const doc of bundle.docs) doc.readingWidth = readingWidth;
         await receive(bundle, input);
         return true;
     } catch (err) {

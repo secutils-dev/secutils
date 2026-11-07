@@ -17,6 +17,7 @@ viewer.setHost({
     currentId: () => app.state.currentId,
     persist: app.persist,
     detach: app.detach,
+    readingWidthChanged: app.setReadingWidth,
     openFile: share.receiveFile,
     openUrl: share.receiveUrl,
 });

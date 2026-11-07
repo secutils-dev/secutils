@@ -6,6 +6,7 @@ import { openThreads, splitComments } from './share/merge.ts';
 import { $ } from './ui/ui.ts';
 import * as viewer from './doc/viewer.js';
 import { beginInput, cancelInput, checkInput, type InputOperation } from './io/input.ts';
+import { validWidth, type ReadingWidth } from './export/settings.ts';
 
 export const state = {
     nodes: [] as TreeNode[],
@@ -49,13 +50,14 @@ export async function createFolder(name: string, parentId: string | null, origin
 
 // `opened`: the text comes from outside (a file, link, URL, or import) and is kept as the
 // document's source text, for "changes since opened" and for re-opens.
-export async function createDoc(opts: { name?: string; text?: string; parentId?: string | null; originId?: string; handle?: FileSystemFileHandle; stamp?: number; open?: boolean; opened?: boolean; input?: InputOperation } = {}) {
+export async function createDoc(opts: { name?: string; text?: string; parentId?: string | null; originId?: string; handle?: FileSystemFileHandle; stamp?: number; open?: boolean; opened?: boolean; input?: InputOperation; readingWidth?: ReadingWidth } = {}) {
     if (!opts.input && opts.open !== false) cancelInput();
     checkInput(opts.input);
     const id = newId();
     const parentId = opts.parentId === undefined ? state.folderId : opts.parentId;
     const text = opts.text ?? '';
     const n: TreeNode = { id, parentId, kind: 'doc', name: opts.name ?? 'Untitled', order: nextOrder(state.nodes, parentId), createdAt: now(), updatedAt: now(), originId: opts.originId ?? id, threads: openThreads(text), size: textBytes(text) };
+    if (validWidth(opts.readingWidth)) n.readingWidth = opts.readingWidth;
     if (opts.handle) Object.assign(n, { handle: opts.handle, stamp: opts.stamp ?? 0, dirty: false });
     if (opts.opened) { n.opened = true; await db.putSide('opened', id, text); }
     checkInput(opts.input);
@@ -154,7 +156,7 @@ export async function openDoc(id: string, input?: InputOperation) {
     state.folderId = n.parentId;
     expandTo(n.parentId);
     setRoute(id);
-    viewer.openDocument({ text, name: n.name, handle: n.handle ?? null, stamp: n.stamp ?? 0, dirty: !!n.dirty });
+    viewer.openDocument({ text, name: n.name, handle: n.handle ?? null, stamp: n.stamp ?? 0, dirty: !!n.dirty, readingWidth: n.readingWidth });
     emit();
 }
 
@@ -169,7 +171,7 @@ export async function reloadFromDisk(id: string) {
 async function reopen(n: TreeNode) {
     const text = (await db.getText(n.id)) ?? '';
     if (state.currentId !== n.id || !node(n.id)) return;
-    viewer.openDocument({ text, name: n.name, handle: n.handle ?? null, stamp: n.stamp ?? 0, dirty: !!n.dirty });
+    viewer.openDocument({ text, name: n.name, handle: n.handle ?? null, stamp: n.stamp ?? 0, dirty: !!n.dirty, readingWidth: n.readingWidth });
 }
 
 // Linked files exist only where the File System Access pickers do (Chromium); Firefox and
@@ -222,6 +224,13 @@ export function detach() {
     state.currentId = null;
     setRoute(null);
     emit();
+}
+
+export async function setReadingWidth(width: ReadingWidth) {
+    const n = current();
+    if (!n || !validWidth(width) || n.readingWidth === width) return;
+    n.readingWidth = width;
+    await save([n]);
 }
 
 type PersistedDoc = { text: string; name: string; handle: FileSystemFileHandle | null; stamp: number; dirty: boolean };
@@ -287,7 +296,7 @@ export async function duplicate(id: string) {
     const n = node(id);
     if (n?.kind !== 'doc') return;
     const text = (await db.getText(id)) ?? '';
-    const copy = await createDoc({ name: `${n.name} (copy)`, text, parentId: n.parentId, open: false });
+    const copy = await createDoc({ name: `${n.name} (copy)`, text, parentId: n.parentId, open: false, readingWidth: n.readingWidth });
     await move(copy.id, n.parentId, childrenOf(state.nodes, n.parentId)[childrenOf(state.nodes, n.parentId).indexOf(n) + 1]?.id ?? null);
     await openDoc(copy.id);
 }

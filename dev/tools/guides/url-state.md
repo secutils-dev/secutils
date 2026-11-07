@@ -144,3 +144,6 @@ not a fragment parameter: it travels inside the ciphertext, so the URL reveals n
   `mars.html`) and the short-link cases in `e2e/tools/md.spec.ts` and `mars.spec.ts`.
 - **MARS** runs a copy of this responder script in its own KV, with a different plaintext ([mars.md](mars.md)).
   Keep the two scripts identical.
+  MARS bundle documents can include `readingWidth` (`full`, or an integer from 320 to 2400).
+  Full document links carry this value as `w` in the fragment. An explicit `w` also supplies layout for legacy short links.
+  Invalid or absent values retain the recipient's preference. The state encoding and responder script remain unchanged.

@@ -56,6 +56,7 @@ Document links in both previews open in a new tab. Fragment links still scroll w
 Block controls stay in a reserved left gutter and also activate over left-side whitespace.
 Whitespace between list items keeps the adjacent item's controls active.
 Both apps restore the selected reading width after reload, including full and custom widths.
+MARS shared links also retain the document reading width without changing the recipient's browser preference.
 List dragging works past multiline items and renumbers ordered-list source from its original starting number.
 All five selection styles work in GitHub alert bodies and preserve quote prefixes in both apps.
 Generated alert titles offer **Comment** only.
@@ -76,6 +77,9 @@ PDF Extractor's **Export > Open in MARS** sends the active Text or Markdown outp
 The handoff retains the PDF document name and exact extracted text in the URL fragment.
 JSON, Outline, and Screenshots do not offer this handoff.
 MARS processes documents locally and stores only encrypted data for short links.
+
+MARS table controls resize columns proportionally and insert, remove, or reorder rows and columns with mouse, touch, or keyboard.
+Column widths travel in Markdown metadata and survive files, full/short links, HTML, and PDF exports.
 
 ## Private MARS telemetry
 

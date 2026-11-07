@@ -2,11 +2,13 @@
 //
 // URL state: see dev/tools/guides/url-state.md -> "URL state encoding":
 //   base64url( u32le(uncompressed length) || deflate-raw(UTF-8 text) )
-// Full links: `#name=<name>&md=<state>&o=<originId>` for one document (md.html-compatible;
-// md.html ignores `o`), or `#b=<state of a bundle JSON>` for a folder.
+// Full links: `#name=<name>&md=<state>&o=<originId>&w=<readingWidth>` for one document
+// (md.html-compatible; md.html ignores `o` and `w`), or `#b=<state of a bundle JSON>` for a folder.
 // Short links: `#s=<secret>`; the responder stores base64url(IV || AES-GCM(state bytes of the
 // bundle JSON)) under `id`. Both `id` and the AES key are SHA-256 hashes of the secret, so
 // the key never leaves the fragment (same scheme as md.html, different plaintext).
+
+import { validWidth, type ReadingWidth } from '../export/settings.ts';
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
@@ -52,6 +54,7 @@ export interface SharedDoc {
     name: string;
     originId: string;
     text: string;
+    readingWidth?: ReadingWidth;
 }
 export interface Bundle {
     v: 1;
@@ -68,6 +71,7 @@ export function parseBundle(json: string): Bundle | null {
         const docOk = (d: SharedDoc) => d && typeof d.text === 'string' && typeof d.name === 'string'
             && typeof d.originId === 'string' && Array.isArray(d.path) && d.path.every((p) => typeof p === 'string');
         if (b?.v !== 1 || !['doc', 'folder'].includes(b.kind) || typeof b.name !== 'string' || !Array.isArray(b.docs) || !b.docs.every(docOk)) return null;
+        for (const doc of b.docs) if (!validWidth(doc.readingWidth)) delete doc.readingWidth;
         return b;
     } catch { return null; }
 }

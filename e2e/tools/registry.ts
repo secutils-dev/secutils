@@ -89,6 +89,7 @@ export const TOOLS: readonly Tool[] = [
   },
   {
     slug: 'mars',
+    // MARS-only tables: proportional resizing and row/column editing persist in Markdown and HTML/PDF output.
     // All selection styles work in GitHub alert bodies; generated titles offer Comment only.
     // Reading width restores across reloads and new tabs, including full/custom widths and comment rails.
     // Block controls reserve a gutter and retain adjacent items in gaps; ordered moves renumber source.

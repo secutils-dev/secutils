@@ -8,7 +8,7 @@ description: >-
   Reply to or address the review threads in a file's trailing `su-comments`
   block. Trigger on "review this markdown", "open in MARS", "add review
   comments to the doc", "address the review comments", "export Markdown in MARS",
-  "preview Markdown in MARS", or mars.secutils.dev.
+  "preview Markdown in MARS", "resize Markdown table columns", or mars.secutils.dev.
 ---
 
 # MARS: Markdown Annotation & Review System (Secutils.dev)
@@ -32,6 +32,45 @@ shared with the Secutils.dev Markdown Preview tool.
 Completion: the document stays in the browser library, and the header shows **Saved** after an edit.
 PDF Extractor's **Export > Open in MARS** opens its Text or Markdown output under the original document name.
 The handoff preserves exact text through the URL fragment and uploads no PDF bytes.
+
+## Table editing
+
+1. In Preview, click or tap a table cell to display its row and column actions.
+2. Drag a column boundary in the header to resize the two adjacent columns.
+3. Use the insert and remove buttons for the selected row or column.
+4. Drag the row grip vertically or the column grip horizontally to reorder.
+5. Use the move buttons or the focused grip's arrow keys for keyboard reordering.
+6. Use Left/Right arrow keys on a resize handle to adjust its width.
+7. Use **Reset column widths** to restore automatic sizing.
+8. Use `Ctrl/Cmd+Z` to undo an edit.
+9. Press Escape to cancel an unfinished drag.
+
+Completion: the header shows **Saved**, and the table layout returns after reopening the file or link.
+The header row stays above the body rows, and the table retains at least one column.
+Mouse and touch use the same dedicated handles. Table content remains selectable and scrollable.
+Row heights remain automatic.
+
+Column proportions live in a one-line comment directly before the Markdown table:
+
+```markdown
+<!-- su-table {"v":1,"cols":[0.25,0.75]} -->
+| Name | Status |
+| --- | --- |
+| Alice | Ready |
+```
+
+The positive column weights normalize to the table width.
+The weight count must match the header column count.
+Invalid metadata falls back to automatic sizing without changing the source.
+Row and column actions update the ordinary Markdown cells and alignment markers.
+Column moves also move their saved widths.
+The comment stays with the table during whole-block moves and deletion.
+
+Files, full links, short links, HTML, and PDF retain the column proportions.
+HTML and PDF contain no editing controls.
+Embedded Markdown source retains the layout comment for reopening.
+Raw HTML tables and tables without reliable source ranges remain read-only in Preview.
+This feature is MARS-only. Markdown Preview does not read the layout comment.
 
 ## HTML, PDF, and Markdown output
 
@@ -210,6 +249,18 @@ mars() {
 Wire format of `<state>`, shared by every Secutils.dev tool: the UTF-8 text
 (threads block included) → raw DEFLATE → prefixed with its uncompressed length
 as a 4-byte little-endian u32 → base64url without padding.
+
+## Shared reading layout
+
+Full and short links from Share retain the document reading width as well as column proportions.
+The received document retains this width after reload, without changing the reader's saved browser preference.
+A narrower viewport can still wrap text because table columns remain proportional.
+
+Full links carry an optional `w` fragment parameter: `800`, `1100`, `full`, or a custom integer from 320 to 2400.
+Encrypted bundle documents carry the same value in an optional `readingWidth` field.
+Invalid or absent values retain the reader's preference.
+An explicit `w` fragment parameter also supplies a reading width for older short links.
+For example, `#s=<secret>&w=1100` opens an older shared document at the wide reading width.
 
 ## What the reviewer sees
 

@@ -7,8 +7,12 @@ import { marked } from 'marked';
 import { loadEditor } from './editor.js';
 import { initDiagrams } from './diagrams.js';
 import { snapshot } from '../export/snapshot.ts';
+import { validWidth } from '../export/settings.ts';
 import { beginInput, cancelInput } from '../io/input.ts';
 import { FRONTMATTER_RE, isMarkdownFile, readSource } from '../io/source.ts';
+import { installTableRanges } from './table-renderer.ts';
+import { applyTableLayouts } from './table-layout.ts';
+import { createTableEditor } from './table-editor.ts';
 
 let host = {};
 export const setHost = (h) => { host = h; };
@@ -949,6 +953,7 @@ function renderSourceBlocks(md, renderer) {
     const options = { ...marked.defaults, renderer };
     const defaultListitem = renderer.listitem;
     let cursor = 0, itemCursor = 0, itemLimit = md.length, itemHeader = null;
+    const tableRanges = installTableRanges(renderer, md); // MARS-only table mapping.
     // Literal list markers inside code/HTML must not be mistaken for later items.
     for (const kind of ['code', 'html']) {
         const renderToken = renderer[kind];
@@ -961,6 +966,7 @@ function renderSourceBlocks(md, renderer) {
             }
             const range = listItemSourceRange(md, token.raw, from, itemLimit, true);
             if (range) itemCursor = range.end;
+            if (range) tableRanges.skip(range.end, token); // MARS-only table mapping.
             return renderToken.call(this, token);
         };
     }
@@ -990,6 +996,7 @@ function renderSourceBlocks(md, renderer) {
         const start = md.indexOf(token.raw, cursor);
         itemCursor = start < 0 ? cursor : start;
         itemLimit = start < 0 ? md.length : start + token.raw.length;
+        tableRanges(itemCursor, itemLimit); // MARS-only table mapping.
         const out = marked.parser(Object.assign([token], { links: tokens.links }), options);
         if (start < 0) { html += out; continue; }
         cursor = start + token.raw.length;
@@ -1055,7 +1062,7 @@ async function render(md, forExport = true, comment = false, signal) {
         let deadline = performance.now() + 50;
         for (const node of el.querySelectorAll('*')) {
             for (const attribute of [...node.attributes]) {
-                if (/^on/i.test(attribute.name) || /^data-(?:start|end|check|depth|model-range)$/.test(attribute.name)
+                if (/^on/i.test(attribute.name) || /^data-(?:start|end|check|depth|model-range|table-start|table-end)$/.test(attribute.name)
                     || (['href', 'src', 'xlink:href'].includes(attribute.name) && /^\s*javascript:/i.test(attribute.value))) node.removeAttribute(attribute.name);
             }
             if (performance.now() >= deadline) { signal?.throwIfAborted(); await yieldToMain(); deadline = performance.now() + 50; }
@@ -1083,6 +1090,7 @@ async function render(md, forExport = true, comment = false, signal) {
     }
     enhanceAlerts(el);
     if (needsMath(md)) { try { await enhanceMath(el); } catch {} }
+    if (!comment) applyTableLayouts(el, forExport);
     enhanceWideTables(el);
     if (!comment) enhanceHeadingAnchors(el);
     if (!forExport) { enhancePreviewLinks(el); return el; }
@@ -1150,6 +1158,7 @@ async function updatePreview() {
     const generation = ++previewGeneration;
     pendingHydration = false;
     if (!markdown.trim()) {
+        tableEditor.cancel();
         for (const fig of els.previewArticle.querySelectorAll('.su-diagram, .su-mermaid')) fig.__suDispose?.();
         els.previewArticle.innerHTML = '';
         renderedMarkdown = markdown;
@@ -1178,6 +1187,7 @@ async function updatePreview() {
     els.previewArticle.replaceChildren(...content.childNodes);
     renderedMarkdown = source;
     renderedDocumentEpoch = epoch;
+    tableEditor.attach(source, epoch);
     if (blockEditor && !blockEditor.wrap.isConnected) blockEditor = null;
     initDiagrams(els.previewArticle);
     initMermaids(els.previewArticle, views);
@@ -1248,6 +1258,7 @@ window.__suEditorReady = () => {
 export function setViewMode(mode) {
     if (mode === 'edit') cancelInput();
     if (mode !== 'preview') {
+        tableEditor.cancel();
         endDrag();
         commitBlockEditor(); closeBlockMenu(); hideHandle(); hideFormatBar();
         for (const fig of els.previewArticle.querySelectorAll('figure.su-mermaid')) fig.__suSuspendMermaid?.();
@@ -1317,6 +1328,12 @@ let hoverTarget = null;
 let menuTarget = null;
 let blockEditor = null;
 let scrollAnchor = null;
+const tableEditor = createTableEditor(els.previewArticle, els.previewPane, {
+    text: () => markdown,
+    enabled: () => viewMode === 'preview' && !blockEditor && !drag && markdown === renderedMarkdown,
+    edit: editSource,
+    toast,
+});
 
 const isHeadingBlock = (el) => !!el?.matches?.('.su-block[data-depth]');
 const blockRange = (el) => [Number(el.dataset.start), Number(el.dataset.end)];
@@ -2526,6 +2543,7 @@ function createTextareaEditor(parent, text) {
 // Insert mode places new text after `target` (or at the end of the document).
 // List items prefill a sibling marker; other blocks start empty.
 function openBlockEditor(target, insert = false) {
+    tableEditor.cancel();
     commitBlockEditor();
     closeBlockMenu();
     hideHandle();
@@ -2766,6 +2784,46 @@ els.optReadingCustom.addEventListener('change', () => {
 // Apply before rendering, then again after native form restoration or a bfcache return.
 restoreReadingWidth();
 window.addEventListener('pageshow', restoreReadingWidth);
+
+// ---- Shared reading layout (MARS only) ----
+// Incoming documents keep their width without changing the saved browser preference.
+let documentReadingWidth;
+let preferredReadingLayout = { width: 800, customWidth: 800 };
+function restorePreferredReadingLayout() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(READING_WIDTH_KEY));
+        if (validWidth(saved?.width)) preferredReadingLayout = { width: saved.width, customWidth: typeof saved.customWidth === 'number' && validWidth(saved.customWidth) ? saved.customWidth : 800 };
+    } catch {}
+}
+restorePreferredReadingLayout();
+export const defaultReadingWidth = () => preferredReadingLayout.width;
+export function setDocumentReadingWidth(width) {
+    if (documentReadingWidth === undefined && !validWidth(width)) preferredReadingLayout = { width: readReadingWidth(), customWidth: customReadingWidth };
+    documentReadingWidth = validWidth(width) ? width : undefined;
+    const effective = documentReadingWidth ?? preferredReadingLayout.width;
+    const value = String(effective);
+    els.optReadingWidth.value = [...els.optReadingWidth.options].some((option) => option.value === value) ? value : 'custom';
+    customReadingWidth = els.optReadingWidth.value === 'custom' ? effective : preferredReadingLayout.customWidth;
+    els.optReadingCustom.value = String(customReadingWidth);
+    els.optReadingCustomWrap.hidden = els.optReadingWidth.value !== 'custom';
+    applyReadingWidth();
+}
+const rememberReadingLayout = () => {
+    if (els.optReadingWidth.value === 'custom' && !validWidth(Number(els.optReadingCustom.value))) return;
+    preferredReadingLayout = { width: readReadingWidth(), customWidth: customReadingWidth };
+    if (documentReadingWidth !== undefined) {
+        documentReadingWidth = readReadingWidth();
+        host.readingWidthChanged?.(documentReadingWidth)?.catch(() => toast('Could not save the document reading width'));
+    }
+};
+els.optReadingWidth.addEventListener('change', rememberReadingLayout);
+els.optReadingCustom.addEventListener('input', rememberReadingLayout);
+window.addEventListener('pageshow', () => {
+    // Firefox can restore a shared document's form values before the host opens it.
+    // Only saved preferences or explicit user input can change the preferred layout.
+    restorePreferredReadingLayout();
+    if (documentReadingWidth !== undefined) setDocumentReadingWidth(documentReadingWidth);
+});
 
 
 // ---- File open / drop / paste / URL ----
@@ -3018,6 +3076,8 @@ function adoptEol(text) {
 // Content opened from the toolbar (file, URL, example) replaces a non-empty document
 // with a new tree entry; `fromHost` loads the document the host selected.
 function loadDocument(text, handle = null, stamp = 0, fromHost = false) {
+    if (!fromHost) setDocumentReadingWidth();
+    tableEditor.cancel();
     commitBlockEditor();
     originalSource = null;
     documentEpoch++;
@@ -3083,6 +3143,7 @@ export const currentThreads = () => threads;
 
 // Narrow, MARS-only export API. Commit the active block before flushing/capturing.
 export async function captureExportSnapshot() {
+    tableEditor.cancel();
     commitBlockEditor();
     const captured = snapshot(host.currentId?.() ?? null, filename, documentText(), readReadingWidth());
     await persistNow();
@@ -3093,7 +3154,8 @@ export async function captureExportSnapshot() {
 export const exportReadingWidth = () => readReadingWidth();
 export const renderExportBody = (body, signal) => render(body, true, false, signal);
 
-export function openDocument({ text = '', name = 'Untitled', handle = null, stamp = 0, dirty = false } = {}) {
+export function openDocument({ text = '', name = 'Untitled', handle = null, stamp = 0, dirty = false, readingWidth } = {}) {
+    setDocumentReadingWidth(readingWidth);
     commitBlockEditor();
     cancelFileImport();
     clearTimeout(persistTimer);

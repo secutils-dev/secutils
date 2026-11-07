@@ -88,6 +88,48 @@ CodeMirror draws selection backgrounds below the text lines. The active-line tin
 translucent so it does not hide selected text. The gutter keeps its opaque background.
 The shared browser tests check painted selection pixels in Firefox and Chromium, in both themes.
 
+## Table editing
+
+In Preview, selecting a table cell displays a compact row/column toolbar.
+Header boundary handles resize adjacent columns with mouse or touch.
+Insert/remove buttons edit rows and columns, and grips reorder rows vertically or columns horizontally.
+Move buttons and arrow keys provide keyboard alternatives.
+Resize handles also support Left/Right arrow keys, with larger steps while Shift is held.
+Each completed drag is one undo step. Escape, pointer cancellation, navigation, and export capture cancel unfinished drags.
+The header row stays fixed, and the table retains at least one column.
+
+`src/doc/table.ts` owns source parsing, metadata, and structural edits.
+`table-renderer.ts` adds exact source ranges through isolated MARS hooks in the shared block mapper.
+`table-layout.ts` reads adjacent comments and applies column proportions through a `colgroup`.
+`table-editor.ts` owns selection, pointer capture, cancellation, keyboard controls, and drag auto-scrolling.
+The renderer and export pipeline both apply the layout before their own UI/runtime initialization.
+Exported HTML and PDF retain proportions and omit editing controls.
+
+```markdown
+<!-- su-table {"v":1,"cols":[0.25,0.75]} -->
+| Name | Status |
+| --- | --- |
+| Alice | Ready |
+```
+
+The one-line comment stores positive weights normalized to the table width.
+Its column count must match the table header.
+Files and full/short links carry this Markdown, so column proportions need no new storage schema or compression format.
+Full and short links also carry the document reading width, so a private browser retains the same layout at the same viewport size.
+Each received document stores this width separately from the browser preference.
+Opening another document restores the browser preference. Explicit width changes update the shared document and the preference.
+Full document links use optional `w=800`, `w=1100`, `w=full`, or a custom integer from 320 to 2400.
+Encrypted bundles store optional `readingWidth` on each document. Invalid values and legacy links retain the recipient's preference.
+An explicit `w` fragment parameter also supplies a width for older short links.
+Embedded-source HTML also retains the comment for reopening.
+Invalid metadata keeps automatic sizing without changing the source.
+Structural edits preserve cell Markdown, alignment, surrounding content, and review threads.
+Review comparisons group the metadata with its table, and **Show before** retains the old column proportions.
+Raw HTML tables, excess source cells, and unlocatable source ranges remain read-only.
+Row heights remain automatic. Markdown Preview is unchanged by user decision.
+
+Unit cases are in `test/table.test.ts`, and browser coverage is in `e2e/tools/mars-tables.spec.ts`.
+
 ## Source imports
 
 Open, file drops, library imports, Load URL, and `?url=` use `src/io/source.ts`.

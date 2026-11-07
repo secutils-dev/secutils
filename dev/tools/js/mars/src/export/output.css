@@ -54,7 +54,11 @@ article .markdown-alert-title { font-weight: 600; margin: 0 0 6px; }
 .markdown-alert-warning { border-left-color: #d29922 !important; } .markdown-alert-warning .markdown-alert-title { color: #d29922; }
 .markdown-alert-caution { border-left-color: #cf222e !important; } .markdown-alert-caution .markdown-alert-title { color: #cf222e; }
 article table { width: 100%; border-collapse: collapse; margin: 0 0 16px; font-size: 14px; }
+article table.su-sized-table { table-layout: fixed; }
+article .su-sized-table th, article .su-sized-table td { overflow-wrap: anywhere; }
 article th, article td { padding: 10px 14px; border: 1px solid var(--border); text-align: left; }
+article th[align="right"], article td[align="right"] { text-align: right; }
+article th[align="center"], article td[align="center"] { text-align: center; }
 article th { background: var(--bg-alt); color: var(--heading); }
 article tr:nth-child(even) { background: var(--table-stripe); }
 article .mdp-table-wrap { overflow-x: auto; margin: 0 0 16px; }

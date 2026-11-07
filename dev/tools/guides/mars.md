@@ -29,6 +29,15 @@ It is promoted like any tool, linked by that host. In-app URLs derive from `loca
   either file lands in both: after porting, diff the shared sections of the two scripts. The "Review changes hooks"
   section of `viewer.js` (`onRendered`, `setThreadHooks`, `blockText`, `requote`, and the few call sites in
   `updatePreview`, `anchorThreads`, and the thread cards) is MARS-only and stays out of `md.html`.
+- **Tables**: `src/doc/table*.ts` owns source operations, proportional layout, and Preview controls.
+  Table resizing and structural editing are MARS-only by user decision, so these hooks stay out of `md.html`.
+  The shared block mapper retains byte-parity apart from the explicit table hook calls.
+  Advance table ranges past source-mapped code/HTML tokens, including inline list fences, before searching for a table.
+  Store proportions in an adjacent `su-table` comment, not IndexedDB side data or a new link format.
+  Keep metadata with whole-table block moves/deletion, and preserve cell Markdown and alignment during column moves.
+  Preview and export rendering use the same layout helper. Add controls only after the live Preview renders.
+  Cancel pointer gestures on source changes, navigation, Source mode, and export capture.
+  Read [the package table section](../js/mars/README.md#table-editing) for the format and lifecycle.
 - **Export**: `src/export/` owns the HTML/PDF workspace. It captures one immutable document and shares export-safe rendering
   across formats. HTML previews and downloads use the same output. PDF preview and printing use the same prepared pages.
   Settings drafts remain separate from document state and commit to `mars.exportSettings` after an output action.
@@ -82,6 +91,10 @@ It is promoted like any tool, linked by that host. In-app URLs derive from `loca
   `#b=<state of a JSON bundle>`. Short links use the md.html scheme ([url-state.md](url-state.md#short-links-mdhtml-mars))
   with a different plaintext (`encodeState` bytes of the bundle JSON), in MARS's own KV, so `md.html` and MARS short
   links are not interchangeable. Client state: `localStorage["mars.shortLinks"]` and `["mars.shortTtl"]`.
+  Share links also carry each document's reading width: `w` in full-link fragments and `readingWidth` in bundle documents.
+  Received documents retain this width on their tree node, separate from the browser-wide preference.
+  An explicit `w` fragment hint also supplies layout for legacy links. Invalid widths retain the recipient's preference.
+  Verify actual text wrapping at the same viewport, plus reload and document switching, rather than only column ratios.
 
 ## Verify a change
 
@@ -92,7 +105,7 @@ It is promoted like any tool, linked by that host. In-app URLs derive from `loca
    cached in a local browser profile).
 2. `npm run serve` builds the deploy-equivalent page and serves it at `http://localhost:7373/` and `/llms.txt`, with the
    responder script on an in-memory KV.
-3. From the root: `MARS_BASE_URL=http://localhost:7373 make e2e-tools-test ARGS="mars.spec.ts mars-export.spec.ts mars-import.spec.ts mars-models.spec.ts"`.
+3. From the root: `MARS_BASE_URL=http://localhost:7373 make e2e-tools-test ARGS="mars.spec.ts mars-export.spec.ts mars-import.spec.ts mars-models.spec.ts mars-tables.spec.ts"`.
    After handoff changes, run `pdf.spec.ts` against the changed PDF Extractor page.
 4. Run steps 2, 4, and 5 of "Change a tool" in [`../AGENTS.md`](../AGENTS.md); for a viewer change, also the affected
    `md.spec.ts` cases.
