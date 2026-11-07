@@ -1,13 +1,49 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { marked } from 'marked';
-import { changeTable, locateTable, metadataWidths, normalizeWidths, readTable, resizeTable, splitTableCells, tableReviewBlocks } from '../src/doc/table.ts';
+import { alignTableColumn, columnAlignment, editTableCell, changeTable, locateTable, metadataWidths, normalizeWidths, readTable, resizeTable, splitTableCells, tableReviewBlocks } from '../src/doc/table.ts';
 import { installTableRanges } from '../src/doc/table-renderer.ts';
 import { decodeState, encodeState, openSealed, sealBundle } from '../src/share/codec.ts';
 
 const TABLE = '| A | B |\n| :--- | ---: |\n| one | two |\n| three | four |\n';
 const model = (source = TABLE, table = TABLE) => readTable(source, { start: source.indexOf(table), end: source.indexOf(table) + table.length })!;
 const replace = (source: string, table: ReturnType<typeof model>, next: string) => source.slice(0, table.start) + next + source.slice(table.end);
+const cellEdit = (source: string, parsed: ReturnType<typeof model>, row: number, column: number, value: string) => {
+    const edit = editTableCell(parsed, row, column, value);
+    return source.slice(0, edit.start) + edit.text + source.slice(edit.end);
+};
+
+test('cell edits splice only the selected content, retaining padding, quotes, CRLF, metadata, and review bytes', () => {
+    for (const prefix of ['', '> ', '> > ']) {
+        const table = TABLE.split('\n').filter(Boolean).map((line) => `${prefix}${line}\r\n`).join('');
+        const source = `Before.\r\n\r\n${prefix}<!-- su-table { "v":1,"cols":[0.25,0.75] } -->\r\n${table}\r\n<!-- su-comments\r\n[{"id":"review","quote":"four"}]\r\n-->\r\nAfter.`;
+        const parsed = model(source, table);
+        assert.equal(cellEdit(source, parsed, 1, 0, '**changed**'), source.replace(' one ', ' **changed** '));
+        assert.equal(cellEdit(source, parsed, 0, 1, 'Header'), source.replace('| A | B |', '| A | Header |'));
+        assert.equal(cellEdit(source, parsed, 2, 1, ''), source.replace(' four ', '  '));
+        assert.equal(cellEdit(source, parsed, 1, 1, 'literal | pipe\nnext `a\\|b`'), source.replace(' two ', ' literal \\| pipe<br>next `a\\|b` '));
+    }
+});
+
+test('cell edits retain unwrapped rows, support implicit empty cells, and reject invalid selections', () => {
+    const table = ' A | B | C \n --- | --- | --- \n one | two \n';
+    const parsed = model(table, table);
+    assert.equal(cellEdit(table, parsed, 1, 0, 'new'), table.replace(' one ', ' new '));
+    assert.equal(cellEdit(table, parsed, 1, 2, 'new'), ' A | B | C \n --- | --- | --- \n |one | two | new |\n');
+    for (const [row, column] of [[-1, 0], [2, 0], [1, 3], [0, -1], [0.5, 0]]) assert.throws(() => editTableCell(parsed, row, column, 'invalid'));
+});
+
+test('column alignment updates only divider colons and preserves hyphens, cells, widths, and line endings', () => {
+    const table = ' A | B \r\n  :-----  |   ------: \r\n one | two \r\n';
+    const marker = '<!-- su-table { "v":1,"cols":[0.25,0.75] } -->\r\n';
+    const source = marker + table, parsed = model(source, table);
+    assert.equal(columnAlignment(parsed, 0), 'left'); assert.equal(columnAlignment(parsed, 1), 'right');
+    assert.equal(alignTableColumn(parsed, 1, 'center'), source.replace('------:', ':------:'));
+    assert.equal(alignTableColumn(parsed, 1, 'left'), source.replace('------:', ':------'));
+    assert.equal(alignTableColumn(parsed, 0, 'right'), source.replace(':-----', '-----:'));
+    assert.equal(alignTableColumn(parsed, 0, 'left'), source);
+    assert.throws(() => alignTableColumn(parsed, 2, 'left'));
+});
 
 test('column metadata accepts proportional weights and rejects malformed or mismatched values', () => {
     assert.deepEqual(normalizeWidths([20, 80], 2), [0.2, 0.8]);

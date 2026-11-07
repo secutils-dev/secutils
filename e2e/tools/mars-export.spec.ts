@@ -313,6 +313,27 @@ test.describe('export workspace', () => {
     await expect(dlg(page).getByLabel('Reading width', { exact: true })).toHaveValue('1100');
   });
 
+  test('centers both reader theme glyphs and keeps PDF settings free of redundant hints', async ({ page }) => {
+    await openDoc(page);
+    await openExport(page);
+    const toggle = htmlFrame(page).getByRole('button', { name: 'Toggle theme', exact: true });
+    for (const theme of ['dark', 'light']) {
+      await htmlFrame(page)
+        .locator('html')
+        .evaluate((root, theme) => root.setAttribute('data-theme', theme), theme);
+      const glyph = toggle.locator('span:visible svg');
+      await expect(glyph).toHaveCount(1);
+      const button = (await toggle.boundingBox())!;
+      const image = (await glyph.boundingBox())!;
+      expect(Math.abs(image.x + image.width / 2 - button.x - button.width / 2)).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(image.y + image.height / 2 - button.y - button.height / 2)).toBeLessThanOrEqual(0.5);
+    }
+    await readyPdf(page);
+    await expect(dlg(page).locator('#exportPdfPanel .export-hint')).toHaveCount(0);
+    await expect(dlg(page).getByLabel('Paper size', { exact: true })).toBeVisible();
+    await expect(dlg(page).getByLabel('Orientation', { exact: true })).toBeVisible();
+  });
+
   test('retains body-only source, toggles reader features, and escapes document titles', async ({ page }) => {
     await openDoc(page, TEXT, 'Escaped <title>.md');
     await openExport(page);
@@ -633,7 +654,7 @@ test.describe('export workspace', () => {
         for (const distance of centers) expect(distance).toBeLessThan(2);
         await expect(dlg(page).locator('.export-status')).toBeHidden();
         await expect(pdfFrame(page).getByRole('button')).toHaveCount(0);
-        await expect(dlg(page).getByText('White pages in every theme', { exact: false })).toBeVisible();
+        await expect(dlg(page).getByText('White pages in every theme', { exact: false })).toHaveCount(0);
         await expect(pdfFrame(page).locator('html')).toHaveAttribute('data-theme', 'light');
         if (width < 700) {
           await dlg(page)

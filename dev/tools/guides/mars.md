@@ -35,6 +35,8 @@ It is promoted like any tool, linked by that host. In-app URLs derive from `loca
   Advance table ranges past source-mapped code/HTML tokens, including inline list fences, before searching for a table.
   Store proportions in an adjacent `su-table` comment, not IndexedDB side data or a new link format.
   Keep metadata with whole-table block moves/deletion, and preserve cell Markdown and alignment during column moves.
+  Cell edits splice only the selected content. Alignment edits change only divider colons.
+  Apply cell drafts before view changes, sharing, or export. Discard stale drafts after outside source changes.
   Preview and export rendering use the same layout helper. Add controls only after the live Preview renders.
   Cancel pointer gestures on source changes, navigation, Source mode, and export capture.
   Read [the package table section](../js/mars/README.md#table-editing) for the format and lifecycle.
@@ -118,3 +120,14 @@ It is promoted like any tool, linked by that host. In-app URLs derive from `loca
 5. After a deploy, `make e2e-tools-test ARGS=mars.spec.ts` (`MARS_BASE_URL` defaults to `https://mars.secutils.dev`).
 
 Completion: steps 1-4 pass, step 5 passes after a deploy, and a viewer fix is present in both `viewer.js` and `md.html`.
+
+## Native verification coverage
+
+The completed parity and temporary-reading plans are retained in Git history, not as active plans.
+On 2026-11-07, normal Safari saved an A4 portrait PDF and exact Markdown. Native keyboard Save and cancellation/focus-return checks passed.
+Normal Edge saved A4 and Letter PDFs in both orientations, plus exact Markdown through its file picker.
+These native PDFs contained readable document text without application chrome.
+
+Native menu/split-view coverage and full rich-print combinations (Mermaid and colored models in every browser/settings combination) remain incomplete.
+The user explicitly skipped the remaining VoiceOver checks on 2026-11-07. Engine assertions do not replace actual spoken-output checks.
+For mobile formatting changes, verify native Android Firefox selection in addition to emulated touch/selection tests.

@@ -88,10 +88,11 @@ article .su-mermaid-error { margin: 0 0 16px; padding: 14px 20px; background: va
 [data-theme="dark"] .hljs-title { color: #d2a8ff; }
 #progress { position: fixed; inset: 0 auto auto 0; height: 3px; background: linear-gradient(90deg, #fed047, #642340); width: 0; z-index: 100; }
 #top-tools { position: fixed; top: 16px; right: 16px; display: flex; gap: 8px; z-index: 100; }
-#top-tools button, #btt { width: 38px; height: 38px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; box-shadow: 0 2px 8px var(--shadow); }
-#top-tools svg { width: 16px; height: 16px; fill: currentColor; }
+#top-tools button, #btt { width: 38px; height: 38px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; box-shadow: 0 2px 8px var(--shadow); }
+#top-tools svg { display: block; flex: none; width: 16px; height: 16px; fill: currentColor; }
+#theme-toggle :is(.icon-sun, .icon-moon) { display: flex; align-items: center; justify-content: center; }
 #theme-toggle .icon-sun { display: none; }
-[data-theme="dark"] #theme-toggle .icon-sun { display: block; }
+[data-theme="dark"] #theme-toggle .icon-sun { display: flex; }
 [data-theme="dark"] #theme-toggle .icon-moon { display: none; }
 #btt { position: fixed; bottom: 20px; right: 20px; z-index: 100; }
 #reading-settings { position: fixed; inset: 62px 16px auto auto; width: 280px; max-width: calc(100vw - 32px); max-height: calc(100dvh - 78px); overflow-y: auto; margin: 0; padding: 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); box-shadow: 0 8px 24px var(--shadow); }

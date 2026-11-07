@@ -1156,6 +1156,7 @@ function updatePanes() {
 let previewGeneration = 0;
 let documentEpoch = 0, renderedDocumentEpoch = -1;
 async function updatePreview() {
+    if (tableEditor.flush()) return;
     const generation = ++previewGeneration;
     pendingHydration = false;
     if (!markdown.trim()) {
@@ -1334,6 +1335,7 @@ const tableEditor = createTableEditor(els.previewArticle, els.previewPane, {
     enabled: () => viewMode === 'preview' && !blockEditor && !drag && markdown === renderedMarkdown,
     edit: editSource,
     toast,
+    startCell: () => { closeBlockMenu(); hideHandle(); hideFormatBar(); },
 });
 
 const isHeadingBlock = (el) => !!el?.matches?.('.su-block[data-depth]');
@@ -1670,6 +1672,7 @@ function blockTargetAt(el, x, y) {
     return listHoverTarget(rows, y, hoverTarget) ?? target;
 }
 els.previewScroll.addEventListener('mousemove', (e) => {
+    if (tableEditor.editing()) return; // MARS-only table hook.
     if (blockEditor || !els.blockMenu.hidden || drag) return;
     const target = blockTargetAt(e.target, e.clientX, e.clientY);
     if (target) showHandle(target); else hideHandle();
@@ -1796,6 +1799,7 @@ els.previewArticle.addEventListener('click', (e) => {
 });
 
 els.previewArticle.addEventListener('dblclick', (e) => {
+    if (e.target.closest('.su-table-cell-editor')) return; // MARS-only table hook.
     if (e.target.closest('a, input, button, .su-diagram, .su-mermaid, .su-block-editor')) return;
     const target = e.target.closest(BLOCK_TARGET);
     if (!target || !previewInSync()) return;
@@ -2013,13 +2017,23 @@ function updateFormatBar() {
     if (!range) { hideFormatBar(); return; }
     // Selections across blocks or inside code can be commented on, not formatted.
     for (const el of els.formatBar.querySelectorAll('[data-format], [data-format-sep]')) el.hidden = !sel;
-    const r = range.getBoundingClientRect();
+    const viewport = window.visualViewport;
+    const pane = els.previewScroll.getBoundingClientRect();
+    const left = Math.max(viewport?.offsetLeft ?? 0, pane.left) + 8;
+    const right = Math.min((viewport?.offsetLeft ?? 0) + (viewport?.width ?? innerWidth), pane.right) - 8;
+    const top = Math.max(viewport?.offsetTop ?? 0, pane.top) + 8;
+    const bottom = Math.min((viewport?.offsetTop ?? 0) + (viewport?.height ?? innerHeight), pane.bottom) - 8;
+    const visible = [...range.getClientRects()].filter((r) => r.bottom > top && r.top < bottom && r.right > left && r.left < right);
+    const r = visible.at(-1);
+    if (!r || right <= left || bottom <= top) { hideFormatBar(); return; }
+    els.formatBar.style.maxWidth = `${right - left}px`;
     els.formatBar.hidden = false;
     const { width, height } = els.formatBar.getBoundingClientRect();
     // Touch browsers draw their own selection menu above the text, so ours goes below the handles.
-    const below = COARSE_POINTER.matches ? r.bottom + 32 : r.top - height - 8 < 8 ? r.bottom + 8 : null;
-    els.formatBar.style.top = `${Math.round(below !== null && below + height < window.innerHeight - 8 ? below : Math.max(8, r.top - height - 8))}px`;
-    els.formatBar.style.left = `${Math.round(Math.min(Math.max(8, r.left + r.width / 2 - width / 2), window.innerWidth - width - 8))}px`;
+    const below = COARSE_POINTER.matches ? r.bottom + 32 : r.top - height - 8 < top ? r.bottom + 8 : null;
+    const y = below !== null && below + height <= bottom ? below : r.top - height - 8;
+    els.formatBar.style.top = `${Math.round(Math.max(top, Math.min(y, bottom - height)))}px`;
+    els.formatBar.style.left = `${Math.round(Math.max(left, Math.min(r.left + r.width / 2 - width / 2, right - width)))}px`;
 }
 document.addEventListener('selectionchange', () => {
     clearTimeout(formatTimer);
@@ -2027,15 +2041,21 @@ document.addEventListener('selectionchange', () => {
 });
 // Only mouse drags defer the bar: a touch long-press selects text and ends in
 // `pointercancel`, never `pointerup`.
-els.previewArticle.addEventListener('pointerdown', (e) => { if (e.pointerType === 'mouse') selectingWithMouse = true; hideFormatBar(); });
+els.previewArticle.addEventListener('pointerdown', (e) => { selectingWithMouse = e.pointerType === 'mouse' && !COARSE_POINTER.matches; hideFormatBar(); });
 const endPointerSelection = () => {
-    if (!selectingWithMouse) return;
     selectingWithMouse = false;
+    clearTimeout(formatTimer);
     formatTimer = setTimeout(updateFormatBar, 0);
 };
 document.addEventListener('pointerup', endPointerSelection);
 document.addEventListener('pointercancel', endPointerSelection);
-els.previewScroll.addEventListener('scroll', () => { if (!els.formatBar.hidden) updateFormatBar(); }, { passive: true });
+document.addEventListener('contextmenu', endPointerSelection);
+window.addEventListener('blur', endPointerSelection);
+const positionFormatBar = () => { if (!els.formatBar.hidden) updateFormatBar(); };
+els.previewScroll.addEventListener('scroll', positionFormatBar, { passive: true });
+window.addEventListener('resize', positionFormatBar);
+window.visualViewport?.addEventListener('resize', positionFormatBar);
+window.visualViewport?.addEventListener('scroll', positionFormatBar);
 function formatBarAction(target) {
     if (target.closest('[data-comment]')) { startDraft(); return; }
     const kind = target.closest('[data-format]')?.dataset.format;
@@ -2588,6 +2608,7 @@ function insertionText(pos, value, listItem) {
 }
 
 function commitBlockEditor() {
+    tableEditor.flush();
     const ed = blockEditor;
     if (!ed) return;
     blockEditor = null;

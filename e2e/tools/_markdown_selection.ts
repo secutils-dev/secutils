@@ -58,6 +58,60 @@ export function sourceSelectionTests(load: (page: Page, markdown: string) => Pro
 
 // Both viewers share the toolbar, but load documents through different app shells.
 export function selectionToolbarTests(load: (page: Page, markdown: string) => Promise<void>) {
+  test.describe('selection toolbar touch lifecycle', () => {
+    test.use({ hasTouch: true });
+
+    test('coarse-pointer long press can show formatting without a pointerup event', async ({ page }) => {
+      await page.setViewportSize({ width: 390, height: 700 });
+      await load(page, 'Selected words remain editable.');
+      expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true);
+      const paragraph = page.locator('#previewArticle p').first();
+      // Native mobile menus can terminate a compatibility mouse sequence without pointerup.
+      await paragraph.dispatchEvent('pointerdown', { pointerType: 'mouse', buttons: 1, button: 0 });
+      await paragraph.dispatchEvent('contextmenu');
+      await paragraph.evaluate((element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        getSelection()!.removeAllRanges();
+        getSelection()!.addRange(range);
+      });
+      const bar = page.getByRole('toolbar', { name: 'Format selection' });
+      await expect(bar).toBeVisible({ timeout: 3000 });
+      await bar.getByRole('button', { name: 'Bold', exact: true }).tap();
+      await expect(paragraph.locator('strong')).toHaveText('Selected words remain editable.');
+    });
+
+    test('long native-style selections keep formatting inside the visual viewport', async ({ page }) => {
+      await page.setViewportSize({ width: 390, height: 700 });
+      await page.addInitScript(() => {
+        const viewport = Object.assign(new EventTarget(), {
+          offsetLeft: 24,
+          offsetTop: 120,
+          width: 300,
+          height: 400,
+        });
+        Object.defineProperty(window, 'visualViewport', { value: viewport });
+      });
+      await load(page, 'A long selection keeps native handles available. '.repeat(80));
+      await page
+        .locator('#previewArticle p')
+        .first()
+        .evaluate((element) => {
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          getSelection()!.removeAllRanges();
+          getSelection()!.addRange(range);
+        });
+      const bar = page.getByRole('toolbar', { name: 'Format selection' });
+      await expect(bar).toBeVisible();
+      const box = (await bar.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(32);
+      expect(box.x + box.width).toBeLessThanOrEqual(316);
+      expect(box.y).toBeGreaterThanOrEqual(128);
+      expect(box.y + box.height).toBeLessThanOrEqual(512);
+    });
+  });
+
   for (const theme of ['dark', 'light']) {
     for (const width of [1280, 412]) {
       test(`selection toolbar fits its visible actions (${theme}, ${width}px)`, async ({ page }) => {
@@ -96,10 +150,16 @@ export function selectionToolbarTests(load: (page: Page, markdown: string) => Pr
             );
             await expect(bar).toBeVisible();
             await expect(bar.getByRole('button')).toHaveCount(buttons);
-            const box = (await bar.boundingBox())!;
-            const actions = await bar.getByRole('button').all();
-            const first = (await actions[0].boundingBox())!;
-            const last = (await actions[actions.length - 1].boundingBox())!;
+            const { box, first, last } = await bar.evaluate((element) => {
+              const actions = [...element.querySelectorAll('button')].filter(
+                (button) => button.getClientRects().length,
+              );
+              return {
+                box: element.getBoundingClientRect().toJSON(),
+                first: actions[0].getBoundingClientRect().toJSON(),
+                last: actions.at(-1)!.getBoundingClientRect().toJSON(),
+              };
+            });
             // Four pixels of padding and one border on each side, not menu minimum width.
             expect(box.width).toBeCloseTo(last.x + last.width - first.x + 10, 0);
             expect(first.x - box.x).toBeCloseTo(5, 0);

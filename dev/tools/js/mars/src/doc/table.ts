@@ -1,6 +1,8 @@
 // MARS-only table source operations. Layout travels in Markdown, not browser side data.
 import { marked } from 'marked';
 export interface TableRange { start: number; end: number }
+export interface TableEdit extends TableRange { text: string }
+export type TableAlignment = 'left' | 'center' | 'right';
 interface Row { cells: string[]; raw: string; prefix: string; newline: string }
 export interface TableModel extends TableRange {
     tableStart: number;
@@ -48,17 +50,57 @@ export function metadataWidths(text: string, count: number): number[] | null {
 }
 
 // GFM pipes split cells unless escaped by an odd number of backslashes, including code spans.
-export function splitTableCells(text: string): string[] {
-    const cells: string[] = [];
+function cellSpans(text: string): TableRange[] {
+    const cells: TableRange[] = [];
     let from = 0, slashes = 0;
     for (let i = 0; i < text.length; i++) {
-        if (text[i] === '|' && slashes % 2 === 0) { cells.push(text.slice(from, i)); from = i + 1; }
+        if (text[i] === '|' && slashes % 2 === 0) { cells.push({ start: from, end: i }); from = i + 1; }
         slashes = text[i] === '\\' ? slashes + 1 : 0;
     }
-    cells.push(text.slice(from));
-    if (cells.length > 1 && !cells[0].trim()) cells.shift();
-    if (cells.length > 1 && !cells.at(-1)!.trim()) cells.pop();
+    cells.push({ start: from, end: text.length });
+    if (cells.length > 1 && !text.slice(cells[0].start, cells[0].end).trim()) cells.shift();
+    if (cells.length > 1 && !text.slice(cells.at(-1)!.start).trim()) cells.pop();
     return cells;
+}
+export const splitTableCells = (text: string): string[] => cellSpans(text).map(({ start, end }) => text.slice(start, end));
+
+function contentRange(model: TableModel, line: number, column: number): TableRange | null {
+    const lines = [model.header, model.divider, ...model.rows], row = lines[line];
+    const span = cellSpans(row.raw.slice(row.prefix.length))[column];
+    if (!span) return null;
+    const offset = model.tableStart + lines.slice(0, line).reduce((sum, r) => sum + r.raw.length + r.newline.length, 0) + row.prefix.length;
+    const raw = row.raw.slice(row.prefix.length + span.start, row.prefix.length + span.end);
+    const start = span.start + (raw.trim() ? raw.length - raw.trimStart().length : Math.floor(raw.length / 2));
+    return { start: offset + start, end: offset + (raw.trim() ? span.end - raw.length + raw.trimEnd().length : start) };
+}
+
+export function editTableCell(model: TableModel, row: number, column: number, value: string): TableEdit {
+    if (!Number.isInteger(row) || row < 0 || row > model.rows.length || !Number.isInteger(column) || column < 0 || column >= model.header.cells.length) throw new Error('Invalid table cell.');
+    let text = '', slashes = 0;
+    for (const char of value.replace(/\r\n?|\n/g, '<br>')) {
+        text += char === '|' && slashes % 2 === 0 ? '\\|' : char;
+        slashes = char === '\\' ? slashes + 1 : 0;
+    }
+    const line = row ? row + 1 : 0, range = contentRange(model, line, column);
+    if (range) return { ...range, text };
+    const lines = [model.header, model.divider, ...model.rows], target = lines[line];
+    const start = model.tableStart + lines.slice(0, line).reduce((sum, r) => sum + r.raw.length + r.newline.length, 0) + target.prefix.length;
+    const cells = [...target.cells]; cells[column] = ` ${text} `;
+    return { start, end: start + target.raw.length - target.prefix.length, text: `|${cells.join('|')}|` };
+}
+
+export function columnAlignment(model: TableModel, column: number): TableAlignment {
+    const value = model.divider.cells[column]?.trim() ?? '';
+    return value.endsWith(':') ? value.startsWith(':') ? 'center' : 'right' : 'left';
+}
+
+export function alignTableColumn(model: TableModel, column: number, alignment: TableAlignment): string {
+    if (!Number.isInteger(column) || column < 0 || column >= model.header.cells.length || !['left', 'center', 'right'].includes(alignment)) throw new Error('Invalid column alignment.');
+    const range = contentRange(model, 1, column)!;
+    if (columnAlignment(model, column) === alignment) return model.source.slice(model.start, model.end);
+    const dashes = model.divider.cells[column].trim().replaceAll(':', '');
+    const text = `${alignment !== 'right' ? ':' : ''}${dashes}${alignment !== 'left' ? ':' : ''}`;
+    return model.source.slice(model.start, range.start) + text + model.source.slice(range.end, model.end);
 }
 
 // Recover quoted/indented table tokens without letting a table's source range include other prose.

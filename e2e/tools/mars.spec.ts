@@ -138,7 +138,7 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     await page.getByRole('button', { name: 'Start writing' }).click();
     await setMarkdown(page, markdown);
     await page.getByRole('button', { name: 'Preview', exact: true }).click();
-    await expect(page.locator('#previewArticle p').first()).toHaveText('Plain words here.');
+    await expect(page.locator('#previewArticle p').first()).toHaveText(markdown.split('\n\n')[0].trim());
   });
 
   test('SEO head block matches the AGENTS.md SEO budget', async ({ page }) => {

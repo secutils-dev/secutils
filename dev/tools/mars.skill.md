@@ -56,19 +56,32 @@ Use `?temporary=1&url=<public-md>` for a temporary URL load.
 
 ## Table editing
 
-1. In Preview, click or tap a table cell to display its row and column actions.
+1. In Preview, click or tap a table cell to display its row and column handles.
 2. Drag a column boundary in the header to resize the two adjacent columns.
-3. Use the insert and remove buttons for the selected row or column.
-4. Drag the row grip vertically or the column grip horizontally to reorder.
-5. Use the move buttons or the focused grip's arrow keys for keyboard reordering.
-6. Use Left/Right arrow keys on a resize handle to adjust its width.
-7. Use **Reset column widths** to restore automatic sizing.
-8. Use `Ctrl/Cmd+Z` to undo an edit.
-9. Press Escape to cancel an unfinished drag.
+3. Click or tap **Row actions** or **Column actions** to open its action panel.
+4. Use the insert and remove buttons for the selected row or column.
+5. Drag the row handle vertically or the column handle horizontally to reorder.
+6. Use the move buttons or the focused handle's arrow keys for keyboard reordering.
+7. Use Left/Right arrow keys on a resize handle to adjust its width.
+8. Use **Reset column widths** in Column actions to restore automatic sizing.
+9. Use `Ctrl/Cmd+Z` to undo an edit.
+10. Press Escape to close an action panel or cancel an unfinished drag.
+
+To edit one cell, double-click it in Preview. With a cell focused, Enter also opens its editor.
+The editor contains only that cell's Markdown. The rest of the table stays visible.
+Use Enter or **Apply cell edit** to apply the edit. Use Escape or **Cancel cell edit** to discard it.
+Use Shift+Enter for a line break. MARS stores line breaks as `<br>` and escapes literal pipes.
+Clicking outside, sharing, exporting, and switching views apply the current cell edit.
+
+In **Column actions**, choose **Left**, **Center**, or **Right** under **Content alignment**.
+The selected alignment applies to the whole column, including its header.
+Arrow keys switch the focused alignment control. Cell edits and alignment changes support `Ctrl/Cmd+Z`.
 
 Completion: the header shows **Saved**, and the table layout returns after reopening the file or link.
 The header row stays above the body rows, and the table retains at least one column.
 Mouse and touch use the same dedicated handles. Table content remains selectable and scrollable.
+Handles and action panels follow the visible selection instead of the table's header.
+The compact grips align with the selected cell's left and top borders. Hover or focus reveals their action/drag glyph.
 Row heights remain automatic.
 
 Column proportions live in a one-line comment directly before the Markdown table:

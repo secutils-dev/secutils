@@ -1,10 +1,11 @@
 import { icon } from '../../../../shared/icons.js';
-import { changeTable, readTable, resizeTable, type TableAction, type TableModel } from './table.ts';
+import { alignTableColumn, columnAlignment, editTableCell, changeTable, readTable, resizeTable, type TableAction, type TableAlignment, type TableModel } from './table.ts';
 import { setTableWidths } from './table-layout.ts';
 
-interface Host { text(): string; enabled(): boolean; edit(start: number, end: number, text: string, anchor: HTMLElement): void; toast(text: string): void }
+interface Host { text(): string; enabled(): boolean; edit(start: number, end: number, text: string, anchor: HTMLElement): void; toast(text: string): void; startCell(): void }
 interface Selection { table: HTMLTableElement; model: TableModel; ordinal: number; row: number; column: number }
-interface Restore { ordinal: number; row: number; column: number; epoch: number; focus?: string }
+interface Restore { ordinal: number; row: number; column: number; epoch: number; focus?: string; passive?: boolean }
+interface CellEditor { selection: Selection; cell: HTMLTableCellElement; form: HTMLFormElement; input: HTMLTextAreaElement; content: DocumentFragment; original: string }
 interface Gesture { selection: Selection; kind: 'resize' | 'row' | 'column'; pointer: number; x: number; y: number; clientX: number; clientY: number; time: number; widths: number[]; initial: number[] | null; target: number; active: boolean; handle: HTMLElement }
 
 export function createTableEditor(article: HTMLElement, pane: HTMLElement, host: Host) {
@@ -12,69 +13,147 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
     toolbar.className = 'su-table-tools'; toolbar.setAttribute('role', 'group'); toolbar.setAttribute('aria-label', 'Table actions'); toolbar.hidden = true;
     const rowGroup = document.createElement('div'), columnGroup = document.createElement('div');
     const rowLabel = document.createElement('span'), columnLabel = document.createElement('span');
-    rowGroup.className = columnGroup.className = 'su-table-tools-group';
+    const panels = { row: rowGroup, column: columnGroup };
+    const grips = {} as Record<'row' | 'column', HTMLButtonElement>;
+    for (const axis of ['row', 'column'] as const) {
+        const panel = panels[axis], grip = document.createElement('button');
+        panel.className = 'su-table-axis-menu'; panel.popover = 'auto'; panel.id = `su-table-${axis}-${crypto.randomUUID()}`;
+        panel.setAttribute('role', 'group'); panel.setAttribute('aria-label', `${axis === 'row' ? 'Row' : 'Column'} actions`);
+        grip.type = 'button'; grip.className = `su-table-grip su-table-${axis}-grip`;
+        grip.setAttribute('aria-label', `${axis === 'row' ? 'Row' : 'Column'} actions`);
+        grip.setAttribute('popovertarget', panel.id);
+        grip.innerHTML = `<span class="su-table-grip-face" aria-hidden="true"><span data-menu>${icon('boxesVertical', 12)}</span><span data-drag>${icon('drag', 12)}</span></span>`;
+        grips[axis] = grip; toolbar.append(grip);
+    }
     rowGroup.append(rowLabel); columnGroup.append(columnLabel); toolbar.append(rowGroup, columnGroup); pane.append(toolbar);
     const line = document.createElement('div'); line.className = 'su-table-drop-line'; line.hidden = true; pane.append(line);
-    const buttons = new Map<string, HTMLButtonElement>();
+    const buttons = new Map<string, HTMLButtonElement | HTMLInputElement>();
     const add = (group: HTMLElement, name: string, glyph: 'plus' | 'trash' | 'chevronRight' | 'drag' | 'refresh', rotate = 0) => {
         const button = document.createElement('button'); button.type = 'button'; button.className = 'btn btn-xs'; button.title = name; button.setAttribute('aria-label', name);
-        button.innerHTML = icon(glyph); if (rotate) button.firstElementChild!.setAttribute('style', `transform:rotate(${rotate}deg)`);
+        button.innerHTML = `${icon(glyph)}<span>${name}</span>`; if (rotate) button.firstElementChild!.setAttribute('style', `transform:rotate(${rotate}deg)`);
         group.append(button); buttons.set(name, button); return button;
     };
     for (const [group, axis] of [[rowGroup, 'row'], [columnGroup, 'column']] as const) {
         for (const before of [true, false]) {
             const button = add(group, `Insert ${axis} ${axis === 'row' ? before ? 'above' : 'below' : before ? 'before' : 'after'}`, 'plus');
-            button.innerHTML = icon('plus', 12) + icon('chevronRight', 10);
-            button.lastElementChild!.setAttribute('style', `transform:rotate(${axis === 'row' ? before ? 270 : 90 : before ? 180 : 0}deg)`);
+            button.innerHTML = `${icon('plus', 12)}<span>${button.getAttribute('aria-label')}</span>`;
         }
         add(group, `Remove ${axis}`, 'trash');
         add(group, `Move ${axis} ${axis === 'row' ? 'up' : 'left'}`, 'chevronRight', axis === 'row' ? 270 : 180);
         add(group, `Move ${axis} ${axis === 'row' ? 'down' : 'right'}`, 'chevronRight', axis === 'row' ? 90 : 0);
-        add(group, `Drag ${axis} to reorder`, 'drag').classList.add('su-table-grip');
+        buttons.set(`Drag ${axis} to reorder`, grips[axis]);
     }
+    const alignment = document.createElement('fieldset'), legend = document.createElement('legend');
+    alignment.className = 'su-table-alignment'; legend.textContent = 'Content alignment'; alignment.append(legend);
+    const alignmentName = `su-table-align-${crypto.randomUUID()}`;
+    const alignments = new Map<TableAlignment, HTMLInputElement>();
+    for (const value of ['left', 'center', 'right'] as const) {
+        const label = document.createElement('label'), input = document.createElement('input');
+        input.type = 'radio'; input.name = alignmentName; input.value = value;
+        input.setAttribute('aria-label', `Align column ${value}`);
+        label.append(input, value[0].toUpperCase() + value.slice(1)); alignment.append(label);
+        alignments.set(value, input); buttons.set(`Align column ${value}`, input);
+        input.addEventListener('change', () => {
+            if (!input.checked || !owned()) return;
+            const s = selected!;
+            commit(s, alignTableColumn(s.model, s.column, value), s.row, s.column, `Align column ${value}`);
+        });
+    }
+    columnGroup.append(alignment);
     add(columnGroup, 'Reset column widths', 'refresh');
     let selected: Selection | null = null, pending: Restore | null = null, gesture: Gesture | null = null, epoch = -1;
+    let cellEditor: CellEditor | null = null;
+    let observedCell: HTMLTableCellElement | null = null;
     let frame = 0, scrollFrame = 0;
+    let ignoreClickUntil = 0;
     const grids = new WeakMap<HTMLTableElement, HTMLTableCellElement[][]>();
     const tabCells = new WeakMap<HTMLTableElement, HTMLTableCellElement>();
     const owned = (s = selected) => !!s && s.table.isConnected && s.model.source === host.text() && host.enabled();
     const cells = (table: HTMLTableElement) => grids.get(table) ?? [...table.rows].map((r) => [...r.cells]);
     const compatible = (table: HTMLTableElement, model: TableModel) => table.rows.length === model.rows.length + 1
         && [...table.rows].every((r) => r.cells.length === model.header.cells.length && [...r.cells].every((c) => c.colSpan === 1 && c.rowSpan === 1));
+    const closePanels = () => { for (const panel of Object.values(panels)) if (panel.matches(':popover-open')) panel.hidePopover(); };
     const position = () => {
-        if (!owned() || toolbar.hidden) return;
-        const rect = selected!.table.getBoundingClientRect();
-        toolbar.style.width = `${Math.min(360, window.innerWidth - 16)}px`;
-        toolbar.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - toolbar.offsetWidth - 8))}px`;
-        const top = rect.top - toolbar.offsetHeight - 8;
-        toolbar.style.top = `${Math.max(8, Math.min(top < 8 ? rect.top + 8 : top, window.innerHeight - toolbar.offsetHeight - 8))}px`;
+        if (!owned()) return;
+        if (cellEditor) { closePanels(); toolbar.hidden = true; return; }
+        const s = selected!, viewport = window.visualViewport, paneRect = pane.getBoundingClientRect();
+        const left = Math.max(viewport?.offsetLeft ?? 0, paneRect.left) + 8;
+        const right = Math.min((viewport?.offsetLeft ?? 0) + (viewport?.width ?? innerWidth), paneRect.right) - 8;
+        const top = Math.max(viewport?.offsetTop ?? 0, paneRect.top) + 8;
+        const bottom = Math.min((viewport?.offsetTop ?? 0) + (viewport?.height ?? innerHeight), paneRect.bottom) - 8;
+        const tableRect = s.table.getBoundingClientRect(), wrap = s.table.closest<HTMLElement>('.su-table-edit-scroll')!.getBoundingClientRect();
+        const cell = cells(s.table)[s.row][s.column].getBoundingClientRect();
+        const rowStyle = getComputedStyle(grips.row), columnStyle = getComputedStyle(grips.column);
+        const rowWidth = parseFloat(rowStyle.width), rowHeight = parseFloat(rowStyle.height);
+        const columnWidth = parseFloat(columnStyle.width), columnHeight = parseFloat(columnStyle.height);
+        const hit = Math.max(rowWidth, rowHeight, columnWidth, columnHeight);
+        if (right - left < hit || bottom - top < hit || (!gesture && (cell.bottom <= top || cell.top >= bottom || !!window.getSelection()?.toString()))) {
+            closePanels(); toolbar.hidden = true; return;
+        }
+        toolbar.hidden = false;
+        const x = Math.max(left, Math.max(tableRect.left, wrap.left) - rowWidth / 2);
+        const end = Math.min(right, tableRect.right, wrap.right);
+        const rowX = Math.max(x, Math.min(Math.max(cell.left, wrap.left, left) - rowWidth / 2, end - rowWidth));
+        const rowY = Math.max(top, Math.min((gesture?.kind === 'row' ? gesture.clientY : cell.top + cell.height / 2) - rowHeight / 2, bottom - rowHeight));
+        const columnY = Math.max(top, Math.min(cell.top - columnHeight / 2, bottom - columnHeight));
+        const columnX = Math.max(x, Math.min((gesture?.kind === 'column' ? gesture.clientX : cell.left + cell.width / 2) - columnWidth / 2, end - columnWidth));
+        const y = Math.min(rowY, columnY);
+        Object.assign(toolbar.style, { left: `${x}px`, top: `${y}px`, width: `${Math.max(hit, end - x)}px`, height: `${Math.max(rowY + rowHeight, columnY + columnHeight) - y}px` });
+        Object.assign(grips.row.style, { left: `${rowX - x}px`, top: `${rowY - y}px` });
+        Object.assign(grips.column.style, { left: `${columnX - x}px`, top: `${columnY - y}px` });
+        grips.column.hidden = gesture?.kind !== 'column' && (cell.right <= wrap.left || cell.left >= wrap.right);
+        for (const axis of ['row', 'column'] as const) {
+            const panel = panels[axis];
+            if (!panel.matches(':popover-open')) continue;
+            panel.style.width = `${Math.min(224, right - left)}px`; panel.style.maxHeight = `${bottom - top}px`;
+            const anchor = grips[axis].querySelector<HTMLElement>('.su-table-grip-face')!.getBoundingClientRect(), height = panel.offsetHeight;
+            panel.style.left = `${Math.max(left, Math.min(anchor.left, right - panel.offsetWidth))}px`;
+            panel.style.top = `${Math.max(top, Math.min(anchor.bottom + 6 + height <= bottom ? anchor.bottom + 6 : anchor.top - height - 6, bottom - height))}px`;
+        }
+    };
+    const openPanel = (axis: 'row' | 'column') => {
+        if (!owned()) return;
+        const panel = panels[axis];
+        if (panel.matches(':popover-open')) { panel.hidePopover(); grips[axis].focus({ preventScroll: true }); return; }
+        closePanels(); panel.showPopover(); position(); panel.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true });
     };
     const select = (table: HTMLTableElement, row: number, column: number, focus = false) => {
         const model = readTable(host.text(), { start: Number(table.dataset.tableStart), end: Number(table.dataset.tableEnd) });
         if (!model || !compatible(table, model) || !host.enabled()) { cancel(); return; }
+        closePanels();
         const ordinal = [...article.querySelectorAll('table[data-table-start]')].indexOf(table);
         selected?.table.classList.remove('su-table-active');
         if (selected) cells(selected.table)[selected.row]?.[selected.column]?.classList.remove('su-table-selected');
         selected = { table, model, ordinal, row: Math.min(row, model.rows.length), column: Math.min(column, model.header.cells.length - 1) };
+        // A newer selection wins over an edit's delayed render/focus restoration.
+        if (pending) pending = { ordinal, row: selected.row, column: selected.column, epoch };
         table.classList.add('su-table-active');
         const grid = cells(table);
         const previousTab = tabCells.get(table) ?? grid[0][0]; previousTab.tabIndex = -1;
         const cell = grid[selected.row]?.[selected.column];
+        if (observedCell !== cell) {
+            if (observedCell) layoutObserver.unobserve(observedCell);
+            observedCell = cell ?? null;
+            if (observedCell) layoutObserver.observe(observedCell);
+        }
         cell?.classList.add('su-table-selected'); if (cell) { cell.tabIndex = 0; tabCells.set(table, cell); }
         rowLabel.textContent = selected.row ? `Row ${selected.row}` : 'Header'; columnLabel.textContent = `Column ${selected.column + 1}`;
         for (const [name, button] of buttons) {
             button.disabled = name === 'Remove column' ? model.header.cells.length <= 1
                 : name === 'Insert row above' ? !selected.row
                 : name === 'Remove row' ? !selected.row
-                : name === 'Drag row to reorder' ? !selected.row || model.rows.length < 2
-                : name === 'Drag column to reorder' ? model.header.cells.length < 2
+                : name.startsWith('Drag ') ? false
                 : name === 'Move row up' ? selected.row <= 1
                 : name === 'Move row down' ? !selected.row || selected.row >= model.rows.length
                 : name === 'Move column left' ? selected.column === 0
                 : name === 'Move column right' ? selected.column >= model.header.cells.length - 1
                 : name === 'Reset column widths' ? !model.widths : false;
         }
-        toolbar.hidden = false; position(); if (focus) cell?.focus({ preventScroll: true });
+        grips.row.dataset.canDrag = String(!!selected.row && model.rows.length > 1);
+        grips.column.dataset.canDrag = String(model.header.cells.length > 1);
+        for (const [value, input] of alignments) input.checked = columnAlignment(model, selected.column) === value;
+        if (focus) { cell?.scrollIntoView({ block: 'nearest', inline: 'nearest' }); cell?.focus({ preventScroll: true }); }
+        toolbar.hidden = false; position();
     };
     const commit = (s: Selection, text: string, row = s.row, column = s.column, focus?: string) => {
         if (!owned(s)) { cancel(); return; }
@@ -82,10 +161,63 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
         pending = { ordinal: s.ordinal, row, column, epoch, focus };
         host.edit(s.model.start, s.model.end, text, s.table.closest<HTMLElement>('.su-block') ?? s.table);
     };
-    const action = (name: string) => {
+    function finishCell(apply: boolean, focus = false): boolean {
+        const ed = cellEditor;
+        if (!ed) return false;
+        cellEditor = null;
+        const value = ed.input.value, s = ed.selection;
+        ed.form.remove(); ed.cell.append(ed.content); ed.cell.classList.remove('su-table-cell-editing');
+        if (apply && owned(s) && value !== ed.original) {
+            const edit = editTableCell(s.model, s.row, s.column, value);
+            if (s.model.source.slice(edit.start, edit.end) !== edit.text) {
+                pending = { ordinal: s.ordinal, row: s.row, column: s.column, epoch, passive: !focus };
+                host.edit(edit.start, edit.end, edit.text, ed.cell);
+                return true;
+            }
+        }
+        if (focus && ed.cell.isConnected) ed.cell.focus({ preventScroll: true });
+        position(); return false;
+    }
+    const openCell = (cell: HTMLTableCellElement, table: HTMLTableElement) => {
+        finishCell(true);
+        select(table, (cell.parentElement as HTMLTableRowElement).rowIndex, cell.cellIndex);
+        if (!owned()) return;
+        host.startCell(); window.getSelection()?.removeAllRanges(); closePanels();
+        const s = selected!, original = (s.row ? s.model.rows[s.row - 1] : s.model.header).cells[s.column].trim();
+        const content = document.createDocumentFragment(); content.append(...cell.childNodes);
+        const form = document.createElement('form'), label = document.createElement('label'), input = document.createElement('textarea');
+        const help = document.createElement('span'), actions = document.createElement('div');
+        form.className = 'su-table-cell-editor'; input.id = `su-cell-${crypto.randomUUID()}`;
+        label.htmlFor = input.id; label.className = 'sr-only'; label.textContent = 'Edit table cell';
+        help.id = `${input.id}-help`; help.className = 'sr-only';
+        help.textContent = 'Enter applies the edit. Shift+Enter adds a line break. Escape cancels the edit.';
+        input.setAttribute('aria-describedby', help.id); input.value = original; input.cols = 1; input.rows = 3; input.spellcheck = false;
+        actions.className = 'su-table-cell-actions';
+        for (const apply of [true, false]) {
+            const button = document.createElement('button'); button.type = apply ? 'submit' : 'button'; button.className = 'btn btn-xs';
+            button.title = apply ? 'Apply cell edit' : 'Cancel cell edit'; button.setAttribute('aria-label', button.title);
+            button.innerHTML = icon(apply ? 'check' : 'cross', 12); actions.append(button);
+            // Safari can blur the textarea without focusing a clicked button. Keep
+            // focus until the button chooses Apply or Cancel, rather than saving on blur.
+            button.addEventListener('mousedown', (event) => event.preventDefault());
+            if (!apply) button.addEventListener('click', () => finishCell(false, true));
+        }
+        form.append(label, help, input, actions); cell.append(form); cell.classList.add('su-table-cell-editing');
+        cellEditor = { selection: s, cell, form, input, content, original };
+        form.addEventListener('submit', (event) => { event.preventDefault(); finishCell(true, true); });
+        form.addEventListener('keydown', (event) => {
+            if (event.isComposing || event.keyCode === 229) return;
+            if (event.key === 'Enter' && event.target !== input) return;
+            if (event.key !== 'Escape' && (event.key !== 'Enter' || event.shiftKey)) return;
+            event.preventDefault(); event.stopPropagation(); finishCell(event.key === 'Enter', true);
+        }, true);
+        form.addEventListener('focusout', (event) => { if (!form.contains(event.relatedTarget as Node | null)) finishCell(true); });
+        position(); input.focus(); input.setSelectionRange(input.value.length, input.value.length);
+    };
+    const action = (name: string, focus = name) => {
         if (!owned()) { cancel(); return; }
         const s = selected!;
-        if (name === 'Reset column widths') { commit(s, resizeTable(s.model, null), s.row, s.column, name); return; }
+        if (name === 'Reset column widths') { commit(s, resizeTable(s.model, null), s.row, s.column, focus); return; }
         const axis = name.includes('row') ? 'row' : 'column';
         const index = axis === 'row' ? Math.max(0, s.row - 1) : s.column;
         const kind = name.startsWith('Insert') ? /above|before/.test(name) || (axis === 'row' && !s.row) ? 'before' : 'after' : name.startsWith('Remove') ? 'remove' : 'move';
@@ -94,7 +226,7 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
         try {
             const next = changeTable(s.model, operation);
             const target = kind === 'before' ? index : kind === 'after' ? index + 1 : kind === 'move' ? index + dir : index;
-            commit(s, next, axis === 'row' ? target + 1 : s.row, axis === 'column' ? target : s.column, name);
+            commit(s, next, axis === 'row' ? target + 1 : s.row, axis === 'column' ? target : s.column, focus);
             host.toast(kind === 'move' ? `Moved ${axis}` : kind === 'remove' ? `Removed ${axis}` : `Inserted ${axis}`);
         } catch (error) { host.toast((error as Error).message); }
     };
@@ -108,7 +240,7 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
     };
     const begin = (event: PointerEvent, kind: Gesture['kind'], handle: HTMLElement) => {
         if (event.button !== 0 || !owned() || gesture) return;
-        if (kind === 'row' && !selected!.row) return;
+        if (kind !== 'resize' && handle.dataset.canDrag !== 'true') return;
         event.preventDefault(); event.stopPropagation(); handle.focus({ preventScroll: true });
         gesture = { selection: selected!, kind, pointer: event.pointerId, x: event.clientX, y: event.clientY, clientX: event.clientX, clientY: event.clientY, time: performance.now(), widths: measured(selected!), initial: selected!.model.widths, target: kind === 'row' ? selected!.row - 1 : selected!.column, active: false, handle };
         handle.setPointerCapture(event.pointerId);
@@ -147,6 +279,7 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
         if (!g || event.pointerId !== g.pointer) return;
         if (!owned(g.selection)) { cancel(); return; }
         if (!g.active && Math.hypot(event.clientX - g.x, event.clientY - g.y) < 4) return;
+        if (!g.active) closePanels();
         if (!g.active && g.kind !== 'resize') scrollFrame = requestAnimationFrame(scrollDrag);
         g.active = true; g.clientX = event.clientX; g.clientY = event.clientY; g.handle.classList.add('su-table-dragging');
         if (g.kind === 'resize') {
@@ -163,6 +296,7 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
         cancelAnimationFrame(scrollFrame); gesture = null; line.hidden = true; g.handle.classList.remove('su-table-dragging');
         if (g.handle.hasPointerCapture(event.pointerId)) g.handle.releasePointerCapture(event.pointerId);
         if (!g.active || !owned(g.selection)) return;
+        ignoreClickUntil = performance.now() + 200;
         try {
             if (g.kind === 'resize') commit(g.selection, resizeTable(g.selection.model, resized(g, event.clientX - g.x)));
             else {
@@ -175,6 +309,9 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
         }
     };
     function cancel() {
+        finishCell(true);
+        closePanels();
+        if (observedCell) { layoutObserver.unobserve(observedCell); observedCell = null; }
         cancelAnimationFrame(scrollFrame);
         const g = gesture; gesture = null; line.hidden = true;
         if (g) {
@@ -191,9 +328,10 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
         if (button && !button.disabled && !button.classList.contains('su-table-grip')) action(button.getAttribute('aria-label')!);
     });
     for (const axis of ['row', 'column'] as const) {
-        const button = buttons.get(`Drag ${axis} to reorder`)!;
-        button.title = `Drag to reorder, or use ${axis === 'row' ? 'up/down' : 'left/right'} arrow keys.`;
+        const button = grips[axis];
+        button.title = `${axis === 'row' ? 'Row' : 'Column'} actions. Drag to reorder, or use ${axis === 'row' ? 'up/down' : 'left/right'} arrow keys.`;
         button.setAttribute('aria-description', button.title);
+        button.addEventListener('click', (event) => { event.preventDefault(); if (performance.now() >= ignoreClickUntil) openPanel(axis); });
         button.addEventListener('pointerdown', (e) => begin(e, axis, button));
         button.addEventListener('pointermove', move); button.addEventListener('pointerup', finish);
         button.addEventListener('pointercancel', cancel); button.addEventListener('lostpointercapture', () => { if (gesture) cancel(); });
@@ -202,21 +340,32 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
             if (![backwards, forwards].includes(event.key)) return;
             event.preventDefault(); event.stopPropagation();
             const name = `Move ${axis} ${axis === 'row' ? event.key === backwards ? 'up' : 'down' : event.key === backwards ? 'left' : 'right'}`;
-            if (!buttons.get(name)!.disabled) action(name);
+            if (!buttons.get(name)!.disabled) action(name, `Drag ${axis} to reorder`);
         });
     }
     article.addEventListener('click', (event) => {
-        if (gesture || (event.target as HTMLElement).closest('a, input, button')) return;
+        if (gesture || (event.target as HTMLElement).closest('a, input, textarea, button')) return;
         const cell = (event.target as HTMLElement).closest<HTMLTableCellElement>('th, td'), table = cell?.closest<HTMLTableElement>('table[data-table-start]');
         if (cell && table && !window.getSelection()?.toString()) select(table, (cell.parentElement as HTMLTableRowElement).rowIndex, cell.cellIndex);
         else cancel();
+    });
+    article.addEventListener('dblclick', (event) => {
+        if ((event.target as HTMLElement).closest('a, input, textarea, button, .su-table-cell-editor, .su-diagram, .su-mermaid')) return;
+        const cell = (event.target as HTMLElement).closest<HTMLTableCellElement>('th, td'), table = cell?.closest<HTMLTableElement>('table[data-table-start]');
+        if (!cell || !table || !host.enabled()) return;
+        event.preventDefault(); event.stopImmediatePropagation(); openCell(cell, table);
     });
     article.addEventListener('focusin', (event) => {
         const cell = (event.target as HTMLElement).closest<HTMLTableCellElement>('th, td'), table = cell?.closest<HTMLTableElement>('table[data-table-start]');
         if (cell && table && !gesture) select(table, (cell.parentElement as HTMLTableRowElement).rowIndex, cell.cellIndex);
     });
     article.addEventListener('keydown', (event) => {
-        if ((event.target as HTMLElement).matches('button') || !owned()) return;
+        if ((event.target as HTMLElement).closest('input, textarea, button') || !owned()) return;
+        if (event.key === 'Enter') {
+            const cell = (event.target as HTMLElement).closest<HTMLTableCellElement>('th, td');
+            if (cell) { event.preventDefault(); event.stopPropagation(); openCell(cell, selected!.table); }
+            return;
+        }
         const direction = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] }[event.key];
         if (!direction || event.ctrlKey || event.metaKey) return;
         event.preventDefault(); event.stopPropagation();
@@ -225,14 +374,33 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
     document.addEventListener('pointerdown', (event) => {
         if (!toolbar.contains(event.target as Node) && !article.contains(event.target as Node)) cancel();
     }, true);
-    document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && (gesture || !toolbar.hidden)) { event.preventDefault(); event.stopPropagation(); cancel(); } }, true);
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape' || (!gesture && toolbar.hidden)) return;
+        event.preventDefault(); event.stopPropagation();
+        const axis = (['row', 'column'] as const).find((name) => panels[name].matches(':popover-open'));
+        if (axis && !gesture) { closePanels(); grips[axis].focus({ preventScroll: true }); }
+        else cancel();
+    }, true);
     const schedulePosition = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(position); };
+    const layoutObserver = new ResizeObserver(schedulePosition);
+    layoutObserver.observe(pane); layoutObserver.observe(article);
     document.addEventListener('scroll', schedulePosition, true); window.addEventListener('resize', schedulePosition);
+    document.addEventListener('selectionchange', schedulePosition);
+    window.visualViewport?.addEventListener('resize', schedulePosition);
+    window.visualViewport?.addEventListener('scroll', schedulePosition);
 
     return {
         cancel,
+        flush: () => finishCell(true),
+        editing: () => !!cellEditor,
         attach(source: string, nextEpoch: number) {
-            const restore = pending; pending = null; cancel(); epoch = nextEpoch;
+            const moving = gesture && gesture.kind !== 'resize' && epoch === nextEpoch && gesture.selection.model.source === source ? gesture : null;
+            const activeFocus = [...buttons].find(([, button]) => button === document.activeElement)?.[0];
+            const restore = pending ?? (selected && selected.model.source === source && epoch === nextEpoch
+                ? { ordinal: selected.ordinal, row: selected.row, column: selected.column, epoch, focus: activeFocus } : null);
+            pending = null;
+            if (!moving) cancel();
+            epoch = nextEpoch;
             for (const table of article.querySelectorAll<HTMLTableElement>('table[data-table-start]')) {
                 const model = readTable(source, { start: Number(table.dataset.tableStart), end: Number(table.dataset.tableEnd) });
                 if (!model || !compatible(table, model)) continue;
@@ -266,12 +434,24 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
                     });
                 }
             }
-            if (restore && restore.epoch === nextEpoch) {
+            if (moving) {
+                const table = [...article.querySelectorAll<HTMLTableElement>('table[data-table-start]')][moving.selection.ordinal];
+                if (table) {
+                    select(table, moving.selection.row, moving.selection.column);
+                    if (selected) { moving.selection = selected; if (moving.active) updateDrop(moving); return; }
+                }
+                cancel();
+            } else if (restore && restore.epoch === nextEpoch) {
                 const table = [...article.querySelectorAll<HTMLTableElement>('table[data-table-start]')][restore.ordinal];
                 if (table) {
-                    select(table, restore.row, restore.column, !restore.focus);
+                    select(table, restore.row, restore.column, !restore.focus && !restore.passive);
+                    if (restore.focus && selected) { cells(table)[selected.row]?.[selected.column]?.scrollIntoView({ block: 'nearest', inline: 'nearest' }); position(); }
                     const button = restore.focus && (buttons.get(restore.focus) ?? [...table.querySelectorAll<HTMLElement>('.su-table-resize')].find((b) => b.getAttribute('aria-label') === restore.focus));
-                    if (button && !(button as HTMLButtonElement).disabled) button.focus({ preventScroll: true });
+                    if (button && !(button as HTMLButtonElement).disabled) {
+                        const axis = (['row', 'column'] as const).find((name) => panels[name].contains(button));
+                        if (axis) { cells(table)[restore.row]?.[restore.column]?.scrollIntoView({ block: 'nearest', inline: 'nearest' }); position(); openPanel(axis); }
+                        button.focus({ preventScroll: true });
+                    }
                     else if (restore.focus && selected) cells(table)[selected.row]?.[selected.column]?.focus({ preventScroll: true });
                 }
             }

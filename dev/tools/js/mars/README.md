@@ -74,6 +74,8 @@ The edit preserves source indentation, list markers, and text outside the select
 **Mark done** is available only for headings and existing task checkboxes.
 Regular list items support manual strikethrough through the selection toolbar.
 These edits support undo and redo.
+On touch devices, the formatting toolbar follows the visible selection inside the visual viewport.
+Native long-press cancellation does not leave it waiting for a mouse release.
 
 All five selection styles work in GitHub alert bodies, including nested blockquotes.
 Formatting preserves alert directives and quote prefixes. Generated alert titles offer **Comment** only.
@@ -112,15 +114,27 @@ The shared browser tests check painted selection pixels in Firefox and Chromium,
 
 ## Table editing
 
-In Preview, selecting a table cell displays a compact row/column toolbar.
+In Preview, selecting a table cell displays row and column handles beside the visible selection.
+Their thin grips use the selected cell's left and top borders as their baseline.
+The visible grips stay compact while their touch targets remain larger.
+Click or tap a handle for its compact action panel. Hover shows the reorder grip where movement is available.
+Panels stay inside the reading pane, even when the table header has scrolled away.
+Double-click a cell to edit its Markdown without opening the whole table source.
+Enter or **Apply cell edit** applies the edit. Escape or **Cancel cell edit** discards it.
+Shift+Enter inserts a line break, stored as `<br>`. Literal pipes are escaped automatically.
+Clicking outside, switching views, sharing, and exporting apply the current cell edit.
+With a cell focused, Enter opens its editor. Arrow keys inside the editor move the caret.
+Column actions include **Left**, **Center**, and **Right** alignment for the whole column, including its header.
+Alignment changes only the GFM divider colons. Each cell edit or alignment change is one undo step.
 Header boundary handles resize adjacent columns with mouse or touch.
 Insert/remove buttons edit rows and columns, and grips reorder rows vertically or columns horizontally.
 Move buttons and arrow keys provide keyboard alternatives.
 Resize handles also support Left/Right arrow keys, with larger steps while Shift is held.
 Each completed drag is one undo step. Escape, pointer cancellation, navigation, and export capture cancel unfinished drags.
+An unchanged preview redraw retains an active row/column drag. Escape first closes an open action panel, then clears the table selection.
 The header row stays fixed, and the table retains at least one column.
 
-`src/doc/table.ts` owns source parsing, metadata, and structural edits.
+`src/doc/table.ts` owns source parsing, metadata, cell edits, alignment, and structural edits.
 `table-renderer.ts` adds exact source ranges through isolated MARS hooks in the shared block mapper.
 `table-layout.ts` reads adjacent comments and applies column proportions through a `colgroup`.
 `table-editor.ts` owns selection, pointer capture, cancellation, keyboard controls, and drag auto-scrolling.

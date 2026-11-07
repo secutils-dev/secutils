@@ -20,7 +20,7 @@ test('shared source mapping and block controls match Markdown Preview apart from
         ['function renumberListItem', 'async function copyTarget'],
         ['// ---- Block handle', '// ---- Selection formatting toolbar'],
         ['// ---- Selection formatting toolbar', '// ---- Review comments'],
-    ]) assert.equal(section(viewer, start, end).replace(/^.*\/\/ MARS-only table mapping\.\n/gm, ''), section(md, start, end));
+    ]) assert.equal(section(viewer, start, end).replace(/^.*\/\/ MARS-only table (?:mapping|hook)\.\n/gm, ''), section(md, start, end));
 });
 
 test('nested multiline list items retain original source ranges and indentation', () => {

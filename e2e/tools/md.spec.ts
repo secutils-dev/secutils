@@ -75,7 +75,7 @@ test.describe(`${tool.name} (${tool.path})`, () => {
   selectionToolbarTests(async (page, markdown) => {
     await page.goto(tool.path);
     await setMarkdown(page, markdown);
-    await expect(page.locator('#previewArticle p').first()).toHaveText('Plain words here.');
+    await expect(page.locator('#previewArticle p').first()).toHaveText(markdown.split('\n\n')[0].trim());
   });
 
   alertSelectionTests(async (page, markdown) => {
