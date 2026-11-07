@@ -8,6 +8,8 @@ import * as viewer from '../doc/viewer.js';
 import { type Bundle, decodeState, deriveShortLink, encodeState, fromBase64Url, hashText, openSealed, parseBundle, sealBundle, SHORT_MAX_CHARS, toBase64Url } from './codec.ts';
 import { joinComments, mergeDocuments, openThreads, splitComments, type Thread } from './merge.ts';
 import { matchScore } from './match.ts';
+import { beginInput, checkInput, type InputOperation } from '../io/input.ts';
+import { readSource, sourceUrl, urlFileName } from '../io/source.ts';
 
 export const SHARED_FOLDER = 'Shared with me';
 const SHORT_TTLS = [86400, 604800, 1209600];
@@ -255,10 +257,15 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 // changed it is taken (and the changes marked), when only the stored copy changed it stays,
 // and when both changed (or the source text is unknown) the reader decides. `link` attaches
 // the file an incoming copy was opened from.
-async function updateExisting(existing: TreeNode, text: string, link?: { handle: FileSystemFileHandle; stamp: number }) {
-    await app.openDoc(existing.id);
+async function updateExisting(existing: TreeNode, text: string, link?: { handle: FileSystemFileHandle; stamp: number }, input?: InputOperation) {
+    checkInput(input);
+    await viewer.flush();
+    checkInput(input);
+    await app.openDoc(existing.id, input);
+    checkInput(input);
     const local = (await db.getText(existing.id)) ?? '';
     const opened = existing.opened ? await db.getSide('opened', existing.id) : undefined;
+    checkInput(input);
     const merged = mergeDocuments(local, text);
     const comments = merged.added ? ` and merged ${plural(merged.added, 'new comment')}` : '';
     let choice: 'theirs' | 'mine' | 'copy' | '';
@@ -275,6 +282,7 @@ async function updateExisting(existing: TreeNode, text: string, link?: { handle:
     } else {
         const both = opened !== undefined;
         ({ value: choice } = await modal({
+            signal: input?.signal,
             title: both ? 'Both copies changed' : 'This document is already in your sidebar',
             html: both
                 ? `<p>You edited <strong>${esc(existing.name)}</strong> in MARS, and the incoming copy changed too. Comments are merged in every case.</p><p><strong>Review changes</strong> takes the incoming text; your edits stay visible under <em>Show before</em> until you mark it reviewed.</p>`
@@ -285,76 +293,97 @@ async function updateExisting(existing: TreeNode, text: string, link?: { handle:
         }) as { value: typeof choice });
         note = choice === 'theirs' ? 'Showing what changed since your review' : 'Kept your text and merged the comments';
     }
+    checkInput(input);
     if (choice === 'copy') {
-        await app.createDoc({ name: app.uniqueName(`${existing.name} (new)`, existing.parentId), text, parentId: existing.parentId, opened: true, handle: link?.handle, stamp: link?.stamp });
+        await app.createDoc({ name: app.uniqueName(`${existing.name} (new)`, existing.parentId), text, parentId: existing.parentId, opened: true, handle: link?.handle, stamp: link?.stamp, input });
+        checkInput(input);
         viewer.toast(`Saved the incoming copy next to "${existing.name}"`);
         return;
     }
     if (!choice) return;
     if (link) Object.assign(existing, { handle: link.handle, stamp: link.stamp, dirty: choice === 'mine' && !merged.sameBody });
     await app.setOpened(existing, text);
+    checkInput(input);
     if (choice === 'theirs') await app.rebase(existing, local, merged.theirs);
+    checkInput(input);
     const next = choice === 'theirs' ? merged.theirs : merged.mine;
     if (next !== local) await saveText(existing, next);
     else await db.putNodes([existing]);
+    checkInput(input);
     viewer.toast(note);
 }
 
 // A stored document the incoming one is likely an updated copy of (a moved file, or a file
 // opened with Open), confirmed by the reader. The origin then follows the new location.
-async function findLikely(name: string, text: string, originId?: string) {
+async function findLikely(name: string, text: string, originId?: string, input?: InputOperation) {
     let best: TreeNode | null = null, bestScore = 0;
     for (const n of app.state.nodes) {
         if (n.kind !== 'doc') continue;
         const score = matchScore({ name, text }, { name: n.name, text: (await db.getText(n.id)) ?? '' });
+        checkInput(input);
         if (score > bestScore) [best, bestScore] = [n, score];
     }
     if (!best) return null;
     const folder = ancestors(app.state.nodes, best.id).at(-1)?.name;
     const { value } = await modal({
+        signal: input?.signal,
         title: 'Is this an updated copy?',
         html: `<p><strong>${esc(name)}</strong> looks like an updated copy of <strong>${esc(best.name)}</strong>${folder ? ` in <em>${esc(folder)}</em>` : ''}.</p><p>Updating it keeps one document with its comments and marks what changed.</p>`,
         buttons: [{ label: 'Add as new', value: 'new' }, { label: `Update "${best.name}"`, value: 'update', primary: true }],
     });
+    checkInput(input);
     if (value !== 'update') return null;
     if (originId && /^(file|url):/.test(originId)) { best.originId = originId; await db.putNodes([best]); }
     return best;
 }
 
-async function receiveDoc(doc: Bundle['docs'][0]) {
-    const existing = findDoc(doc.originId) ?? (await findLikely(doc.name, doc.text, doc.originId));
-    if (existing) { await updateExisting(existing, doc.text); return; }
+async function receiveDoc(doc: Bundle['docs'][0], input?: InputOperation) {
+    const existing = findDoc(doc.originId) ?? (await findLikely(doc.name, doc.text, doc.originId, input));
+    checkInput(input);
+    if (existing) { await updateExisting(existing, doc.text, undefined, input); return; }
     const parent = await sharedRoot();
-    await app.createDoc({ name: app.uniqueName(doc.name || 'Untitled', parent.id), text: doc.text, parentId: parent.id, originId: doc.originId, opened: true });
+    checkInput(input);
+    await app.createDoc({ name: app.uniqueName(doc.name || 'Untitled', parent.id), text: doc.text, parentId: parent.id, originId: doc.originId, opened: true, input });
+    checkInput(input);
     viewer.toast(`Added "${doc.name}" to ${SHARED_FOLDER}`);
 }
 
 // A Markdown file opened with Open or dropped on the preview. Chromium hands over a handle,
 // which identifies a file already in the sidebar exactly; otherwise the content decides.
-export async function receiveFile(file: { name: string; text: string; handle: FileSystemFileHandle | null; stamp: number }) {
+export async function receiveFile(file: { name: string; text: string; handle: FileSystemFileHandle | null; stamp: number; parentId?: string | null }, input: InputOperation = beginInput()) {
+    await viewer.flush();
+    input.check();
     let existing: TreeNode | null = null;
     if (file.handle) {
         for (const n of app.state.nodes) {
             if (n.handle && (await n.handle.isSameEntry(file.handle).catch(() => false))) { existing = n; break; }
+            input.check();
         }
     }
-    existing ??= await findLikely(file.name, file.text);
+    input.check();
+    existing ??= await findLikely(file.name, file.text, undefined, input);
+    input.check();
     const link = file.handle ? { handle: file.handle, stamp: file.stamp } : undefined;
-    if (existing) { await updateExisting(existing, file.text, link); return; }
-    await app.createDoc({ name: app.uniqueName(file.name, app.state.folderId), text: file.text, handle: link?.handle, stamp: link?.stamp, opened: true });
+    if (existing) { await updateExisting(existing, file.text, link, input); return; }
+    const parentId = file.parentId === undefined ? app.state.folderId : file.parentId;
+    await app.createDoc({ name: app.uniqueName(file.name, parentId), text: file.text, parentId, handle: link?.handle, stamp: link?.stamp, opened: true, input });
+    input.check();
 }
 
-async function receiveFolder(bundle: Bundle) {
+async function receiveFolder(bundle: Bundle, input?: InputOperation) {
     let target = bundle.originId ? app.state.nodes.find((n) => n.kind === 'folder' && n.originId === bundle.originId) : undefined;
     if (!target) {
         const parent = await sharedRoot();
         target = await app.createFolder(app.uniqueName(bundle.name || 'Untitled', parent.id), parent.id, bundle.originId);
     }
+    checkInput(input);
     let added = 0, merged = 0, differ = 0, first: string | null = null;
     for (const doc of bundle.docs) {
+        checkInput(input);
         const existing = findDoc(doc.originId);
         if (existing) {
             const local = (await db.getText(existing.id)) ?? '';
+            checkInput(input);
             const m = mergeDocuments(local, doc.text);
             if (!m.sameBody) differ++;
             if (m.added) { merged += m.added; await saveText(existing, m.mine); }
@@ -363,36 +392,62 @@ async function receiveFolder(bundle: Bundle) {
         }
         let parentId = target.id;
         for (const seg of doc.path) parentId = (await app.findOrCreateFolder(seg, parentId)).id;
-        const created = await app.createDoc({ name: app.uniqueName(doc.name, parentId), text: doc.text, parentId, originId: doc.originId, open: false, opened: true });
+        checkInput(input);
+        const created = await app.createDoc({ name: app.uniqueName(doc.name, parentId), text: doc.text, parentId, originId: doc.originId, open: false, opened: true, input });
         first ??= created.id;
         added++;
     }
     await app.setOpen(target.id, true);
-    if (first) await app.openDoc(first);
+    checkInput(input);
+    if (first) await app.openDoc(first, input);
+    checkInput(input);
     const parts = [added && `added ${added} document${added === 1 ? '' : 's'}`, merged && `merged ${merged} comment${merged === 1 ? '' : 's'}`, differ && `kept your text in ${differ} changed document${differ === 1 ? '' : 's'}`].filter(Boolean);
     viewer.toast(`"${target.name}": ${parts.join(', ') || 'already up to date'}`);
 }
 
-export async function receive(bundle: Bundle) {
-    if (bundle.kind === 'doc' && bundle.docs.length === 1) await receiveDoc(bundle.docs[0]);
-    else await receiveFolder(bundle);
+export async function receive(bundle: Bundle, input: InputOperation = beginInput()) {
+    await viewer.flush();
+    input.check();
+    if (bundle.kind === 'doc' && bundle.docs.length === 1) await receiveDoc(bundle.docs[0], input);
+    else await receiveFolder(bundle, input);
 }
 
 // Fetches a remote Markdown file (?url=, or the empty-state URL box) into the tree.
-export async function receiveUrl(url: string) {
-    const res = await fetch(url, { redirect: 'follow' });
-    if (!res.ok) throw new Error(`Fetch failed: HTTP ${res.status}`);
-    const name = decodeURIComponent(new URL(url).pathname.split('/').pop() || 'document').replace(/\.(md|markdown|mdx|txt)$/i, '') || 'document';
-    await receive({ v: 1, kind: 'doc', name, docs: [{ path: [], name, originId: `url:${url}`, text: await res.text() }] });
+export async function receiveUrl(url: string, input: InputOperation = beginInput()) {
+    const cancelled = () => viewer.endLoading();
+    input.signal.addEventListener('abort', cancelled, { once: true });
+    try {
+        const target = sourceUrl(url);
+        await viewer.flush();
+        input.check();
+        const res = await fetch(target.href, { redirect: 'follow', signal: input.signal });
+        input.check();
+        if (!res.ok) throw new Error(`Fetch failed: HTTP ${res.status}`);
+        const raw = await res.text();
+        input.check();
+        const { name, text } = readSource(raw, { fileName: urlFileName(target), fallback: 'document' });
+        input.check();
+        await receive({ v: 1, kind: 'doc', name, docs: [{ path: [], name, originId: `url:${target.href}`, text }] }, input);
+        input.check();
+        viewer.endLoading();
+    } catch (error) {
+        input.check();
+        if (error instanceof TypeError) throw new Error('Fetch failed (CORS or network). Try a raw, CORS-enabled URL.');
+        throw error;
+    } finally { input.signal.removeEventListener('abort', cancelled); }
 }
 
 // Opens whatever the address bar carries: `#doc=<id>`, a share link, or `?url=`.
 // Returns false when there was nothing to open.
-export async function openFromLocation(): Promise<boolean> {
-    const hash = location.hash.slice(1);
+export async function openFromLocation(address = location.href): Promise<boolean> {
+    const request = new URL(address);
+    const hash = request.hash.slice(1);
     const params = new URLSearchParams(hash.includes('=') ? hash : '');
-    const urlParam = new URLSearchParams(location.search).get('url');
+    const urlParam = request.searchParams.get('url');
+    if (!hash && !urlParam) return false;
+    const input = beginInput();
     const fail = (msg: string | null) => {
+        input.check();
         history.replaceState(history.state, '', location.pathname);
         viewer.endLoading(!msg);
         if (msg) viewer.toast(msg);
@@ -401,7 +456,7 @@ export async function openFromLocation(): Promise<boolean> {
     try {
         if (params.has('doc')) {
             const id = params.get('doc')!;
-            if (app.node(id)?.kind === 'doc') { await app.openDoc(id); return true; }
+            if (app.node(id)?.kind === 'doc') { await app.openDoc(id, input); return true; }
             history.replaceState(history.state, '', location.pathname);
             return false;
         }
@@ -410,32 +465,42 @@ export async function openFromLocation(): Promise<boolean> {
             const secret = params.get('s')!;
             let id: string;
             try { id = (await deriveShortLink(fromBase64Url(secret))).id; } catch { return fail(null); }
-            const res = await shortFetch(id);
+            const res = await shortFetch(id, { signal: input.signal });
+            input.check();
             if (res.status === 404) return fail(null);
             if (!res.ok) return fail(`Could not load the short link (HTTP ${res.status}). Reload to retry.`);
             const { v, exp } = await res.json();
             bundle = await openSealed(secret, v);
+            input.check();
             if (!bundle) return fail(null);
             if (exp) viewer.toast(`Shared link · expires ${fmtExpiry(exp)}`);
         } else if (params.has('b')) {
             const json = await decodeState(params.get('b')!);
+            input.check();
             bundle = json === null ? null : parseBundle(json);
             if (!bundle) return fail('This link is damaged or incomplete.');
         } else if (hash) {
             // md.html-compatible full links: `#<state>` or `#name=<name>&md=<state>[&o=<originId>]`.
             const text = await decodeState(params.get('md') ?? (hash.includes('=') ? '' : hash));
+            input.check();
             if (text === null) return fail('This link is damaged or incomplete.');
-            const name = params.get('name')?.trim().replace(/\.(md|markdown|mdx|txt)$/i, '') || text.match(/^#\s+(.+)$/m)?.[1]?.trim().slice(0, 80) || 'Untitled';
-            bundle = { v: 1, kind: 'doc', name, docs: [{ path: [], name, originId: params.get('o') || `link:${await hashText(text)}`, text }] };
+            const source = readSource(text, { name: params.get('name') ?? undefined });
+            bundle = { v: 1, kind: 'doc', name: source.name, docs: [{ path: [], name: source.name, originId: params.get('o') || `link:${await hashText(text)}`, text: source.text }] };
         } else if (urlParam) {
-            try { await receiveUrl(urlParam); } catch (err) { return fail(`${(err as Error).message}. The URL must be public and CORS-enabled.`); }
+            try { await receiveUrl(urlParam, input); } catch (err) {
+                if (!input.current()) return true;
+                viewer.endLoading();
+                viewer.toast((err as Error).message);
+            }
             return true;
         } else {
             return false;
         }
-        await receive(bundle);
+        input.check();
+        await receive(bundle, input);
         return true;
     } catch (err) {
+        if (!input.current()) return true;
         return fail(`Could not open the link: ${(err as Error)?.message ?? err}`);
     }
 }

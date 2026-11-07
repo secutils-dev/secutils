@@ -44,29 +44,31 @@ async function paginate() {
     const result = await new win.Paged.Previewer().preview();
     if (!result.total || !document.querySelector('.pagedjs_page')) throw new Error('Pagination produced no pages.');
     ready = true;
-    // Append screen-only chrome after Paged.js processes the print styles. Its CSS
+    // Append screen-only preview layout after Paged.js processes the print styles. Its CSS
     // parser rewrites media rules for page preparation; these must retain native media.
     const screenStyle = document.createElement('style');
     screenStyle.textContent = `@media screen {
-        body { background: #e5e7eb; overflow-x: hidden; }
-        .pagedjs_pages { transform-origin: top left; transform: scale(var(--page-scale, 1)); }
-        .pagedjs_page { background: #fff; margin-bottom: 16px; box-shadow: 0 2px 8px #0002; }
-        #print-frame-action { position: fixed; top: 8px; right: 8px; z-index: 100; padding: 6px 12px; font: 13px system-ui; }
+        html, body { background: #e5e7eb !important; }
+        body { padding: 16px; overflow-x: hidden; }
+        .pagedjs_pages { width: var(--page-width); transform-origin: top left; transform: translateX(var(--page-offset, 0px)) scale(var(--page-scale, 1)); }
+        .pagedjs_page { background: #fff; margin: 0 0 16px; box-shadow: 0 2px 8px #0002; }
     }
-    @media print { body { height: auto !important; } .pagedjs_pages { transform: none !important; } .pagedjs_page { margin: 0; box-shadow: none; } #print-frame-action { display: none !important; } }`;
+    @media print { body { height: auto !important; } .pagedjs_pages { transform: none !important; } .pagedjs_page { margin: 0; box-shadow: none; } }`;
     document.head.append(screenStyle);
-    // A directly activated child control also works when a browser blocks parent printing.
-    const action = document.createElement('button');
-    action.type = 'button'; action.id = 'print-frame-action'; action.textContent = 'Print / Save PDF'; action.addEventListener('click', print);
-    document.body.append(action);
     const pages = document.querySelector<HTMLElement>('.pagedjs_pages')!;
     const scale = () => {
         const width = config.width * 96 / 25.4;
-        const factor = Math.min(1, window.innerWidth / width);
+        const available = Math.max(1, document.documentElement.clientWidth - 32);
+        const factor = Math.min(1, available / width);
+        pages.style.setProperty('--page-width', `${width}px`);
         pages.style.setProperty('--page-scale', String(factor));
-        document.body.style.height = `${pages.offsetHeight * factor}px`;
+        pages.style.setProperty('--page-offset', `${Math.max(0, (available - width * factor) / 2)}px`);
+        document.body.style.height = `${pages.offsetHeight * factor + 32}px`;
     };
-    scale(); window.addEventListener('resize', scale);
+    scale();
+    // Scrollbars can change the usable width after scaling or hiding the parent's status.
+    // Observe the root as well as viewport changes so the page stays centered in both cases.
+    new ResizeObserver(scale).observe(document.documentElement);
     send('ready', { pages: result.total });
 }
 paginate().catch((error) => send('error', { message: error.message }));

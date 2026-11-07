@@ -3,7 +3,8 @@
 Date: 2026-11-05
 Status: Phase 0 implemented, deployed, and checked. Manual browser-chrome checks remain pending.
 Phase 1 is implemented and deployed. Manual system print/save checks remain pending.
-Phases 2–3 are planned, not implemented.
+Phase 2 is implemented and checked locally. Commit and deployment were requested on 2026-11-07.
+Phase 3 is planned, not implemented.
 
 ## Goal and scope
 
@@ -254,7 +255,6 @@ Reading width retains Comfortable, Wide, Full width, and Custom.
 The custom range remains 320–2400px.
 An export-width change does not change the MARS reading width.
 The embedded PDF action uses the print settings from the PDF tab.
-Its explanatory text identifies that relationship instead of duplicating PDF controls in the HTML tab.
 
 Theme, progress, back-to-top, and code copying remain built-in reader features.
 These features do not need new settings.
@@ -291,7 +291,6 @@ Exclude interactive reader controls and review marks from the printed pages.
 5. Preserve draft settings across format switches within the dialog.
 6. Commit the settings after a download, copy, or print request.
 7. On cancellation, discard draft changes without changing committed settings.
-8. Provide a compact `Reset settings` action for the active format.
 
 Use one versioned browser-storage value, for example `mars.exportSettings`.
 Handle malformed values with the defaults.
@@ -445,7 +444,8 @@ Both previews use opaque sandboxed frames without `allow-same-origin`.
 Their message bridge checks the current source window and operation identifier.
 PDF readiness follows explicit pagination completion after required images and fonts are ready.
 Print actions reuse prepared pages and do not repeat model processing or pagination.
-The print frame also provides a directly activated print control.
+The initial print frame also provided a directly activated print control.
+The export UX follow-up removed that duplicate control.
 Screen scaling runs after Paged.js processes the print styles and is disabled for printing.
 Cancellation disposes frames and listeners, stops export model workers, and ignores superseded results.
 
@@ -493,6 +493,29 @@ make e2e-tools-test ARGS="mars.spec.ts mars-export.spec.ts --workers=3"
 
 URL-import unification, PDF Extractor handoffs, and retirement work remain outside Phase 1.
 
+### Export UX follow-up (2026-11-07)
+
+The settings omit the generic table-of-contents hint and the explanation about PDF-tab settings.
+The table-of-contents hint appears only if the document lacks enough section headings.
+The dialog no longer contains a Reset settings button.
+Saved settings and cancellation behavior remain unchanged.
+
+PDF pages appear centered in the preview, including after viewport and scrollbar changes.
+Screen scaling does not change the print dimensions or print layout.
+The dialog footer provides the only Print / Save PDF button.
+The print frame remains isolated and accepts the existing guarded print messages.
+
+The status appears during preview preparation or after a failure.
+The status disappears when the preview is ready, and the output action becomes available.
+PDF preparation still waits for pagination, images, and fonts.
+Failures retain Retry and the other export formats.
+
+The initial export-only browser run passed 67 cases, with 2 GPU-specific cases skipped.
+The final local regression gate passed 250 cases, with the same 2 GPU-specific cases skipped.
+The new viewport/scrollbar case also passed in Chromium, Firefox, and WebKit.
+Unit tests passed 43 cases. Type checking, builds, lint, tools checks, and diff checks passed.
+These follow-up changes are ready for the requested deployment.
+
 ## Phase 2: Consistent URL import and source reopening
 
 This phase closes useful import gaps. It does not preserve legacy URLs or add redirects.
@@ -519,6 +542,53 @@ Fetching remains a browser operation, not an API proxy request.
 Completion requires equivalent content and naming across the form and query entry points.
 Completion also requires exported-source reopening through file Open, drop, and URL import.
 Reopening must not duplicate a known source or silently replace locally edited text.
+
+### Phase 2 implementation record (2026-11-07)
+
+`src/io/source.ts` provides state-independent source extraction and naming.
+Open, preview drops, library imports, Load URL, and `?url=` use this helper.
+Explicit names precede frontmatter titles, Markdown headings, and filename fallbacks.
+ZIP entries use their saved filenames as explicit names, so backup restore preserves document names.
+HTML without embedded source remains raw HTML.
+Converted HTML never retains a writable link to its original file.
+
+Both URL entry points use `share.receiveUrl()` and the existing incoming-copy decisions.
+The source URL remains the stable origin, including when a redirect changes its destination.
+A failed query load retains the previously viewed document, as the form does.
+All fetching remains in the browser.
+
+`src/io/input.ts` owns input generations and abort signals.
+Receiving and navigation check the current operation after asynchronous reads and before applying results.
+New files, documents, and URLs supersede previous operations.
+Conflict dialogs close when their operation is canceled.
+Unchanged Markdown downloads and unchanged merges retain original CRLF and review-block bytes.
+Pending storage writes finish before the viewer switches documents.
+
+Initial checks passed 43 unit cases and 63 import browser cases across Chromium, Firefox, and WebKit.
+Three additional browser cases reopened actual generated HTML with body-only source in fresh libraries.
+The broader run found import-toast and ZIP-name regressions, which are fixed.
+The folder-deletion case now expects the heading-derived name for an ordinary Markdown import.
+Six focused import/indexing/restore regression cases passed after those fixes.
+Responder smoke tests passed 20 cases, and affected Markdown Preview reference cases passed 5 cases.
+Final local checks:
+
+- MARS unit tests: 43 passed.
+- Full MARS, export, and import browser suites: 238 passed, 2 skipped across Chromium, Firefox, and WebKit.
+- The skipped cases require Chromium's software GPU for color-pixel assertions.
+- Type checking, build, and deploy-equivalent preview build: passed.
+- E2E lint, tools verification, repository tools checks, and `git diff --check`: passed.
+- Marketing-site synchronization: skipped because `SECUTILS_TOOLS_PROMO_HOME_INDEX` is not set.
+
+```bash
+MARS_BASE_URL=http://localhost:7373 make e2e-tools-test ARGS="mars.spec.ts mars-export.spec.ts mars-import.spec.ts --workers=3 --output=test-results/mars-phase2-final"
+```
+
+The phase 1 model-view case now waits for editor initialization before model import.
+The view was previously reset by a late startup render between rotation and saving.
+This readiness check leaves the deployed application unchanged.
+
+The user requested commit and deployment on 2026-11-07.
+Phase 3 handoffs and tool retirement remain outside this change.
 
 ## Phase 3: Regression coverage and useful workflow integration
 
@@ -593,8 +663,8 @@ Do not run deployment targets without a deployment request.
 - [x] Exported HTML retains reader controls and interactive maps/models.
 - [x] PDF previews retain readable vector text, diagrams, and colored model snapshots.
 - [x] Export preparation leaves the source, threads, and saved views unchanged.
-- [ ] URL form and query imports use consistent extraction and naming.
-- [ ] Exported embedded source reopens as editable Markdown.
+- [x] URL form and query imports use consistent extraction and naming.
+- [x] Exported embedded source reopens as editable Markdown.
 - [ ] PDF Extractor can hand its useful output to MARS.
 - [ ] All phased regression checks pass, and blocked manual checks remain explicit.
 - [x] No compatibility or legacy-link migration work enters Phase 0.

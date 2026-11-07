@@ -5,6 +5,7 @@ import { ancestors, childrenOf, descendants, moveNode, newId, nextOrder, textByt
 import { openThreads, splitComments } from './share/merge.ts';
 import { $ } from './ui/ui.ts';
 import * as viewer from './doc/viewer.js';
+import { beginInput, cancelInput, checkInput, type InputOperation } from './io/input.ts';
 
 export const state = {
     nodes: [] as TreeNode[],
@@ -48,17 +49,21 @@ export async function createFolder(name: string, parentId: string | null, origin
 
 // `opened`: the text comes from outside (a file, link, URL, or import) and is kept as the
 // document's source text, for "changes since opened" and for re-opens.
-export async function createDoc(opts: { name?: string; text?: string; parentId?: string | null; originId?: string; handle?: FileSystemFileHandle; stamp?: number; open?: boolean; opened?: boolean } = {}) {
+export async function createDoc(opts: { name?: string; text?: string; parentId?: string | null; originId?: string; handle?: FileSystemFileHandle; stamp?: number; open?: boolean; opened?: boolean; input?: InputOperation } = {}) {
+    if (!opts.input && opts.open !== false) cancelInput();
+    checkInput(opts.input);
     const id = newId();
     const parentId = opts.parentId === undefined ? state.folderId : opts.parentId;
     const text = opts.text ?? '';
     const n: TreeNode = { id, parentId, kind: 'doc', name: opts.name ?? 'Untitled', order: nextOrder(state.nodes, parentId), createdAt: now(), updatedAt: now(), originId: opts.originId ?? id, threads: openThreads(text), size: textBytes(text) };
     if (opts.handle) Object.assign(n, { handle: opts.handle, stamp: opts.stamp ?? 0, dirty: false });
     if (opts.opened) { n.opened = true; await db.putSide('opened', id, text); }
+    checkInput(opts.input);
     state.nodes.push(n);
     await save([n], { [id]: text });
+    checkInput(opts.input);
     expandTo(parentId);
-    if (opts.open !== false) await openDoc(id);
+    if (opts.open !== false) await openDoc(id, opts.input);
     else emit();
     return n;
 }
@@ -134,12 +139,17 @@ async function syncFromDisk(n: TreeNode, request = false) {
 
 // Opens a stored document. A linked file that changed on disk is reloaded when the
 // browser copy has no unsaved edits; otherwise the viewer flags the conflict on save.
-export async function openDoc(id: string) {
+export async function openDoc(id: string, input?: InputOperation) {
     const n = node(id);
     if (!n || n.kind !== 'doc') return;
+    const operation = input ?? beginInput();
+    if (!operation.current()) return;
     if (state.currentId && state.currentId !== id) await viewer.flush();
+    if (!operation.current()) return;
     if (n.handle && !n.dirty) { try { await syncFromDisk(n); } catch {} }
+    if (!operation.current()) return;
     const text = (await db.getText(id)) ?? '';
+    if (!operation.current() || !node(id)) return;
     state.currentId = id;
     state.folderId = n.parentId;
     expandTo(n.parentId);
@@ -157,7 +167,9 @@ export async function reloadFromDisk(id: string) {
 }
 
 async function reopen(n: TreeNode) {
-    viewer.openDocument({ text: (await db.getText(n.id)) ?? '', name: n.name, handle: n.handle ?? null, stamp: n.stamp ?? 0, dirty: !!n.dirty });
+    const text = (await db.getText(n.id)) ?? '';
+    if (state.currentId !== n.id || !node(n.id)) return;
+    viewer.openDocument({ text, name: n.name, handle: n.handle ?? null, stamp: n.stamp ?? 0, dirty: !!n.dirty });
 }
 
 // Linked files exist only where the File System Access pickers do (Chromium); Firefox and
@@ -197,6 +209,7 @@ setInterval(async () => {
 }, 2000);
 
 export function closeDoc() {
+    cancelInput();
     state.currentId = null;
     setRoute(null);
     viewer.closeDocument();

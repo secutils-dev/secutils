@@ -4,7 +4,7 @@ import * as db from '../store/db.ts';
 import { $, closeMenu, copyRich, download, fileSafe } from '../ui/ui.ts';
 import { htmlDocument, hasToc } from './html.ts';
 import { prepareFrame, printDocument, type PreparedFrame } from './pdf.ts';
-import { commitSettings, htmlDefaults, loadSettings, pdfDefaults, validWidth, type ExportFormat, type ExportSettings } from './settings.ts';
+import { commitSettings, loadSettings, validWidth, type ExportFormat, type ExportSettings } from './settings.ts';
 import { renderKey, snapshot, type ExportSnapshot } from './snapshot.ts';
 
 const dialog = $<HTMLDialogElement>('exportDialog');
@@ -33,6 +33,8 @@ let requestedId: string | null = null;
 const disposeOutputs = () => { for (const out of Object.values(outputs)) out.prepared.dispose(); outputs = {}; };
 const currentOutput = () => outputs[format];
 const settingsKey = () => format === 'html' ? JSON.stringify(draft) : JSON.stringify(draft.pdf);
+const setStatus = (message = '') => { status.textContent = message; $('exportStatusBar').hidden = !message; };
+const previewReady = () => { setStatus(); containers[format].removeAttribute('aria-busy'); actions(true); };
 function actions(ready = false) {
     ready = ready && !!currentOutput()?.ready;
     copy.disabled = htmlDownload.disabled = !ready || actionBusy || invalidWidth;
@@ -61,16 +63,16 @@ function syncFormat() {
 async function prepare() {
     const operationGeneration = ++generation;
     actions(); retry.hidden = true;
-    if (!value || (format === 'html' && invalidWidth)) return;
+    if (!value || (format === 'html' && invalidWidth)) { setStatus(); return; }
     const activeFormat = format, captured = value, key = settingsKey();
+    setStatus('Preparing preview…'); containers[activeFormat].setAttribute('aria-busy', 'true');
     const saved = outputs[activeFormat];
     if (saved?.key === key) {
-        try { await saved.prepared.ready; if (operationGeneration === generation && dialog.open) { status.textContent = activeFormat === 'pdf' ? 'Ready to print. Choose Save as PDF in the browser dialog.' : 'Preview ready'; actions(true); } }
+        try { await saved.prepared.ready; if (operationGeneration === generation && dialog.open) previewReady(); }
         catch (error) { if (operationGeneration === generation) failure(error); }
         return;
     }
     saved?.prepared.dispose(); delete outputs[activeFormat];
-    status.textContent = 'Preparing preview…'; containers[activeFormat].setAttribute('aria-busy', 'true');
     try {
         const bodyKey = renderKey(captured);
         if (!rendered || rendered.key !== bodyKey) {
@@ -79,7 +81,7 @@ async function prepare() {
         }
         const content = await rendered.promise;
         if (operationGeneration !== generation || !dialog.open || captured !== value) return;
-        $('exportTocHint').textContent = hasToc(content) ? 'Shown when the document has useful headings.' : 'This document has too few section headings for a table of contents.';
+        $('exportTocHint').hidden = hasToc(content);
         const operation = crypto.randomUUID();
         const html = activeFormat === 'html' ? htmlDocument(captured, content, draft, operation) : printDocument(content, captured.name, draft.pdf, operation);
         const prepared = prepareFrame(containers[activeFormat], html, operation, activeFormat, () => {
@@ -91,12 +93,11 @@ async function prepare() {
         await prepared.ready;
         output.ready = true;
         if (operationGeneration !== generation || !dialog.open) return;
-        status.textContent = activeFormat === 'pdf' ? 'Ready to print. Choose Save as PDF in the browser dialog.' : 'Preview ready';
-        containers[activeFormat].removeAttribute('aria-busy'); actions(true);
+        previewReady();
     } catch (error) { if (operationGeneration === generation && dialog.open) failure(error); }
 }
 function failure(error: unknown) {
-    status.textContent = `Could not prepare ${format.toUpperCase()} preview: ${(error as Error).message ?? error}`;
+    setStatus(`Could not prepare ${format.toUpperCase()} preview: ${(error as Error).message ?? error}`);
     retry.hidden = false; containers[format].removeAttribute('aria-busy'); actions();
 }
 function switchFormat(next: ExportFormat) { format = next; syncFormat(); prepare(); }
@@ -126,10 +127,6 @@ customWidth.addEventListener('input', () => {
 for (const key of Object.keys(checkboxes) as (keyof typeof checkboxes)[]) checkboxes[key].addEventListener('change', () => { draft.html[key] = checkboxes[key].checked; prepare(); });
 paper.addEventListener('change', () => { draft.pdf.paper = paper.value as 'A4' | 'Letter'; prepare(); });
 orientation.addEventListener('change', () => { draft.pdf.orientation = orientation.value as 'portrait' | 'landscape'; prepare(); });
-$('exportReset').addEventListener('click', () => {
-    if (format === 'html') draft.html = htmlDefaults(value?.readingWidth ?? viewer.exportReadingWidth()); else draft.pdf = pdfDefaults();
-    syncFields(); prepare();
-});
 retry.addEventListener('click', async () => {
     if (!value) {
         const activeSession = session;
@@ -192,7 +189,7 @@ export async function openExport(id: string | null = app.state.currentId, initia
     requestedId = id; value = null; format = initialFormat; draft = loadSettings(viewer.exportReadingWidth());
     syncFields(); syncFormat(); actions(); retry.hidden = true; $('exportChanged').hidden = true;
     setTitle(app.node(id)?.name ?? viewer.currentName());
-    status.textContent = 'Preparing preview…'; dialog.showModal();
+    setStatus('Preparing preview…'); dialog.showModal();
     (format === 'html' ? htmlTab : pdfTab).focus();
     try {
         const captured = await capture(id);
@@ -223,7 +220,7 @@ app.onChange(() => {
 $('exportRefresh').addEventListener('click', async () => {
     if (!value) return;
     const id = value.id, activeSession = session, refreshGeneration = ++generation;
-    actions(); renderAbort?.abort(); rendered = null; disposeOutputs(); status.textContent = 'Preparing preview…';
+    actions(); renderAbort?.abort(); rendered = null; disposeOutputs(); setStatus('Preparing preview…');
     try {
         const captured = await capture(id);
         if (activeSession !== session || refreshGeneration !== generation || !dialog.open) return;

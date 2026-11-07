@@ -17,7 +17,8 @@ viewer.setHost({
     currentId: () => app.state.currentId,
     persist: app.persist,
     detach: app.detach,
-    openFile: (f) => share.receiveFile({ ...f, name: io.docName(f.name, f.text) }),
+    openFile: share.receiveFile,
+    openUrl: share.receiveUrl,
 });
 
 let lastDoc: string | null = null;
@@ -48,12 +49,14 @@ try {
     viewer.toast(`Browser storage is unavailable, so reviews won't be kept: ${(err as Error)?.message ?? err}`);
 }
 document.documentElement.classList.remove('mars-boot');
-if (!(await share.openFromLocation())) {
-    const last = await db.getMeta<string>(LAST_DOC_KEY).catch(() => undefined);
+const request = new URL(location.href);
+const last = await db.getMeta<string>(LAST_DOC_KEY).catch(() => undefined);
+// A failed ?url= load retains the previous document, just like the URL form.
+if (!request.hash && request.searchParams.has('url') && last && app.node(last)) await app.openDoc(last);
+// Generation guards make address-bar navigation safe while an initial fetch is pending.
+window.addEventListener('hashchange', () => { share.openFromLocation(); });
+if (!(await share.openFromLocation(request.href))) {
     if (last && app.node(last)) await app.openDoc(last);
     else viewer.endLoading();
 }
-// Registered after boot, so a reload can't replace the tree while a link is being imported.
-// A link pasted into this tab's address bar opens like a fresh visit.
-window.addEventListener('hashchange', () => { share.openFromLocation(); });
 db.onRemoteChange(() => { app.load(); });

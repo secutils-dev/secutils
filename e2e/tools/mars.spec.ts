@@ -452,7 +452,7 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     });
     await page.reload();
     await expect(row(page, 'drop')).toHaveCount(0);
-    await expect(row(page, 'kept')).toHaveAttribute('aria-level', '3');
+    await expect(row(page, 'Kept')).toHaveAttribute('aria-level', '3');
     await expect(page.locator('#tree .tree-row[aria-level="1"]')).toHaveCount(1);
   });
 

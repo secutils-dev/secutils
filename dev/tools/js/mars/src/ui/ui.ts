@@ -73,7 +73,8 @@ export interface ModalButton { label: string; value: string; primary?: boolean; 
 
 // Resolves with the clicked button's value, or '' when dismissed. A `field` adds a text input
 // whose value is returned for the primary button as `{ value, text }`.
-export function modal(opts: { title: string; body?: string; html?: string; buttons: ModalButton[]; field?: { value: string; label: string } }): Promise<{ value: string; text: string }> {
+export function modal(opts: { title: string; body?: string; html?: string; buttons: ModalButton[]; field?: { value: string; label: string }; signal?: AbortSignal }): Promise<{ value: string; text: string }> {
+    if (opts.signal?.aborted) return Promise.resolve({ value: '', text: '' });
     const dlg = $<HTMLDialogElement>('marsModal');
     $('marsModalTitle').textContent = opts.title;
     const body = $('marsModalBody');
@@ -96,7 +97,12 @@ export function modal(opts: { title: string; body?: string; html?: string; butto
     if (input) { input.focus(); input.select(); }
     else dlg.querySelector<HTMLButtonElement>('.btn-primary, .btn-danger')?.focus();
     return new Promise((resolve) => {
-        dlg.addEventListener('close', () => resolve({ value: dlg.returnValue, text: input?.value.trim() ?? '' }), { once: true });
+        const cancel = () => { if (dlg.open) dlg.close(''); };
+        opts.signal?.addEventListener('abort', cancel, { once: true });
+        dlg.addEventListener('close', () => {
+            opts.signal?.removeEventListener('abort', cancel);
+            resolve({ value: opts.signal?.aborted ? '' : dlg.returnValue, text: input?.value.trim() ?? '' });
+        }, { once: true });
     });
 }
 

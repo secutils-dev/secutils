@@ -2,6 +2,7 @@
 import type { Comment, Thread } from '../share/merge.ts';
 import type { ExportSnapshot } from '../export/snapshot.ts';
 import type { ReadingWidth } from '../export/settings.ts';
+import type { InputOperation } from '../io/input.ts';
 
 export interface ViewerDoc {
     text: string;
@@ -17,8 +18,9 @@ export interface ViewerHost {
     persist(doc: ViewerDoc): Promise<void>;
     // New content is replacing a non-empty document; the next persist creates a new entry.
     detach(): void;
-    // A Markdown file from Open or a drop; the host adds it to the tree or updates its copy.
-    openFile?(file: { name: string; text: string; handle: FileSystemFileHandle | null; stamp: number }): Promise<void>;
+    // Extracted source from Open or a drop; converted HTML never retains a writable handle.
+    openFile?(file: { name: string; text: string; handle: FileSystemFileHandle | null; stamp: number }, input?: InputOperation): Promise<void>;
+    openUrl?(url: string): Promise<void>;
 }
 
 export function setHost(host: ViewerHost): void;

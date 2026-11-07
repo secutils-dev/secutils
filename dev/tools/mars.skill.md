@@ -152,6 +152,21 @@ process.exit(bad ? 1 : 0);
 - **Remote URL**: `https://{{MARS_HOST}}/?url=<public-md-url>` fetches a public, CORS-enabled file (for example from `raw.githubusercontent.com`).
 - **Short links**: `#s=<secret>` links come from the Share menu only.
 
+Open, file drops, library imports, Load URL, and `?url=` use the same source extraction and naming rules.
+An explicit incoming name takes priority over a frontmatter title, a Markdown heading, and the filename fallback.
+Filename fallbacks and explicit names lose Markdown and HTML extensions.
+Ordinary Markdown imports and unchanged downloads retain CRLF and their original review-block formatting.
+
+An exported HTML file with embedded source opens as editable Markdown.
+The source contains only the exported document body, without omitted frontmatter or review threads.
+HTML without embedded source remains raw HTML.
+MARS does not infer Markdown from rendered HTML or overwrite the original HTML file with Markdown.
+
+The URL form and `?url=` use the same receive path and stable source identity.
+Reopening a known source retains the existing incoming-copy decisions.
+A new file, document, or URL supersedes a pending load.
+Network and CORS failures retain the previous document and display an error.
+
 This shell function opens a local file, using its absolute path as the origin, so
 reopening an updated file merges into the same review. Run the `node -e` command
 alone to print the URL instead of opening it (Node ≥ 18).

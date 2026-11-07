@@ -57,10 +57,16 @@ export function mergeDocuments(localText: string, incomingText: string) {
         const a = anchors.get(t.id);
         return a ? { ...t, quote: a.quote, prefix: a.prefix, suffix: a.suffix } : t;
     });
+    // Reopening an unchanged source must not reformat its review block or line endings.
+    const withThreads = (original: string, source: { body: string; threads: Thread[] }, next: Thread[]) => {
+        if (JSON.stringify(source.threads) === JSON.stringify(next)) return original;
+        const joined = joinComments(source.body, next);
+        return original.includes('\r\n') ? joined.replace(/\r?\n/g, '\r\n') : joined;
+    };
     return {
         sameBody: local.body === incoming.body,
         added,
-        mine: joinComments(local.body, threads),
-        theirs: joinComments(incoming.body, theirs),
+        mine: withThreads(localText, local, threads),
+        theirs: withThreads(incomingText, incoming, theirs),
     };
 }

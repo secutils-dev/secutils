@@ -37,6 +37,14 @@ It is promoted like any tool, linked by that host. In-app URLs derive from `loca
   Keep print-only CSS compatible with the Paged.js parser: expand heading selectors instead of using comma lists in `:is()`.
   Add screen preview scaling after pagination, so Paged.js does not rewrite its media rules.
   Read [the package export section](../js/mars/README.md#export-workspace) for lifecycle and network contracts.
+- **Source input**: `src/io/source.ts` extracts embedded Markdown without changing viewer state.
+  Open, drops, imports, Load URL, and `?url=` share source extraction and naming.
+  Explicit incoming names precede frontmatter titles, Markdown headings, and filename fallbacks.
+  Converted HTML never retains a writable file handle. HTML without embedded source stays raw HTML.
+  `src/io/input.ts` owns input generations and abort signals. Pass the current operation through receiving and navigation.
+  Check it after asynchronous reads and before selecting or changing a document.
+  Both URL entry points use `share.receiveUrl()`, with browser-side fetches and the existing incoming-copy decisions.
+  Unchanged Markdown and review blocks retain their original bytes on download.
 - **Incoming copies** (`share.updateExisting`): a link, a `mars` re-open, or a file from Open or a drop that matches a
   stored document by origin, by file handle (`isSameEntry`), or, after the reader confirms, by content
   (`share/match.ts`). The text is decided against `opened`: only the source changed takes it, only the stored copy
@@ -82,7 +90,7 @@ It is promoted like any tool, linked by that host. In-app URLs derive from `loca
    cached in a local browser profile).
 2. `npm run serve` builds the deploy-equivalent page and serves it at `http://localhost:7373/` and `/llms.txt`, with the
    responder script on an in-memory KV.
-3. From the root: `MARS_BASE_URL=http://localhost:7373 make e2e-tools-test ARGS="mars.spec.ts mars-export.spec.ts"`.
+3. From the root: `MARS_BASE_URL=http://localhost:7373 make e2e-tools-test ARGS="mars.spec.ts mars-export.spec.ts mars-import.spec.ts"`.
 4. Run steps 2, 4, and 5 of "Change a tool" in [`../AGENTS.md`](../AGENTS.md); for a viewer change, also the affected
    `md.spec.ts` cases.
 5. After a deploy, `make e2e-tools-test ARGS=mars.spec.ts` (`MARS_BASE_URL` defaults to `https://mars.secutils.dev`).

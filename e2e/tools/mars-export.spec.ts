@@ -188,6 +188,11 @@ test.describe('export workspace', () => {
     await expect(page.locator('.toolbar [role=tab]')).toHaveCount(0);
     await expect(dlg(page).getByRole('heading')).toHaveText('Export “Internal title”');
     await expect(dlg(page).locator('#exportDocumentName, details')).toHaveCount(0);
+    await expect(dlg(page).getByRole('button', { name: 'Reset settings', exact: true })).toHaveCount(0);
+    await expect(dlg(page).getByText('Shown when the document has useful headings.', { exact: true })).toHaveCount(0);
+    await expect(
+      dlg(page).getByText('Uses the paper size and orientation from the PDF tab.', { exact: true }),
+    ).toHaveCount(0);
     for (const label of ['Table of contents', 'In-page find', 'PDF action in exported HTML', 'Embed Markdown source']) {
       await expect(dlg(page).getByLabel(label, { exact: true })).toBeVisible();
     }
@@ -227,7 +232,7 @@ test.describe('export workspace', () => {
     await expect(page.locator('#exportBtn')).toBeFocused();
   });
 
-  test('keeps drafts separate, validates custom width, resets, and commits only output actions', async ({ page }) => {
+  test('keeps drafts separate, validates custom width, and commits only output actions', async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem('su-md-reading-width', '{"width":1234,"customWidth":1234}'));
     await openDoc(page);
     await openExport(page);
@@ -247,8 +252,9 @@ test.describe('export workspace', () => {
     const committed = await page.evaluate(() => JSON.parse(localStorage.getItem('mars.exportSettings')!));
     expect(committed.html.readingWidth).toBe(1100);
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem('su-md-reading-width')!).width)).toBe(1234);
-    await dlg(page).getByRole('button', { name: 'Reset settings' }).click();
-    await expect(dlg(page).getByLabel('Custom width (px)')).toHaveValue('1234');
+    await dlg(page).getByRole('button', { name: 'Close export' }).click();
+    await openExport(page);
+    await expect(dlg(page).getByLabel('Reading width', { exact: true })).toHaveValue('1100');
   });
 
   test('retains body-only source, toggles reader features, and escapes document titles', async ({ page }) => {
@@ -271,6 +277,7 @@ test.describe('export workspace', () => {
     await openDoc(page, '# First\n\nFirst body.', 'First.md');
     await page.getByRole('button', { name: 'New document, folder, or import' }).click();
     await page.getByRole('menuitem', { name: 'New document', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Source', exact: true })).toHaveAttribute('aria-pressed', 'true');
     await page.waitForFunction(() => typeof (window as { __suEditorAPI?: unknown }).__suEditorAPI !== 'undefined');
     await page.evaluate(() =>
       (window as unknown as { __suEditorAPI: { setText(text: string): void } }).__suEditorAPI.setText(
@@ -334,7 +341,8 @@ test.describe('export workspace', () => {
     await readyPdf(page);
     expect(await page.locator('#exportPdfPreview iframe').getAttribute('srcdoc')).toBe(prepared);
     expect(await page.locator('#exportPdfPreview iframe').getAttribute('sandbox')).not.toContain('allow-same-origin');
-    await pdfFrame(page).getByRole('button', { name: 'Print / Save PDF', exact: true }).click();
+    await expect(pdfFrame(page).getByRole('button', { name: 'Print / Save PDF', exact: true })).toHaveCount(0);
+    await dlg(page).getByRole('button', { name: 'Print / Save PDF', exact: true }).click();
     await expect(pdfFrame(page).locator('html')).toHaveAttribute('data-print-requests', '2');
     await page.emulateMedia({ media: 'print' });
     const printed = await pdfFrame(page)
@@ -346,7 +354,76 @@ test.describe('export workspace', () => {
       }));
     expect(printed.width).toBeCloseTo((279.4 * 96) / 25.4, 0);
     expect(printed.transform).toBe('none');
-    await expect(pdfFrame(page).locator('#print-frame-action')).toBeHidden();
+    await expect(pdfFrame(page).locator('#print-frame-action')).toHaveCount(0);
+  });
+
+  test('shows preparation status and disables printing only until PDF pages are ready', async ({ page }) => {
+    let release!: () => void, requested!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      requested = resolve;
+    });
+    await page.route('**/pagedjs@*/**', async (route) => {
+      requested();
+      await pending;
+      await route.continue();
+    });
+    await openDoc(page);
+    await openExport(page);
+    await dlg(page).getByRole('tab', { name: 'PDF', exact: true }).click();
+    try {
+      await started;
+      await expect(dlg(page).getByRole('status')).toHaveText('Preparing preview…');
+      await expect(dlg(page).locator('#exportPdfPreview')).toHaveAttribute('aria-busy', 'true');
+      await expect(dlg(page).getByRole('button', { name: 'Print / Save PDF', exact: true })).toBeDisabled();
+    } finally {
+      release();
+    }
+    await expect(dlg(page).getByRole('button', { name: 'Print / Save PDF', exact: true })).toBeEnabled({
+      timeout: 60000,
+    });
+    await expect(dlg(page).getByRole('status')).toBeHidden();
+    await expect(dlg(page).locator('.export-status')).toBeHidden();
+    await expect(dlg(page).locator('#exportPdfPreview')).not.toHaveAttribute('aria-busy');
+    await expect(pdfFrame(page).getByRole('button')).toHaveCount(0);
+    await dlg(page).getByRole('tab', { name: 'HTML', exact: true }).click();
+    await readyPdf(page);
+    await expect(dlg(page).locator('.export-status')).toBeHidden();
+  });
+
+  test('keeps PDF pages centered when scrolling appears or the viewport narrows', async ({ page }) => {
+    await page.setViewportSize({ width: 2000, height: 1600 });
+    await openDoc(page, '# Centered\n\nPage content.', 'Centered.md');
+    await openExport(page);
+    await readyPdf(page);
+    for (const viewport of [
+      { width: 2000, height: 1600 },
+      { width: 2000, height: 844 },
+      { width: 390, height: 844 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await expect
+        .poll(() =>
+          pdfFrame(page)
+            .locator('.pagedjs_page')
+            .first()
+            .evaluate((page) => {
+              const rect = page.getBoundingClientRect();
+              return Math.abs(rect.x + rect.width / 2 - document.documentElement.clientWidth / 2);
+            }),
+        )
+        .toBeLessThan(2);
+      const colors = await pdfFrame(page)
+        .locator('.pagedjs_page')
+        .first()
+        .evaluate((page) => ({
+          page: getComputedStyle(page).backgroundColor,
+          surround: getComputedStyle(document.body).backgroundColor,
+        }));
+      expect(colors).toEqual({ page: 'rgb(255, 255, 255)', surround: 'rgb(229, 231, 235)' });
+    }
   });
 
   test('PDF dependency failures offer Retry while HTML and Markdown remain available', async ({ page }) => {
@@ -355,6 +432,7 @@ test.describe('export workspace', () => {
     await openExport(page);
     await dlg(page).getByRole('tab', { name: 'PDF', exact: true }).click();
     await expect(dlg(page).getByRole('button', { name: 'Retry', exact: true })).toBeVisible({ timeout: 20000 });
+    await expect(dlg(page).getByRole('status')).toContainText('Could not prepare PDF preview');
     await expect(dlg(page).getByRole('button', { name: 'Print / Save PDF', exact: true })).toBeDisabled();
     await expect(dlg(page).getByRole('button', { name: 'Download Markdown' })).toBeEnabled();
     await dlg(page).getByRole('tab', { name: 'HTML', exact: true }).click();
@@ -398,6 +476,7 @@ test.describe('export workspace', () => {
       'Pixel assertions require the Chromium software GPU in this test environment.',
     );
     await page.goto('/');
+    await page.waitForFunction(() => typeof (window as { __suEditorAPI?: unknown }).__suEditorAPI !== 'undefined');
     await page.locator('#fileInput').setInputFiles(resolve(__dirname, 'fixtures/3mf/face-colors.3mf'));
     await expect(page.locator('#previewArticle canvas')).toBeVisible({ timeout: 15000 });
     const model = page.locator('#previewArticle figure[data-kind="su-mesh"]');
@@ -449,7 +528,7 @@ test.describe('export workspace', () => {
     expect(colors.blue).toBeGreaterThan(100);
   });
 
-  for (const width of [320, 390, 768, 1280])
+  for (const width of [320, 390, 768, 1280, 2000])
     for (const theme of ['dark', 'light']) {
       test(`fits ${width}px in ${theme} with bounded previews and visible primary actions`, async ({ page }) => {
         await page.setViewportSize({ width, height: 844 });
@@ -476,6 +555,17 @@ test.describe('export workspace', () => {
           .evaluate((el) => el.getBoundingClientRect().width);
         const frameWidth = (await page.locator('#exportPdfPreview iframe').boundingBox())!.width;
         expect(pageWidth).toBeLessThanOrEqual(frameWidth + 1);
+        const centers = await pdfFrame(page)
+          .locator('.pagedjs_page')
+          .evaluateAll((pages) =>
+            pages.map((page) => {
+              const rect = page.getBoundingClientRect();
+              return Math.abs(rect.x + rect.width / 2 - document.documentElement.clientWidth / 2);
+            }),
+          );
+        for (const distance of centers) expect(distance).toBeLessThan(2);
+        await expect(dlg(page).locator('.export-status')).toBeHidden();
+        await expect(pdfFrame(page).getByRole('button')).toHaveCount(0);
         await expect(dlg(page).getByText('White pages in every theme', { exact: false })).toBeVisible();
         await expect(pdfFrame(page).locator('html')).toHaveAttribute('data-theme', 'light');
         if (width < 700) {

@@ -7,6 +7,8 @@ import { marked } from 'marked';
 import { loadEditor } from './editor.js';
 import { initDiagrams } from './diagrams.js';
 import { snapshot } from '../export/snapshot.ts';
+import { beginInput, cancelInput } from '../io/input.ts';
+import { FRONTMATTER_RE, isMarkdownFile, readSource } from '../io/source.ts';
 
 let host = {};
 export const setHost = (h) => { host = h; };
@@ -22,7 +24,6 @@ const KATEX_VERSION = '0.16.11';
 const KATEX_CSS_URL = `https://cdn.jsdelivr.net/npm/katex@${KATEX_VERSION}/dist/katex.min.css`;
 const KATEX_JS_URL = `https://cdn.jsdelivr.net/npm/katex@${KATEX_VERSION}/dist/katex.mjs`;
 const MD_FILE_EXT = /\.(md|markdown|txt|mdx)$/i;
-const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/;
 const FRONTMATTER_TITLE_RE = /^title:\s*['"]?(.+?)['"]?\s*$/m;
 
 const $ = (id) => document.getElementById(id);
@@ -84,6 +85,7 @@ const els = {
 
 let markdown = '';
 let frontmatter = ''; // Stripped before rendering, restored when saving.
+let originalSource = null; // Exact loaded Markdown, retained until body/review state changes.
 let filename = 'Untitled';
 let renderedMarkdown = ''; // Source of the current preview DOM; block ranges are only valid for it.
 let savedMarkdown = ''; // Last loaded or saved-to-disk content, for the dirty indicator.
@@ -1244,6 +1246,7 @@ window.__suEditorReady = () => {
 
 // ---- View mode (preview / source) ----
 export function setViewMode(mode) {
+    if (mode === 'edit') cancelInput();
     if (mode !== 'preview') {
         endDrag();
         commitBlockEditor(); closeBlockMenu(); hideHandle(); hideFormatBar();
@@ -2070,6 +2073,7 @@ function setThreads(next) {
 }
 
 function documentText(text = markdown) {
+    if (originalSource && text === originalSource.body && frontmatter === originalSource.frontmatter && commentsState === originalSource.comments) return originalSource.text;
     const block = commentsState ? `${text.endsWith('\n') ? '' : '\n'}\n<!-- su-comments\n${commentsState}\n-->\n` : '';
     return withEol(`${frontmatter}${text}${block}`);
 }
@@ -2805,10 +2809,14 @@ function cancelFileImport() {
 $('cancelModelImport').addEventListener('click', () => { cancelFileImport(); setExportEnabled(!!markdown.trim()); });
 // `handle` (File System Access) enables in-place saves for Markdown files only;
 // HTML, STL, and 3MF sources are converted, so saving never overwrites them.
-async function handleFile(file, handle = null) {
+async function handleFile(file, handle = null, input = beginInput()) {
     cancelFileImport();
+    await flush();
+    if (!input.current()) return;
     const generation = ++fileImportGeneration;
     const abort = new AbortController(); fileImportAbort = abort;
+    const cancel = () => { if (generation === fileImportGeneration) cancelFileImport(); };
+    input.signal.addEventListener('abort', cancel, { once: true });
     try {
         const stl = /\.stl$/i.test(file.name);
         if (/\.3mf$/i.test(file.name)) {
@@ -2817,9 +2825,9 @@ async function handleFile(file, handle = null) {
             setExportEnabled(false);
             if (file.size > 128 * 1024 * 1024) throw new Error('3MF archive exceeds 128 MiB.');
             const buffer = await file.arrayBuffer();
-            if (generation !== fileImportGeneration) return;
+            if (generation !== fileImportGeneration || !input.current()) return;
             const result = await runModelJob({ buffer }, abort.signal);
-            if (generation !== fileImportGeneration) return;
+            if (generation !== fileImportGeneration || !input.current()) return;
             Object.defineProperty(result.mesh, '__buffers', { value: { positions: result.positions, colors: result.colors } });
             meshParseCache = { source: result.source, mesh: result.mesh };
             filename = file.name.replace(/\.3mf$/i, '');
@@ -2831,9 +2839,9 @@ async function handleFile(file, handle = null) {
             return;
         }
         const raw = stl ? await stlFileToAscii(await file.arrayBuffer()) : await file.text();
-        if (generation !== fileImportGeneration) return;
-        filename = file.name.replace(/\.(?:html?|stl)$/i, '').replace(MD_FILE_EXT, '');
+        if (generation !== fileImportGeneration || !input.current()) return;
         if (stl) {
+            filename = file.name.replace(/\.stl$/i, '');
             let fenceLength = 3;
             for (const match of raw.matchAll(/`+/g)) fenceLength = Math.max(fenceLength, match[0].length + 1);
             const fence = '`'.repeat(fenceLength);
@@ -2841,34 +2849,37 @@ async function handleFile(file, handle = null) {
             setThreads([]);
             loadDocument(`${fence}stl\n${raw}\n${fence}\n`);
         } else {
-            const embedded = extractEmbeddedMarkdown(raw);
-            const editable = embedded === null && MD_FILE_EXT.test(file.name);
-            // MARS: the host files Markdown into the tree, matching a copy already there.
-            if (editable && host.openFile) {
-                await host.openFile({ name: file.name, text: raw, handle, stamp: file.lastModified });
-                setViewMode('preview');
+            const source = readSource(raw, { fileName: file.name });
+            const editable = !source.embedded && isMarkdownFile(file.name);
+            if (host.openFile) {
+                await host.openFile({ name: source.name, text: source.text, handle: editable ? handle : null, stamp: file.lastModified }, input);
+                if (input.current()) setViewMode('preview');
                 return;
             }
-            loadDocument(parseSource(embedded ?? raw), editable ? handle : null, file.lastModified);
+            filename = source.name;
+            loadDocument(parseSource(source.text), editable ? handle : null, file.lastModified);
         }
         setViewMode('preview');
     } catch (err) {
-        if (generation === fileImportGeneration) toast(`Failed to open file: ${err?.message ?? err}`);
+        if (generation === fileImportGeneration && input.current() && err?.name !== 'AbortError') { endLoading(); toast(`Failed to open file: ${err?.message ?? err}`); }
     } finally {
+        input.signal.removeEventListener('abort', cancel);
         if (fileImportAbort === abort) { cancelFileImport(); setExportEnabled(!!markdown.trim()); }
     }
 }
 
 // Chromium's picker returns a handle for in-place saves; elsewhere use the input.
 async function openFile() {
+    const input = beginInput();
     if (!('showOpenFilePicker' in window)) { els.fileInput.click(); return; }
     try {
         const [handle] = await showOpenFilePicker({
             types: [...MD_PICKER_TYPES, { description: 'HTML, STL, or 3MF', accept: { 'text/html': ['.html', '.htm'], 'model/stl': ['.stl'], 'model/3mf': ['.3mf'] } }],
         });
-        handleFile(await handle.getFile(), handle);
+        const file = await handle.getFile();
+        if (input.current()) handleFile(file, handle, input);
     } catch (err) {
-        if (err?.name !== 'AbortError') els.fileInput.click();
+        if (input.current() && err?.name !== 'AbortError') els.fileInput.click();
     }
 }
 els.openBtn.addEventListener('click', openFile);
@@ -2879,8 +2890,9 @@ els.fileInput.addEventListener('change', (e) => {
     els.fileInput.value = '';
 });
 
-els.emptyWriteBtn.addEventListener('click', () => setViewMode('edit'));
+els.emptyWriteBtn.addEventListener('click', () => { cancelInput(); setViewMode('edit'); });
 els.emptyExampleBtn.addEventListener('click', () => {
+    cancelInput();
     cancelFileImport();
     filename = 'Welcome to MARS';
     frontmatter = '';
@@ -2888,45 +2900,11 @@ els.emptyExampleBtn.addEventListener('click', () => {
     loadDocument(EXAMPLE_MD);
 });
 
-// If `text` is an HTML document carrying our embedded source
-// (<script type="text/markdown">, as produced by the "Embed source" export
-// option), pull the original Markdown back out. Returns null otherwise.
-function extractEmbeddedMarkdown(text) {
-    if (!/<script[^>]*type=["']text\/markdown["']/i.test(text)) return null;
-    try {
-        const el = new DOMParser().parseFromString(text, 'text/html')
-            .querySelector('script[type="text/markdown"]');
-        if (!el) return null;
-        // Reverse the closing-tag escaping applied by embedSourceTag, and drop
-        // the single wrapping newline it adds on each side.
-        return el.textContent.replace(/<\\\/(script)/gi, '</$1').replace(/^\n/, '').replace(/\n$/, '');
-    } catch { return null; }
-}
-
 async function loadFromUrl(url) {
     cancelFileImport();
-    // Clear the hydration loading state if a load fails without producing content.
-    const fail = (msg) => {
-        toast(msg);
-        if (!markdown.trim()) { pendingHydration = false; updatePanes(); }
-    };
-    let target;
-    try { target = new URL(url); } catch { fail('Enter a valid URL'); return; }
-    if (target.protocol !== 'https:' && target.protocol !== 'http:') { fail('Only http(s) URLs are supported'); return; }
     toast('Fetching Markdown...');
-    try {
-        const res = await fetch(target.href, { redirect: 'follow' });
-        if (!res.ok) { fail(`Fetch failed: HTTP ${res.status}`); return; }
-        const text = await res.text();
-        const embedded = extractEmbeddedMarkdown(text);
-        filename = decodeURIComponent(target.pathname.split('/').pop() || 'document')
-            .replace(/\.html?$/i, '').replace(MD_FILE_EXT, '') || 'document';
-        loadDocument(parseSource(embedded ?? text));
-        setViewMode('preview');
-        toast('Loaded from URL');
-    } catch {
-        fail('Fetch failed (CORS or network). Try a raw, CORS-enabled URL.');
-    }
+    try { await host.openUrl?.(url); }
+    catch (error) { if (error?.name !== 'AbortError') { endLoading(); toast(error?.message ?? 'Fetch failed (CORS or network). Try a raw, CORS-enabled URL.'); } }
 }
 els.urlForm.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -2945,11 +2923,12 @@ for (const zone of [els.previewWrap, els.editorMount]) {
         zone.classList.remove('dragover');
         const file = e.dataTransfer?.files?.[0];
         if (!file) return;
+        const input = beginInput();
         // The handle must be requested synchronously, while the drop data is readable.
         const item = [...e.dataTransfer.items].find((i) => i.kind === 'file');
         const pending = item?.getAsFileSystemHandle?.();
-        if (!pending) { handleFile(file); return; }
-        pending.then((handle) => handleFile(file, handle?.kind === 'file' ? handle : null), () => handleFile(file));
+        if (!pending) { handleFile(file, null, input); return; }
+        pending.then((handle) => { if (input.current()) handleFile(file, handle?.kind === 'file' ? handle : null, input); }, () => { if (input.current()) handleFile(file, null, input); });
     });
 }
 
@@ -2962,6 +2941,7 @@ document.addEventListener('paste', (e) => {
     const text = e.clipboardData?.getData('text/plain');
     if (!text || !text.trim()) return;
     e.preventDefault();
+    cancelInput();
     if (!host.currentId?.()) filename = 'Pasted';
     loadDocument(parseSource(text));
 });
@@ -3022,6 +3002,7 @@ function saveMarkdown() {
 const MD_PICKER_TYPES = [{ description: 'Markdown', accept: { 'text/markdown': ['.md', '.markdown', '.mdx', '.txt'] } }];
 let persistTimer;
 let writeQueue = Promise.resolve();
+let pendingPersistence = Promise.resolve();
 let eol = '\n';
 // ponytail: a file with mixed line endings is saved with CRLF throughout.
 const withEol = (text) => (eol === '\n' ? text : text.replaceAll('\n', eol));
@@ -3038,6 +3019,7 @@ function adoptEol(text) {
 // with a new tree entry; `fromHost` loads the document the host selected.
 function loadDocument(text, handle = null, stamp = 0, fromHost = false) {
     commitBlockEditor();
+    originalSource = null;
     documentEpoch++;
     if (!fromHost && markdown.trim()) host.detach?.();
     text = adoptEol(text);
@@ -3080,17 +3062,21 @@ function persistSoon() {
 async function persistNow() {
     clearTimeout(persistTimer);
     if (!isPersisted() && (markdown.trim() || host.currentId?.())) {
+        const doc = currentState();
         markPersisted();
-        try { await host.persist?.(currentState()); } catch (err) { persistedText = persistedName = ''; toast(`Could not save in this browser: ${err?.message ?? err}`); }
+        const task = Promise.resolve().then(() => host.persist?.(doc));
+        pendingPersistence = task.catch(() => {});
+        try { await task; } catch (err) { persistedText = persistedName = ''; toast(`Could not save in this browser: ${err?.message ?? err}`); }
         updateSaveState();
     }
+    await pendingPersistence;
     if (fileHandle && !fileConflict && isDirty()
         && (await fileHandle.queryPermission?.({ mode: 'readwrite' })) === 'granted') await writeToHandle();
 }
 
 // ---- Host API ----
 export { toast };
-export const flush = () => persistNow();
+export const flush = async () => { commitBlockEditor(); await persistNow(); await writeQueue; };
 export const currentName = () => filename;
 export const currentText = () => documentText();
 export const currentThreads = () => threads;
@@ -3108,12 +3094,14 @@ export const exportReadingWidth = () => readReadingWidth();
 export const renderExportBody = (body, signal) => render(body, true, false, signal);
 
 export function openDocument({ text = '', name = 'Untitled', handle = null, stamp = 0, dirty = false } = {}) {
+    commitBlockEditor();
     cancelFileImport();
     clearTimeout(persistTimer);
     if (els.findBar && !els.findBar.hidden) closeFind();
     const body = parseSource(text);
     filename = name;
     loadDocument(body, handle, stamp, true);
+    originalSource = { text, body: markdown, frontmatter, comments: commentsState };
     if (dirty) savedComments = null;
     markPersisted();
     updateSaveState();

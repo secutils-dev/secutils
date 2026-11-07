@@ -5,10 +5,11 @@ import * as search from '../search/embed.ts';
 import { descendants, exportPaths } from '../tree/model.ts';
 import { download, fileSafe } from '../ui/ui.ts';
 import { toast } from '../doc/viewer.js';
+import { readSource } from './source.ts';
+import { beginInput, type InputOperation } from './input.ts';
+import { receiveFile } from '../share/share.ts';
 
-const MD_RE = /\.(md|markdown|mdx|txt)$/i;
-const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/;
-const FRONTMATTER_TITLE_RE = /^title:\s*['"]?(.+?)['"]?\s*$/m;
+const SOURCE_FILES_RE = /\.(md|markdown|mdx|txt|html?)$/i;
 const today = () => new Date().toISOString().slice(0, 10);
 
 export async function downloadDoc(id: string) {
@@ -67,46 +68,53 @@ export async function exportToDirectory(rootId: string | null) {
 // ---- Import ----
 type Incoming = { path: string[]; name: string; text: string };
 
-export const docName = (file: string, text: string) => text.match(FRONTMATTER_RE)?.[1].match(FRONTMATTER_TITLE_RE)?.[1] ?? file.replace(MD_RE, '');
+export const docName = (file: string, text: string) => readSource(text, { fileName: file }).name;
 
 async function expand(file: File, relPath: string): Promise<Incoming[]> {
     const segments = relPath.split('/').filter(Boolean);
     const folders = segments.slice(0, -1);
     if (/\.zip$/i.test(file.name)) {
-        const entries = unzipSync(new Uint8Array(await file.arrayBuffer()), { filter: (f) => MD_RE.test(f.name) && !/(^|\/)(__MACOSX|\.)/.test(f.name) });
+        const entries = unzipSync(new Uint8Array(await file.arrayBuffer()), { filter: (f) => SOURCE_FILES_RE.test(f.name) && !/(^|\/)(__MACOSX|\.)/.test(f.name) });
         return Object.entries(entries).map(([path, bytes]) => {
             const parts = path.split('/').filter(Boolean);
-            const text = strFromU8(bytes);
-            return { path: [...folders, ...parts.slice(0, -1)], name: docName(parts.at(-1)!, text), text };
+            // ZIP entry names are the saved document names from Export all, not inferred titles.
+            const source = readSource(strFromU8(bytes), { name: parts.at(-1)!, fileName: parts.at(-1)! });
+            return { path: [...folders, ...parts.slice(0, -1)], name: source.name, text: source.text };
         });
     }
-    if (!MD_RE.test(file.name)) return [];
-    const text = await file.text();
-    return [{ path: folders, name: docName(file.name, text), text }];
+    if (!SOURCE_FILES_RE.test(file.name)) return [];
+    const source = readSource(await file.text(), { fileName: file.name });
+    return [{ path: folders, name: source.name, text: source.text }];
 }
 
-async function importIncoming(items: Incoming[], parentId: string | null, skipped: number) {
-    if (!items.length) { toast(skipped ? 'Only .md, .markdown, .mdx, .txt, and .zip files can be imported' : 'Nothing to import'); return; }
+async function importIncoming(items: Incoming[], parentId: string | null, skipped: number, input: InputOperation) {
+    if (!items.length) { toast(skipped ? 'Only Markdown, HTML, and ZIP files can be imported' : 'Nothing to import'); return; }
     const folderIds = new Map<string, string | null>([['', parentId]]);
     // A folder deleted while the import runs stays deleted: its remaining files are left out.
     const alive = (id: string | null): boolean => { const n = app.node(id); return id === null || (!!n && alive(n.parentId)); };
     const docs: string[] = [];
-    for (const item of items) {
-        let parent = parentId, key = '';
-        for (const seg of item.path) {
-            if (!alive(parent)) break;
-            key += `/${seg}`;
-            if (!folderIds.has(key)) folderIds.set(key, (await app.findOrCreateFolder(seg, parent)).id);
-            parent = folderIds.get(key)!;
+    try {
+        for (const item of items) {
+            input.check();
+            let parent = parentId, key = '';
+            for (const seg of item.path) {
+                if (!alive(parent)) break;
+                key += `/${seg}`;
+                if (!folderIds.has(key)) folderIds.set(key, (await app.findOrCreateFolder(seg, parent)).id);
+                input.check();
+                parent = folderIds.get(key)!;
+            }
+            if (!alive(parent)) continue;
+            docs.push((await app.createDoc({ name: app.uniqueName(item.name, parent), text: item.text, parentId: parent, open: false, opened: true, input })).id);
         }
-        if (!alive(parent)) continue;
-        docs.push((await app.createDoc({ name: app.uniqueName(item.name, parent), text: item.text, parentId: parent, open: false, opened: true })).id);
+    } finally {
+        // A delete that lands while a folder or document is being saved leaves it under a deleted folder.
+        for (const id of [...folderIds.values(), ...docs]) if (id && app.node(id) && !alive(id)) await app.remove(id);
     }
-    // A delete that lands while a folder or document is being saved leaves it under a deleted folder.
-    for (const id of [...folderIds.values(), ...docs]) if (id && app.node(id) && !alive(id)) await app.remove(id);
+    input.check();
     const imported = docs.filter((id) => app.node(id)).length, removed = items.length - imported;
     const last = docs.at(-1);
-    if (items.length === 1 && last && app.node(last)) await app.openDoc(last);
+    if (items.length === 1 && last && app.node(last)) await app.openDoc(last, input);
     const notes = [
         removed && `left out ${removed} deleted during the import`,
         skipped && `skipped ${skipped} other file${skipped === 1 ? '' : 's'}`,
@@ -118,35 +126,54 @@ async function importIncoming(items: Incoming[], parentId: string | null, skippe
     );
 }
 
-export async function importFiles(files: File[], parentId: string | null = app.state.folderId) {
-    const items: Incoming[] = [];
-    let skipped = 0;
-    for (const file of files) {
-        const got = await expand(file, (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name);
-        if (!got.length) skipped++;
-        items.push(...got);
-    }
-    await importIncoming(items, parentId, skipped);
+export async function importFiles(files: File[], parentId: string | null = app.state.folderId, input: InputOperation = beginInput()) {
+    input.check();
+    try {
+        if (files.length === 1 && SOURCE_FILES_RE.test(files[0].name) && !(files[0] as File & { webkitRelativePath?: string }).webkitRelativePath?.includes('/')) {
+            const file = files[0], source = readSource(await file.text(), { fileName: file.name });
+            input.check();
+            const previous = new Set(app.state.nodes.map((node) => node.id));
+            await receiveFile({ ...source, handle: null, stamp: file.lastModified, parentId }, input);
+            input.check();
+            if (app.state.nodes.some((node) => node.kind === 'doc' && !previous.has(node.id))) toast('Imported 1 document');
+            return;
+        }
+        const items: Incoming[] = [];
+        let skipped = 0;
+        for (const file of files) {
+            const got = await expand(file, (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name);
+            input.check();
+            if (!got.length) skipped++;
+            items.push(...got);
+        }
+        await importIncoming(items, parentId, skipped, input);
+    } catch (error) { if (input.current() && (error as Error).name !== 'AbortError') toast(`Failed to import: ${(error as Error).message}`); }
 }
 
 // Drops can carry whole folders; walk them with the (Baseline) FileSystemEntry API.
 export async function importDataTransfer(dt: DataTransfer, parentId: string | null) {
-    const entries = [...dt.items].map((i) => i.webkitGetAsEntry?.()).filter((e): e is FileSystemEntry => !!e);
-    if (!entries.length) { await importFiles([...dt.files], parentId); return; }
-    const files: File[] = [];
-    const walk = async (entry: FileSystemEntry, prefix: string): Promise<void> => {
-        if (entry.isFile) {
-            const file = await new Promise<File>((resolve, reject) => (entry as FileSystemFileEntry).file(resolve, reject));
-            files.push(Object.defineProperty(file, 'webkitRelativePath', { value: `${prefix}${file.name}` }));
-            return;
-        }
-        const reader = (entry as FileSystemDirectoryEntry).createReader();
-        for (;;) {
-            const batch = await new Promise<FileSystemEntry[]>((resolve, reject) => reader.readEntries(resolve, reject));
-            if (!batch.length) break;
-            for (const child of batch) await walk(child, `${prefix}${entry.name}/`);
-        }
-    };
-    for (const entry of entries) await walk(entry, '');
-    await importFiles(files, parentId);
+    const input = beginInput();
+    try {
+        const entries = [...dt.items].map((i) => i.webkitGetAsEntry?.()).filter((e): e is FileSystemEntry => !!e);
+        if (!entries.length) { await importFiles([...dt.files], parentId, input); return; }
+        const files: File[] = [];
+        const walk = async (entry: FileSystemEntry, prefix: string): Promise<void> => {
+            input.check();
+            if (entry.isFile) {
+                const file = await new Promise<File>((resolve, reject) => (entry as FileSystemFileEntry).file(resolve, reject));
+                input.check();
+                files.push(Object.defineProperty(file, 'webkitRelativePath', { value: `${prefix}${file.name}` }));
+                return;
+            }
+            const reader = (entry as FileSystemDirectoryEntry).createReader();
+            for (;;) {
+                const batch = await new Promise<FileSystemEntry[]>((resolve, reject) => reader.readEntries(resolve, reject));
+                input.check();
+                if (!batch.length) break;
+                for (const child of batch) await walk(child, `${prefix}${entry.name}/`);
+            }
+        };
+        for (const entry of entries) await walk(entry, '');
+        await importFiles(files, parentId, input);
+    } catch (error) { if (input.current() && (error as Error).name !== 'AbortError') toast(`Failed to import: ${(error as Error).message}`); }
 }

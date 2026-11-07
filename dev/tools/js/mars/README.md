@@ -88,6 +88,31 @@ CodeMirror draws selection backgrounds below the text lines. The active-line tin
 translucent so it does not hide selected text. The gutter keeps its opaque background.
 The shared browser tests check painted selection pixels in Firefox and Chromium, in both themes.
 
+## Source imports
+
+Open, file drops, library imports, Load URL, and `?url=` use `src/io/source.ts`.
+The helper extracts Markdown from an exported HTML file that contains an embedded source block.
+HTML without that block remains raw HTML.
+The helper does not reconstruct Markdown from rendered HTML.
+Converted HTML has no writable link to its original file.
+
+Explicit incoming names take priority over frontmatter titles, Markdown headings, and filename fallbacks.
+Filename fallbacks and explicit names lose Markdown and HTML extensions.
+ZIP imports use their entry filenames as explicit names, so backups retain document names after restore.
+Ordinary Markdown imports and unchanged downloads retain CRLF and the original review-block formatting.
+Review edits still serialize changed metadata normally.
+
+Both URL entry points call `share.receiveUrl()` and retain a stable URL origin.
+Reopening a known URL uses the existing incoming-copy decisions, including **Keep my text** and **Save as a copy**.
+An unsuccessful URL fetch retains the previous document.
+The browser fetches the source directly, without an API proxy.
+
+`src/io/input.ts` owns cancellation and generation checks across asynchronous source input.
+A new file, document, or URL supersedes an earlier load.
+Superseded operations cannot select another document or apply late results.
+Conflict dialogs close when their input operation is canceled.
+The browser import cases are in `e2e/tools/mars-import.spec.ts`.
+
 ## Export workspace
 
 **Export…** opens a native dialog with HTML and PDF tabs.
@@ -101,7 +126,10 @@ Embedded source contains the document body, without frontmatter or review thread
 **Download Markdown** retains the complete document, including frontmatter, line endings, and review threads.
 
 The PDF tab prepares pages for A4 or Letter, in Portrait or Landscape orientation.
+The preview centers the pages and scales them to fit without changing their print dimensions.
 **Print / Save PDF** sends these prepared pages to the browser print dialog.
+Only the dialog footer contains this action. The preview frame contains no print button.
+The status appears during preparation or after a failure, but disappears when the preview is ready.
 MARS does not download PDF bytes or know whether the reader saved a file.
 `Ctrl/Cmd+P` opens this tab and exits document fullscreen first.
 Document action menus can export another document without changing the current selection.

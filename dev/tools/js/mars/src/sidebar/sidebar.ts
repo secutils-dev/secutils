@@ -389,7 +389,7 @@ $('sbNewBtn').addEventListener('click', (e) => openMenu(e.currentTarget as HTMLE
     { label: 'New document', icon: 'document', run: () => newDoc() },
     { label: 'New folder', icon: 'folder', run: () => newFolder() },
     'separator',
-    { label: 'Import files…', icon: 'upload', sub: '.md files or a .zip export', run: () => $('importInput').click() },
+    { label: 'Import files…', icon: 'upload', sub: 'Markdown, HTML, or ZIP files', run: () => $('importInput').click() },
     { label: 'Import a folder…', icon: 'folderOpen', run: () => $('importFolderInput').click() },
 ], 'New'));
 $('sbExportAllBtn').addEventListener('click', () => io.exportZip(null));

@@ -478,9 +478,9 @@
                     <section id="exportHtmlPanel" role="tabpanel" aria-labelledby="exportHtmlTab">
                         <div class="export-field"><label class="field-label" for="exportWidth">Reading width</label><select id="exportWidth" class="select"><option value="800">Comfortable (800px)</option><option value="1100">Wide (1100px)</option><option value="full">Full width</option><option value="custom">Custom</option></select></div>
                         <div id="exportCustomWrap" class="export-field" hidden><label class="field-label" for="exportCustomWidth">Custom width (px)</label><input id="exportCustomWidth" class="input" type="number" min="320" max="2400" step="1" inputmode="numeric" aria-describedby="exportWidthError"><p id="exportWidthError" class="export-width-error" hidden>Enter a whole number from 320 to 2400.</p></div>
-                        <label class="export-check"><input id="exportToc" type="checkbox"><span>Table of contents</span></label><p id="exportTocHint" class="export-hint">Shown when the document has useful headings.</p>
+                        <label class="export-check"><input id="exportToc" type="checkbox"><span>Table of contents</span></label><p id="exportTocHint" class="export-hint" hidden>This document has too few section headings for a table of contents.</p>
                         <label class="export-check"><input id="exportFind" type="checkbox"><span>In-page find</span></label>
-                        <label class="export-check"><input id="exportPdfAction" type="checkbox"><span>PDF action in exported HTML</span></label><p class="export-hint">Uses the paper size and orientation from the PDF tab.</p>
+                        <label class="export-check"><input id="exportPdfAction" type="checkbox"><span>PDF action in exported HTML</span></label>
                         <label class="export-check"><input id="exportSource" type="checkbox"><span>Embed Markdown source</span></label><p class="export-hint">Readable document body without frontmatter and review threads.</p>
                     </section>
                     <section id="exportPdfPanel" role="tabpanel" aria-labelledby="exportPdfTab" hidden>
@@ -489,11 +489,10 @@
                         <p class="export-hint">White pages in every theme, with fixed margins, page numbers, and document-title footers. Review threads are excluded.</p>
                         <p class="export-hint">The browser print dialog provides Save as PDF and printer selection.</p>
                     </section>
-                    <button id="exportReset" type="button" class="btn btn-empty btn-xs">Reset settings</button>
                     <p class="export-hint">Images, fonts, math styles, map tiles, and optional PDF pagination can require a network connection.</p>
                 </div>
             </div>
-            <div class="export-preview-region"><div class="export-status"><span id="exportStatus" role="status" aria-live="polite">Preparing preview…</span><button id="exportRetry" type="button" class="btn btn-xs" hidden>Retry</button></div><div id="exportHtmlPreview" class="export-preview"></div><div id="exportPdfPreview" class="export-preview" hidden></div></div>
+            <div class="export-preview-region"><div id="exportStatusBar" class="export-status"><span id="exportStatus" role="status" aria-live="polite">Preparing preview…</span><button id="exportRetry" type="button" class="btn btn-xs" hidden>Retry</button></div><div id="exportHtmlPreview" class="export-preview"></div><div id="exportPdfPreview" class="export-preview" hidden></div></div>
         </div>
         <footer class="export-foot">
             <button id="downloadMdBtn" type="button" class="btn btn-empty btn-sm"><span data-icon="download"></span>Download Markdown</button>
@@ -533,7 +532,7 @@
     <div id="diffBefore" class="export-menu diff-before" popover role="dialog" aria-label="Text before your last review"></div>
 
     <input type="file" id="fileInput" accept=".md,.markdown,.txt,.mdx,.html,.htm,.stl,.3mf" hidden>
-    <input type="file" id="importInput" accept=".md,.markdown,.txt,.mdx,.zip" multiple hidden>
+    <input type="file" id="importInput" accept=".md,.markdown,.txt,.mdx,.html,.htm,.zip" multiple hidden>
     <input type="file" id="importFolderInput" webkitdirectory hidden>
     <div id="modelImportStatus" class="toast" role="status" aria-live="polite" hidden>
         <span>Importing 3MF model&hellip;</span><button id="cancelModelImport" class="btn btn-sm" type="button">Cancel import</button>
