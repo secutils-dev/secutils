@@ -3,7 +3,7 @@
 Date: 2026-11-05
 Status: Phase 0 implemented, deployed, and checked. Manual browser-chrome checks remain pending.
 Phase 1 is implemented and deployed. Manual system print/save checks remain pending.
-Phase 2 is implemented and checked locally. Commit and deployment were requested on 2026-11-07.
+Phase 2 is implemented, committed, deployed, and checked.
 Phase 3 is planned, not implemented.
 
 ## Goal and scope
@@ -514,7 +514,7 @@ The initial export-only browser run passed 67 cases, with 2 GPU-specific cases s
 The final local regression gate passed 250 cases, with the same 2 GPU-specific cases skipped.
 The new viewport/scrollbar case also passed in Chromium, Firefox, and WebKit.
 Unit tests passed 43 cases. Type checking, builds, lint, tools checks, and diff checks passed.
-These follow-up changes are ready for the requested deployment.
+The phase 2 deployment includes these follow-up changes.
 
 ## Phase 2: Consistent URL import and source reopening
 
@@ -589,6 +589,26 @@ This readiness check leaves the deployed application unchanged.
 
 The user requested commit and deployment on 2026-11-07.
 Phase 3 handoffs and tool retirement remain outside this change.
+
+### Phase 2 deployment record (2026-11-07)
+
+Implementation commit: `b9f87525 feat(mars): unify imports and simplify export workspace`.
+
+```bash
+make deploy-tools ARGS=mars
+```
+
+The deployment published MARS, its companion skill, and the four tools-host discovery aggregates.
+The application is live at <https://mars.secutils.dev/>.
+The deployed MARS bundle matches the local build byte-for-byte.
+Its SHA-256 is `6f7fb49dd1d0e4071d1aed3a375db5dd33cafdddaa37a15c36b7527671718614`.
+The deployed skill matches the local source after host substitution.
+The live response retains COOP `same-origin` and COEP `credentialless`.
+Post-deploy browser checks passed 250 cases across Chromium, Firefox, and WebKit, with 2 GPU-specific cases skipped:
+
+```bash
+MARS_BASE_URL=https://mars.secutils.dev make e2e-tools-test ARGS="mars.spec.ts mars-export.spec.ts mars-import.spec.ts --workers=3 --output=test-results/mars-post-deploy-phase2"
+```
 
 ## Phase 3: Regression coverage and useful workflow integration
 
