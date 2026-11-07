@@ -116,9 +116,10 @@ test.describe('table editing', () => {
     await expect(table(page)).toBeVisible();
     await expect(cell(page, 2, 1)).toHaveText('Waiting');
     await expect(page.locator('.su-block-editor')).toHaveCount(0);
+    await expect(page.locator('.su-table-cell-editor button')).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Preview', exact: true })).toHaveAttribute('aria-pressed', 'true');
     await editor.fill('**Bobby** | review');
-    await editor.press('Enter');
+    await editor.press('ControlOrMeta+Enter');
     const changed = text.replace('**Bob**', '**Bobby** \\| review');
     await expect.poll(() => source(page)).toBe(changed);
     await expect(cell(page, 2, 0)).toContainText('Bobby | review');
@@ -134,7 +135,7 @@ test.describe('table editing', () => {
     expect(await ratio(page)).toBeCloseTo(0.25, 2);
   });
 
-  test('cell editors cancel, clear headers, retain caret keys, and defer Enter during IME composition', async ({
+  test('button-free cell editors use block shortcuts, clear headers, retain caret keys, and handle IME', async ({
     page,
   }) => {
     const text = sized();
@@ -142,18 +143,24 @@ test.describe('table editing', () => {
     await cell(page, 1, 0).click();
     await cell(page, 1, 0).press('Enter');
     const editor = page.getByRole('textbox', { name: 'Edit table cell', exact: true });
-    await editor.fill('Discard');
+    await editor.fill('Applied on Escape');
     await editor.press('Escape');
     await expect(editor).toHaveCount(0);
-    expect(await source(page)).toBe(text);
+    await expect(cell(page, 1, 0)).toHaveText('Applied on Escape');
+    expect(await source(page)).toBe(text.replace('Alice', 'Applied on Escape'));
+    await page.keyboard.press('ControlOrMeta+z');
+    await expect(cell(page, 1, 0)).toHaveText('Alice');
     await cell(page, 0, 0).dblclick();
-    await editor.fill('Discard header');
-    await page.getByRole('button', { name: 'Cancel cell edit', exact: true }).click();
+    await editor.fill('Changed header');
+    await editor.press('ControlOrMeta+Enter');
+    await expect(cell(page, 0, 0)).toHaveText('Changed header');
+    await page.keyboard.press('ControlOrMeta+z');
+    await expect(cell(page, 0, 0)).toHaveText('Name');
     expect(await source(page)).toBe(text);
     await expect(table(page).getByRole('separator', { name: 'Resize column 1', exact: true })).toBeVisible();
     await cell(page, 0, 0).dblclick();
     await editor.fill('');
-    await page.getByRole('button', { name: 'Apply cell edit', exact: true }).click();
+    await editor.press('Escape');
     await expect.poll(() => source(page)).toBe(text.replace('| Name |', '|  |'));
     await cell(page, 2, 1).dblclick();
     await editor.fill('First');
@@ -161,11 +168,15 @@ test.describe('table editing', () => {
     await expect(editor).toBeFocused();
     await editor.dblclick();
     await expect(page.locator('.su-block-editor')).toHaveCount(0);
-    await editor.fill('First\nSecond');
+    await editor.fill('First');
+    await editor.press('End');
+    await editor.press('Enter');
+    await page.keyboard.insertText('Second');
+    await expect(editor).toHaveValue('First\nSecond');
     await editor.dispatchEvent('keydown', { key: 'Enter', isComposing: true });
     await editor.dispatchEvent('keydown', { key: 'Enter', keyCode: 229 });
     await expect(editor).toBeVisible();
-    await editor.press('Enter');
+    await editor.press('ControlOrMeta+Enter');
     await expect(cell(page, 2, 1)).toContainText('FirstSecond');
     expect(await source(page)).toContain('First<br>Second');
   });
@@ -780,21 +791,17 @@ test.describe('table editing', () => {
   for (const hasTouch of [false, true]) {
     test.describe(`compact grips ${hasTouch ? 'touch' : 'desktop'}`, () => {
       test.use({ hasTouch, viewport: { width: hasTouch ? 390 : 1280, height: 844 } });
-      test('cell editing and three-state alignment retain reachable controls at phone widths', async ({ page }) => {
+      test('button-free cell editing and three-state alignment retain phone interaction', async ({ page }) => {
         await boot(page, sized([0.5, 0.5]));
         await cell(page, 2, 1).dblclick();
         const editor = page.getByRole('textbox', { name: 'Edit table cell', exact: true });
-        await editor.fill('Discard');
-        const cancel = page.getByRole('button', { name: 'Cancel cell edit', exact: true });
-        if (hasTouch) await cancel.tap();
-        else await cancel.click();
-        await expect(cell(page, 2, 1)).toHaveText('Waiting');
-        await cell(page, 2, 1).dblclick();
+        await expect(page.locator('.su-table-cell-editor button')).toHaveCount(0);
         await editor.fill('Phone edit');
-        const apply = page.getByRole('button', { name: 'Apply cell edit', exact: true });
-        if (hasTouch) await apply.tap();
-        else await apply.click();
+        const paragraph = page.locator('#previewArticle p').filter({ hasText: 'Unchanged paragraph.' });
+        if (hasTouch) await paragraph.tap();
+        else await paragraph.click();
         await expect(cell(page, 2, 1)).toHaveText('Phone edit');
+        await cell(page, 2, 1).click();
         const menu = await openActions(page, 'column');
         await menu.getByRole('radio', { name: 'Align column center', exact: true }).check();
         await expect(cell(page, 2, 1)).toHaveCSS('text-align', 'center');

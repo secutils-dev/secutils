@@ -120,8 +120,8 @@ The visible grips stay compact while their touch targets remain larger.
 Click or tap a handle for its compact action panel. Hover shows the reorder grip where movement is available.
 Panels stay inside the reading pane, even when the table header has scrolled away.
 Double-click a cell to edit its Markdown without opening the whole table source.
-Enter or **Apply cell edit** applies the edit. Escape or **Cancel cell edit** discards it.
-Shift+Enter inserts a line break, stored as `<br>`. Literal pipes are escaped automatically.
+Like block editing, Escape or Ctrl/Cmd+Enter applies the edit without separate Apply/Cancel buttons.
+Enter inserts a line break, stored as `<br>`. Literal pipes are escaped automatically.
 Clicking outside, switching views, sharing, and exporting apply the current cell edit.
 With a cell focused, Enter opens its editor. Arrow keys inside the editor move the caret.
 Column actions include **Left**, **Center**, and **Right** alignment for the whole column, including its header.

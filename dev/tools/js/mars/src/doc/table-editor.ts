@@ -5,7 +5,7 @@ import { setTableWidths } from './table-layout.ts';
 interface Host { text(): string; enabled(): boolean; edit(start: number, end: number, text: string, anchor: HTMLElement): void; toast(text: string): void; startCell(): void }
 interface Selection { table: HTMLTableElement; model: TableModel; ordinal: number; row: number; column: number }
 interface Restore { ordinal: number; row: number; column: number; epoch: number; focus?: string; passive?: boolean }
-interface CellEditor { selection: Selection; cell: HTMLTableCellElement; form: HTMLFormElement; input: HTMLTextAreaElement; content: DocumentFragment; original: string }
+interface CellEditor { selection: Selection; cell: HTMLTableCellElement; form: HTMLDivElement; input: HTMLTextAreaElement; content: DocumentFragment; original: string }
 interface Gesture { selection: Selection; kind: 'resize' | 'row' | 'column'; pointer: number; x: number; y: number; clientX: number; clientY: number; time: number; widths: number[]; initial: number[] | null; target: number; active: boolean; handle: HTMLElement }
 
 export function createTableEditor(article: HTMLElement, pane: HTMLElement, host: Host) {
@@ -161,13 +161,13 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
         pending = { ordinal: s.ordinal, row, column, epoch, focus };
         host.edit(s.model.start, s.model.end, text, s.table.closest<HTMLElement>('.su-block') ?? s.table);
     };
-    function finishCell(apply: boolean, focus = false): boolean {
+    function finishCell(focus = false): boolean {
         const ed = cellEditor;
         if (!ed) return false;
         cellEditor = null;
         const value = ed.input.value, s = ed.selection;
         ed.form.remove(); ed.cell.append(ed.content); ed.cell.classList.remove('su-table-cell-editing');
-        if (apply && owned(s) && value !== ed.original) {
+        if (owned(s) && value !== ed.original) {
             const edit = editTableCell(s.model, s.row, s.column, value);
             if (s.model.source.slice(edit.start, edit.end) !== edit.text) {
                 pending = { ordinal: s.ordinal, row: s.row, column: s.column, epoch, passive: !focus };
@@ -179,39 +179,27 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
         position(); return false;
     }
     const openCell = (cell: HTMLTableCellElement, table: HTMLTableElement) => {
-        finishCell(true);
+        finishCell();
         select(table, (cell.parentElement as HTMLTableRowElement).rowIndex, cell.cellIndex);
         if (!owned()) return;
         host.startCell(); window.getSelection()?.removeAllRanges(); closePanels();
         const s = selected!, original = (s.row ? s.model.rows[s.row - 1] : s.model.header).cells[s.column].trim();
         const content = document.createDocumentFragment(); content.append(...cell.childNodes);
-        const form = document.createElement('form'), label = document.createElement('label'), input = document.createElement('textarea');
-        const help = document.createElement('span'), actions = document.createElement('div');
+        const form = document.createElement('div'), label = document.createElement('label'), input = document.createElement('textarea');
+        const help = document.createElement('span');
         form.className = 'su-table-cell-editor'; input.id = `su-cell-${crypto.randomUUID()}`;
         label.htmlFor = input.id; label.className = 'sr-only'; label.textContent = 'Edit table cell';
         help.id = `${input.id}-help`; help.className = 'sr-only';
-        help.textContent = 'Enter applies the edit. Shift+Enter adds a line break. Escape cancels the edit.';
+        help.textContent = 'Escape or Ctrl/Cmd+Enter applies the edit. Clicking away also applies it. Enter adds a line break.';
         input.setAttribute('aria-describedby', help.id); input.value = original; input.cols = 1; input.rows = 3; input.spellcheck = false;
-        actions.className = 'su-table-cell-actions';
-        for (const apply of [true, false]) {
-            const button = document.createElement('button'); button.type = apply ? 'submit' : 'button'; button.className = 'btn btn-xs';
-            button.title = apply ? 'Apply cell edit' : 'Cancel cell edit'; button.setAttribute('aria-label', button.title);
-            button.innerHTML = icon(apply ? 'check' : 'cross', 12); actions.append(button);
-            // Safari can blur the textarea without focusing a clicked button. Keep
-            // focus until the button chooses Apply or Cancel, rather than saving on blur.
-            button.addEventListener('mousedown', (event) => event.preventDefault());
-            if (!apply) button.addEventListener('click', () => finishCell(false, true));
-        }
-        form.append(label, help, input, actions); cell.append(form); cell.classList.add('su-table-cell-editing');
+        form.append(label, help, input); cell.append(form); cell.classList.add('su-table-cell-editing');
         cellEditor = { selection: s, cell, form, input, content, original };
-        form.addEventListener('submit', (event) => { event.preventDefault(); finishCell(true, true); });
         form.addEventListener('keydown', (event) => {
             if (event.isComposing || event.keyCode === 229) return;
-            if (event.key === 'Enter' && event.target !== input) return;
-            if (event.key !== 'Escape' && (event.key !== 'Enter' || event.shiftKey)) return;
-            event.preventDefault(); event.stopPropagation(); finishCell(event.key === 'Enter', true);
+            if (event.key !== 'Escape' && !(event.key === 'Enter' && (event.metaKey || event.ctrlKey))) return;
+            event.preventDefault(); event.stopPropagation(); finishCell(true);
         }, true);
-        form.addEventListener('focusout', (event) => { if (!form.contains(event.relatedTarget as Node | null)) finishCell(true); });
+        form.addEventListener('focusout', (event) => { if (!form.contains(event.relatedTarget as Node | null)) finishCell(); });
         position(); input.focus(); input.setSelectionRange(input.value.length, input.value.length);
     };
     const action = (name: string, focus = name) => {
@@ -309,7 +297,7 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
         }
     };
     function cancel() {
-        finishCell(true);
+        finishCell();
         closePanels();
         if (observedCell) { layoutObserver.unobserve(observedCell); observedCell = null; }
         cancelAnimationFrame(scrollFrame);
@@ -391,7 +379,7 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
 
     return {
         cancel,
-        flush: () => finishCell(true),
+        flush: () => finishCell(),
         editing: () => !!cellEditor,
         attach(source: string, nextEpoch: number) {
             const moving = gesture && gesture.kind !== 'resize' && epoch === nextEpoch && gesture.selection.model.source === source ? gesture : null;

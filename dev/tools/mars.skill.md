@@ -69,8 +69,8 @@ Use `?temporary=1&url=<public-md>` for a temporary URL load.
 
 To edit one cell, double-click it in Preview. With a cell focused, Enter also opens its editor.
 The editor contains only that cell's Markdown. The rest of the table stays visible.
-Use Enter or **Apply cell edit** to apply the edit. Use Escape or **Cancel cell edit** to discard it.
-Use Shift+Enter for a line break. MARS stores line breaks as `<br>` and escapes literal pipes.
+Use Escape or `Ctrl/Cmd+Enter` to apply the edit, as with block editing. There are no separate Apply/Cancel buttons.
+Use Enter for a line break. MARS stores line breaks as `<br>` and escapes literal pipes.
 Clicking outside, sharing, exporting, and switching views apply the current cell edit.
 
 In **Column actions**, choose **Left**, **Center**, or **Right** under **Content alignment**.
