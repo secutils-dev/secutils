@@ -1,9 +1,19 @@
 // Review storage in IndexedDB: `nodes` (the folder/document tree), `docs` (document text,
 // kept apart so listing the tree never loads bodies), and `meta` (small app settings).
 import type { TreeNode } from '../tree/model.ts';
+import { MemoryStore } from './memory.ts';
 
 const DB_NAME = 'mars';
 let dbPromise: Promise<IDBDatabase> | null = null;
+const memory = new MemoryStore();
+const address = new URL(location.href);
+let temporary = address.searchParams.get('temporary') === '1' || new URLSearchParams(address.hash.slice(1)).get('t') === '1';
+export const isTemporaryStorage = () => temporary;
+export const isStorageFailure = (error: unknown) => error instanceof DOMException && ['QuotaExceededError', 'SecurityError', 'UnknownError', 'InvalidStateError', 'VersionError'].includes(error.name);
+export function useTemporaryStorage() {
+    temporary = true;
+    dbPromise?.then((database) => database.close()).catch(() => {});
+}
 
 const req = <T>(r: IDBRequest<T>) => new Promise<T>((resolve, reject) => {
     r.onsuccess = () => resolve(r.result);
@@ -44,14 +54,20 @@ async function tx<T>(stores: string[], mode: IDBTransactionMode, run: (t: IDBTra
 }
 
 // Other tabs refresh their tree when this one writes.
-const channel = 'BroadcastChannel' in globalThis ? new BroadcastChannel('mars') : null;
-export const onRemoteChange = (fn: (ids: string[]) => void) => channel?.addEventListener('message', (e) => fn(e.data?.ids ?? []));
+let channel: BroadcastChannel | null = null;
+try { if (!temporary && 'BroadcastChannel' in globalThis) channel = new BroadcastChannel('mars'); } catch {}
+export const onRemoteChange = (fn: (ids: string[]) => void) => channel?.addEventListener('message', (e) => { if (!temporary) fn(e.data?.ids ?? []); });
 const announce = (ids: string[]) => channel?.postMessage({ ids });
 
-export const allNodes = () => tx(['nodes'], 'readonly', (t) => req(t.objectStore('nodes').getAll() as IDBRequest<TreeNode[]>));
-export const getText = (id: string) => tx(['docs'], 'readonly', (t) => req(t.objectStore('docs').get(id) as IDBRequest<string | undefined>));
+export const allNodes = () => temporary ? Promise.resolve(memory.all<TreeNode>('nodes')) : tx(['nodes'], 'readonly', (t) => req(t.objectStore('nodes').getAll() as IDBRequest<TreeNode[]>));
+export const getText = (id: string) => temporary ? Promise.resolve(memory.get<string>('docs', id)) : tx(['docs'], 'readonly', (t) => req(t.objectStore('docs').get(id) as IDBRequest<string | undefined>));
 
 export async function putNodes(nodes: TreeNode[], texts: Record<string, string> = {}) {
+    if (temporary) {
+        for (const node of nodes) memory.put('nodes', node.id, node);
+        for (const [id, text] of Object.entries(texts)) memory.put('docs', id, text);
+        return;
+    }
     await tx(['nodes', 'docs'], 'readwrite', (t) => {
         for (const n of nodes) t.objectStore('nodes').put(n);
         for (const [id, text] of Object.entries(texts)) t.objectStore('docs').put(text, id);
@@ -60,6 +76,13 @@ export async function putNodes(nodes: TreeNode[], texts: Record<string, string> 
 }
 
 export async function deleteNodes(ids: string[]) {
+    if (temporary) {
+        for (const id of ids) {
+            memory.delete('nodes', id); memory.delete('docs', id);
+            for (const kind of SIDES) memory.delete('docs', sideKey(kind, id));
+        }
+        return;
+    }
     await tx(['nodes', 'docs'], 'readwrite', (t) => {
         for (const id of ids) {
             t.objectStore('nodes').delete(id);
@@ -76,15 +99,27 @@ export async function deleteNodes(ids: string[]) {
 export type Side = 'base' | 'opened' | 'vec';
 const SIDES: Side[] = ['base', 'opened', 'vec'];
 const sideKey = (kind: Side, id: string) => `${kind}:${id}`;
-export const getSide = <T = string>(kind: Side, id: string) => tx(['docs'], 'readonly', (t) => req(t.objectStore('docs').get(sideKey(kind, id)) as IDBRequest<T | undefined>));
-export const putSide = (kind: Side, id: string, value: unknown) => tx(['docs'], 'readwrite', (t) => { t.objectStore('docs').put(value, sideKey(kind, id)); });
-export const deleteSide = (kind: Side, id: string) => tx(['docs'], 'readwrite', (t) => { t.objectStore('docs').delete(sideKey(kind, id)); });
+export const getSide = <T = string>(kind: Side, id: string) => temporary ? Promise.resolve(memory.get<T>('docs', sideKey(kind, id))) : tx(['docs'], 'readonly', (t) => req(t.objectStore('docs').get(sideKey(kind, id)) as IDBRequest<T | undefined>));
+export const putSide = async (kind: Side, id: string, value: unknown) => {
+    if (temporary) memory.put('docs', sideKey(kind, id), value);
+    else await tx(['docs'], 'readwrite', (t) => { t.objectStore('docs').put(value, sideKey(kind, id)); });
+};
+export const deleteSide = async (kind: Side, id: string) => {
+    if (temporary) memory.delete('docs', sideKey(kind, id));
+    else await tx(['docs'], 'readwrite', (t) => { t.objectStore('docs').delete(sideKey(kind, id)); });
+};
 const sideRange = (kind: Side) => IDBKeyRange.bound(`${kind}:`, `${kind}:\uffff`);
-export const allSides = <T>(kind: Side) => tx(['docs'], 'readonly', (t) => req(t.objectStore('docs').getAll(sideRange(kind)) as IDBRequest<T[]>));
-export const clearSides = (kind: Side) => tx(['docs'], 'readwrite', (t) => { t.objectStore('docs').delete(sideRange(kind)); });
+export const allSides = <T>(kind: Side) => temporary ? Promise.resolve(memory.all<T>('docs', `${kind}:`)) : tx(['docs'], 'readonly', (t) => req(t.objectStore('docs').getAll(sideRange(kind)) as IDBRequest<T[]>));
+export const clearSides = async (kind: Side) => {
+    if (temporary) memory.clearPrefix('docs', `${kind}:`);
+    else await tx(['docs'], 'readwrite', (t) => { t.objectStore('docs').delete(sideRange(kind)); });
+};
 
-export const getMeta = <T>(key: string) => tx(['meta'], 'readonly', (t) => req(t.objectStore('meta').get(key) as IDBRequest<T | undefined>));
-export const setMeta = (key: string, value: unknown) => tx(['meta'], 'readwrite', (t) => { t.objectStore('meta').put(value, key); });
+export const getMeta = <T>(key: string) => temporary ? Promise.resolve(memory.get<T>('meta', key)) : tx(['meta'], 'readonly', (t) => req(t.objectStore('meta').get(key) as IDBRequest<T | undefined>));
+export const setMeta = async (key: string, value: unknown) => {
+    if (temporary) memory.put('meta', key, value);
+    else await tx(['meta'], 'readwrite', (t) => { t.objectStore('meta').put(value, key); });
+};
 
 // Asks the browser not to evict reviews under storage pressure (granted silently in most browsers).
-export const persistStorage = () => navigator.storage?.persist?.().catch(() => false);
+export const persistStorage = () => temporary ? Promise.resolve(false) : navigator.storage?.persist?.().catch(() => false);

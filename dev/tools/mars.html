@@ -247,7 +247,7 @@
     <div class="mars-layout">
         <aside id="sidebar" class="mars-sidebar" aria-label="Documents">
             <div class="sb-head">
-                <h2 class="sb-title">Documents</h2>
+                <h2 class="sb-title" id="sidebarTitle">Documents</h2>
                 <button id="sbSmartStatus" type="button" class="sb-badge" aria-haspopup="menu" hidden></button>
                 <span id="sbSmartLive" class="sr-only" role="status" aria-live="polite"></span>
                 <button id="sbNewBtn" type="button" class="icon-btn" aria-haspopup="menu" title="New document, folder, or import" aria-label="New document, folder, or import"><span data-icon="plus"></span></button>
@@ -342,6 +342,8 @@
                             </label>
                             <h4>Changes</h4>
                             <button type="button" id="optSinceOpened" class="btn btn-sm opt-action" disabled title="Available for documents opened from a file, link, or import">Show changes since opened</button>
+                            <h4>Session</h4>
+                            <button type="button" id="readTemporaryBtn" class="btn btn-sm opt-action" disabled>Read temporarily</button>
                         </div>
                     </div>
                     <button id="exportBtn" type="button" class="btn btn-sm" disabled aria-haspopup="dialog" aria-label="Export document" title="Export document"><span data-icon="download"></span><span class="btn-label">Export…</span></button>
@@ -370,6 +372,10 @@
                 </div>
             </div>
 
+            <div id="temporarySession" class="temporary-session" hidden>
+                <div><strong id="temporaryStatus" role="status">Temporary session</strong><p id="temporaryHelp">Not saved in your library. The address bar restores the current document. Export other session documents before closing.</p></div>
+                <div class="temporary-actions"><button id="saveToLibraryBtn" type="button" class="btn btn-sm" disabled>Save current to library</button><a id="returnToLibrary" class="btn btn-sm btn-empty" href="?library=1">Return to library</a></div>
+            </div>
             <div id="previewPane">
                 <div class="output-panel" id="previewWrap">
                     <div id="previewScroll" class="output-scroll">
@@ -482,6 +488,7 @@
                         <label class="export-check"><input id="exportFind" type="checkbox"><span>In-page find</span></label>
                         <label class="export-check"><input id="exportPdfAction" type="checkbox"><span>PDF action in exported HTML</span></label>
                         <label class="export-check"><input id="exportSource" type="checkbox"><span>Embed Markdown source</span></label><p class="export-hint">Readable document body without frontmatter and review threads.</p>
+                        <details class="export-restrictions"><summary>HTML export restrictions</summary><p>Exports remove document-supplied scripts, style blocks, iframes, objects, embeds, base tags, metadata, and stylesheet links.</p><p>Event handlers and <code>javascript:</code> URLs are removed. Ordinary HTML content and inline styling remain.</p><p>MARS adds its own reader, diagram, map, and model controls. This cleanup is not a complete HTML sanitizer.</p></details>
                     </section>
                     <section id="exportPdfPanel" role="tabpanel" aria-labelledby="exportPdfTab" hidden>
                         <div class="export-field"><label class="field-label" for="exportPaper">Paper size</label><select id="exportPaper" class="select"><option value="A4">A4</option><option value="Letter">Letter</option></select></div>

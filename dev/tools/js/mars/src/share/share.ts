@@ -11,6 +11,7 @@ import { matchScore } from './match.ts';
 import { beginInput, checkInput, type InputOperation } from '../io/input.ts';
 import { readSource, sourceUrl, urlFileName } from '../io/source.ts';
 import { validWidth, type ReadingWidth } from '../export/settings.ts';
+import { temporaryFragment } from './temporary.ts';
 
 export const SHARED_FOLDER = 'Shared with me';
 const SHORT_TTLS = [86400, 604800, 1209600];
@@ -29,7 +30,7 @@ async function bundleFor(id: string): Promise<Bundle | null> {
     const n = app.node(id);
     if (!n) return null;
     const widthFor = (doc: TreeNode) => doc.id === app.state.currentId ? viewer.exportReadingWidth() : doc.readingWidth ?? viewer.defaultReadingWidth();
-    if (n.kind === 'doc') return { v: 1, kind: 'doc', name: n.name, docs: [{ path: [], name: n.name, originId: n.originId ?? n.id, text: await app.docText(n.id), readingWidth: widthFor(n) }] };
+    if (n.kind === 'doc') return { v: 1, kind: 'doc', name: n.name, docs: [{ path: [], name: n.name, originId: n.originId ?? n.id, text: await app.docText(n.id), readingWidth: widthFor(n) }], ...(db.isTemporaryStorage() ? { temporary: true } : {}) };
     const docs = [];
     for (const d of descendants(app.state.nodes, n.id)) {
         if (d.kind !== 'doc') continue;
@@ -37,7 +38,7 @@ async function bundleFor(id: string): Promise<Bundle | null> {
         const readingWidth = widthFor(d);
         docs.push({ path, name: d.name, originId: d.originId ?? d.id, text: await app.docText(d.id), readingWidth });
     }
-    return { v: 1, kind: 'folder', name: n.name, originId: n.originId ?? n.id, docs };
+    return { v: 1, kind: 'folder', name: n.name, originId: n.originId ?? n.id, docs, ...(db.isTemporaryStorage() ? { temporary: true } : {}) };
 }
 
 async function fullLink(bundle: Bundle) {
@@ -45,22 +46,29 @@ async function fullLink(bundle: Bundle) {
         const d = bundle.docs[0];
         const params = new URLSearchParams({ name: d.name, md: await encodeState(d.text), o: d.originId });
         if (validWidth(d.readingWidth)) params.set('w', String(d.readingWidth));
+        if (bundle.temporary) params.set('t', '1');
         return `${base()}#${params}`;
     }
-    return `${base()}#b=${await encodeState(JSON.stringify(bundle))}`;
+    return `${base()}#b=${await encodeState(JSON.stringify(bundle))}${bundle.temporary ? '&t=1' : ''}`;
 }
 
 // ---- Short links (stored by the responder script in mars.html) ----
 type LinkRecord = { token: string; exp: number; secret: string; ttl: number; hash: string; nodeId: string };
+let temporaryLinks: Record<string, LinkRecord> = {};
 
 function readLinks(): Record<string, LinkRecord> {
     let links: Record<string, LinkRecord> = {};
-    try { links = JSON.parse(localStorage.getItem(LINKS_KEY) ?? '{}') || {}; } catch {}
+    if (db.isTemporaryStorage()) links = { ...temporaryLinks };
+    else try { links = JSON.parse(localStorage.getItem(LINKS_KEY) ?? '{}') || {}; } catch {}
     const now = Date.now() / 1000;
     for (const [id, l] of Object.entries(links)) if (!(l?.exp > now)) delete links[id];
     return links;
 }
-const writeLinks = (links: Record<string, LinkRecord>) => { try { localStorage.setItem(LINKS_KEY, JSON.stringify(links)); } catch {} };
+const writeLinks = (links: Record<string, LinkRecord>) => {
+    if (db.isTemporaryStorage()) { temporaryLinks = links; return; }
+    try { localStorage.setItem(LINKS_KEY, JSON.stringify(links)); } catch {}
+};
+const shortUrl = (secret: string, bundle: Bundle) => `${base()}#s=${secret}${bundle.temporary ? '&t=1' : ''}`;
 
 async function shortFetch(id: string, { query = '', ...init }: RequestInit & { query?: string } = {}) {
     const send = () => fetch(`${location.pathname}?s=${id}${query}`, { cache: 'no-store', ...init }).catch(() => {
@@ -77,7 +85,7 @@ async function shortLink(nodeId: string, bundle: Bundle) {
     const hash = await hashText(JSON.stringify(bundle)), ttl = shortTtl, now = Date.now() / 1000;
     const links = readLinks();
     const reuse = Object.values(links).find((l) => l.hash === hash && l.ttl === ttl && l.exp - now >= ttl / 2);
-    if (reuse) return { url: `${base()}#s=${reuse.secret}`, exp: reuse.exp };
+    if (reuse) return { url: shortUrl(reuse.secret, bundle), exp: reuse.exp };
     const { id, secret, blob } = await sealBundle(bundle);
     if (blob.length > SHORT_MAX_CHARS) throw new Error('Too large for a short link. Copy a full link or download the file instead.');
     const token = toBase64Url(crypto.getRandomValues(new Uint8Array(16)));
@@ -92,18 +100,22 @@ async function shortLink(nodeId: string, bundle: Bundle) {
     const { exp } = await res.json();
     links[id] = { token, exp, secret, ttl, hash, nodeId };
     writeLinks(links);
-    return { url: `${base()}#s=${secret}`, exp };
+    return { url: shortUrl(secret, bundle), exp };
 }
 
 // Copies a link for a tree node. The clipboard write starts synchronously (Safari).
 export async function copyNodeLink(id: string, kind: 'short' | 'full') {
+    let sharedId = id;
     const bundle = (async () => {
-        if (id === app.state.currentId) await viewer.flush();
-        return bundleFor(id);
+        if (id === app.state.currentId) {
+            await viewer.flush();
+            sharedId = app.state.currentId ?? id;
+        }
+        return bundleFor(sharedId);
     })();
     const url = bundle.then(async (b) => {
         if (!b) throw new Error('Nothing to share');
-        return kind === 'full' ? fullLink(b) : (await shortLink(id, b)).url;
+        return kind === 'full' ? fullLink(b) : (await shortLink(sharedId, b)).url;
     });
     if (kind === 'short') viewer.toast('Creating short link...');
     try {
@@ -158,6 +170,12 @@ async function currentBundle() {
     const bundle = id ? await bundleFor(id) : null;
     if (!id || !bundle) throw new Error('Nothing to share yet');
     return { id, bundle };
+}
+
+export async function startTemporary(copyCurrent = false) {
+    await viewer.flush();
+    const hash = copyCurrent ? await temporaryFragment((await currentBundle()).bundle.docs[0]) : '';
+    location.assign(`${base()}?temporary=1${copyCurrent ? '' : '&new=1'}${hash}`);
 }
 
 function renderMenu(tooLarge = false) {
@@ -364,6 +382,10 @@ async function receiveDoc(doc: Bundle['docs'][0], input?: InputOperation) {
 export async function receiveFile(file: { name: string; text: string; handle: FileSystemFileHandle | null; stamp: number; parentId?: string | null }, input: InputOperation = beginInput()) {
     await viewer.flush();
     input.check();
+    if (db.isTemporaryStorage()) {
+        await app.createDoc({ name: app.uniqueName(file.name, null), text: file.text, parentId: null, opened: true, input });
+        return;
+    }
     let existing: TreeNode | null = null;
     if (file.handle) {
         for (const n of app.state.nodes) {
@@ -458,8 +480,10 @@ export async function openFromLocation(address = location.href): Promise<boolean
     const hash = request.hash.slice(1);
     const params = new URLSearchParams(hash.includes('=') ? hash : '');
     const urlParam = request.searchParams.get('url');
+    if (params.get('t') === '1' && !params.has('md') && !params.has('s') && !params.has('b') && !urlParam) return false;
     if (!hash && !urlParam) return false;
     const input = beginInput();
+    app.cancelTemporaryRoute();
     const fail = (msg: string | null) => {
         input.check();
         history.replaceState(history.state, '', location.pathname);
@@ -511,6 +535,12 @@ export async function openFromLocation(address = location.href): Promise<boolean
             return false;
         }
         input.check();
+        if ((params.get('t') === '1' || bundle.temporary) && !db.isTemporaryStorage()) {
+            await viewer.flush(); input.check();
+            request.searchParams.set('temporary', '1');
+            location.assign(request.href);
+            return true;
+        }
         // A fragment hint also supplies layout for older links whose bundle has no width.
         const readingWidth = params.get('w') === 'full' ? 'full' : Number(params.get('w'));
         if (validWidth(readingWidth)) for (const doc of bundle.docs) doc.readingWidth = readingWidth;

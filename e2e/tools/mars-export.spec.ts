@@ -45,6 +45,49 @@ async function readyPdf(page: Page) {
 
 test.describe('export workspace', () => {
   test.setTimeout(90000);
+  test('documents the HTML boundary and removes supplied executable embeds while retaining inline styling', async ({
+    page,
+  }) => {
+    const text = `# Export boundary
+
+<script id="supplied-script">void 0;</script>
+<style id="supplied-style">.supplied-rule { color: red; }</style>
+<iframe id="supplied-frame" srcdoc="<p>Local frame</p>"></iframe>
+<object id="supplied-object" data="data:text/plain,object"></object>
+<embed id="supplied-embed" src="data:text/plain,embed">
+<base id="supplied-base" href="#ignored">
+<meta id="supplied-meta" name="example" content="metadata">
+<link id="supplied-link" rel="stylesheet" href="data:text/css,.supplied-rule{}">
+<div id="kept-inline" style="color:purple" onclick="return false" data-start="1" data-end="2">Styled HTML remains.</div>
+<a id="unsafe-link" href="javascript:void(0)">Link text remains.</a>
+`;
+    await openDoc(page, text, 'Export boundary.md');
+    await openExport(page);
+    await dlg(page).getByText('HTML export restrictions', { exact: true }).click();
+    await expect(dlg(page).getByText('This cleanup is not a complete HTML sanitizer.', { exact: false })).toBeVisible();
+    const output = await htmlDownload(page);
+    const facts = await page.evaluate((html) => {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      return {
+        supplied: doc.querySelectorAll('[id^="supplied-"]').length,
+        inlineStyle: doc.getElementById('kept-inline')?.getAttribute('style'),
+        handler: doc.getElementById('kept-inline')?.getAttribute('onclick'),
+        range: doc.getElementById('kept-inline')?.getAttribute('data-start'),
+        href: doc.getElementById('unsafe-link')?.getAttribute('href'),
+        runtime: !!doc.getElementById('mars-reader-config'),
+      };
+    }, output.text);
+    expect(facts).toEqual({
+      supplied: 0,
+      inlineStyle: 'color:purple',
+      handler: null,
+      range: null,
+      href: null,
+      runtime: true,
+    });
+    await expect(htmlFrame(page).getByText('Styled HTML remains.')).toHaveCSS('color', 'rgb(128, 0, 128)');
+  });
+
   test('standalone reader lazily prepares PDF with the committed paper settings', async ({ page }) => {
     await page.addInitScript(() => {
       try {
@@ -187,7 +230,7 @@ test.describe('export workspace', () => {
     await openExport(page);
     await expect(page.locator('.toolbar [role=tab]')).toHaveCount(0);
     await expect(dlg(page).getByRole('heading')).toHaveText('Export “Internal title”');
-    await expect(dlg(page).locator('#exportDocumentName, details')).toHaveCount(0);
+    await expect(dlg(page).locator('#exportDocumentName, details:not(.export-restrictions)')).toHaveCount(0);
     await expect(dlg(page).locator('#exportTocHint')).toHaveCount(0);
     await expect(dlg(page).getByRole('button', { name: 'Reset settings', exact: true })).toHaveCount(0);
     await expect(dlg(page).getByText('Shown when the document has useful headings.', { exact: true })).toHaveCount(0);

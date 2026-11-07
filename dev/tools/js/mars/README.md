@@ -26,6 +26,28 @@ favicons rendered from them). `mars.html` inlines copies: the header mark (the w
 planet) and the favicon data URIs. The `--mars-*` / `--brand*` tokens in
 `src/ui/tokens.css` follow the logo's reds.
 
+## Temporary sessions
+
+**New temporary document** opens a session with no IndexedDB reads or writes.
+**Document options > Read temporarily** opens the current document in that mode.
+The existing library remains unchanged. **Save current to library** is the explicit return to persistent storage.
+
+If browser storage is denied or a write reaches its quota, MARS falls back to a temporary session.
+The header displays **Temporary**, not **Saved**. The banner explains the storage failure and recovery options.
+Editing, comments, table layouts, sharing, HTML/PDF output, and Markdown downloads remain available.
+Opening a file temporarily does not link it for autosave. Only an explicit save can write a file.
+
+The address bar retains the current document through the standard compressed fragment, with `t=1`.
+It includes the name, origin, reading width, frontmatter, and review metadata.
+Only the current document returns after reload. Other session documents and folders require ZIP export before closing.
+Automatic URL recovery stops at 16 million source characters or a two-million-character fragment.
+An unavailable or oversized URL produces a download warning, rather than a stale recovery link.
+Saving to the library uses this portable URL. Larger documents require a Markdown download and a normal library import.
+
+Temporary mode is not private browsing. Browser history can retain the fragment, and browser preferences can still persist.
+Short-link creation remains explicit and uploads only encrypted content. Its deletion token stays in the temporary tab, not local storage.
+Images, fonts, map tiles, and explicit URL loads retain their normal network behavior.
+
 ## Document browser actions
 
 Right-click a document for the MARS action menu, as before.
@@ -208,6 +230,19 @@ The dialog follows the MARS theme, but PDF pages remain white in every theme.
 The export browser cases live in `e2e/tools/mars-export.spec.ts` and run against the deploy-equivalent local server.
 `e2e/tools/mars-models.spec.ts` covers binary/ASCII STL, large meshes, colored 3MF, ZIP64, invalid geometry, and cancellation.
 System print dialogs and saved PDF files still require manual browser checks.
+
+### HTML export boundary
+
+The export renderer removes document-supplied `script`, `style`, `iframe`, `object`, `embed`, `base`, `meta`, and `link` elements.
+It also removes event-handler attributes, `javascript:` URLs, and internal source-range attributes.
+The exported body excludes YAML frontmatter and trailing review metadata. Markdown downloads retain both.
+
+Ordinary HTML content and inline styles remain. Images, audio/video, links, and inline CSS can still load remote resources.
+MARS adds its own reader and widget runtimes after this cleanup, so supported maps and models remain interactive.
+This boundary is not a complete HTML sanitizer and does not make arbitrary HTML safe.
+
+Controlled third-party embeds are not necessary for the current Markdown workflows.
+An embed feature requires a separate provider, sandbox, privacy, offline-output, and PDF-fallback design.
 
 ## Search
 

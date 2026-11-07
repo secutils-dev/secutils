@@ -134,8 +134,10 @@ export async function copyRich(text: Promise<string> | string, html?: Promise<st
 export function download(name: string, data: BlobPart, type: string) {
     const url = URL.createObjectURL(new Blob([data], { type }));
     const a = Object.assign(document.createElement('a'), { href: url, download: name });
+    a.hidden = true;
+    (document.querySelector('dialog:modal') ?? document.body).append(a);
     a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 1000);
 }
 
 export const fileSafe = (name: string) => name.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '-').replace(/^[.\s]+|[.\s]+$/g, '').slice(0, 120) || 'Untitled';

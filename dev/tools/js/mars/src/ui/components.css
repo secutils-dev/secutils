@@ -19,6 +19,14 @@ body { overflow: hidden; }
 .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-bottom: 10px; flex-wrap: wrap; }
 .toolbar-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .toolbar-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.temporary-session { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; margin-bottom: 12px; border: 1px solid var(--eui-border); border-left: 3px solid var(--eui-warning); border-radius: var(--radius); background: var(--surface); font-size: 12px; }
+.temporary-session[hidden] { display: none; }
+.temporary-session p { color: var(--text-muted); margin: 4px 0 0; }
+.temporary-actions { display: flex; gap: 6px; flex: none; }
+.export-restrictions { font-size: 12px; color: var(--text-muted); margin-top: 14px; }
+.export-restrictions summary { cursor: pointer; color: var(--text); }
+.export-restrictions p { margin: 8px 0 0; line-height: 1.5; }
+@media (max-width: 640px) { .temporary-session { align-items: stretch; flex-direction: column; } .temporary-actions { flex-wrap: wrap; } }
 .stats-text { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
 .changes-bar { display: flex; align-items: center; gap: 2px; min-width: 0; height: 28px; padding: 0 2px 0 10px; border-radius: var(--radius); background: var(--eui-lightest); box-shadow: inset 3px 0 0 var(--eui-warning); }
 .changes-label { min-width: 0; margin-right: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 500; color: var(--text); }
@@ -62,6 +70,7 @@ body.sb-collapsed .mars-sidebar { display: none; }
 .tree-row:has(.tree-link:focus-visible) { outline: 2px solid var(--focus); outline-offset: -2px; }
 .tree-row:has(> .tree-link) { padding-left: 0; }
 .tree-link { display: flex; align-items: center; gap: 6px; align-self: stretch; flex: 1; min-width: 0; padding-left: calc(6px + var(--depth, 0) * 16px); color: inherit; text-decoration: none; outline: none; }
+.tree-link[type="button"] { border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; }
 .tree-row.result .tree-link { flex-wrap: wrap; padding-left: 6px; row-gap: 2px; }
 .tree-row.result:has(> .tree-link) { flex-wrap: nowrap; }
 .tree-row.result:has(> .tree-link) .tree-more { align-self: flex-start; }

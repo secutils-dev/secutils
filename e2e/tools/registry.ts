@@ -89,6 +89,7 @@ export const TOOLS: readonly Tool[] = [
   },
   {
     slug: 'mars',
+    // Temporary sessions and storage-denial fallback keep documents in memory, not the library.
     // MARS-only tables: proportional resizing and row/column editing persist in Markdown and HTML/PDF output.
     // All selection styles work in GitHub alert bodies; generated titles offer Comment only.
     // Reading width restores across reloads and new tabs, including full/custom widths and comment rails.

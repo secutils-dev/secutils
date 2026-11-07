@@ -110,7 +110,7 @@ const badgesHtml = (n: TreeNode) => `${n.pending ? '<span class="tree-dot" title
 const moreHtml = (n: TreeNode) => `<button type="button" class="tree-more" tabindex="-1" aria-label="Actions for ${esc(n.name)}" title="Actions">${icon('boxesVertical')}</button>`;
 // Local routes are real links, so the browser can open them in another tab/window.
 // Keep action buttons and rename inputs outside the anchor.
-const docLink = (n: TreeNode, content: string) => `<a class="tree-link" href="${esc(location.pathname)}#doc=${encodeURIComponent(n.id)}" tabindex="-1" draggable="false" aria-label="${esc(n.name)}"${n.id === app.state.currentId ? ' aria-current="page"' : ''}>${content}</a>`;
+const docLink = (n: TreeNode, content: string) => db.isTemporaryStorage() ? `<button type="button" class="tree-link" tabindex="-1" draggable="false" aria-label="${esc(n.name)}">${content}</button>` : `<a class="tree-link" href="${esc(location.pathname)}#doc=${encodeURIComponent(n.id)}" tabindex="-1" draggable="false" aria-label="${esc(n.name)}"${n.id === app.state.currentId ? ' aria-current="page"' : ''}>${content}</a>`;
 
 function rowHtml({ n, depth }: { n: TreeNode; depth: number }) {
     const folder = n.kind === 'folder';
@@ -277,7 +277,7 @@ function menuFor(n: TreeNode): MenuEntry[] {
         { label: 'Export…', icon: 'download', disabled: n.size === 0, run: () => openExport(n.id) },
         'separator',
         { label: 'Delete', icon: 'trash', danger: true, run: () => deleteNode(n) },
-        { hint: 'Shift + right-click for browser actions' },
+        ...(!db.isTemporaryStorage() ? [{ hint: 'Shift + right-click for browser actions' }] : []),
     ];
 }
 
@@ -323,7 +323,7 @@ tree.addEventListener('click', (e) => {
     if (target.closest('.tree-more')) { openMenu(target.closest('.tree-more')!, menuFor(n), `Actions for ${n.name}`); return; }
     if (target.closest('.tree-chevron') && n.kind === 'folder') { app.setOpen(n.id, !n.open); return; }
     if (target.closest('.tree-link')) {
-        if (e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+        if (e.defaultPrevented || e.button !== 0 || (target.closest('a.tree-link') && (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey))) return;
         e.preventDefault();
     }
     activate(n, target.closest<HTMLElement>('.tree-row'));
@@ -387,6 +387,7 @@ tree.addEventListener('focusout', (e) => {
 
 $('sbNewBtn').addEventListener('click', (e) => openMenu(e.currentTarget as HTMLElement, [
     { label: 'New document', icon: 'document', run: () => newDoc() },
+    { label: 'New temporary document', icon: 'document', sub: 'A separate session, not saved in your library', run: () => share.startTemporary().catch((error) => toast(error.message)) },
     { label: 'New folder', icon: 'folder', run: () => newFolder() },
     'separator',
     { label: 'Import files…', icon: 'upload', sub: 'Markdown, HTML, or ZIP files', run: () => $('importInput').click() },

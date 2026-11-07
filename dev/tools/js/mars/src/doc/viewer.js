@@ -13,6 +13,7 @@ import { FRONTMATTER_RE, isMarkdownFile, readSource } from '../io/source.ts';
 import { installTableRanges } from './table-renderer.ts';
 import { applyTableLayouts } from './table-layout.ts';
 import { createTableEditor } from './table-editor.ts';
+import { download } from '../ui/ui.ts';
 
 let host = {};
 export const setHost = (h) => { host = h; };
@@ -3044,13 +3045,7 @@ document.addEventListener('keydown', (e) => {
 
 function saveMarkdown() {
     if (!markdown) return;
-    const blob = new Blob([documentText()], { type: 'text/markdown;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${filename}.md`;
-    a.click();
-    URL.revokeObjectURL(url);
+    download(`${filename}.md`, documentText(), 'text/markdown;charset=utf-8');
     toast(`Saved ${filename}.md`);
 }
 
@@ -3105,7 +3100,8 @@ const currentState = () => ({ text: documentText(), name: filename, handle: file
 function updateSaveState() {
     const dirty = isDirty();
     let label = '', title = '';
-    if (fileConflict) [label, title] = ['Changed on disk', `${fileHandle.name} changed outside this tab. Press Ctrl/Cmd+S to overwrite it.`];
+    if (host.temporary?.()) [label, title] = ['Temporary', 'This session is not saved in your browser library. Download the document or save it to the library to keep it.'];
+    else if (fileConflict) [label, title] = ['Changed on disk', `${fileHandle.name} changed outside this tab. Press Ctrl/Cmd+S to overwrite it.`];
     else if (fileHandle) [label, title] = dirty ? ['Unsaved to disk', `Saved in this browser. Press Ctrl/Cmd+S to save to ${fileHandle.name}`] : ['Saved', `Changes are saved to ${fileHandle.name} and this browser`];
     else if (markdown.trim() || host.currentId?.()) [label, title] = isPersisted() ? ['Saved', 'Saved in this browser'] : ['Saving…', 'Saving in this browser'];
     els.saveState.textContent = label;
@@ -3130,7 +3126,7 @@ async function persistNow() {
         updateSaveState();
     }
     await pendingPersistence;
-    if (fileHandle && !fileConflict && isDirty()
+    if (!host.temporary?.() && fileHandle && !fileConflict && isDirty()
         && (await fileHandle.queryPermission?.({ mode: 'readwrite' })) === 'granted') await writeToHandle();
 }
 

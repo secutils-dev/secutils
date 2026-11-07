@@ -63,6 +63,7 @@ export interface Bundle {
     // The shared folder's originId, so a re-shared folder merges into the same copy.
     originId?: string;
     docs: SharedDoc[];
+    temporary?: true;
 }
 
 export function parseBundle(json: string): Bundle | null {
@@ -72,6 +73,7 @@ export function parseBundle(json: string): Bundle | null {
             && typeof d.originId === 'string' && Array.isArray(d.path) && d.path.every((p) => typeof p === 'string');
         if (b?.v !== 1 || !['doc', 'folder'].includes(b.kind) || typeof b.name !== 'string' || !Array.isArray(b.docs) || !b.docs.every(docOk)) return null;
         for (const doc of b.docs) if (!validWidth(doc.readingWidth)) delete doc.readingWidth;
+        if (b.temporary !== true) delete b.temporary;
         return b;
     } catch { return null; }
 }

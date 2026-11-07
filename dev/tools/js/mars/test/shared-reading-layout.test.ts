@@ -112,6 +112,7 @@ test('document and folder shares use the current, stored, or preferred reading w
         { id: 'default', kind: 'doc', name: 'Default' },
     ];
     const api = runInNewContext(`${transformSync(code, { loader: 'ts' }).code}\n({ bundleFor, fullLink })`, {
+        db: { isTemporaryStorage: () => false },
         app: { node: (id: string) => nodes.find((n) => n.id === id), state: { nodes, currentId: 'current' }, docText: async () => '# Layout' },
         viewer: { exportReadingWidth: () => 980, defaultReadingWidth: () => 1100 },
         descendants: () => nodes.slice(1), ancestors: () => [],

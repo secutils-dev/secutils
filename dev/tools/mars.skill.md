@@ -33,6 +33,27 @@ Completion: the document stays in the browser library, and the header shows **Sa
 PDF Extractor's **Export > Open in MARS** opens its Text or Markdown output under the original document name.
 The handoff preserves exact text through the URL fragment and uploads no PDF bytes.
 
+## Temporary sessions
+
+1. Use **New temporary document** from the sidebar New menu for a session without library storage.
+2. Use **Document options > Read temporarily** for an existing document.
+3. Use **Save current to library** only when you want persistent storage.
+4. Export other temporary documents before closing the session.
+
+Completion: the header displays **Temporary**, and the banner states that the session is not saved in the library.
+Browser storage denial and quota failures select this mode automatically.
+Editing, comments, tables, sharing, Markdown downloads, and HTML/PDF output remain available.
+Opening a file temporarily does not enable autosave to that file.
+
+The current document stays in the URL fragment and returns after reload, including its name, reading width, and review metadata.
+Other session documents and folders require ZIP export. Oversized or unavailable recovery URLs produce a download warning.
+Temporary mode is not private browsing. Browser history can retain the document fragment, and browser preferences can still persist.
+Temporary short-link deletion tokens stay in the tab and disappear on reload.
+
+Use `?temporary=1` for an empty temporary session.
+Append `&t=1` to a full or short fragment to open a shared document temporarily.
+Use `?temporary=1&url=<public-md>` for a temporary URL load.
+
 ## Table editing
 
 1. In Preview, click or tap a table cell to display its row and column actions.
@@ -111,6 +132,17 @@ Closing the dialog discards later draft changes.
 A document reload shows **Refresh preview**, while the current preview retains its captured version.
 The PDF preview centers its pages. Only the dialog footer contains **Print / Save PDF**.
 The status appears during preparation or after a failure, and disappears when the preview is ready.
+
+## HTML export restrictions
+
+Exports remove document-supplied `script`, `style`, `iframe`, `object`, `embed`, `base`, `meta`, and `link` elements.
+Event-handler attributes and `javascript:` URLs are removed. Internal source-range attributes are removed too.
+The exported body excludes frontmatter and review metadata. Markdown downloads retain both.
+
+Ordinary HTML content and inline styling remain. Images, media, links, fonts, and inline CSS can still require network access.
+MARS adds its own reader, diagram, map, and model runtimes after this cleanup.
+Arbitrary iframe widgets and executable webpage exports are outside this contract.
+The cleanup is not a complete HTML sanitizer. Controlled third-party embeds require a separate design and are not necessary for current workflows.
 
 ## Review threads
 

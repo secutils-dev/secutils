@@ -7,12 +7,15 @@ import { $ } from './ui/ui.ts';
 import * as viewer from './doc/viewer.js';
 import { beginInput, cancelInput, checkInput, type InputOperation } from './io/input.ts';
 import { validWidth, type ReadingWidth } from './export/settings.ts';
+import { TemporaryRoute, type TemporaryLinkStatus } from './share/temporary.ts';
 
 export const state = {
     nodes: [] as TreeNode[],
     currentId: null as string | null,
     // Folder that receives new documents: the open document's folder, or a clicked folder.
     folderId: null as string | null,
+    temporaryLink: 'empty' as TemporaryLinkStatus,
+    storageError: '' as string,
 };
 
 const listeners = new Set<() => void>();
@@ -33,8 +36,26 @@ export async function load() {
 
 const now = () => Date.now();
 const save = (nodes: TreeNode[], texts?: Record<string, string>) => db.putNodes(nodes, texts);
+const temporaryRoute = new TemporaryRoute(
+    (hash) => history.replaceState(history.state, '', `${location.pathname}${hash}`),
+    (status) => { state.temporaryLink = status; emit(); },
+);
+export const cancelTemporaryRoute = () => temporaryRoute.cancel();
+export function useTemporaryFallback(error: unknown) {
+    db.useTemporaryStorage();
+    state.storageError = (error as Error)?.message ?? String(error);
+    state.nodes = []; state.currentId = state.folderId = null;
+    viewer.toast('Browser storage is unavailable. The document is now temporary.');
+    emit();
+}
 
-function setRoute(id: string | null) {
+async function setRoute(id: string | null) {
+    if (db.isTemporaryStorage()) {
+        const n = node(id);
+        await temporaryRoute.update(n?.kind === 'doc' ? { path: [], name: n.name, originId: n.originId ?? n.id, text: (await db.getText(n.id)) ?? '', readingWidth: n.readingWidth ?? viewer.exportReadingWidth() } : null);
+        return;
+    }
+    temporaryRoute.cancel();
     const hash = id ? `#doc=${id}` : '';
     if (location.hash !== hash) history.replaceState(history.state, '', `${location.pathname}${hash}`);
 }
@@ -59,10 +80,17 @@ export async function createDoc(opts: { name?: string; text?: string; parentId?:
     const n: TreeNode = { id, parentId, kind: 'doc', name: opts.name ?? 'Untitled', order: nextOrder(state.nodes, parentId), createdAt: now(), updatedAt: now(), originId: opts.originId ?? id, threads: openThreads(text), size: textBytes(text) };
     if (validWidth(opts.readingWidth)) n.readingWidth = opts.readingWidth;
     if (opts.handle) Object.assign(n, { handle: opts.handle, stamp: opts.stamp ?? 0, dirty: false });
-    if (opts.opened) { n.opened = true; await db.putSide('opened', id, text); }
-    checkInput(opts.input);
-    state.nodes.push(n);
-    await save([n], { [id]: text });
+    try {
+        if (opts.opened) { n.opened = true; await db.putSide('opened', id, text); }
+        checkInput(opts.input);
+        state.nodes.push(n);
+        await save([n], { [id]: text });
+    } catch (error) {
+        checkInput(opts.input);
+        if (db.isTemporaryStorage() || !db.isStorageFailure(error)) throw error;
+        useTemporaryFallback(error);
+        return createDoc({ ...opts, parentId: null, originId: n.originId, handle: undefined });
+    }
     checkInput(opts.input);
     expandTo(parentId);
     if (opts.open !== false) await openDoc(id, opts.input);
@@ -155,7 +183,7 @@ export async function openDoc(id: string, input?: InputOperation) {
     state.currentId = id;
     state.folderId = n.parentId;
     expandTo(n.parentId);
-    setRoute(id);
+    await setRoute(id);
     viewer.openDocument({ text, name: n.name, handle: n.handle ?? null, stamp: n.stamp ?? 0, dirty: !!n.dirty, readingWidth: n.readingWidth });
     emit();
 }
@@ -231,13 +259,21 @@ export async function setReadingWidth(width: ReadingWidth) {
     if (!n || !validWidth(width) || n.readingWidth === width) return;
     n.readingWidth = width;
     await save([n]);
+    if (db.isTemporaryStorage()) await setRoute(n.id);
 }
 
 type PersistedDoc = { text: string; name: string; handle: FileSystemFileHandle | null; stamp: number; dirty: boolean };
 let persistQueue: Promise<void> = Promise.resolve();
 // Serialized, so two quick saves of an unsaved document create one tree entry.
 export function persist(doc: PersistedDoc) {
-    const run = persistQueue.then(() => persistOne(doc));
+    const run = persistQueue.then(() => persistOne(doc)).catch(async (error) => {
+        if (db.isTemporaryStorage() || !db.isStorageFailure(error)) throw error;
+        const originId = current()?.originId, readingWidth = viewer.exportReadingWidth();
+        useTemporaryFallback(error);
+        const n = await createDoc({ name: doc.name, text: doc.text, originId, readingWidth, open: false });
+        state.currentId = n.id;
+        await setRoute(n.id); emit();
+    });
     persistQueue = run.catch(() => {});
     return run;
 }
@@ -248,13 +284,14 @@ async function persistOne(doc: PersistedDoc) {
         await createDoc({ name: doc.name, text: doc.text, handle: doc.handle ?? undefined, stamp: doc.stamp, open: false });
         n = state.nodes.at(-1)!;
         state.currentId = n.id;
-        setRoute(n.id);
+        await setRoute(n.id);
         emit();
         return;
     }
     Object.assign(n, { name: doc.name, updatedAt: now(), threads: openThreads(doc.text), size: textBytes(doc.text), stamp: doc.stamp, dirty: doc.dirty });
     if (doc.handle) n.handle = doc.handle; else delete n.handle;
     await save([n], { [n.id]: doc.text });
+    if (db.isTemporaryStorage()) await setRoute(n.id);
     emit();
 }
 
@@ -265,6 +302,7 @@ export async function rename(id: string, name: string) {
     n.updatedAt = now();
     await save([n]);
     if (id === state.currentId) viewer.renameDocument(n.name);
+    if (db.isTemporaryStorage() && id === state.currentId) await setRoute(id);
     emit();
 }
 

@@ -20,6 +20,7 @@ export interface ViewerHost {
     // New content is replacing a non-empty document; the next persist creates a new entry.
     detach(): void;
     readingWidthChanged?(width: ReadingWidth): Promise<void>;
+    temporary?(): boolean;
     // Extracted source from Open or a drop; converted HTML never retains a writable handle.
     openFile?(file: { name: string; text: string; handle: FileSystemFileHandle | null; stamp: number }, input?: InputOperation): Promise<void>;
     openUrl?(url: string): Promise<void>;

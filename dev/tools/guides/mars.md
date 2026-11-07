@@ -76,10 +76,16 @@ It is promoted like any tool, linked by that host. In-app URLs derive from `loca
 - **Storage**: documents live in IndexedDB (database `mars`: `nodes`, `docs`, `meta`). Per-document side data sits
   in `docs` under `<kind>:<id>` (`db.getSide`), so it needs no new store: `base` (review baseline, flagged by `pending`
   on the node), `opened` (the source text as last received, flagged by `opened`), and `vec` (smart-search index). The fragment is a route
-  (`#doc=<id>`) or an incoming share, never autosaved state. Every document carries an `originId` that survives sharing;
+  (`#doc=<id>`) or an incoming share in persistent sessions. Every document carries an `originId` that survives sharing;
   opening a link for a known `originId` merges its review threads (by comment `id`, or `author` plus `at`).
   Open existing databases without a requested version. Some browsers retain version 2 from the deferred review-rounds feature.
   Preserve extra stores during rollback. Never downgrade or delete the database to restore the previous UI.
+- **Temporary sessions**: `t=1` in the fragment or `?temporary=1` selects the in-memory backend before database bootstrap.
+  Denied storage and write-quota failures also select it. Keep the persistent database unchanged, including its last-document metadata.
+  `share/temporary.ts` stores only the current document in the standard compressed fragment, with generation guards and recovery-size limits.
+  Other temporary documents require export before closing. Temporary short-link tokens stay in memory, and automatic file writes stay disabled.
+  **Save current to library** reloads the portable document into the normal persistence path.
+  Keep the mode and recovery failure visible. Verify library isolation, cross-profile URL recovery, quota fallback, and export behavior.
 - **GitHub badge**: Share > **Copy for GitHub** copies a one-line `<picture>` link to the document's short link, with
   `/badge.svg` and `/badge-dark.svg` for GitHub's light and dark themes. The responder script draws both inline, with
   `textLength` fixing the width across fonts; GitHub fetches them through its image proxy, and the link's `#s=` key

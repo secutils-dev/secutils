@@ -9,6 +9,7 @@ function textareaEditor(mount, text) {
     ta.className = 'editor-fallback';
     ta.spellcheck = false;
     ta.placeholder = 'Type or paste Markdown here...';
+    ta.setAttribute('aria-label', 'Markdown source');
     ta.value = text;
     ta.addEventListener('input', () => window.__suOnEditorChange?.(ta.value));
     mount.replaceChildren(ta);
@@ -31,6 +32,7 @@ export async function loadEditor(mount) {
                 cm.basicSetup,
                 cmMd.markdown(),
                 cm.EditorView.lineWrapping,
+                cm.EditorView.contentAttributes.of({ 'aria-label': 'Markdown source' }),
                 cm.EditorView.updateListener.of((u) => {
                     if (u.docChanged) window.__suOnEditorChange?.(u.state.doc.toString());
                 }),
@@ -38,7 +40,7 @@ export async function loadEditor(mount) {
             parent: mount,
         });
         window.__suCreateBlockEditor = (parent, doc) => {
-            const editor = new cm.EditorView({ doc, extensions: [cm.minimalSetup, cmMd.markdown(), cm.EditorView.lineWrapping], parent });
+            const editor = new cm.EditorView({ doc, extensions: [cm.minimalSetup, cmMd.markdown(), cm.EditorView.lineWrapping, cm.EditorView.contentAttributes.of({ 'aria-label': 'Edit Markdown block' })], parent });
             return {
                 getText: () => editor.state.doc.toString(),
                 focus: () => { editor.focus(); editor.dispatch({ selection: { anchor: editor.state.doc.length } }); },

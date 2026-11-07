@@ -8,9 +8,9 @@ const sidebar = readFileSync(new URL('../src/sidebar/sidebar.ts', import.meta.ur
 const source = sidebar.split('\n').find((line) => line.startsWith('const docLink ='))!;
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-const linkFor = (pathname: string, currentId: string | null) => runInNewContext(
+const linkFor = (pathname: string, currentId: string | null, temporary = false) => runInNewContext(
     `${transformSync(source, { loader: 'ts' }).code}\ndocLink`,
-    { location: { pathname }, app: { state: { currentId } }, esc, encodeURIComponent },
+    { location: { pathname }, app: { state: { currentId } }, db: { isTemporaryStorage: () => temporary }, esc, encodeURIComponent },
 );
 
 test('document anchors use the local mount and ID, with no shared snapshot or forced target', () => {
@@ -20,6 +20,13 @@ test('document anchors use the local mount and ID, with no shared snapshot or fo
     assert.match(link, /tabindex="-1" draggable="false"/);
     assert.ok(!link.includes('target='));
     assert.ok(!link.includes('&md='));
+});
+
+test('temporary documents are buttons, not broken browser-local links', () => {
+    const link = linkFor('/review/', 'temp', true)({ id: 'temp', name: 'Temporary' }, '<span>Temporary</span>');
+    assert.match(link, /^<button type="button" class="tree-link"/);
+    assert.ok(!link.includes('href='));
+    assert.ok(link.endsWith('</button>'));
 });
 
 test('document anchors escape labels and URL identifiers and mark only the current document', () => {
