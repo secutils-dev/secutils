@@ -63,6 +63,10 @@ async function comment(page: Page, needle: string, body: string, author = 'Revie
 }
 
 async function copyLink(page: Page, item: RegExp) {
+  if (item.source.includes('Copy full link') || item.source.includes('Copy short link'))
+    return (await import('./_mars_sharing')).copyLink(page, {
+      format: item.source.includes('full') ? 'full' : 'short',
+    });
   await page.getByRole('button', { name: 'Share', exact: true }).click();
   await page.getByRole('menuitem', { name: item }).click();
   await expect(page.locator('#toast')).toContainText(/copied/i);
@@ -498,9 +502,8 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     for (const name of ['Untitled', 'Untitled (2)']) await row(page, name).dragTo(folder);
     await expect(page.locator('#tree .tree-row[aria-level="2"]')).toHaveCount(2);
     await folder.getByRole('button', { name: /^Actions for/ }).click();
-    await page.getByRole('menuitem', { name: /^Copy short link/ }).click();
-    await expect(page.locator('#toast')).toContainText('Short link copied');
-    const link = await page.evaluate(() => navigator.clipboard.readText());
+    await page.getByRole('menuitem', { name: 'Copy link', exact: true }).click();
+    const link = await (await import('./_mars_sharing')).configureCopyLink(page);
     expect(link).toMatch(/\/#s=[A-Za-z0-9_-]{16}$/);
 
     const other = await freshContext(browser);
@@ -542,6 +545,7 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     const other = await freshContext(browser);
     const restored = await other.newPage();
     await restored.goto(tool.path);
+    await expect(restored.locator('#emptyState')).toBeVisible();
     await restored
       .locator('#importInput')
       .setInputFiles({ name: file.suggestedFilename(), mimeType: 'application/zip', buffer: bytes });
@@ -763,9 +767,9 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     await row(page, 'Plan')
       .getByRole('button', { name: /Actions for Plan/ })
       .click();
-    await page.getByRole('menuitem', { name: /Unlink from source/ }).click();
-    await page.getByRole('button', { name: 'Unlink', exact: true }).click();
-    await expect(page.locator('#toast')).toContainText('Unlinked "Plan"');
+    await page.getByRole('menuitem', { name: 'Make independent', exact: true }).click();
+    await page.getByRole('button', { name: 'Make independent', exact: true }).click();
+    await expect(page.locator('#toast')).toContainText('"Plan" is now an independent document');
     await page.getByRole('button', { name: 'Document options' }).click();
     await expect(page.getByRole('button', { name: 'Show changes since opened' })).toBeDisabled();
     await page.keyboard.press('Escape');

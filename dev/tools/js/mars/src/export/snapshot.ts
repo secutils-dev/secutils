@@ -1,4 +1,5 @@
 import type { ReadingWidth } from './settings.ts';
+import { matchCommentBlock } from '../share/merge.ts';
 
 export interface ExportSnapshot {
     readonly id: string | null;
@@ -11,9 +12,8 @@ export interface ExportSnapshot {
 // Deliberately independent of viewer.parseSource: capture must not replace review state.
 // Strip even malformed review metadata from reading output; the .md download keeps it.
 export function exportBody(text: string) {
-    return text.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '')
-        .replace(/(?:^|\r?\n)<!-- su-comments\r?\n[\s\S]*?\r?\n-->\s*$/, '')
-        .replace(/\r\n?/g, '\n');
+    const block = matchCommentBlock(text);
+    return (block ? text.slice(0, block.index) : text).replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '').replace(/\r\n?/g, '\n');
 }
 
 export const snapshot = (id: string | null, name: string, text: string, readingWidth: ReadingWidth): ExportSnapshot =>

@@ -6,6 +6,88 @@ through the `data-su-bundle="mars"` placeholder. `npm run build` writes `dist/ma
 
 Pinned runtime dependencies: `marked` 18.1.2 (the version md.html's unpinned CDN load
 resolved to when MARS was extracted) and `fflate` 0.8.3 (same as `three-mf`).
+Sync also uses Yjs, Noble Curves, and DOMPurify. Their exact pins live in `package.json`.
+The connection manager initializes only for enrollment, Sync links, or connected content.
+
+## Connected documents
+
+**Sync** enrolls one document or a selected folder subtree in encrypted responder storage.
+The Sync dialog shows a **Sync link** after setup. It connects another device after both devices show the same code.
+Back appears at the bottom-left of each subpage. The close icon closes the whole dialog.
+**Sync** manages your personal devices. **Disconnect this device** retains a local document and leaves other devices and active Live links connected.
+**Live links** separately manages source-side sharing. **Live document** shows a recipient's access, expiry, and local-copy actions.
+**Keep as local copy** stops that recipient's updates without disabling the owner's link. **Stop sharing** disables every Live link for the source document.
+Disabling the last link on a Live-only document also purges its remote data and releases reserved capacity.
+Explicit personal Sync remains independent of Live sharing. Ended recipients show a disconnected local-copy badge.
+The original window stays open only for code approval. Later sync does not require both devices to remain open.
+Sync links connect your own devices with the same review identity. Live links give other people their own view, comment, or edit access.
+Normal ZIP and Markdown exports keep content. The optional encrypted backup also preserves Sync access and its pending upload state.
+New Sync links use a 22-character `#sync=` fragment and an encrypted setup bootstrap with a ten-minute expiry.
+Existing long `#sync=` and `#invite=` links remain supported. Setup encryption and request authentication use separate derived keys.
+Existing origin IDs, names, and content provide matching hints in a populated library.
+The reader can keep copies separate or connect the existing local ID. Different local content stays in an independent backup.
+New documents inside a synced folder join that collection. Moving existing local content into it requires confirmation.
+Local-only documents outside the selection stay local.
+Each IP address can create 50 Sync collections per hour. This limit is `LIMITS.collections` in `src/sync/protocol.ts`.
+The responder uses that same value for enforcement and `/sync/limits`. Other storage and item limits remain unchanged.
+Saved folder contents can upload even when no document is open.
+Sync enrollment, upload acknowledgements, key updates, and connection metadata do not change document timestamps or invalidate the smart-search index.
+Document text and name changes still update the timestamp and refresh that document's search entry.
+
+The header shows service acknowledgement, pending local work, offline work, or a connection error.
+**Up to date** does not mean that another person read the document.
+Local edits enter a durable outbox before upload. Retries reuse the stored ciphertext.
+An active document or folder renews its 30-day inactivity lease. Polling alone does not renew it.
+Opening a synced folder renews every enrolled document and nested folder entry. Individual files do not need separate opens.
+
+Share offers **Snapshot** and **Live**. Live links grant view, comment, or edit access to one document.
+The Share menu and document/folder menus have one **Copy link** entry. Its dialog defaults to Snapshot and Full, with Full first.
+Short snapshots and all Live links offer 1/7/14/30-day expiry without calendar dates.
+The dialog explains the Copy link action before generation and shows the read-only URL after generation, including clipboard failures.
+Source-side **Live links** is a bottom-left action in the Copy link dialog, not an item or Share menu entry.
+Recipients use Copy link → Live to forward an active owner's link, with read-only access and expiry information.
+Forwarding retains the original URL and does not create a grant. Expired or disabled links offer snapshots only.
+Full snapshots do not expire. Folder links currently support snapshots only. Specialized Slack, GitHub, and agent copy actions remain available.
+Live recipients have a persistent access badge. View/comment modes hide body-editing handles and disable task changes.
+Live recipients use temporary memory storage by default. **Save live document to library** retains the document, its connection, and unsent changes.
+Promotion copies the selected vector record and loads the persistent library index. Unchanged library documents retain their vectors and timestamps.
+New Live links use a 22-character fragment secret and encrypted KV bootstrap, with 1/7/14/30-day expiry and a 7-day default.
+Existing long Live links remain supported. See [the cryptographic contract](src/sync/README.md#short-live-links).
+Edit access permits actor-signed comment and thread deletion, but not edits that impersonate comment authors.
+Synced replies retain conversation order. Edits and deletion Undo do not move earlier comments.
+Opening a connected document does not publish review edits. Retained empty threads remain available for replies and recovery without becoming deletion intents.
+Reload restores acknowledged live content, not unsent temporary edits.
+Transport keys, credentials, and outboxes never enter ordinary Markdown, HTML, PDF, ZIP, or agent handoffs.
+
+Connected libraries use safe previews. Received HTML cannot provide scripts, application controls, arbitrary CSS, or source-range attributes.
+Linked files require explicit disk Save. Incoming remote edits never write to disk automatically.
+Overlapping cell/block drafts offer **Save draft as copy** before applying a remote update.
+
+**Disconnect this device** disconnects this local replica and retains its text. It does not remove access for every other device.
+**Devices & links** lists devices and Live links. Each connection has its own disconnect or disable action.
+Disconnection rotates the affected document keys. Saved copies and pending work on the disconnected device stay there.
+Encrypted recovery packages contain scoped credentials and pending work. They use a separate password, not an account login.
+Download and Export all offer optional connection recovery. The default remains a normal Markdown or ZIP download.
+The optional ZIP contains readable documents and one encrypted recovery file under `MARS connections/`.
+Import offers documents-only import or password-protected connection restoration. Existing libraries remain unchanged.
+The encrypted payload groups selected connections and local documents. Partial selections exclude unrelated replica bodies and document keys.
+Recovery restores all selected replicas in one transaction. It also restores the secrets for owned live links.
+Large backups use authenticated binary chunks instead of the 16 MiB JSON format. The archive limit is 512 MiB of serialized replica data.
+An interrupted removal retains its exact key updates. **Try again** resumes that plan after reload.
+Close the previous browser window before restoring its credentials in another profile.
+Review-deletion Undo cancels the deleting actor's signed operation. It restores original author attribution rather than publishing a new comment version.
+
+Release checks passed on 2026-11-08. Sync and live links require no account, extension, or local helper.
+
+## Buttons and feedback
+
+MARS uses the native EUI-style primitives and [button guidance](../../guides/design-system.md#buttons-loading-and-copy-feedback).
+Generated dialogs use `buttonClass` for primary, secondary, empty, and flush variants.
+Loading actions use the shared EUI bordered spinner. Clipboard actions show a brief Copied tooltip without changing the dialog layout.
+`src/ui/feedback.ts` provides plain-text, viewport-clamped tooltips for pointer and keyboard users.
+Icon labels remain accessible when responsive layouts hide their text.
+
+## Development
 
 ```bash
 npm ci
@@ -31,6 +113,9 @@ planet) and the favicon data URIs. The `--mars-*` / `--brand*` tokens in
 **New temporary document** opens a session with no IndexedDB reads or writes.
 **Document options > Read temporarily** opens the current document in that mode.
 The existing library remains unchanged. **Save current to library** is the explicit return to persistent storage.
+
+Document action menus use **Download** for Markdown output. Advanced HTML/PDF output stays in the document view's **Export…** workspace.
+Dragging moves a document to the top level. The document menu has no separate move action.
 
 If browser storage is denied or a write reaches its quota, MARS falls back to a temporary session.
 The header displays **Temporary**, not **Saved**. The banner explains the storage failure and recovery options.
@@ -113,6 +198,10 @@ translucent so it does not hide selected text. The gutter keeps its opaque backg
 The shared browser tests check painted selection pixels in Firefox and Chromium, in both themes.
 
 ## Table editing
+
+Connected previews preserve validated table proportions through the safety sanitizer.
+The renderer carries numeric layout separately from untrusted raw HTML and applies widths after sanitization.
+Preview and HTML/PDF output use the same helper. The Markdown `su-table` format is unchanged.
 
 In Preview, selecting a table cell displays row and column handles beside the visible selection.
 Their thin grips use the selected cell's left and top borders as their baseline.

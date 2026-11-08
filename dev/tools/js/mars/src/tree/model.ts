@@ -1,5 +1,6 @@
 // Pure tree helpers over the flat node list stored in IndexedDB.
 import type { ReadingWidth } from '../export/settings.ts';
+import type { SyncBinding } from '../sync/protocol.ts';
 
 export interface TreeNode {
     id: string;
@@ -17,6 +18,7 @@ export interface TreeNode {
     handle?: FileSystemFileHandle;
     stamp?: number;
     dirty?: boolean;
+    manualFileSave?: boolean;
     threads?: number;
     // The text changed from outside (a shared copy or the linked file) since the last review.
     pending?: true;
@@ -26,6 +28,8 @@ export interface TreeNode {
     size?: number;
     // Shared document layout, separate from the reader's browser-wide preference.
     readingWidth?: ReadingWidth;
+    localReadingWidth?: ReadingWidth;
+    connection?: SyncBinding & { phase?: 'waiting' | 'working' | 'current' | 'offline' | 'attention' | 'ended' };
 }
 
 export const newId = () => crypto.randomUUID();

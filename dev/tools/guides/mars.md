@@ -36,6 +36,7 @@ It is promoted like any tool, linked by that host. In-app URLs derive from `loca
   Store proportions in an adjacent `su-table` comment, not IndexedDB side data or a new link format.
   Keep metadata with whole-table block moves/deletion, and preserve cell Markdown and alignment during column moves.
   Cell edits splice only the selected content. Alignment edits change only divider colons.
+  Preview selection formatting uses the selected cell's source range, not the complete table or a header URL.
   Apply cell drafts before view changes, sharing, or export. Discard stale drafts after outside source changes.
   Preview and export rendering use the same layout helper. Add controls only after the live Preview renders.
   Cancel pointer gestures on source changes, navigation, Source mode, and export capture.
@@ -61,7 +62,7 @@ It is promoted like any tool, linked by that host. In-app URLs derive from `loca
 - **Incoming copies** (`share.updateExisting`): a link, a `mars` re-open, or a file from Open or a drop that matches a
   stored document by origin, by file handle (`isSameEntry`), or, after the reader confirms, by content
   (`share/match.ts`). The text is decided against `opened`: only the source changed takes it, only the stored copy
-  changed keeps it, and both changed asks (default **Save as a copy**). **Unlink** drops the source and gives the
+  changed keeps it, and both changed asks (default **Save as a copy**). **Make independent** removes the source and gives the
   document a fresh origin.
 - **Review changes**: an outside change to a document's text keeps the previous text as a baseline (`app.rebase`).
   `doc/changes.ts` diffs it against the preview (`doc/diff.ts`) until **Mark reviewed**; **Show changes since opened**
@@ -82,6 +83,26 @@ It is promoted like any tool, linked by that host. In-app URLs derive from `loca
   opening a link for a known `originId` merges its review threads (by comment `id`, or `author` plus `at`).
   Open existing databases without a requested version. Some browsers retain version 2 from the deferred review-rounds feature.
   Preserve extra stores during rollback. Never downgrade or delete the database to restore the previous UI.
+- **Connections**: `src/sync/` owns responder-only sync and live links. `sync:<id>` side records store replicas, outboxes, keys, and received progress.
+  `db.commitReplica` atomically saves their Markdown projection and progress. Existing stores and database versions remain unchanged.
+  Collection/member-scoped metadata keeps live grants separate from an owner's private connection in the same profile.
+  Read [the sync contracts](../js/mars/src/sync/README.md) before changing grants, key epochs, or the outbox.
+  MARS-specific sync hooks stay out of Markdown Preview. Source-mapping parity tests remove only explicit hook lines.
+  Local preview and deployment use `mars-sync-assets.ts` to assemble the same sandbox script.
+  A live fragment selects memory storage before IndexedDB bootstrap. Explicit library saving uses an atomic promotion.
+  New device-pairing links use short `#sync=` fragments with encrypted bootstraps. Continue accepting legacy long `#sync=` and `#invite=` links.
+  Sync manages personal devices. Live links manages source-side sharing, and Live document manages a recipient's retained copy.
+  The common Copy link dialog handles document/folder snapshot formats and document-only Live sharing. Keep link-security explanations in Privacy.
+  It defaults to Snapshot and Full. Expiring links offer 1/7/14/30 days without calendar dates.
+  Source Live-link management sits in this dialog's footer. The generated URL replaces a clear action instruction without changing the result area's height.
+  The Share menu's Copy link item keeps a short label and exposes its helper text as an accessible description.
+  Recipients forward an active owner's URL through Copy link → Live, with fixed access and expiry. Ended links offer snapshots only.
+  Folder activity renewal includes nested folder metadata as well as document replicas.
+  Download and Export all offer optional encrypted connection recovery. Normal exports remain credential-free.
+  Live-only teardown purges encrypted data and releases capacity after the last link is disabled. Personal Sync remains separate.
+  Protocol-only commits retain document timestamps and existing smart-search indexes.
+  New Live links use encrypted KV bootstraps and a short fragment secret. Existing long links remain supported.
+  Library promotion transfers the selected vector record and reloads the persistent index without invalidating unchanged documents.
 - **Temporary sessions**: `t=1` in the fragment or `?temporary=1` selects the in-memory backend before database bootstrap.
   Denied storage and write-quota failures also select it. Keep the persistent database unchanged, including its last-document metadata.
   `share/temporary.ts` stores only the current document in the standard compressed fragment, with generation guards and recovery-size limits.
@@ -106,6 +127,8 @@ It is promoted like any tool, linked by that host. In-app URLs derive from `loca
 
 ## Verify a change
 
+Privacy and Credits use the app's 960px information-dialog cap. The shared viewport and height caps still apply on phones.
+
 1. In `js/mars/`: `npm test` (codec, tree, merge, diff, match, and search logic) and `npm run typecheck`. `mars.spec.ts`
    never downloads a smart-search model. After changing `search/`, also run the search-quality evaluation
    (`npm --prefix eval run eval -- --check`, steps in the [js/mars README](../js/mars/README.md#evaluation)) and
@@ -129,5 +152,8 @@ Normal Edge saved A4 and Letter PDFs in both orientations, plus exact Markdown t
 These native PDFs contained readable document text without application chrome.
 
 Native menu/split-view coverage and full rich-print combinations (Mermaid and colored models in every browser/settings combination) remain incomplete.
+On 2026-11-08, two fresh native Firefox 159.0.1 profiles passed pairing, bidirectional Sync edits, reload, and private-library retention.
+These checks used the native source editor and did not read existing Firefox profiles or share their credentials.
 The user explicitly skipped the remaining VoiceOver checks on 2026-11-07. Engine assertions do not replace actual spoken-output checks.
-For mobile formatting changes, verify native Android Firefox selection in addition to emulated touch/selection tests.
+For Android-specific selection changes, verify native Android Firefox selection in addition to emulated touch tests.
+For shared table-selection defects, use desktop Firefox, Chromium, and WebKit, with touch toolbar checks.

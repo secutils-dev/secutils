@@ -30,19 +30,36 @@ svg.su-app-icon { overflow: visible; }
 .skill-link:hover { color: var(--text); background: var(--eui-hover); }
 
 /* Buttons (EuiButton / EuiButtonEmpty / EuiButtonIcon). */
-.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 12px; border: none; border-radius: var(--radius); background: var(--eui-lightest); color: var(--text); font-size: 14px; font-weight: 500; line-height: 1; white-space: nowrap; cursor: pointer; transition: background .15s, color .15s; }
-.btn:hover:not(:disabled) { background: var(--eui-light); }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 12px; border: 1px solid var(--eui-border-plain); border-radius: var(--radius); background: transparent; color: var(--text); font-size: 14px; font-weight: 500; line-height: 1; white-space: nowrap; vertical-align: middle; cursor: pointer; transition: background .15s, color .15s; }
+.btn:hover:not(:disabled) { background: var(--eui-hover); }
 .btn:disabled { opacity: .5; cursor: default; }
-.btn-primary { background: var(--brand); color: var(--brand-on); }
+.btn-primary { border-color: transparent; background: var(--brand); color: var(--brand-on); }
 .btn-primary:hover:not(:disabled) { background: var(--brand-hover); }
-.btn-danger { background: var(--eui-danger-bg); color: var(--eui-danger); }
-.btn-empty { background: none; }
+.btn-danger { border-color: transparent; background: var(--eui-danger-bg); color: var(--eui-danger); }
+.btn-empty { border-color: transparent; background: none; color: var(--brand-text); }
 .btn-empty:hover:not(:disabled) { background: var(--eui-hover); }
+.btn-text { color: var(--text); }
+.btn-flush-left { padding-inline: 0; margin-inline-end: 8px; }
+.btn-flush-right { padding-inline: 0; margin-inline-start: 8px; }
+.btn-flush-both { padding-inline: 0; }
+.btn-empty:is(.btn-flush-left, .btn-flush-right, .btn-flush-both):hover:not(:disabled) { background: transparent; text-decoration: underline; text-underline-offset: 3px; }
+.btn[data-loading="true"]:disabled { opacity: 1; cursor: progress; }
 .btn-sm { height: 28px; padding: 0 10px; font-size: 13px; }
 .btn-xs { height: 24px; padding: 0 8px; font-size: 12px; }
 .icon-btn { width: 28px; height: 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border: none; border-radius: var(--radius); background: none; color: var(--text-muted); cursor: pointer; }
 .icon-btn:hover { color: var(--text); background: var(--eui-hover); }
 .icon-btn[hidden] { display: none; }
+.icon-btn-s { width: 32px; height: 32px; }
+
+/* EuiLoadingSpinner's bordered ring; live text and aria-busy belong to the caller. */
+.su-spinner { display: inline-block; flex: none; width: 16px; height: 16px; border: 1.5px solid var(--eui-border-plain); border-top-color: currentColor; border-radius: 50%; }
+@media (prefers-reduced-motion: no-preference) { .su-spinner { animation: su-spinner-turn .6s linear infinite; } }
+@keyframes su-spinner-turn { to { transform: rotate(359deg); } }
+
+/* EuiToolTip / EuiCopy: a top-layer overlay, never space in the document flow. */
+.su-tooltip { position: fixed; inset: auto; margin: 0; width: max-content; max-width: min(256px, calc(100vw - 16px)); padding: 8px 10px; border: none; border-radius: var(--radius-s); background: var(--tooltip-bg); color: var(--tooltip-text); font-size: 12px; line-height: 1.5; text-align: start; white-space: normal; overflow: visible; overflow-wrap: anywhere; box-shadow: var(--shadow-m); pointer-events: none; }
+.su-tooltip::after { content: ''; position: absolute; left: var(--tooltip-arrow-x, 50%); bottom: -4px; width: 8px; height: 8px; background: inherit; transform: translateX(-50%) rotate(45deg); }
+.su-tooltip[data-side="bottom"]::after { top: -4px; bottom: auto; }
 
 /* Button group (EuiButtonGroup, compressed). */
 .view-switch { display: inline-flex; height: 28px; padding: 2px; gap: 2px; border-radius: var(--radius); background: var(--eui-lightest); }

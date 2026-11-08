@@ -37,7 +37,7 @@
   };
   const keyFor = (at) => `h/${String(at).padStart(12, '0')}`;
   const columns = ['at', 'entries', 'totalBytes', 'maxEntries', 'maxTotalBytes', 'oldestCreatedAt',
-    'nextExpiresAt', 'settingsSize', 'requestCount', 'lastRequestedAt', 'updatedAt'];
+    'nextExpiresAt', 'settingsSize', 'requestCount', 'lastRequestedAt', 'updatedAt', 'syncReservedBytes', 'syncCapacityBytes', 'syncCollections'];
   let authenticated = false;
   let stage = 'authentication';
   const failure = (code, failedStage, retryable = true) => ({ code, stage: failedStage, retryable });
@@ -82,11 +82,12 @@
     if (action === 'sample' && await secutils.kv.get(bucketKey)) return json(200, { sampled: false, bucket: bucketKey });
     if (!apiKey) return json(503, { error: 'The responder needs access to the MARS_STATS_API_KEY secret.' });
     const id = '{{MARS_RESPONDER_ID}}';
-    const get = async (path, endpoint) => {
+    const get = async (path, endpoint, options = {}) => {
       let response;
       try {
-        response = await Deno.core.ops.op_proxy_request({ url: '{{SECUTILS_API_ORIGIN}}' + path,
-          headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' }, timeout: 10000 });
+        response = await Deno.core.ops.op_proxy_request({ url: (options.origin || '{{SECUTILS_API_ORIGIN}}') + path,
+          method: options.method || 'GET', body: options.body,
+          headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json', ...(options.method === 'POST' ? { 'Content-Type': 'application/json' } : {}) }, timeout: 10000 });
       } catch (error) {
         // Classify failures without exposing raw URLs, response bodies, credentials, or error text.
         const message = String(error?.message ?? '');
@@ -106,6 +107,24 @@
       get(`/api/webhooks/responders/${id}/_storage`, 'storage-api'),
       get(`/api/webhooks/responders?q=${id}&pageSize=1`, 'summary-api'),
     ]);
+    let sync = null;
+    try {
+      const data = await get('/sync/telemetry', 'sync-api', { origin: 'https://{{MARS_HOST}}', method: 'POST', body: Deno.core.encode('{}') });
+      const fields = ['reservedBytes', 'maximumReservedBytes', 'collectionsWithReservations', 'reservedSlots', 'unitBytes'];
+      if (fields.every((key) => Number.isSafeInteger(data[key]) && data[key] >= 0)) sync = Object.fromEntries(fields.map((key) => [key, data[key]]));
+    } catch {}
+    if (action === 'sample' && sync) {
+      try {
+        const saved = await secutils.kv.get('sync-maintenance-cursor');
+        let after = saved ? decode(saved) : null;
+        for (let page = 0; page < 10; page++) {
+          const result = await get('/sync/maintenance', 'sync-maintenance', { origin: 'https://{{MARS_HOST}}', method: 'POST', body: Deno.core.encode(JSON.stringify({ after })) });
+          after = result.complete ? null : result.cursor;
+          if (result.complete) break;
+        }
+        await secutils.kv.set('sync-maintenance-cursor', encode(JSON.stringify(after)), { ttlSec: retentionSec });
+      } catch { sync.maintenanceUnavailable = true; }
+    }
     stage = 'storage-response';
     const s = {};
     for (const name of ['entries', 'totalBytes', 'maxEntries', 'maxTotalBytes']) {
@@ -121,9 +140,10 @@
     if (!r || !Number.isSafeInteger(r.settingsSize) || !Number.isSafeInteger(r.stats?.requestCount)) throw new Error('schema');
     const current = { at: now, storage: s, responder: { enabled: r.enabled, settingsSize: r.settingsSize,
       requestsToTrack: r.settings.requestsToTrack, requestCount: r.stats.requestCount,
-      lastRequestedAt: r.stats.lastRequestedAt ?? null, updatedAt: r.updatedAt }, intervalSec, retentionSec };
+      lastRequestedAt: r.stats.lastRequestedAt ?? null, updatedAt: r.updatedAt }, intervalSec, retentionSec, sync };
     const point = [now, s.entries, s.totalBytes, s.maxEntries, s.maxTotalBytes, s.oldestCreatedAt, s.nextExpiresAt,
-      r.settingsSize, r.stats.requestCount, r.stats.lastRequestedAt ?? null, r.updatedAt];
+      r.settingsSize, r.stats.requestCount, r.stats.lastRequestedAt ?? null, r.updatedAt,
+      sync?.reservedBytes ?? null, sync?.maximumReservedBytes ?? null, sync?.collectionsWithReservations ?? null];
     // One immutable sample per thirty-minute bucket, with expiry, bounds history and avoids lost updates.
     stage = 'snapshot-write';
     await secutils.kv.set(bucketKey, encode(JSON.stringify(point)), { ifAbsent: true, ttlSec: retentionSec });
@@ -331,6 +351,12 @@
                     <div class="metric su-panel"><dt>Average entry size</dt><dd><span id="averageBytes">—</span><small>All live entries, not just links</small></dd></div>
                     <div class="metric su-panel"><dt>Deployment footprint</dt><dd><span id="deploymentBytes">—</span><small>Serialized settings, body, and script</small></dd></div>
                 </dl>
+                <section class="panel su-panel" id="syncCapacityPanel"><div class="panel-head"><div><h2>Sync capacity</h2><p>Encrypted sync and live-link allocation</p></div><span data-icon="refresh"></span></div>
+                    <div class="capacity-row"><span>Reserved sync capacity</span><strong id="syncReserved">—</strong></div>
+                    <div class="capacity-row"><span>Sync allocation limit</span><strong id="syncCapacity">—</strong></div>
+                    <div class="capacity-row"><span>Collections with reservations</span><strong id="syncCollections">—</strong></div>
+                    <p class="note" id="syncCapacityNote">Sync telemetry is not available yet.</p>
+                </section>
                 <div class="two-col" id="trends">
                     <section class="panel su-panel">
                         <div class="panel-head"><div><h2>Storage over time</h2><p id="storageSummary">History starts with the first sample.</p></div><label><span class="sr-only">Storage chart metric</span><select id="metric" class="select"><option value="totalBytes">Stored bytes</option><option value="averageBytes">Average entry size</option></select></label></div>
@@ -356,7 +382,7 @@
                 </div>
                 <section class="panel su-panel" id="history"><div class="history-heading"><div><h2>Behind the charts</h2><p class="panel-note" id="coverage">No history loaded.</p></div><div class="toolbar"><button type="button" class="btn btn-sm" id="exportCsv" disabled><span data-icon="download"></span>Export CSV</button><button type="button" class="btn btn-sm" id="exportJson" disabled><span data-icon="download"></span>Export JSON</button></div></div>
                     <p class="panel-note" id="extremes"></p><details id="sampleDetails"><summary>View sample data</summary><div class="table-wrap"><table><caption>Latest 100 samples in the selected period. Exports include every loaded sample and quota.</caption><thead><tr><th scope="col">Sample time</th><th scope="col">Bytes</th><th scope="col">Entries</th><th scope="col">Average bytes</th><th scope="col">Byte usage</th><th scope="col">Entry usage</th></tr></thead><tbody id="sampleRows"></tbody></table></div></details>
-                    <p class="note">The API exposes six storage fields: entries, total bytes, both quotas, oldest entry, and next expiration. It does not expose per-prefix counts, individual link sizes, runtime heap usage, or cumulative traffic. No estimates are presented as those measurements.</p>
+                    <p class="note">The storage API exposes entries, total bytes, both quotas, oldest entry, and next expiration. Sync reports reserved capacity separately. Neither source reports individual document sizes, runtime heap usage, or cumulative traffic.</p>
                 </section>
                 <div class="bottom-note"><span id="lastSample">Waiting for a sample.</span><span>Auto-refresh: 60 seconds · Samples: 30 minutes · Retention: 30 days</span></div>
             </div>
@@ -365,7 +391,7 @@
     <footer class="su-footer"><p>Private MARS telemetry. API credentials stay server-side.</p><p class="su-footer-fineprint"><button type="button" class="su-footer-link" id="privacyFooter">Privacy &amp; data</button></p></footer>
     <dialog id="privacyDialog" class="su-dialog" closedby="any" aria-labelledby="privacyDialogTitle"><header class="su-dialog-header"><h2 id="privacyDialogTitle">Privacy &amp; data</h2><button type="button" class="su-dialog-close" id="privacyClose" aria-label="Close"><span data-icon="cross"></span></button></header><div class="su-dialog-body">
         <p><strong>Owner-only statistics.</strong> The dashboard token grants read access to aggregate telemetry only. The token stays in this tab's session storage. The private link carries it in a URL fragment, which the page removes after opening. API requests send it in an Authorization header.</p>
-        <p><strong>Server-side credentials.</strong> Only this responder and its sampling tracker can access the selected MARS_STATS_API_KEY secret. The account API key never appears in the page, exports, or history. Request tracking is disabled for this dashboard.</p>
+        <p><strong>Server-side credentials.</strong> MARS, this dashboard, and its sampling tracker can access the selected MARS_STATS_API_KEY secret. The account API key never appears in the page, exports, or history. Request tracking is disabled for this dashboard.</p>
         <p><strong>Bounded history.</strong> A scheduled API tracker collects one snapshot every thirty minutes, even when this page is closed. Snapshots expire after thirty days. History contains counts, sizes, quotas, and timestamps, not documents, keys, link contents, or visitor identities.</p>
         <p><strong>No analytics.</strong> This private dashboard runs no analytics and no third-party JavaScript. Fonts load from Google Fonts.</p><p class="su-dialog-fineprint"><a href="https://secutils.dev/privacy" target="_blank" rel="noopener noreferrer">Secutils.dev privacy policy</a></p>
     </div></dialog>
@@ -476,6 +502,10 @@
             $('retainedRequests').title = `Last retained request: ${date(current.responder.lastRequestedAt)}`;
             setText('lastUpdated', date(current.responder.updatedAt));
             setText('lastSample', `Latest statistics: ${date(current.at)}`);
+            setText('syncReserved', current.sync ? bytes(current.sync.reservedBytes) : 'Unavailable');
+            setText('syncCapacity', current.sync ? bytes(current.sync.maximumReservedBytes) : 'Unavailable');
+            setText('syncCollections', current.sync ? integer.format(current.sync.collectionsWithReservations) : 'Unavailable');
+            setText('syncCapacityNote', current.sync ? `Allocation uses ${bytes(current.sync.unitBytes)} units and includes pending writes. It is not actual stored bytes or an active-reader count.${current.sync.maintenanceUnavailable ? ' Last scheduled cleanup failed.' : ' Samples perform bounded checkpoint cleanup.'}` : 'Sync telemetry is unavailable. Storage totals and their history remain available.');
         }
         const selectedPoints = () => points.filter((p) => p.at >= Math.floor(Date.now() / 1000) - hours * 3600);
         const maxSampleGap = () => (current?.intervalSec ?? 1800) * 1.5;

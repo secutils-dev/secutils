@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { marked } from 'marked';
-import { alignTableColumn, columnAlignment, editTableCell, changeTable, locateTable, metadataWidths, normalizeWidths, readTable, resizeTable, splitTableCells, tableReviewBlocks } from '../src/doc/table.ts';
+import { alignTableColumn, columnAlignment, editTableCell, changeTable, locateTable, metadataWidths, normalizeWidths, readTable, resizeTable, splitTableCells, tableReviewBlocks, tableCellRange } from '../src/doc/table.ts';
 import { installTableRanges } from '../src/doc/table-renderer.ts';
+import { tableMetadataHtml } from '../src/doc/table-layout.ts';
 import { decodeState, encodeState, openSealed, sealBundle } from '../src/share/codec.ts';
 
 const TABLE = '| A | B |\n| :--- | ---: |\n| one | two |\n| three | four |\n';
@@ -12,6 +13,32 @@ const cellEdit = (source: string, parsed: ReturnType<typeof model>, row: number,
     const edit = editTableCell(parsed, row, column, value);
     return source.slice(0, edit.start) + edit.text + source.slice(edit.end);
 };
+
+test('connected table layout carriers contain validated numbers only, never raw HTML or styles', () => {
+    assert.equal(tableMetadataHtml('<!-- su-table {"v":1,"cols":[2,8]} -->\n'), '<span data-su-table-layout="0.2,0.8" hidden></span>');
+    for (const source of [
+        '<!-- unrelated comment -->',
+        '<!-- su-table {"v":1,"cols":[]} -->',
+        '<!-- su-table {"v":1,"cols":[0,1]} -->',
+        '<!-- su-table {"v":1,"cols":[-1,2]} -->',
+        '<!-- su-table {"v":1,"cols":["width:99%",1]} -->',
+        '<!-- su-table {"v":1,"cols":[1,2],"style":"color:red"} -->',
+        '<!-- su-table {"v":1,"cols":[1,2]} --><script>alert(1)</script>',
+        '<span data-su-table-layout="0.2,0.8" hidden></span>',
+    ]) assert.equal(tableMetadataHtml(source), null);
+});
+
+test('formatting ranges identify the exact cell despite repeated words in links, quotes, and metadata', () => {
+    for (const prefix of ['', '> ', '> > ']) {
+        const table = '| [Header](https://example.test/alpha/words) | Value |\n| --- | --- |\n| **alpha words** | alpha words |\n'.split('\n').filter(Boolean).map((line) => prefix + line + '\r\n').join('');
+        const source = 'Before.\r\n\r\n' + prefix + '<!-- su-table {"v":1,"cols":[0.4,0.6]} -->\r\n' + table;
+        const parsed = model(source, table), first = tableCellRange(parsed, 1, 0)!, second = tableCellRange(parsed, 1, 1)!;
+        assert.equal(source.slice(first.start, first.end), '**alpha words**');
+        assert.equal(source.slice(second.start, second.end), 'alpha words');
+        assert.ok(first.start > source.indexOf('https://'));
+        assert.equal(tableCellRange(parsed, -1, 0), null); assert.equal(tableCellRange(parsed, 1, 9), null);
+    }
+});
 
 test('cell edits splice only the selected content, retaining padding, quotes, CRLF, metadata, and review bytes', () => {
     for (const prefix of ['', '> ', '> > ']) {

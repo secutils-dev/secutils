@@ -3,32 +3,75 @@ import { strToU8, strFromU8, unzipSync, zipSync, type Zippable } from 'fflate';
 import * as app from '../app.ts';
 import * as search from '../search/embed.ts';
 import { descendants, exportPaths } from '../tree/model.ts';
-import { download, fileSafe } from '../ui/ui.ts';
-import { toast } from '../doc/viewer.js';
+import { download, fileSafe, esc, modal } from '../ui/ui.ts';
+import { captureExportSnapshot, flush, toast } from '../doc/viewer.js';
 import { readSource } from './source.ts';
 import { beginInput, type InputOperation } from './input.ts';
 import { receiveFile } from '../share/share.ts';
+import * as sync from '../sync/index.ts';
+import { SyncDialog } from '../sync/dialog.ts';
+import * as db from '../store/db.ts';
 
 const SOURCE_FILES_RE = /\.(md|markdown|mdx|txt|html?)$/i;
 const today = () => new Date().toISOString().slice(0, 10);
 
-export async function downloadDoc(id: string) {
+export async function downloadDoc(id: string, frozen?: { name: string; text: string }) {
     const n = app.node(id);
     if (n?.kind !== 'doc') return;
-    download(`${fileSafe(n.name)}.md`, await app.docText(id), 'text/markdown;charset=utf-8');
-    toast(`Downloaded ${fileSafe(n.name)}.md`);
+    const text = frozen?.text ?? (id === app.state.currentId ? (await captureExportSnapshot()).text : await app.docText(id));
+    const name = fileSafe(frozen?.name ?? n.name);
+    return downloadSelection(`${name}.md`, [{ id, path: `${name}.md`, text: text ?? '', frozen: !!frozen }], [id], true);
+}
+async function downloadSelection(name: string, files: { id: string; path: string; text: string | null; frozen?: boolean }[], ids: string[], markdown = false) {
+    const connected = ids.some(id => { const connection = app.node(id)?.connection; return connection && connection.phase !== 'ended'; });
+    const ui = connected ? new SyncDialog('downloadDialog') : null;
+    let include = false, password = '', problem = '';
+    try {
+        if (ui) while (ui.open) {
+            const answer = ui.screen({ title: 'Download', html: `<p>Download <strong>${esc(name)}</strong>.</p><label class="download-choice"><input id="includeConnections" type="checkbox"${include ? ' checked' : ''}> Include connections and pending changes</label>
+                <div id="downloadPasswordFields"${include ? '' : ' hidden'}><label class="field-label" for="downloadPassword">Password</label><input id="downloadPassword" class="field" type="password" minlength="12" autocomplete="new-password" value="${esc(password)}"><p class="sync-fineprint">Use at least 12 characters. Only the connection backup is password-protected. Document files remain readable. Keep the backup private: it restores this device's access. A backup cannot restore expired or disabled access.</p></div>
+                <p class="sync-fineprint download-documents-only">Without this option, the download contains your documents only.</p>${problem ? `<p role="alert">${esc(problem)}</p>` : ''}`, buttons: [{ label: 'Cancel', value: 'close' }, { label: 'Download', value: 'download', primary: true }] });
+            const checkbox = ui.element.querySelector<HTMLInputElement>('#includeConnections')!, input = ui.element.querySelector<HTMLInputElement>('#downloadPassword')!;
+            checkbox.onchange = () => { ui.element.querySelector<HTMLElement>('#downloadPasswordFields')!.hidden = !checkbox.checked; if (checkbox.checked) input.focus(); };
+            input.onkeydown = event => { if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); ui.resolve('download'); } };
+            if ((await answer).value !== 'download') return false;
+            include = checkbox.checked; password = input.value.trim();
+            if (include && password.length < 12) { problem = 'Use at least 12 characters for the backup password.'; continue; }
+            break;
+        }
+        ui?.busy('Preparing download…');
+        if (!include && markdown) download(name, files[0].text ?? '', 'text/markdown;charset=utf-8');
+        else {
+            const zip: Zippable = {}, backup = include ? await sync.exportRecovery(ids, password) : null;
+            for (const file of files) {
+                zip[file.path] = file.text === null ? new Uint8Array() : strToU8(file.frozen ? file.text : backup?.projections[file.id] ?? file.text);
+            }
+            if (backup) zip[backup.name] = backup.bytes;
+            if (markdown) name = name.replace(/\.md$/, ' with connections.zip');
+            if (ui) await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+            if (!ui || ui.open) download(name, zipSync(zip, { level: 6 }) as BlobPart, 'application/zip');
+        }
+        if (!ui || ui.open) toast(`Downloaded ${name}`);
+        return !ui || ui.open;
+    } catch (error) {
+        const message = (error as Error).message;
+        toast(/^[a-z]+(?:-[a-z]+)+$/.test(message) ? 'Could not prepare the connection backup. Download documents only, or try a smaller selection. Your current copy is retained.' : `Could not prepare this download: ${message}. Your current copy is retained.`);
+        return false;
+    }
+    finally { ui?.close(); }
 }
 
 // Every document under `rootId` (null: everything) keyed by its relative export path.
 async function collect(rootId: string | null) {
+    if (!rootId || descendants(app.state.nodes, rootId).some((node) => node.id === app.state.currentId)) await flush();
     const paths = exportPaths(app.state.nodes, rootId);
     const scope = rootId ? descendants(app.state.nodes, rootId) : app.state.nodes;
-    const files: { path: string; text: string | null }[] = [];
+    const files: { id: string; path: string; text: string | null }[] = [];
     for (const n of scope) {
         const path = paths.get(n.id);
         if (!path) continue;
-        if (n.kind === 'doc') files.push({ path, text: await app.docText(n.id) });
-        else if (!scope.some((c) => c.parentId === n.id)) files.push({ path: `${path}/`, text: null });
+        if (n.kind === 'doc') files.push({ id: n.id, path, text: await app.docText(n.id) });
+        else if (!scope.some((c) => c.parentId === n.id)) files.push({ id: n.id, path: `${path}/`, text: null });
     }
     return files;
 }
@@ -38,11 +81,9 @@ const rootName = (rootId: string | null) => (rootId ? fileSafe(app.node(rootId)?
 export async function exportZip(rootId: string | null) {
     const files = await collect(rootId);
     if (!files.some((f) => f.text !== null)) { toast('Nothing to export yet'); return; }
-    const zip: Zippable = {};
-    for (const f of files) zip[f.path] = f.text === null ? new Uint8Array() : strToU8(f.text);
     const name = `${rootName(rootId)}.zip`;
-    download(name, zipSync(zip, { level: 6 }) as BlobPart, 'application/zip');
-    toast(`Downloaded ${name}`);
+    const nodes = rootId ? [app.node(rootId)!, ...descendants(app.state.nodes, rootId)] : app.state.nodes;
+    await downloadSelection(name, files, nodes.map(node => node.id));
 }
 
 // Chromium only: writes the folder as real files into a directory the user picks.
@@ -129,6 +170,15 @@ async function importIncoming(items: Incoming[], parentId: string | null, skippe
 export async function importFiles(files: File[], parentId: string | null = app.state.folderId, input: InputOperation = beginInput()) {
     input.check();
     try {
+        if (files.length === 1 && /\.zip$/i.test(files[0].name) && !db.isTemporaryStorage()) {
+            const recovery = unzipSync(new Uint8Array(await files[0].arrayBuffer()), { filter: entry => /^MARS connections\/mars-encrypted-recovery\.(json|mars-recovery)$/.test(entry.name) && entry.originalSize <= 512 * 1024 * 1024 });
+            input.check();
+            if (Object.keys(recovery).length) {
+                const answer = await modal({ title: 'Import documents', body: 'This ZIP includes a password-protected connection backup. Import documents only, or restore the documents with their connections and pending changes.', buttons: [{ label: 'Cancel', value: '' }, { label: 'Restore connections', value: 'restore' }, { label: 'Documents only', value: 'plain', primary: true }] });
+                input.check(); if (!answer.value) return;
+                if (answer.value === 'restore') { await sync.restoreRecovery(files[0]); return; }
+            }
+        }
         if (files.length === 1 && SOURCE_FILES_RE.test(files[0].name) && !(files[0] as File & { webkitRelativePath?: string }).webkitRelativePath?.includes('/')) {
             const file = files[0], source = readSource(await file.text(), { fileName: file.name });
             input.check();

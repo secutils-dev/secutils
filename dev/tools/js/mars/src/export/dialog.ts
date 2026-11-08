@@ -1,6 +1,7 @@
 import * as app from '../app.ts';
 import * as viewer from '../doc/viewer.js';
 import * as db from '../store/db.ts';
+import { downloadDoc } from '../io/io.ts';
 import { $, closeMenu, copyRich, download, fileSafe } from '../ui/ui.ts';
 import { htmlDocument } from './html.ts';
 import { prepareFrame, printDocument, type PreparedFrame } from './pdf.ts';
@@ -162,10 +163,14 @@ copy.addEventListener('click', async () => {
 print.addEventListener('click', () => {
     if (!print.disabled) { currentOutput()?.prepared.print(); commitSettings(draft); viewer.toast('Print requested. Choose Save as PDF in the browser dialog.'); }
 });
-markdown.addEventListener('click', () => {
+markdown.addEventListener('click', async () => {
     if (!value || markdown.disabled) return;
-    const name = `${fileSafe(value.name)}.md`;
-    download(name, value.text, 'text/markdown;charset=utf-8'); commitSettings(draft); viewer.toast(`Downloaded ${name}`);
+    const frozen = value, activeSession = session;
+    actionBusy = true; actions(true);
+    try {
+        if (frozen.id && app.node(frozen.id)) { if (await downloadDoc(frozen.id, frozen)) commitSettings(draft); }
+        else { const name = `${fileSafe(frozen.name)}.md`; download(name, frozen.text, 'text/markdown;charset=utf-8'); commitSettings(draft); viewer.toast(`Downloaded ${name}`); }
+    } finally { if (activeSession === session) { actionBusy = false; actions(true); } }
 });
 for (const id of ['exportClose', 'exportCloseFooter']) $(id).addEventListener('click', () => dialog.close());
 dialog.addEventListener('close', () => {

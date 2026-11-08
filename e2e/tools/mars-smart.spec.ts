@@ -79,7 +79,7 @@ async function turnOn(page: Page, model: string) {
   for (;;) {
     const text = (await status.isHidden()) ? '' : ((await status.textContent()) ?? '');
     expect(text).not.toMatch(/unavailable/i);
-    if (!loaded && /(GPU|CPU)\)/.test((await button.getAttribute('title')) ?? '')) loaded = Date.now();
+    if (!loaded && /(GPU|CPU)\)/.test((await button.getAttribute('data-tooltip')) ?? '')) loaded = Date.now();
     if (!text && loaded) break;
     await page.waitForTimeout(100);
   }
@@ -122,7 +122,7 @@ test.describe(`${tool.name} smart search`, () => {
       test.skip(model === 'Best quality' && !gpu, 'needs a hardware GPU (WebGPU)');
       await importLibrary(page);
       const time = await turnOn(page, model);
-      const device = (await page.getByRole('button', { name: 'Smart search' }).getAttribute('title'))?.match(
+      const device = (await page.getByRole('button', { name: 'Smart search' }).getAttribute('data-tooltip'))?.match(
         /(GPU|CPU)\)/,
       )?.[1];
       const isolated = await page.evaluate(() => crossOriginIsolated);
@@ -135,9 +135,9 @@ test.describe(`${tool.name} smart search`, () => {
           console.log(`  ${JSON.stringify(q)} -> ${(await meaningHits(page, q)).join(', ') || '(none)'}`);
         return;
       }
-      expect(await meaningHits(page, 'single sign-on')).toEqual(['login']);
+      expect(await meaningHits(page, 'single sign-on')).toEqual(['Login']);
       // Only the review comment is about credentials.
-      expect(await meaningHits(page, 'rotate passwords')).toEqual(['releases']);
+      expect(await meaningHits(page, 'rotate passwords')).toEqual(['Releases']);
       expect(await meaningHits(page, 'document')).toEqual([]);
 
       // The picker marks the model as downloaded.
@@ -150,7 +150,7 @@ test.describe(`${tool.name} smart search`, () => {
       // Waits out the startup index pass, which would hide the badge on its own.
       await page.reload();
       await page.waitForTimeout(3500);
-      expect(await meaningHits(page, 'single sign-on')).toEqual(['login']);
+      expect(await meaningHits(page, 'single sign-on')).toEqual(['Login']);
       await expect(page.locator('#sbSmartStatus')).toBeHidden();
     });
   }
@@ -183,7 +183,7 @@ test.describe(`${tool.name} smart search`, () => {
     await expect(status).toHaveText('Paused');
     await page.reload();
     await expect(status).toHaveText('Paused');
-    expect(await meaningHits(page, 'when invoices are due')).not.toContain('billing');
+    expect(await meaningHits(page, 'when invoices are due')).not.toContain('Billing');
     await expect(status).toHaveText('Paused');
 
     // The badge opens the smart-search menu.
@@ -192,6 +192,6 @@ test.describe(`${tool.name} smart search`, () => {
     await expect(status).toBeHidden({ timeout: 60_000 });
     await expect(page.locator('#sbSmartLive')).toHaveText('Smart-search index is up to date');
     // The same query again: matches made before the document was indexed must not be reused.
-    await expect.poll(() => meaningHits(page, 'when invoices are due')).toContain('billing');
+    await expect.poll(() => meaningHits(page, 'when invoices are due')).toContain('Billing');
   });
 });

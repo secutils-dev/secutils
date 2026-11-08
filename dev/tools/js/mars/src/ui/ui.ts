@@ -69,11 +69,13 @@ export function openMenu(anchor: Element | { x: number; y: number }, entries: Me
     };
 }
 
-export interface ModalButton { label: string; value: string; primary?: boolean; danger?: boolean }
+export interface ButtonAppearance { primary?: boolean; danger?: boolean; empty?: boolean; text?: boolean; flush?: 'left' | 'right' | 'both' }
+export const buttonClass = (button: ButtonAppearance = {}) => `btn${button.primary ? ' btn-primary' : button.danger ? ' btn-danger' : button.empty ? ' btn-empty' : ''}${button.text ? ' btn-text' : ''}${button.flush ? ` btn-flush-${button.flush}` : ''}`;
+export interface ModalButton { label: string; value: string; primary?: boolean; danger?: boolean; empty?: boolean }
 
 // Resolves with the clicked button's value, or '' when dismissed. A `field` adds a text input
 // whose value is returned for the primary button as `{ value, text }`.
-export function modal(opts: { title: string; body?: string; html?: string; buttons: ModalButton[]; field?: { value: string; label: string }; signal?: AbortSignal }): Promise<{ value: string; text: string }> {
+export function modal(opts: { title: string; body?: string; html?: string; buttons: ModalButton[]; field?: { value: string; label: string; type?: 'text' | 'password' }; signal?: AbortSignal }): Promise<{ value: string; text: string }> {
     if (opts.signal?.aborted) return Promise.resolve({ value: '', text: '' });
     const dlg = $<HTMLDialogElement>('marsModal');
     $('marsModalTitle').textContent = opts.title;
@@ -81,21 +83,22 @@ export function modal(opts: { title: string; body?: string; html?: string; butto
     body.innerHTML = opts.html ?? (opts.body ? `<p>${esc(opts.body)}</p>` : '');
     let input: HTMLInputElement | null = null;
     if (opts.field) {
-        input = Object.assign(document.createElement('input'), { className: 'field', value: opts.field.value, autocomplete: 'off', spellcheck: false });
-        input.setAttribute('aria-label', opts.field.label);
+        const label = document.createElement('label'); label.className = 'field-label'; label.textContent = opts.field.label; label.htmlFor = 'marsModalInput';
+        input = Object.assign(document.createElement('input'), { id: label.htmlFor, className: 'field', type: opts.field.type ?? 'text', value: opts.field.value, autocomplete: 'off', spellcheck: false });
         // Implicit submission would pick the first (Cancel) button.
-        input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); dlg.close(opts.buttons.find((b) => b.primary)?.value ?? ''); } });
-        body.append(input);
+        input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); dlg.close(opts.buttons.find((b) => b.primary)?.value ?? ''); } });
+        body.append(label, input);
     }
-    $('marsModalFoot').replaceChildren(...opts.buttons.map((b) => {
+    $('marsModalFoot').replaceChildren(...opts.buttons.map((b, index) => {
         const el = Object.assign(document.createElement('button'), { type: 'submit', value: b.value, textContent: b.label });
-        el.className = `btn${b.primary ? ' btn-primary' : b.danger ? ' btn-danger' : ' btn-empty'}`;
+        const empty = !b.primary && !b.danger && (b.empty ?? ['', 'close', 'back', 'cancel'].includes(b.value));
+        el.className = buttonClass({ ...b, empty, text: empty, flush: empty && index === opts.buttons.length - 1 ? 'right' : undefined });
         return el;
     }));
     dlg.returnValue = '';
     dlg.showModal();
     if (input) { input.focus(); input.select(); }
-    else dlg.querySelector<HTMLButtonElement>('.btn-primary, .btn-danger')?.focus();
+    else (dlg.querySelector<HTMLButtonElement>('.btn-primary') ?? dlg.querySelector<HTMLButtonElement>('footer button'))?.focus();
     return new Promise((resolve) => {
         const cancel = () => { if (dlg.open) dlg.close(''); };
         opts.signal?.addEventListener('abort', cancel, { once: true });

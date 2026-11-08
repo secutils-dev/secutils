@@ -4,9 +4,18 @@ export interface Comment { id?: string; author?: string; at?: string; body: stri
 export interface Thread { id: string; quote: string; prefix?: string; suffix?: string; resolved?: boolean; comments: Comment[] }
 
 const COMMENTS_RE = /(?:^|\r?\n)<!-- su-comments\r?\n([\s\S]*?)\r?\n-->\s*$/;
+export function matchCommentBlock(text: string) {
+    const markers = /(?:^|\r?\n)<!-- su-comments\r?\n/g;
+    let marker, start = -1;
+    while ((marker = markers.exec(text))) start = marker.index;
+    if (start < 0) return null;
+    const match = text.slice(start).match(COMMENTS_RE);
+    if (match) match.index = start + (match.index ?? 0);
+    return match;
+}
 
 export function splitComments(text: string): { body: string; threads: Thread[] } {
-    const m = text.match(COMMENTS_RE);
+    const m = matchCommentBlock(text);
     if (!m) return { body: text, threads: [] };
     try {
         const parsed = JSON.parse(m[1]);

@@ -46,6 +46,7 @@ export function configureMarsStatsScript(script: string, env = process.env): str
         throw new Error('The stats API domain must be an HTTPS origin');
     }
     return script
+        .replaceAll('{{MARS_HOST}}', env.SECUTILS_MARS_PUBLIC_HOST || 'mars.secutils.dev')
         .replaceAll('{{MARS_RESPONDER_ID}}', responderId)
         .replaceAll('{{MARS_STATS_VIEW_TOKEN_HASH}}', createHash('sha256').update(Buffer.from(token, 'base64url')).digest('hex'))
         .replaceAll('{{SECUTILS_API_ORIGIN}}', origin.origin);

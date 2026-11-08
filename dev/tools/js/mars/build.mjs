@@ -34,6 +34,9 @@ await build({
     logLevel: 'warning',
 });
 
+await build({ entryPoints: ['src/sync/responder.ts'], bundle: true, minify: true,
+    format: 'iife', globalName: 'MARS_SYNC', target: 'es2023', outfile: 'dist/mars-sync-responder.js', legalComments: 'inline' });
+
 // `--preview` writes dist/mars.html: the responder body as deploy.ts would serve it
 // (bundles inlined, `{{TOOLS_HOST}}` / `{{MARS_HOST}}` substituted, not minified), for local testing.
 if (process.argv.includes('--preview')) {

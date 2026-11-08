@@ -2,7 +2,7 @@ import { icon } from '../../../../shared/icons.js';
 import { alignTableColumn, columnAlignment, editTableCell, changeTable, readTable, resizeTable, type TableAction, type TableAlignment, type TableModel } from './table.ts';
 import { setTableWidths } from './table-layout.ts';
 
-interface Host { text(): string; enabled(): boolean; edit(start: number, end: number, text: string, anchor: HTMLElement): void; toast(text: string): void; startCell(): void }
+interface Host { text(): string; enabled(): boolean; edit(start: number, end: number, text: string, anchor: HTMLElement): void; toast(text: string): void; startCell(): void; blocked?(): boolean }
 interface Selection { table: HTMLTableElement; model: TableModel; ordinal: number; row: number; column: number }
 interface Restore { ordinal: number; row: number; column: number; epoch: number; focus?: string; passive?: boolean }
 interface CellEditor { selection: Selection; cell: HTMLTableCellElement; form: HTMLDivElement; input: HTMLTextAreaElement; content: DocumentFragment; original: string }
@@ -172,6 +172,7 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
     function finishCell(focus = false): boolean {
         const ed = cellEditor;
         if (!ed) return false;
+        if (host.blocked?.()) return false;
         cellEditor = null;
         layoutObserver.unobserve(ed.input);
         const value = ed.input.value, s = ed.selection;
@@ -394,6 +395,15 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
         cancel,
         flush: () => finishCell(),
         editing: () => !!cellEditor,
+        draft: () => {
+            if (!cellEditor) return null;
+            const ed = cellEditor, change = editTableCell(ed.selection.model, ed.selection.row, ed.selection.column, ed.input.value);
+            return { start: change.start, end: change.end, text: change.text };
+        },
+        discardDraft: () => {
+            const ed = cellEditor; if (!ed) return;
+            cellEditor = null; layoutObserver.unobserve(ed.input); ed.form.remove(); ed.cell.append(ed.content); ed.cell.classList.remove('su-table-cell-editing');
+        },
         attach(source: string, nextEpoch: number) {
             const moving = gesture && gesture.kind !== 'resize' && epoch === nextEpoch && gesture.selection.model.source === source ? gesture : null;
             const activeFocus = [...buttons].find(([, button]) => button === document.activeElement)?.[0];

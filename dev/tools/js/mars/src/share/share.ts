@@ -12,9 +12,10 @@ import { beginInput, checkInput, type InputOperation } from '../io/input.ts';
 import { readSource, sourceUrl, urlFileName } from '../io/source.ts';
 import { validWidth, type ReadingWidth } from '../export/settings.ts';
 import { temporaryFragment } from './temporary.ts';
+import * as sync from '../sync/index.ts';
 
 export const SHARED_FOLDER = 'Shared with me';
-const SHORT_TTLS = [86400, 604800, 1209600];
+const SHORT_TTLS = [86400, 604800, 1209600, 2592000];
 const LINKS_KEY = 'mars.shortLinks';
 const TTL_KEY = 'mars.shortTtl';
 let shortTtl = 604800;
@@ -81,8 +82,8 @@ async function shortFetch(id: string, { query = '', ...init }: RequestInit & { q
     return send();
 }
 
-async function shortLink(nodeId: string, bundle: Bundle) {
-    const hash = await hashText(JSON.stringify(bundle)), ttl = shortTtl, now = Date.now() / 1000;
+async function shortLink(nodeId: string, bundle: Bundle, ttl = shortTtl) {
+    const hash = await hashText(JSON.stringify(bundle)), now = Date.now() / 1000;
     const links = readLinks();
     const reuse = Object.values(links).find((l) => l.hash === hash && l.ttl === ttl && l.exp - now >= ttl / 2);
     if (reuse) return { url: shortUrl(reuse.secret, bundle), exp: reuse.exp };
@@ -102,14 +103,23 @@ async function shortLink(nodeId: string, bundle: Bundle) {
     writeLinks(links);
     return { url: shortUrl(secret, bundle), exp };
 }
+export async function snapshotLink(id: string, format: 'short' | 'full', ttl = shortTtl) {
+    if (id === app.state.currentId || descendants(app.state.nodes, id).some(node => node.id === app.state.currentId)) await viewer.flush();
+    const bundle = await bundleFor(id); if (!bundle) throw new Error('Nothing to share');
+    if (format === 'full') return { url: await fullLink(bundle), expires: null };
+    if (!SHORT_TTLS.includes(ttl)) throw new Error('Choose an available expiration date.');
+    shortTtl = ttl; try { localStorage.setItem(TTL_KEY, String(ttl)); } catch {}
+    const result = await shortLink(id, bundle, ttl); return { url: result.url, expires: result.exp };
+}
+export const copyLinkDialog = (id: string, mode: 'snapshot' | 'live' = 'snapshot') => import('./dialog.ts').then(module => module.openShareDialog(id, mode));
 
 // Copies a link for a tree node. The clipboard write starts synchronously (Safari).
 export async function copyNodeLink(id: string, kind: 'short' | 'full') {
     let sharedId = id;
     const bundle = (async () => {
-        if (id === app.state.currentId) {
+        if (id === app.state.currentId || descendants(app.state.nodes, id).some((node) => node.id === app.state.currentId)) {
             await viewer.flush();
-            sharedId = app.state.currentId ?? id;
+            if (id === app.state.currentId) sharedId = app.state.currentId ?? id;
         }
         return bundleFor(sharedId);
     })();
@@ -179,10 +189,6 @@ export async function startTemporary(copyCurrent = false) {
 }
 
 function renderMenu(tooLarge = false) {
-    for (const b of $('shortTtl').querySelectorAll<HTMLButtonElement>('button')) b.setAttribute('aria-pressed', String(Number(b.dataset.ttl) === shortTtl));
-    ($('copyShortLinkBtn') as HTMLButtonElement).disabled = tooLarge;
-    $('shortTtl').hidden = tooLarge;
-    $('shortLinkSub').textContent = tooLarge ? 'Too large for a short link; copy a full link or download' : `Expires in ${ttlLabel(shortTtl)} · encrypted copy stored on Secutils.dev`;
     const owned = Object.values(readLinks()).filter((l) => l.nodeId === app.state.currentId);
     $('deleteShortLinkBtn').hidden = !owned.length;
     if (owned.length) $('deleteShortLinkLabel').textContent = `Delete short link${owned.length > 1 ? 's' : ''} · expires ${fmtExpiry(Math.max(...owned.map((l) => l.exp)))}`;
@@ -191,22 +197,8 @@ function renderMenu(tooLarge = false) {
 menu.addEventListener('toggle', async (e) => {
     if ((e as ToggleEvent).newState !== 'open') return;
     renderMenu();
-    try {
-        const { bundle } = await currentBundle();
-        const full = await fullLink(bundle);
-        $('fullLinkSub').textContent = `Never expires · whole document in the URL (${fmtSize(full.length)})`;
-        renderMenu(full.length > SHORT_MAX_CHARS * 1.05);
-    } catch {}
 });
-$('shortTtl').addEventListener('click', (e) => {
-    const ttl = Number((e.target as HTMLElement).closest<HTMLElement>('button[data-ttl]')?.dataset.ttl);
-    if (!SHORT_TTLS.includes(ttl)) return;
-    shortTtl = ttl;
-    try { localStorage.setItem(TTL_KEY, String(ttl)); } catch {}
-    renderMenu();
-});
-$('copyShortLinkBtn').addEventListener('click', () => { hideMenu(); if (app.state.currentId) copyNodeLink(app.state.currentId, 'short'); });
-$('copyFullLinkBtn').addEventListener('click', () => { hideMenu(); if (app.state.currentId) copyNodeLink(app.state.currentId, 'full'); });
+$('copyLinkBtn').addEventListener('click', () => { hideMenu(); if (app.state.currentId) void copyLinkDialog(app.state.currentId); });
 $('copySlackBtn').addEventListener('click', async () => {
     hideMenu();
     const data = currentBundle().then(async ({ id, bundle }) => {
@@ -270,6 +262,7 @@ const findDoc = (originId: string) => app.state.nodes.find((n) => n.kind === 'do
 const sharedRoot = () => app.findOrCreateFolder(SHARED_FOLDER, null);
 
 async function saveText(n: TreeNode, text: string) {
+    if (n.connection) { await sync.snapshot(n, text); return; }
     Object.assign(n, { size: textBytes(text), threads: openThreads(text), updatedAt: Date.now() });
     await db.putNodes([n], { [n.id]: text });
     if (n.id === app.state.currentId) viewer.openDocument({ text, name: n.name, handle: n.handle ?? null, stamp: n.stamp ?? 0, dirty: !!n.dirty, readingWidth: n.readingWidth });
@@ -331,13 +324,21 @@ async function updateExisting(existing: TreeNode, text: string, link?: { handle:
         viewer.setDocumentReadingWidth(readingWidth);
     }
     if (link) Object.assign(existing, { handle: link.handle, stamp: link.stamp, dirty: choice === 'mine' && !merged.sameBody });
-    await app.setOpened(existing, text);
-    checkInput(input);
-    if (choice === 'theirs') await app.rebase(existing, local, merged.theirs);
-    checkInput(input);
     const next = choice === 'theirs' ? merged.theirs : merged.mine;
-    if (next !== local) await saveText(existing, next);
+    if (next !== local) {
+        try { await saveText(existing, next); }
+        catch (error) {
+            if (!existing.connection) throw error;
+            const answer = await modal({ title: 'Keep the incoming copy?', body: 'This connection cannot accept all incoming edits or imported author identities. The connected document stays unchanged. Save an independent local copy to retain the incoming content.',
+                buttons: [{ label: 'Cancel', value: '' }, { label: 'Save as a copy', value: 'copy', primary: true }] });
+            if (answer.value === 'copy') await app.createDoc({ name: app.uniqueName(`${existing.name} (incoming copy)`, null), text, parentId: null, input, readingWidth });
+            return;
+        }
+    }
     else await db.putNodes([existing]);
+    await app.setOpened(existing, text);
+    if (choice === 'theirs') await app.rebase(existing, local, merged.theirs);
+    await db.putNodes([existing]);
     checkInput(input);
     viewer.toast(note);
 }

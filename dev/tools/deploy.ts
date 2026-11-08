@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { minify } from "html-minifier-terser";
 import { inlineSharedAssets } from "./shared-assets.ts";
 import { configureMarsStatsScript, MARS_STATS_HEADERS, MARS_STATS_SECRETS } from "./mars-stats-config.ts";
+import { inlineMarsSync } from "./mars-sync-assets.ts";
 
 const TOOLS_DIR = dirname(fileURLToPath(import.meta.url));
 // Each sub-directory under `dev/tools/js/` is an isolated build of one JS
@@ -690,6 +691,10 @@ async function buildHtmlTarget(
 ): Promise<DeployTarget> {
   const templated = substituteToolsHost(rawHtml, toolsHost);
   let responderScript = inlineOgImage(extractResponderScript(templated, label), filename);
+  if (filename === 'mars.html' && responderScript) {
+    ensureBundleBuilt('mars');
+    responderScript = inlineMarsSync(responderScript, readFileSync(join(BUNDLES_DIR, 'mars/dist/mars-sync-responder.js'), 'utf8'));
+  }
   if (filename === 'mars-stats.html') {
     if (!responderScript) throw new Error('MARS stats requires a responder script');
     responderScript = configureMarsStatsScript(responderScript);
@@ -711,7 +716,7 @@ async function buildHtmlTarget(
     body: withBundles,
     contentType: "text/html",
     script: finalScript,
-    ...(filename === 'mars-stats.html' ? { secrets: MARS_STATS_SECRETS } : {}),
+    ...(['mars-stats.html', 'mars.html'].includes(filename) ? { secrets: MARS_STATS_SECRETS } : {}),
     extraHeaders,
     originalSize: Buffer.byteLength(templated, "utf-8"),
     htmlSize: Buffer.byteLength(minified, "utf-8"),

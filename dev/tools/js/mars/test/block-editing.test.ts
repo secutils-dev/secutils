@@ -14,13 +14,13 @@ const renumber = runInNewContext(`(${section(viewer, 'function renumberListItem'
 const itemRanges = (source: string) => [...render(source, new marked.Renderer()).matchAll(/<li\b[^>]*data-start="(\d+)" data-end="(\d+)"[^>]*>/g)]
     .map((match) => ({ start: Number(match[1]), text: source.slice(Number(match[1]), Number(match[2])) }));
 
-test('shared source mapping and block controls match Markdown Preview apart from MARS table hooks', () => {
+test('shared source mapping and block controls match Markdown Preview apart from MARS table and sync hooks', () => {
     for (const [start, end] of [
         ['const LIST_ITEM_RE', '// Keep the review open'],
         ['function renumberListItem', 'async function copyTarget'],
         ['// ---- Block handle', '// ---- Selection formatting toolbar'],
         ['// ---- Selection formatting toolbar', '// ---- Review comments'],
-    ]) assert.equal(section(viewer, start, end).replace(/^.*\/\/ MARS-only table (?:mapping|hook)\.\n/gm, ''), section(md, start, end));
+    ]) assert.equal(section(viewer, start, end).replace(/^.*\/\/ MARS-only (?:table (?:mapping|hook)|sync hook)\.\n/gm, ''), section(md, start, end));
 });
 
 test('nested multiline list items retain original source ranges and indentation', () => {

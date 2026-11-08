@@ -5,9 +5,10 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import * as vm from 'node:vm';
+import { inlineMarsSync } from '../../mars-sync-assets.ts';
 
 const PORT = Number(process.env.PORT) || 7373;
-const script = readFileSync('../../mars.html', 'utf8').match(/<!--\s*@su:responder-script\s*([\s\S]*?)-->/)[1]
+const legacyScript = readFileSync('../../mars.html', 'utf8').match(/<!--\s*@su:responder-script\s*([\s\S]*?)-->/)[1]
     .replace('{{OG_JPEG_BASE64}}', readFileSync('../../../../components/secutils-docs/static/img/og/og-mars.jpg').toString('base64'));
 const values = new Map(), expiry = new Map();
 const live = (k) => values.has(k) && (expiry.get(k) ?? Infinity) > Date.now() / 1000;
@@ -15,12 +16,17 @@ const kv = {
     get: async (k) => (live(k) ? values.get(k) : null),
     getEntry: async (k) => ({ value: live(k) ? values.get(k) : null, expiresAt: live(k) ? expiry.get(k) ?? null : null }),
     set: async (k, v, o = {}) => {
+        if (Buffer.from(v, 'base64url').length > 1048576) throw new Error('KV value cap');
         if (o.ifAbsent && live(k)) return;
         values.set(k, v);
         expiry.set(k, o.ttlSec ? Math.floor(Date.now() / 1000) + o.ttlSec : undefined);
     },
     delete: async (k) => values.delete(k),
-    list: async ({ prefix = '', limit = 200 } = {}) => ({ entries: [...values.keys()].filter((k) => k.startsWith(prefix) && live(k)).slice(0, limit).map((key) => ({ key })), cursor: null }),
+    list: async ({ prefix = '', after = '', limit = 200, valuesIncluded = true } = {}) => {
+        const entries = [...values.keys()].filter((k) => k.startsWith(prefix) && k > after && live(k)).sort().slice(0, Math.min(limit, 1000))
+            .map((key) => ({ key, ...(valuesIncluded ? { value: values.get(key) } : {}) }));
+        return { entries, cursor: entries.at(-1)?.key ?? null };
+    },
 };
 const secutils = { kv, crypto: { sha256: (b64) => createHash('sha256').update(Buffer.from(b64, 'base64url')).digest('hex') } };
 
@@ -28,12 +34,19 @@ createServer(async (req, res) => {
     const url = new URL(req.url, `http://localhost:${PORT}`);
     if (url.pathname === '/llms.txt') { res.writeHead(200, { 'Content-Type': 'text/markdown; charset=utf-8' }); res.end(readFileSync('../../mars.skill.md', 'utf8').replace(/\{\{\s*MARS_HOST\s*\}\}/g, `localhost:${PORT}`)); return; }
     const chunks = [];
-    for await (const c of req) chunks.push(c);
-    const sandbox = { context: { method: req.method, path: url.pathname, query: Object.fromEntries(url.searchParams), headers: req.headers, body: new Uint8Array(Buffer.concat(chunks)), clientAddress: '127.0.0.1:0' }, secutils, Deno: { core: { decode: (b) => new TextDecoder().decode(b) } }, console };
+    try { for await (const c of req) chunks.push(c); }
+    catch (error) { if (req.aborted || error.code === 'ECONNRESET') return; res.writeHead(400); res.end(); return; }
+    let operations = 0;
+    const bounded = new Proxy(kv, { get(target, property) { const value = target[property]; return (...args) => { if (++operations > 200) throw new Error('KV operation budget'); return value(...args); }; } });
+    const testAddress = process.env.MARS_SYNC_TEST_MODE === '1' ? req.headers['x-mars-test-client'] : undefined;
+    const sandbox = { context: { method: req.method, path: url.pathname, query: Object.fromEntries(url.searchParams), headers: req.headers, body: new Uint8Array(Buffer.concat(chunks)), clientAddress: testAddress || '127.0.0.1:0', params: { secrets: { MARS_STATS_API_KEY: process.env.MARS_STATS_API_KEY || 'local-operator-secret' } } },
+        secutils: { ...secutils, kv: bounded }, Uint8Array, Deno: { core: { encode: (s) => new TextEncoder().encode(s), decode: (b) => new TextDecoder().decode(b) } }, console };
     sandbox.globalThis = sandbox;
     vm.createContext(sandbox);
-    vm.runInContext(`globalThis.__ret = ${script}`, sandbox);
-    const out = await sandbox.__ret;
+    const script = url.pathname.startsWith('/sync/') ? inlineMarsSync(legacyScript, readFileSync('dist/mars-sync-responder.js', 'utf8')) : legacyScript;
+    let out;
+    try { vm.runInContext(`globalThis.__ret = ${script}`, sandbox); out = await sandbox.__ret; }
+    catch (error) { console.error('Preview responder failed:', error.message); res.writeHead(500, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'preview-responder-failed' })); return; }
     if (out) { res.writeHead(out.statusCode, out.headers); res.end(out.body); return; }
     // Same cross-origin isolation headers as dev/tools/deploy.ts.
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cross-Origin-Opener-Policy': 'same-origin', 'Cross-Origin-Embedder-Policy': 'credentialless' });

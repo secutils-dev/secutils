@@ -10,6 +10,16 @@
     "test": "node --test test/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": { "fflate": "0.8.3", "marked": "18.1.2" },
-  "devDependencies": { "esbuild": "0.28.2", "typescript": "6.0.3" }
+  "dependencies": {
+    "@noble/curves": "2.4.0",
+    "dompurify": "3.4.17",
+    "fflate": "0.8.3",
+    "marked": "18.1.2",
+    "yjs": "13.6.33"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "fake-indexeddb": "6.2.7",
+    "typescript": "6.0.3"
+  }
 }

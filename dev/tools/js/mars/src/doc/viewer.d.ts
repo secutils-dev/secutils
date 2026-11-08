@@ -21,6 +21,11 @@ export interface ViewerHost {
     detach(): void;
     readingWidthChanged?(width: ReadingWidth): Promise<void>;
     temporary?(): boolean;
+    connection?(): { permission: 'view' | 'comment' | 'edit' | 'owner'; label: string; participant: string; ownerParticipant?: string; ended?: boolean } | null;
+    fileAutoSave?(): boolean;
+    undoConnection?(redo: boolean): Promise<void>;
+    undoReview?(before: Thread[], after: Thread[], id?: string): Promise<void>;
+    connectionSaved?(): void;
     // Extracted source from Open or a drop; converted HTML never retains a writable handle.
     openFile?(file: { name: string; text: string; handle: FileSystemFileHandle | null; stamp: number }, input?: InputOperation): Promise<void>;
     openUrl?(url: string): Promise<void>;
@@ -28,6 +33,15 @@ export interface ViewerHost {
 
 export function setHost(host: ViewerHost): void;
 export function openDocument(doc?: Partial<ViewerDoc>): void;
+export function refreshConnection(): void;
+export function enableConnectionSafety(): void;
+export function connectionDraft(): { start: number; end: number; text: string } | null;
+export function setConnectionDraftConflict(recover: (() => void) | null): void;
+export function discardConnectionDraft(): void;
+export function hasConnectionDraftConflict(): boolean;
+export function canApplyConnection(): boolean;
+export function canPublishConnection(): boolean;
+export function applyConnectionProjection(doc: Pick<ViewerDoc, 'text' | 'name'> & { readingWidth?: ReadingWidth }): boolean;
 export function renameDocument(name: string): void;
 export function closeDocument(): void;
 export function setViewMode(mode: 'preview' | 'edit'): void;

@@ -3,6 +3,8 @@
 // it through `window.__suEditorAPI`, `__suCreateBlockEditor`, and the change hooks.
 const CODEMIRROR_URL = 'https://esm.sh/codemirror@6.0.1';
 const CM_MARKDOWN_URL = 'https://esm.sh/@codemirror/lang-markdown@6.3.0';
+const CM_STATE_URL = 'https://esm.sh/@codemirror/state@^6.0.0?target=es2022';
+import { sourceChange } from './source-change.ts';
 
 function textareaEditor(mount, text) {
     const ta = document.createElement('textarea');
@@ -18,6 +20,13 @@ function textareaEditor(mount, text) {
         setText: (t) => { ta.value = t; window.__suOnEditorChange?.(t); },
         getText: () => ta.value,
         focus: () => ta.focus(),
+        setReadOnly: (value) => { ta.readOnly = value; },
+        applyRemote: (text) => {
+            const change = sourceChange(ta.value, text); if (!change) return;
+            const map = (at) => at <= change.from ? at : at >= change.to ? at + change.insert.length - (change.to - change.from) : change.from + change.insert.length;
+            const start = map(ta.selectionStart), end = map(ta.selectionEnd), scroll = ta.scrollTop;
+            ta.value = text; ta.setSelectionRange(start, end); ta.scrollTop = scroll;
+        },
     };
 }
 
@@ -25,7 +34,9 @@ export async function loadEditor(mount) {
     try {
         // Unbundled, so both packages share one @codemirror/state instance;
         // separate ?bundle builds each inline their own and fail instanceof checks.
-        const [cm, cmMd] = await Promise.all([import(CODEMIRROR_URL), import(CM_MARKDOWN_URL)]);
+        const [cm, cmMd, state] = await Promise.all([import(CODEMIRROR_URL), import(CM_MARKDOWN_URL), import(CM_STATE_URL)]);
+        const permission = new state.Compartment();
+        let applying = false;
         const view = new cm.EditorView({
             doc: window.__suInitialDoc || '',
             extensions: [
@@ -33,8 +44,9 @@ export async function loadEditor(mount) {
                 cmMd.markdown(),
                 cm.EditorView.lineWrapping,
                 cm.EditorView.contentAttributes.of({ 'aria-label': 'Markdown source' }),
+                permission.of([state.EditorState.readOnly.of(false), cm.EditorView.editable.of(true)]),
                 cm.EditorView.updateListener.of((u) => {
-                    if (u.docChanged) window.__suOnEditorChange?.(u.state.doc.toString());
+                    if (u.docChanged && !applying) window.__suOnEditorChange?.(u.state.doc.toString());
                 }),
             ],
             parent: mount,
@@ -58,6 +70,14 @@ export async function loadEditor(mount) {
             },
             getText: () => view.state.doc.toString(),
             focus: () => view.focus(),
+            setReadOnly: (value) => view.dispatch({ effects: permission.reconfigure([state.EditorState.readOnly.of(value), cm.EditorView.editable.of(!value)]) }),
+            applyRemote: (text) => {
+                const change = sourceChange(view.state.doc.toString(), text); if (!change) return;
+                const scroll = view.scrollDOM.scrollTop;
+                applying = true;
+                try { view.dispatch({ changes: { from: change.from, to: change.to, insert: change.insert }, annotations: state.Transaction.addToHistory.of(false) }); }
+                finally { applying = false; view.scrollDOM.scrollTop = scroll; }
+            },
         };
     } catch (err) {
         console.warn('CodeMirror failed to load, falling back to <textarea>:', err);

@@ -350,7 +350,9 @@ test.describe('export workspace', () => {
     expect(source).not.toMatch(/title:|su-comments/);
   });
 
-  test('exports a non-current document without navigation, with native focus return', async ({ page }) => {
+  test('document menus download without navigation and advanced export stays in the document view', async ({
+    page,
+  }) => {
     await openDoc(page, '# First\n\nFirst body.', 'First.md');
     await page.getByRole('button', { name: 'New document, folder, or import' }).click();
     await page.getByRole('menuitem', { name: 'New document', exact: true }).click();
@@ -365,11 +367,19 @@ test.describe('export workspace', () => {
     await expect(page.locator('#previewArticle')).toContainText('Second body.');
     const route = page.url();
     await page.getByRole('button', { name: 'Actions for First', exact: true }).click();
-    await page.getByRole('menuitem', { name: 'Export…', exact: true }).click();
-    await expect(dlg(page).getByRole('button', { name: 'Download HTML', exact: true })).toBeEnabled();
-    await expect(htmlFrame(page).locator('article')).toContainText('First body.');
+    await expect(page.getByRole('menuitem', { name: 'Export…', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('menuitem', { name: 'Move to top level', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('menuitem', { name: 'Download .md', exact: true })).toHaveCount(0);
+    const pending = page.waitForEvent('download');
+    await page.getByRole('menuitem', { name: 'Download', exact: true }).click();
+    const download = await pending;
+    expect(download.suggestedFilename()).toBe('First.md');
+    expect(await readFile(await download.path(), 'utf8')).toBe('# First\n\nFirst body.');
     expect(page.url()).toBe(route);
     await expect(page.locator('#previewArticle')).toContainText('Second body.');
+    await page.locator('#tree .tree-link').filter({ hasText: 'First' }).click();
+    await openExport(page);
+    await expect(htmlFrame(page).locator('article')).toContainText('First body.');
     expect((await htmlDownload(page)).name).toBe('First.html');
     await page.keyboard.press('Escape');
     await expect(page.locator('#exportBtn')).toBeFocused();

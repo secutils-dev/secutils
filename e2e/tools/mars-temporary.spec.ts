@@ -6,6 +6,10 @@ import { expect, test } from '@playwright/test';
 
 const MARS_BASE_URL = process.env.MARS_BASE_URL ?? 'https://mars.secutils.dev';
 test.use({ baseURL: MARS_BASE_URL });
+test.beforeEach(async ({ context }) => {
+  if (new URL(MARS_BASE_URL).hostname === 'localhost')
+    await context.setExtraHTTPHeaders({ 'x-mars-test-client': crypto.randomUUID() });
+});
 const DOC =
   '# Temporary ✓\n\nOriginal paragraph.\n\n<!-- su-table {"v":1,"cols":[0.3,0.7]} -->\n| Name | State |\n| --- | --- |\n| Alice | Ready |\n';
 const state = (text: string) => {
@@ -207,8 +211,7 @@ test.describe('temporary sessions', () => {
         }),
       );
       await open(page, link(DOC, true));
-      await page.getByRole('button', { name: 'Share', exact: true }).click();
-      await page.getByRole('menuitem', { name: kind === 'full' ? /^Copy full link/ : /^Copy short link/ }).click();
+      await (await import('./_mars_sharing')).copyLink(page, { format: kind });
       await expect.poll(() => page.locator('html').getAttribute('data-temporary-link')).toContain('t=1');
       const address = (await page.locator('html').getAttribute('data-temporary-link'))!;
       expect(await page.evaluate(() => localStorage.getItem('mars.shortLinks'))).toBeNull();

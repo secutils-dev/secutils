@@ -7,6 +7,15 @@ import { PNG } from 'pngjs';
 
 const MARS_BASE_URL = process.env.MARS_BASE_URL ?? 'https://mars.secutils.dev';
 test.use({ baseURL: MARS_BASE_URL });
+test.beforeEach(async ({ context }) => {
+  if (new URL(MARS_BASE_URL).hostname === 'localhost') {
+    const client = crypto.randomUUID();
+    // Keep local rate-limit isolation out of CDN requests and their CORS preflights.
+    await context.route(`${new URL(MARS_BASE_URL).origin}/**`, (route) =>
+      route.continue({ headers: { ...route.request().headers(), 'x-mars-test-client': client } }),
+    );
+  }
+});
 const TABLE = '| Name | Status |\n| :--- | ---: |\n| Alice | Ready |\n| Bob | Waiting |\n| Carol | Done |\n';
 const DOC = `# Tables\n\n${TABLE}\nUnchanged paragraph.\n`;
 const MATRIX = `| P0 family | Initial testcases and delivery | Controls | Evidence and checks |
@@ -104,6 +113,101 @@ async function download(page: Page, format: 'HTML' | 'Markdown') {
 
 test.describe('table editing', () => {
   test.setTimeout(90000);
+
+  test('connected safety preserves column resizing, Undo, reload, and HTML/PDF layout without trusting raw carriers', async ({
+    page,
+    browser,
+  }) => {
+    await page.setViewportSize({ width: 1920, height: 900 });
+    const original = `# Connected widths\n\nA paragraph before the layout marker.\n<!-- su-table {"v":1,"cols":[0.8,0.2]} -->\n${TABLE}\n<span data-su-table-layout="0.01,0.99" hidden></span>\n<table><tr><th>Raw A</th><th>Raw B</th></tr><tr><td>One</td><td>Two</td></tr></table>\n`;
+    await boot(page, original);
+    await page
+      .getByRole('treeitem', { selected: true })
+      .getByRole('button', { name: /^Actions for/ })
+      .click();
+    await page.getByRole('menuitem', { name: 'Sync', exact: true }).click();
+    await page.getByRole('button', { name: 'Turn on sync', exact: true }).click();
+    await expect(page.getByRole('textbox', { name: 'Sync link', exact: true })).toBeVisible({ timeout: 15000 });
+    await page.getByRole('button', { name: 'Close', exact: true }).click();
+    const first = table(page);
+    await expect(first).toHaveClass(/su-sized-table/);
+    await expect.poll(() => ratio(page)).toBeCloseTo(0.8, 2);
+    await expect(table(page, 1)).not.toHaveClass(/su-sized-table/);
+    await expect(table(page, 1).locator('colgroup')).toHaveCount(0);
+    const storedRatio = async () =>
+      JSON.parse((await source(page)).match(/<!-- su-table (.*?) -->/)![1]).cols[0] as number;
+    await resize(page, -120);
+    await expect(page.locator('#saveState')).toHaveText('Up to date', { timeout: 15000 });
+    const resized = await storedRatio();
+    expect(resized).toBeLessThan(0.75);
+    await expect.poll(() => ratio(page)).toBeCloseTo(resized, 2);
+    await page.keyboard.press('ControlOrMeta+z');
+    await expect.poll(() => ratio(page)).toBeCloseTo(0.8, 2);
+    await page.keyboard.press('ControlOrMeta+Shift+z');
+    await expect.poll(() => ratio(page)).toBeCloseTo(resized, 2);
+    await first.getByRole('separator', { name: 'Resize column 1', exact: true }).press('ArrowRight');
+    const keyboard = await storedRatio();
+    expect(keyboard).toBeGreaterThan(resized);
+    await expect.poll(() => ratio(page)).toBeCloseTo(keyboard, 2);
+    // Preview updates before asynchronous IndexedDB persistence. Reload only after this edit is durable.
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            new Promise<string>((resolve, reject) => {
+              const request = indexedDB.open('mars');
+              request.onerror = () => reject(request.error);
+              request.onsuccess = () => {
+                const database = request.result,
+                  transaction = database.transaction('docs');
+                const document = transaction
+                  .objectStore('docs')
+                  .get(new URLSearchParams(location.hash.slice(1)).get('doc')!);
+                document.onsuccess = () => resolve(document.result);
+                document.onerror = () => reject(document.error);
+                transaction.oncomplete = () => database.close();
+              };
+            }),
+        ),
+      )
+      .toContain(`"cols":[${keyboard},`);
+    await expect(page.locator('#saveState')).toHaveText('Up to date', { timeout: 15000 });
+    await page.reload();
+    await expect(first).toHaveClass(/su-sized-table/);
+    await expect.poll(() => ratio(page)).toBeCloseTo(keyboard, 2);
+    const link = await (await import('./_mars_sharing')).copyLink(page, { format: 'full' });
+    const fresh = await browser.newContext({ baseURL: MARS_BASE_URL, viewport: { width: 1920, height: 900 } });
+    try {
+      const recipient = await fresh.newPage();
+      await recipient.goto(link);
+      await expect.poll(() => ratio(recipient)).toBeCloseTo(keyboard, 2);
+    } finally {
+      await fresh.close();
+    }
+    const dialog = await exportDialog(page),
+      html = page.frameLocator('#exportHtmlPreview iframe');
+    await expect
+      .poll(() =>
+        html
+          .locator('table')
+          .first()
+          .evaluate((t) => t.rows[0].cells[0].getBoundingClientRect().width / t.getBoundingClientRect().width),
+      )
+      .toBeCloseTo(keyboard, 2);
+    const output = await download(page, 'HTML');
+    expect(output).not.toContain('data-su-table-layout');
+    await dialog.getByRole('tab', { name: 'PDF', exact: true }).click();
+    await expect(dialog.getByRole('button', { name: 'Print / Save PDF', exact: true })).toBeEnabled({ timeout: 60000 });
+    const pdf = page.frameLocator('#exportPdfPreview iframe');
+    await expect
+      .poll(() =>
+        pdf
+          .locator('table')
+          .first()
+          .evaluate((t) => t.rows[0].cells[0].getBoundingClientRect().width / t.getBoundingClientRect().width),
+      )
+      .toBeCloseTo(keyboard, 2);
+  });
 
   test('double-click edits only one cell, preserves Markdown and widths, and supports undo and redo', async ({
     page,
@@ -456,32 +560,27 @@ test.describe('table editing', () => {
         await page.addInitScript(() => {
           localStorage.setItem('su-md-reading-width', JSON.stringify({ width: 1100, customWidth: 800 }));
           let inClick = false;
-          const add = EventTarget.prototype.addEventListener;
-          // Browsers can run microtasks between listeners. Track the menu handler itself,
-          // not a capture listener that finishes before the handler runs.
-          EventTarget.prototype.addEventListener = function (type, listener, options) {
-            if (
-              type !== 'click' ||
-              !(this instanceof HTMLButtonElement) ||
-              this.getAttribute('role') !== 'menuitem' ||
-              typeof listener !== 'function'
-            ) {
-              return add.call(this, type, listener, options);
-            }
-            return add.call(
-              this,
-              type,
-              function (event) {
-                inClick = true;
-                try {
-                  listener.call(this, event);
-                } finally {
-                  inClick = false;
-                }
-              },
-              options,
-            );
-          };
+          const click = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'onclick')!;
+          // Track the dialog's actual handler, not a separate capture listener:
+          // browsers can run microtasks between listeners.
+          Object.defineProperty(HTMLElement.prototype, 'onclick', {
+            ...click,
+            set(listener) {
+              click.set!.call(
+                this,
+                typeof listener === 'function'
+                  ? function (this: HTMLElement, event: MouseEvent) {
+                      inClick = true;
+                      try {
+                        listener.call(this, event);
+                      } finally {
+                        inClick = false;
+                      }
+                    }
+                  : listener,
+              );
+            },
+          });
           Object.defineProperty(navigator, 'clipboard', {
             value: {
               write: async (items: ClipboardItem[]) => {
@@ -508,10 +607,8 @@ test.describe('table editing', () => {
         const changed = await source(page);
         if (!example) expect(await firstColumnLines(page, index)).toEqual([1, 1, 1, 1]);
         if (example) expect(changed).toContain(`> - \`\`\`md\n${rows}>   \`\`\`\n>\n>   <!-- su-table `);
-        await page.getByRole('button', { name: 'Share', exact: true }).click();
-        await page.getByRole('menuitem', { name: mode === 'full' ? /^Copy full link/ : /^Copy short link/ }).click();
-        await expect.poll(() => page.locator('html').getAttribute('data-table-link')).toContain('#');
-        const link = (await page.locator('html').getAttribute('data-table-link'))!;
+        const link = await (await import('./_mars_sharing')).copyLink(page, { format: mode });
+        await expect(page.locator('html')).toHaveAttribute('data-table-link', link);
         const fresh = await browser.newContext({ baseURL: MARS_BASE_URL, viewport: { width: 1920, height: 900 } });
         try {
           const reopened = await fresh.newPage();
@@ -603,8 +700,7 @@ test.describe('table editing', () => {
         });
       }, width);
       await boot(page, sized());
-      await page.getByRole('button', { name: 'Share', exact: true }).click();
-      await page.getByRole('menuitem', { name: /^Copy full link/ }).click();
+      await (await import('./_mars_sharing')).copyLink(page, { format: 'full' });
       await expect.poll(() => page.locator('html').getAttribute('data-table-link')).toContain('#');
       const link = (await page.locator('html').getAttribute('data-table-link'))!;
       const params = new URLSearchParams(new URL(link).hash.slice(1));
@@ -874,6 +970,68 @@ test.describe('table editing', () => {
         expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
           hasTouch ? 390 : 1280,
         );
+      });
+      test('selected cell formatting stacks, toggles, and survives undo and export in quoted tables', async ({
+        page,
+      }) => {
+        const review =
+          '\n<!-- su-comments\n[{"id":"thread","quote":"alpha","comments":[{"id":"reply","body":"Keep this review"}]}]\n-->\n';
+        const text =
+          '# Tables\n\n| [Header](https://example.test/alpha/words) | Value |\n| --- | --- |\n| alpha words | alpha words |\n\n> <!-- su-table {"v":1,"cols":[0.5,0.5]} -->\n> | Name | Value |\n> | --- | --- |\n> | alpha words | alpha words |\n> | alpha words | alpha words |\n';
+        await boot(page, text + review);
+        await page.getByRole('button', { name: 'Source', exact: true }).click();
+        await expect(page.getByRole('textbox', { name: 'Markdown source', exact: true })).toBeVisible();
+        await page.getByRole('button', { name: 'Preview', exact: true }).click();
+        const selected = table(page, 1).locator('tbody tr').nth(1).locator('td').nth(1);
+        await expect(selected).toHaveText('alpha words');
+        await selected.evaluate((element) => {
+          const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+          const node = walker.nextNode()!;
+          const range = document.createRange();
+          range.setStart(node, 0);
+          range.setEnd(node, 5);
+          getSelection()!.removeAllRanges();
+          getSelection()!.addRange(range);
+          element.dispatchEvent(new Event('contextmenu', { bubbles: true }));
+        });
+        const formatted = (value: string) =>
+          text.replace(/> \| alpha words \| alpha words \|\n$/, `> | alpha words | ${value} words |\n`);
+        const toggle = async (name: string, value: string) => {
+          const button = page
+            .getByRole('toolbar', { name: 'Format selection' })
+            .getByRole('button', { name, exact: true });
+          if (hasTouch) await button.tap();
+          else await button.click();
+          await expect.poll(() => source(page)).toBe(formatted(value));
+          await expect.poll(() => page.evaluate(() => getSelection()!.toString())).toBe('alpha');
+          await expect(selected).toHaveText('alpha words');
+        };
+        await toggle('Bold', '**alpha**');
+        await toggle('Italic', '***alpha***');
+        await toggle('Italic', '**alpha**');
+        await toggle('Bold', 'alpha');
+        await toggle('Highlight', '==alpha==');
+        await toggle('Strikethrough', '~~==alpha==~~');
+        await toggle('Highlight', '~~alpha~~');
+        await toggle('Strikethrough', 'alpha');
+        await toggle('Inline code', '`alpha`');
+        await page.keyboard.press('Escape');
+        await page.locator('#previewScroll').focus();
+        await page.keyboard.press('ControlOrMeta+z');
+        await expect.poll(() => source(page)).toBe(text);
+        await page.keyboard.press('ControlOrMeta+Shift+z');
+        await expect.poll(() => source(page)).toBe(formatted('`alpha`'));
+        await expect(page.locator('#previewArticle thead a')).toHaveAttribute(
+          'href',
+          'https://example.test/alpha/words',
+        );
+        await exportDialog(page);
+        const markdown = await download(page, 'Markdown');
+        expect(markdown.split('<!-- su-comments')[0].trimEnd()).toBe(formatted('`alpha`').trimEnd());
+        expect(markdown).toContain('Keep this review');
+        const html = await download(page, 'HTML');
+        expect(html).toContain('<code>alpha</code> words');
+        expect(html).not.toMatch(/data-table-start|su-table-tools|su-table-cell-editor/);
       });
       test('use selected cell borders as their baseline and retain accessible targets', async ({ page }) => {
         await boot(page, sized());

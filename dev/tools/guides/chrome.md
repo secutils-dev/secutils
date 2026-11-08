@@ -250,6 +250,9 @@ icon or none does.
 
 ### Action feedback (toast, not button text swap)
 
+For MARS, use [the shared button and copy patterns](design-system.md#buttons-loading-and-copy-feedback).
+Inline clipboard actions use an EuiCopy-style tooltip. The legacy toast examples below remain the pattern for unmigrated tools.
+
 Every "thing happened" feedback - Copy, Share, Export errors - uses a
 **bottom-right toast**, not a button-label swap. The button keeps its label
 and icon stable; the toast carries the success / failure message. Three

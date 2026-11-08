@@ -16,6 +16,7 @@
 // `s` return null, and the static HTML body is served.
 // =============================================================================
 (() => {
+  // @su:mars-sync
   // The link-preview image. deploy.ts replaces the placeholder with the base64 of
   // components/secutils-docs/static/img/og/og-mars.jpg (`make tools-og` renders it).
   if (context.path === '/og.jpg') {
@@ -60,7 +61,7 @@
   const id = (context.query || {}).s;
   if (!id) return null;
 
-  const TTLS = [86400, 604800, 1209600]; // 1, 7, and 14 days.
+  const TTLS = [86400, 604800, 1209600, 2592000]; // 1, 7, 14, and 30 days.
   const DEFAULT_TTL = 604800;
   // base64url length of 1 MiB, the KV value cap. Keep in sync with SHORT_MAX_CHARS in the page.
   const MAX_CHARS = 1398100;
@@ -286,6 +287,7 @@
             <div class="toolbar">
                 <div class="toolbar-left">
                     <span id="docStats" class="stats-text">empty</span>
+                    <span id="documentAccess" class="permission-badge" role="status" aria-live="polite" hidden></span>
                     <div id="changesBar" class="changes-bar" role="group" aria-label="Changes since your last review" hidden>
                         <span id="changesLabel" class="changes-label" role="status" aria-live="polite"></span>
                         <button id="changesPrev" type="button" class="icon-btn" title="Previous change" aria-label="Previous change">
@@ -301,7 +303,7 @@
                     </div>
                 </div>
                 <div class="toolbar-actions">
-                    <button id="openBtn" class="btn btn-sm" type="button" title="Open a Markdown, STL, or 3MF file as a new document (Ctrl/Cmd+O)"><span data-icon="folderOpen"></span><span class="btn-label">Open</span></button>
+                    <button id="openBtn" class="btn btn-sm" type="button" aria-label="Open" title="Open a Markdown, STL, or 3MF file as a new document (Ctrl/Cmd+O)"><span data-icon="folderOpen"></span><span class="btn-label">Open</span></button>
                     <div class="view-switch" role="group" aria-label="View mode">
                         <button type="button" class="view-btn active" data-view="preview" aria-pressed="true" title="Rendered preview">Preview</button>
                         <button type="button" class="view-btn" data-view="edit" aria-pressed="false" title="Edit the Markdown source (Ctrl/Cmd+E)">Source</button>
@@ -324,6 +326,7 @@
                                 <option value="full">Full width</option>
                                 <option value="custom">Custom</option>
                             </select>
+                            <button type="button" id="setSharedReadingWidth" class="btn btn-sm opt-action" hidden>Set shared default</button>
                             <label class="width-custom" id="optReadingCustomWrap" for="optReadingCustom" hidden>Custom width (px)
                                 <input type="number" id="optReadingCustom" min="320" max="2400" step="1" value="800" inputmode="numeric">
                             </label>
@@ -348,15 +351,9 @@
                     </div>
                     <button id="exportBtn" type="button" class="btn btn-sm" disabled aria-haspopup="dialog" aria-label="Export document" title="Export document"><span data-icon="download"></span><span class="btn-label">Export…</span></button>
                     <div class="export-anchor">
-                        <button id="shareBtn" type="button" class="btn btn-primary btn-sm" disabled commandfor="shareMenu" command="toggle-popover" aria-haspopup="menu" title="Share this document"><span data-icon="share"></span><span class="btn-label">Share</span></button>
+                        <button id="shareBtn" type="button" class="btn btn-primary btn-sm" disabled commandfor="shareMenu" command="toggle-popover" aria-haspopup="menu" aria-label="Share" title="Share this document"><span data-icon="share"></span><span class="btn-label">Share</span></button>
                         <div id="shareMenu" popover class="export-menu share-menu" role="menu" aria-label="Share menu">
-                            <button type="button" class="export-item" role="menuitem" id="copyShortLinkBtn"><span data-icon="link"></span><span>Copy short link<span class="item-sub" id="shortLinkSub">Encrypted copy stored on Secutils.dev</span></span></button>
-                            <div class="share-ttl" id="shortTtl" role="group" aria-label="Short link lifetime">
-                                <button type="button" data-ttl="86400" aria-pressed="false">1 day</button>
-                                <button type="button" data-ttl="604800" aria-pressed="true">7 days</button>
-                                <button type="button" data-ttl="1209600" aria-pressed="false">14 days</button>
-                            </div>
-                            <button type="button" class="export-item" role="menuitem" id="copyFullLinkBtn"><span data-icon="documents"></span><span>Copy full link<span class="item-sub" id="fullLinkSub">Never expires &middot; whole document in the URL</span></span></button>
+                            <button type="button" class="export-item" role="menuitem" id="copyLinkBtn" aria-label="Copy link" aria-describedby="copyLinkMenuHelp"><span data-icon="link"></span><span>Copy link<span class="item-sub" id="copyLinkMenuHelp">Share a copy or keep others up to date.</span></span></button>
                             <hr class="menu-sep">
                             <button type="button" class="export-item" role="menuitem" id="copySlackBtn"><span data-icon="logoSlack"></span><span>Copy for Slack<span class="item-sub">Titled link with the open-thread count</span></span></button>
                             <button type="button" class="export-item" role="menuitem" id="copyGithubBtn"><span data-icon="logoGithub"></span><span>Copy for GitHub<span class="item-sub">A "View full review in MARS" badge that links here</span></span></button>
@@ -430,15 +427,20 @@
         </main>
     </div>
 
-    <dialog id="privacyDialog" class="su-dialog" closedby="any" aria-labelledby="privacyDialogTitle">
+    <dialog id="privacyDialog" class="su-dialog mars-info-dialog" closedby="any" aria-labelledby="privacyDialogTitle">
         <header class="su-dialog-header">
             <h2 id="privacyDialogTitle">Privacy</h2>
             <button type="button" class="su-dialog-close" id="privacyClose" aria-label="Close"><span data-icon="cross"></span></button>
         </header>
         <div class="su-dialog-body">
             <p><strong>Your documents stay in your browser.</strong> MARS stores documents, folders, and review threads in this browser's IndexedDB storage. They are never sent to the Secutils.dev server in readable form. Clearing site data for this page deletes them, so use <em>Export all</em> for backups.</p>
-            <p><strong>Short links.</strong> When you copy a short link, your browser encrypts the document and Secutils.dev stores only the encrypted copy, for the period you choose (1, 7, or 14 days). The decryption key exists only in the link, so the server can't read the document. Only the browser that created a link can delete it early. Your IP address is kept for one hour to rate-limit link creation.</p>
-            <p><strong>Full links.</strong> A full link carries the whole document in the URL fragment (<code>#&hellip;</code>), which browsers never transmit to the server.</p>
+            <p><strong>Sync and live links are optional.</strong> Selected documents, comments, and shared layout use encrypted remote storage. Unselected content stays local. The service can observe opaque identifiers, membership, traffic sizes, and timing. Opening connected content renews its 30-day inactivity lease. Polling alone does not renew it.</p>
+            <p><strong>Sync links.</strong> A short Sync link expires after 10 minutes and requires matching-code approval. Its setup data is encrypted. The link's setup key stays in the URL fragment and is separate from the access token sent to the service.</p>
+            <p><strong>Live links.</strong> Short and full Live links provide the selected access to one document until expiry or disabling. Their document and setup keys stay in the fragment. Anyone with the link can forward it. Previously saved or downloaded copies cannot be erased remotely.</p>
+            <p><strong>Scoped access.</strong> Live links grant view, comment, or edit access to one document. Temporary live sessions keep replicas and credentials in memory until you explicitly save them to the library. Unsent temporary edits require download before closing. Revocation prevents future access but cannot erase downloaded content.</p>
+            <p><strong>Safe connected previews.</strong> Connected libraries disable executable HTML, application-control attributes, and arbitrary document CSS. Source bytes remain portable. Remote edits never write to linked files automatically.</p>
+            <p><strong>Short snapshot links.</strong> When you copy a short snapshot link, your browser encrypts the document and Secutils.dev stores only the encrypted copy, for the period you choose (1, 7, 14, or 30 days). The decryption key exists only in the link, so the server can't read the document. Only the browser that created a link can delete it early. Your IP address is kept for one hour to rate-limit link creation.</p>
+            <p><strong>Full snapshot links.</strong> A full snapshot link carries the whole document in the URL fragment (<code>#&hellip;</code>), which browsers never transmit to the server.</p>
             <p><strong>Loading from a URL.</strong> When you use <code>?url=</code> or the "Load URL" box, your browser fetches that address directly; the Markdown is never relayed through the Secutils.dev server.</p>
             <p><strong>Smart search (optional, off by default).</strong> When you turn it on, your browser downloads the model you pick from Hugging Face, and the search library from jsDelivr, once; the browser caches them. Documents are indexed and searched inside this browser, and the index stays in its storage. Nothing about your documents or searches is sent anywhere.</p>
             <p><strong>Map basemaps.</strong> GeoJSON and TopoJSON viewers fetch map tiles directly from OpenStreetMap. Tile requests reveal the displayed geographic area. Your Markdown source is not included.</p>
@@ -447,7 +449,7 @@
         </div>
     </dialog>
 
-    <dialog id="creditsDialog" class="su-dialog" closedby="any" aria-labelledby="creditsDialogTitle">
+    <dialog id="creditsDialog" class="su-dialog mars-info-dialog" closedby="any" aria-labelledby="creditsDialogTitle">
         <header class="su-dialog-header">
             <h2 id="creditsDialogTitle">Credits</h2>
             <button type="button" class="su-dialog-close" id="creditsClose" aria-label="Close"><span data-icon="cross"></span></button>
@@ -463,6 +465,9 @@
                 <li><a href="https://github.com/codemirror/dev" target="_blank" rel="noopener noreferrer"><strong>CodeMirror</strong></a> - extensible code editor, powers the source editing mode.</li>
                 <li><a href="https://github.com/101arrowz/fflate" target="_blank" rel="noopener noreferrer"><strong>fflate</strong></a> - builds and reads <code>.zip</code> exports, and extracts 3MF packages in a worker (MIT).</li>
                 <li><a href="https://github.com/lddubeau/saxes" target="_blank" rel="noopener noreferrer"><strong>saxes</strong></a> - parses namespace-aware 3MF XML in a worker (ISC).</li>
+                <li><a href="https://github.com/yjs/yjs" target="_blank" rel="noopener noreferrer"><strong>Yjs</strong></a> - convergent text replication for connected documents (MIT).</li>
+                <li><a href="https://github.com/paulmillr/noble-curves" target="_blank" rel="noopener noreferrer"><strong>Noble Curves</strong></a> - P-256 signature verification in the responder (MIT).</li>
+                <li><a href="https://github.com/cure53/DOMPurify" target="_blank" rel="noopener noreferrer"><strong>DOMPurify</strong></a> - sanitizes connected preview markup (Apache-2.0 or MPL-2.0).</li>
                 <li><a href="https://github.com/huggingface/transformers.js" target="_blank" rel="noopener noreferrer"><strong>Transformers.js</strong></a> - runs the optional smart-search embedding models in the browser (Apache-2.0), with <a href="https://huggingface.co/thenlper/gte-small" target="_blank" rel="noopener noreferrer">GTE Small</a> (MIT) or <a href="https://huggingface.co/google/embeddinggemma-2" target="_blank" rel="noopener noreferrer">EmbeddingGemma 2</a> (Apache-2.0).</li>
                 <li><a href="https://github.com/elastic/eui" target="_blank" rel="noopener noreferrer"><strong>EUI</strong></a> - Elastic UI design language; MARS borrows its icons and color tokens.</li>
                 <li><a href="https://github.com/pagedjs/pagedjs" target="_blank" rel="noopener noreferrer"><strong>Paged.js</strong></a> - paginates PDF previews, loaded only when needed.</li>
@@ -500,9 +505,9 @@
             <div class="export-preview-region"><div id="exportStatusBar" class="export-status"><span id="exportStatus" role="status" aria-live="polite">Preparing preview…</span><button id="exportRetry" type="button" class="btn btn-xs" hidden>Retry</button></div><div id="exportHtmlPreview" class="export-preview"></div><div id="exportPdfPreview" class="export-preview" hidden></div></div>
         </div>
         <footer class="export-foot">
-            <button id="downloadMdBtn" type="button" class="btn btn-empty btn-sm"><span data-icon="download"></span>Download Markdown</button>
-            <button id="exportCloseFooter" type="button" class="btn btn-empty btn-sm">Close</button>
-            <button id="exportCopyHtml" type="button" class="btn btn-sm" disabled><span data-icon="copy"></span>Copy HTML</button>
+            <button id="downloadMdBtn" type="button" class="btn btn-sm"><span data-icon="download"></span>Download Markdown</button>
+            <button id="exportCloseFooter" type="button" class="btn btn-empty btn-text btn-sm">Close</button>
+            <button id="exportCopyHtml" type="button" class="btn btn-empty btn-text btn-sm" disabled><span data-icon="copy"></span>Copy HTML</button>
             <button id="exportDownloadHtml" type="button" class="btn btn-primary btn-sm" disabled><span data-icon="download"></span>Download HTML</button>
             <button id="exportPrint" type="button" class="btn btn-primary btn-sm" disabled hidden>Print / Save PDF</button>
         </footer>

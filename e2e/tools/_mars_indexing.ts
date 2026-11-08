@@ -6,7 +6,7 @@ import { expect, test } from '@playwright/test';
 type WorkerState = { embeds: string[][]; hold: boolean; release(): void };
 type TestWindow = Window & { __marsWorker: WorkerState };
 
-async function mockWorker(context: BrowserContext) {
+export async function mockWorker(context: BrowserContext) {
   await context.addInitScript(() => {
     const waiting: (() => void)[] = [];
     const state: WorkerState = {
@@ -48,6 +48,8 @@ async function mockWorker(context: BrowserContext) {
 }
 
 async function importDoc(page: Page, name: string) {
+  // File inputs exist in the shell before the app registers their listeners.
+  await expect(page.locator('html')).not.toHaveClass(/mars-boot/);
   await page.locator('#importInput').setInputFiles({
     name: `${name}.md`,
     mimeType: 'text/markdown',
@@ -61,7 +63,10 @@ async function turnOn(page: Page) {
   await page.getByRole('button', { name: 'Smart search', exact: true }).click();
   await page.getByRole('radio', { name: /Best speed/ }).check();
   await page.locator('#marsModalFoot').getByRole('button', { name: 'Turn on', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Smart search', exact: true })).toHaveAttribute('title', /CPU\)/);
+  await expect(page.getByRole('button', { name: 'Smart search', exact: true })).toHaveAttribute(
+    'data-tooltip',
+    /CPU\)/,
+  );
   await expect(page.locator('#sbSmartStatus')).toBeHidden();
 }
 

@@ -127,7 +127,7 @@ not a fragment parameter: it travels inside the ciphertext, so the URL reveals n
   in the page, `MAX_CHARS` in the script; keep them in sync), just under the 1 MiB KV
   value limit.
 - **API** (the `@su:responder-script` in `md.html`, bare mount):
-  - `POST ?s=<id>&ttl=<86400|604800|1209600>`, with the blob as the body and an
+  - `POST ?s=<id>&ttl=<86400|604800|1209600|2592000>`, with the blob as the body and an
     `x-su-delete-token` header. It returns `201 {exp}`. Other `ttl` values fall back to
     7 days. Both `s/<id>` and `d/<id>` (SHA-256 hex of the token) are written with
     `ifAbsent`.
@@ -144,6 +144,7 @@ not a fragment parameter: it travels inside the ciphertext, so the URL reveals n
   `mars.html`) and the short-link cases in `e2e/tools/md.spec.ts` and `mars.spec.ts`.
 - **MARS** runs a copy of this responder script in its own KV, with a different plaintext ([mars.md](mars.md)).
   Keep the two scripts identical.
+  The shared responder accepts 30-day snapshots. MARS offers this duration in Copy link. Markdown Preview retains its existing lifetime controls.
   MARS bundle documents can include `readingWidth` (`full`, or an integer from 320 to 2400).
   Full document links carry this value as `w` in the fragment. An explicit `w` also supplies layout for legacy short links.
   Invalid or absent values retain the recipient's preference. The state encoding and responder script remain unchanged.

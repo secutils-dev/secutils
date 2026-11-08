@@ -26,6 +26,7 @@ function harness() {
     let failStorage = false;
     let proxyError: string | null = null;
     let cacheWritesFail = false;
+    let sync: Record<string, unknown> | null = null;
     const kv = {
         get: async (key: string) => {
             const entry = values.get(key);
@@ -59,6 +60,10 @@ function harness() {
                 op_proxy_request: async (request: { url: string; headers: Record<string, string> }) => {
                     calls.push(request);
                     if (proxyError) throw new Error(proxyError);
+                    if (request.url.startsWith('https://mars.secutils.dev/sync/')) {
+                        assert.equal(request.headers.Authorization, `Bearer ${apiKey}`);
+                        return { statusCode: sync ? 200 : 503, body: [...Buffer.from(JSON.stringify(request.url.endsWith('/telemetry') ? sync ?? { error: 'unavailable' } : { complete: true, cursor: null }))] };
+                    }
                     assert.ok(request.url.startsWith('https://secutils.dev/api/webhooks/responders'));
                     assert.equal(request.headers.Authorization, `Bearer ${apiKey}`);
                     return { statusCode: status, body: [...Buffer.from(JSON.stringify(status !== 200 ? { leaked: apiKey } : request.url.endsWith('/_storage') ? rawStorage : summary))] };
@@ -74,7 +79,7 @@ function harness() {
         return null;
     };
     return { values, calls, run, advance: (sec: number) => { now += sec; }, setStatus: (n: number) => { status = n; }, setStorage: (value: unknown) => { rawStorage = value; }, failWrites: () => { failStorage = true; },
-        setProxyError: (message: string) => { proxyError = message; }, failCacheWrites: () => { cacheWritesFail = true; } };
+        setProxyError: (message: string) => { proxyError = message; }, failCacheWrites: () => { cacheWritesFail = true; }, setSync: (value: Record<string, unknown>) => { sync = value; } };
 }
 
 test('static fallback, authenticated reads, and no credential exposure', async () => {
@@ -86,14 +91,27 @@ test('static fallback, authenticated reads, and no credential exposure', async (
     assert.deepEqual(current.data.storage, storage);
     assert.equal(current.data.responder.settingsSize, 268352);
     assert.equal(current.data.intervalSec, 1800);
-    assert.equal(h.calls.length, 2);
+    assert.equal(h.calls.length, 3);
     await h.run('stats');
-    assert.equal(h.calls.length, 2, 'reads within 60 seconds use the cache');
+    assert.equal(h.calls.length, 3, 'reads within 60 seconds use the cache');
     const history = await h.run('history');
     assert.equal(history.data.intervalSec, 1800);
     assert.equal(history.data.points.length, 1);
     assert.equal(history.data.points[0][2], storage.totalBytes);
     assert.ok([...h.values.values()].every((e) => !Buffer.from(e.value, 'base64url').toString().includes(apiKey)));
+});
+test('sync samples report allocation separately and do not expose unknown upstream fields', async () => {
+    const h = harness();
+    h.setSync({ reservedBytes: 65536, maximumReservedBytes: 943718400, collectionsWithReservations: 1, reservedSlots: 1, unitBytes: 65536, privateDocument: 'must not escape' });
+    const sample = await h.run('sample', { method: 'POST', token: apiKey });
+    assert.equal(sample.statusCode, 200);
+    const current = await h.run('stats');
+    assert.equal(current.data.sync.reservedBytes, 65536);
+    assert.equal(current.body.includes('must not escape'), false);
+    const history = await h.run('history');
+    assert.equal(history.data.points[0][11], 65536);
+    assert.equal(history.data.columns[11], 'syncReservedBytes');
+    assert.ok(h.calls.some((call) => call.url.endsWith('/sync/maintenance')));
 });
 
 test('authorization gates reads and collection before any proxy or KV work', async () => {
@@ -104,7 +122,7 @@ test('authorization gates reads and collection before any proxy or KV work', asy
     }
     assert.equal((await h.run('sample', { method: 'POST' })).statusCode, 401);
     assert.equal((await h.run('sample', { method: 'POST', token: apiKey })).statusCode, 200);
-    assert.equal(h.calls.length, 2);
+    assert.equal(h.calls.length, 3);
 });
 
 test('malformed requests return clean errors', async () => {
@@ -125,7 +143,7 @@ test('samples are immutable per bucket and expire after 30 days', async () => {
     const original = h.values.get(key)!;
     assert.equal(original.expiresAt, 1793200000 + 2592000);
     assert.equal((await h.run('sample', { method: 'POST', token: apiKey })).data.sampled, false);
-    assert.equal(h.calls.length, 2);
+    assert.equal(h.calls.length, 3);
     h.advance(61); h.setStorage({ ...storage, entries: 200 });
     await h.run('stats');
     assert.equal(h.values.get(key)!.value, original.value);
@@ -142,7 +160,7 @@ test('old five-minute samples and cached metadata survive the interval change', 
     h.values.set(legacyKey, { value: legacyValue, expiresAt: 1793200000 + 2592000 });
     h.values.set('latest', { value: Buffer.from(JSON.stringify({ intervalSec: 300 })).toString('base64url'), expiresAt: 1793200060 });
     assert.equal((await h.run('stats')).data.intervalSec, 1800);
-    assert.equal(h.calls.length, 2, 'old interval metadata must not be served from the cache');
+    assert.equal(h.calls.length, 3, 'old interval metadata must not be served from the cache');
     assert.equal(h.values.get(legacyKey)!.value, legacyValue);
     assert.equal((await h.run('history')).data.points.length, 2);
 });

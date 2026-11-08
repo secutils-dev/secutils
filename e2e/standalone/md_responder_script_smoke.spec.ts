@@ -131,11 +131,12 @@ for (const file of ['md.html', 'mars.html'])
       expect(missing?.skipRequest).toBe(true);
     });
 
-    test('ttl whitelist accepts 1 and 14 days and falls back to 7 days', async () => {
+    test('ttl whitelist accepts 1, 7, 14, and 30 days and falls back to 7 days', async () => {
       for (const [ttl, expected] of [
         ['86400', 86400],
+        ['604800', 604800],
         ['1209600', 1209600],
-        ['2592000', 604800],
+        ['2592000', 2592000],
         ['31536000', 604800],
         ['x', 604800],
       ] as const) {

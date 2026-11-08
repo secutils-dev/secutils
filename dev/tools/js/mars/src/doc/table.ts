@@ -73,6 +73,10 @@ function contentRange(model: TableModel, line: number, column: number): TableRan
     const start = span.start + (raw.trim() ? raw.length - raw.trimStart().length : Math.floor(raw.length / 2));
     return { start: offset + start, end: offset + (raw.trim() ? span.end - raw.length + raw.trimEnd().length : start) };
 }
+export function tableCellRange(model: TableModel, row: number, column: number): TableRange | null {
+    if (!Number.isInteger(row) || row < 0 || row > model.rows.length || !Number.isInteger(column) || column < 0 || column >= model.header.cells.length) return null;
+    return contentRange(model, row ? row + 1 : 0, column);
+}
 
 export function editTableCell(model: TableModel, row: number, column: number, value: string): TableEdit {
     if (!Number.isInteger(row) || row < 0 || row > model.rows.length || !Number.isInteger(column) || column < 0 || column >= model.header.cells.length) throw new Error('Invalid table cell.');

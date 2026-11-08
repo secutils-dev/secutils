@@ -11,11 +11,23 @@ import { validWidth } from '../export/settings.ts';
 import { beginInput, cancelInput } from '../io/input.ts';
 import { FRONTMATTER_RE, isMarkdownFile, readSource } from '../io/source.ts';
 import { installTableRanges } from './table-renderer.ts';
-import { applyTableLayouts } from './table-layout.ts';
+import { applyTableLayouts, tableMetadataHtml } from './table-layout.ts';
 import { createTableEditor } from './table-editor.ts';
+import { readTable, tableCellRange } from './table.ts';
 import { download } from '../ui/ui.ts';
+import { safeRawHtml, safeRenderedHtml } from '../sync/preview-safety.ts';
 
 let host = {};
+let connectionApplying = false, connectionComposing = false, connectionSafety = false;
+let connectionDraftBlocked = false;
+const connectionEditable = () => !host.connection?.() || ['edit', 'owner'].includes(host.connection().permission);
+const connectionReviewEditable = () => !host.connection?.() || host.connection().permission !== 'view';
+const connectionOwns = (id) => { const c = host.connection?.(); return !c || id?.startsWith(`${c.participant}:`)
+    || (!id?.includes(':') && (c.permission === 'owner' || c.participant === c.ownerParticipant)); };
+const connectionCanDelete = (id) => connectionReviewEditable() && (connectionEditable() || connectionOwns(id));
+const connectionCanDeleteThread = (t) => connectionCanDelete(t.id) && (connectionEditable() || t.comments.every(c => connectionOwns(c.id)));
+document.addEventListener('compositionstart', () => { connectionComposing = true; }, true);
+document.addEventListener('compositionend', () => { connectionComposing = false; }, true);
 export const setHost = (h) => { host = h; };
 // MARS-only review-changes hooks (absent from md.html); see "Review changes hooks" below.
 const renderedHooks = [];
@@ -1035,6 +1047,7 @@ async function render(md, forExport = true, comment = false, signal) {
         let sourceCursor = 0;
         const renderer = new marked.Renderer();
         if (comment) renderer.html = ({ text }) => escHTML(text);
+        else if (connectionSafety || host.connection?.()) renderer.html = ({ text }) => tableMetadataHtml(text) ?? safeRawHtml(text);
         const defaultCode = renderer.code;
         renderer.code = function (token) {
             if (!/^(?:stl|su-mesh)(?:\s|$)/i.test(token.lang ?? '')) return defaultCode.call(this, token);
@@ -1049,9 +1062,10 @@ async function render(md, forExport = true, comment = false, signal) {
             return `<pre><code class="language-${token.lang.split(/\s/)[0].toLowerCase()}" data-model-info="${escHTML(token.lang).replace(/"/g, '&quot;')}"${range}>${escHTML(token.text)}</code></pre>`;
         };
         // marked normalizes CRLF, so source offsets only hold for LF text (see loadDocument).
-        el.innerHTML = forExport || md.length > 10000000 || md.includes('\r')
+        const renderedHtml = forExport || md.length > 10000000 || md.includes('\r')
             ? marked.parse(md, { renderer })
             : renderSourceBlocks(md, renderer);
+        el.innerHTML = connectionSafety || host.connection?.() ? safeRenderedHtml(renderedHtml) : renderedHtml;
         for (const code of el.querySelectorAll('code[data-model-range]')) {
             code.__suSourceRange = JSON.parse(code.dataset.modelRange); delete code.dataset.modelRange;
         }
@@ -1121,11 +1135,12 @@ function parseSource(md) {
     const t = m?.[1].match(FRONTMATTER_TITLE_RE);
     if (t) filename = t[1];
     const body = m ? md.slice(m[0].length) : md;
-    const c = body.match(COMMENTS_RE);
+    const c = matchCommentBlock(body);
     let parsed = null;
     try { parsed = c && JSON.parse(c[1]); } catch {}
     // A malformed block stays in the body, where Source view can repair it.
     setThreads(Array.isArray(parsed) ? parsed.filter(isThread) : []);
+    if (host.connection?.() && Array.isArray(parsed)) setThreads(parsed.filter((t) => isThread(t) || typeof t?.id === 'string' && typeof t.quote === 'string' && !!t.quote && Array.isArray(t.comments) && t.comments.length === 0)); // MARS-only sync hook.
     return Array.isArray(parsed) ? body.slice(0, c.index) : body;
 }
 
@@ -1133,7 +1148,7 @@ function setDocTitle() {
     if (document.activeElement === els.docTitle) return;
     const named = !!markdown.trim() || !!host.currentId?.();
     els.docTitle.textContent = named ? filename : '';
-    els.docTitle.contentEditable = named ? 'plaintext-only' : 'false';
+    els.docTitle.contentEditable = named && connectionEditable() ? 'plaintext-only' : 'false';
 }
 els.docTitle.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); els.docTitle.blur(); }
@@ -1254,6 +1269,7 @@ window.__suEditorReady = () => {
         markdown = window.__suInitialDoc;
         updatePreview();
     }
+    refreshConnection();
 };
 
 // ---- View mode (preview / source) ----
@@ -1323,6 +1339,21 @@ els.previewArticle.addEventListener('click', (e) => {
 // renderSourceBlocks), so untouched bytes stay identical. Headings act on their section.
 const UNDO_LIMIT = 100;
 const BLOCK_TARGET = 'li[data-start], .su-block[data-start]';
+function tableSelectionBlock(el, range) {
+    const cell = el.closest('td, th'), table = cell?.closest('table[data-table-start]');
+    if (!cell || !table || cell.closest('table') !== table || !cell.contains(range.startContainer) || !cell.contains(range.endContainer)) return null;
+    const model = readTable(markdown, { start: Number(table.dataset.tableStart), end: Number(table.dataset.tableEnd) });
+    if (!model || table.rows.length !== model.rows.length + 1 || [...table.rows].some((row) => row.cells.length !== model.header.cells.length
+        || [...row.cells].some((cell) => cell.colSpan !== 1 || cell.rowSpan !== 1))) return null;
+    const span = tableCellRange(model, cell.parentElement.rowIndex, cell.cellIndex);
+    if (!span) return null;
+    cell.dataset.start = String(span.start); cell.dataset.end = String(span.end);
+    return cell;
+}
+function tableSelectionSelector(cell) {
+    const table = cell.closest('table'), row = cell.parentElement.rowIndex;
+    return `table[data-table-start="${table.dataset.tableStart}"] ${row ? `tbody tr:nth-child(${row})` : 'thead tr'} :is(td,th):nth-child(${cell.cellIndex + 1})`;
+}
 const undoStack = [];
 const redoStack = [];
 const expandedDone = new Set();
@@ -1332,10 +1363,11 @@ let blockEditor = null;
 let scrollAnchor = null;
 const tableEditor = createTableEditor(els.previewArticle, els.previewPane, {
     text: () => markdown,
-    enabled: () => viewMode === 'preview' && !blockEditor && !drag && markdown === renderedMarkdown,
+    enabled: () => connectionEditable() && viewMode === 'preview' && !blockEditor && !drag && markdown === renderedMarkdown,
     edit: editSource,
     toast,
     startCell: () => { closeBlockMenu(); hideHandle(); hideFormatBar(); },
+    blocked: () => connectionDraftBlocked,
 });
 
 const isHeadingBlock = (el) => !!el?.matches?.('.su-block[data-depth]');
@@ -1362,6 +1394,7 @@ function previewInSync() {
 }
 
 function editSource(start, end, text, anchor) {
+    if (!connectionEditable()) return;
     undoStack.push(markdown);
     // ponytail: undo keeps full snapshots, so large documents keep fewer (~50M chars total).
     while (undoStack.length > Math.min(UNDO_LIMIT, Math.ceil(5e7 / markdown.length))) undoStack.shift();
@@ -1373,7 +1406,7 @@ function applyEdit(text, anchor) {
     const block = anchor?.closest?.('.su-block') ?? anchor;
     scrollAnchor = block?.isConnected ? { start: Number(block.dataset.start), top: block.getBoundingClientRect().top } : null;
     // Edits run inside user gestures, which lets Chromium show its write-permission prompt.
-    fileHandle?.requestPermission?.({ mode: 'readwrite' }).then((state) => { if (state === 'granted') persistSoon(); }).catch(() => {});
+    if (host.fileAutoSave?.() !== false) fileHandle?.requestPermission?.({ mode: 'readwrite' }).then((state) => { if (state === 'granted') persistSoon(); }).catch(() => {});
     setMarkdown(text);
     // Preview edits (and their undo) re-render at once rather than after the typing debounce.
     clearTimeout(renderTimer);
@@ -1391,6 +1424,8 @@ function restoreScrollAnchor() {
 // ponytail: full-string snapshots (capped, so ~100x document size in memory).
 // Switch to CodeMirror change sets if large documents need deep history.
 function undoEdit(redo = false) {
+    if (!connectionEditable()) return;
+    if (host.connection?.()) { void flush().then(() => host.undoConnection?.(redo)); return; }
     const [from, to] = redo ? [redoStack, undoStack] : [undoStack, redoStack];
     if (!from.length) { toast(redo ? 'Nothing to redo' : 'Nothing to undo'); return; }
     to.push(markdown);
@@ -1408,12 +1443,14 @@ function deleteSource(start, end, anchor) {
 }
 
 function deleteTarget(el) {
+    if (!connectionEditable()) return; // MARS-only sync hook.
     const [start, end] = targetRange(el);
     deleteSource(start, end, el);
     toast(isHeadingBlock(el) ? 'Section deleted' : 'Block deleted', { label: 'Undo', run: () => undoEdit() });
 }
 
 function toggleDone(el) {
+    if (!connectionEditable()) return; // MARS-only sync hook.
     if (el.matches('li[data-check]')) {
         const at = Number(el.dataset.check) + 1;
         editSource(at, at + 1, markdown[at] === ' ' ? 'x' : ' ', el);
@@ -1535,7 +1572,7 @@ function decorateBlocks() {
     for (const box of root.querySelectorAll('li[data-check] input[type="checkbox"]')) {
         const li = box.closest('li');
         if (!li.hasAttribute('data-check')) continue;
-        box.disabled = false;
+        box.disabled = !connectionEditable();
         box.title = 'Toggle done';
         li.classList.toggle('su-checked', box.checked);
     }
@@ -1582,6 +1619,7 @@ function blockViewport() {
 }
 
 function showHandle(target) {
+    if (!connectionEditable()) { hideHandle(); return; } // MARS-only sync hook.
     hoverTarget = target;
     const scroll = els.previewScroll.getBoundingClientRect();
     const rect = target.getBoundingClientRect();
@@ -1603,6 +1641,7 @@ function closeBlockMenu() {
     menuTarget = null;
 }
 function openBlockMenu() {
+    if (!connectionEditable()) return; // MARS-only sync hook.
     if (!hoverTarget || !previewInSync()) return;
     menuTarget = hoverTarget;
     const heading = isHeadingBlock(menuTarget);
@@ -1735,6 +1774,7 @@ function scrollDrag(time) {
     dragScrollFrame = requestAnimationFrame(scrollDrag);
 }
 els.blockGripBtn.addEventListener('pointerdown', (e) => {
+    if (!connectionEditable()) return; // MARS-only sync hook.
     gripDragged = false;
     if (e.button !== 0 || !hoverTarget) return;
     e.preventDefault();
@@ -1774,6 +1814,7 @@ els.blockGripBtn.addEventListener('click', (e) => {
 els.blockAddBtn.addEventListener('click', () => { if (hoverTarget && previewInSync()) openBlockEditor(hoverTarget, true); });
 els.blockMenu.addEventListener('click', (e) => {
     const action = e.target.closest('[data-action]')?.dataset.action;
+    if (action && action !== 'copy' && !connectionEditable()) return; // MARS-only sync hook.
     const target = menuTarget;
     closeBlockMenu();
     if (action && target?.isConnected && previewInSync()) blockActions[action](target);
@@ -1830,7 +1871,8 @@ function selectionTarget() {
     const range = sel.getRangeAt(0);
     const node = range.commonAncestorContainer;
     const el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
-    const block = el?.closest(BLOCK_TARGET);
+    let block = el?.closest(BLOCK_TARGET);
+    if (el?.closest('table')) { block = tableSelectionBlock(el, range); if (!block) return null; } // MARS-only table hook.
     if (!block || !els.previewArticle.contains(block) || el.closest('pre, .katex, .su-diagram, .su-mermaid, .su-anchor')) return null;
     // Alert titles are generated from the directive, not editable source text.
     if ([...block.querySelectorAll('.markdown-alert-title')].some((title) => range.intersectsNode(title))) return null;
@@ -1982,6 +2024,7 @@ function applyFormat(kind) {
         start: renderedText(sel.block, sel.range.startContainer, sel.range.startOffset).length,
         end: renderedText(sel.block, sel.range.endContainer, sel.range.endOffset).length,
     };
+    if (sel.block.matches('td, th')) pendingSelection.selector = tableSelectionSelector(sel.block); // MARS-only table hook.
     // Inside a run that already has the format: remove it from the selection,
     // re-wrapping whatever is left of the run on either side.
     const outer = runs.find((r) => at >= r.start && end <= r.end);
@@ -2012,11 +2055,13 @@ function applyFormat(kind) {
 const COARSE_POINTER = matchMedia('(pointer: coarse)');
 function hideFormatBar() { els.formatBar.hidden = true; }
 function updateFormatBar() {
+    if (!connectionReviewEditable()) { hideFormatBar(); return; } // MARS-only sync hook.
     const sel = selectionTarget();
     const range = sel?.range ?? commentableRange();
     if (!range) { hideFormatBar(); return; }
     // Selections across blocks or inside code can be commented on, not formatted.
     for (const el of els.formatBar.querySelectorAll('[data-format], [data-format-sep]')) el.hidden = !sel;
+    if (!connectionEditable()) for (const el of els.formatBar.querySelectorAll('[data-format], [data-format-sep]')) el.hidden = true; // MARS-only sync hook.
     const viewport = window.visualViewport;
     const pane = els.previewScroll.getBoundingClientRect();
     const left = Math.max(viewport?.offsetLeft ?? 0, pane.left) + 8;
@@ -2074,6 +2119,15 @@ els.formatBar.addEventListener('click', (e) => formatBarAction(e.target));
 // the quoted words keeps the anchor. Threads persist as one trailing HTML comment,
 // which other Markdown renderers hide.
 const COMMENTS_RE = /(?:^|\r?\n)<!-- su-comments\r?\n([\s\S]*?)\r?\n-->\s*$/;
+function matchCommentBlock(text) {
+    const markers = /(?:^|\r?\n)<!-- su-comments\r?\n/g;
+    let marker, start = -1;
+    while ((marker = markers.exec(text))) start = marker.index;
+    if (start < 0) return null;
+    const match = text.slice(start).match(COMMENTS_RE);
+    if (match) match.index = start + (match.index ?? 0);
+    return match;
+}
 const COMMENT_CONTEXT = 32;
 const COMMENT_QUOTE_MAX = 2000;
 const AUTHOR_KEY = 'su-md-author';
@@ -2117,7 +2171,7 @@ function documentText(text = markdown) {
 }
 
 // Stable ids let shared copies merge their threads and comments back (see share/merge.ts).
-const newId = () => crypto.randomUUID().slice(0, 8);
+const newId = () => host.connection?.() ? `${host.connection().participant}:${crypto.randomUUID()}` : crypto.randomUUID().slice(0, 8);
 const authorName = (name) => (typeof name === 'string' && name.trim()) || 'Anonymous';
 const savedAuthor = () => { try { return localStorage.getItem(AUTHOR_KEY) ?? ''; } catch { return ''; } };
 
@@ -2217,6 +2271,7 @@ function commentableRange() {
 }
 
 function startDraft() {
+    if (!connectionReviewEditable()) return;
     const range = commentableRange();
     if (!range || !previewInSync()) return;
     const index = textIndex();
@@ -2255,12 +2310,12 @@ const commentHtml = (c, i) => {
     const date = new Date(c.at);
     const dated = Number.isFinite(date.getTime());
     return `<div class="cm-comment" data-index="${i}">
-<div class="cm-meta">${avatarHtml(c.author)}<span class="cm-name">${escHTML(authorName(c.author))}</span>${threadHooks.isNew?.(c) ? '<span class="cm-tag cm-new">New</span>' : ''}${dated ? `<time class="cm-time" datetime="${date.toISOString()}" title="${escAttr(date.toLocaleString())}">${timeAgo(date)}${c.edited ? ' · edited' : ''}</time>` : ''}<span class="cm-actions"><button type="button" data-act="edit">Edit</button>${i ? '<button type="button" data-act="delete">Delete</button>' : ''}</span></div>
+<div class="cm-meta">${avatarHtml(c.author)}<span class="cm-name">${escHTML(authorName(c.author))}</span>${threadHooks.isNew?.(c) ? '<span class="cm-tag cm-new">New</span>' : ''}${dated ? `<time class="cm-time" datetime="${date.toISOString()}" title="${escAttr(date.toLocaleString())}">${timeAgo(date)}${c.edited ? ' · edited' : ''}</time>` : ''}<span class="cm-actions"><button type="button" data-act="edit" ${connectionReviewEditable() && connectionOwns(c.id) ? '' : 'disabled'}>Edit</button>${i || host.connection?.() ? `<button type="button" data-act="delete" ${connectionCanDelete(c.id) ? '' : 'disabled'}>Delete</button>` : ''}</span></div>
 <div class="cm-body preview-article"></div>
 </div>`;
 };
 
-const composerHtml = (label, text = '') => `<form class="cm-composer">
+const composerHtml = (label, text = '') => !connectionReviewEditable() ? '' : `<form class="cm-composer">
 <textarea rows="1" placeholder="${label === 'Reply' ? 'Reply…' : 'Comment… Markdown works'}" aria-label="${label}">${escHTML(text)}</textarea>
 <div class="cm-foot">${avatarHtml(savedAuthor())}<input class="cm-author" value="${escAttr(savedAuthor())}" placeholder="Your name" aria-label="Your name" maxlength="60" autocomplete="nickname"><button type="button" class="btn btn-sm" data-act="cancel">Cancel</button><button type="submit" class="btn btn-primary btn-sm">${label}</button></div>
 </form>`;
@@ -2296,9 +2351,9 @@ function buildCard(t) {
     card.dataset.id = t.id;
     card.setAttribute('aria-label', `Comments on “${t.quote.slice(0, 80)}”`);
     const actions = isDraft ? '' : `${t.resolved ? '<span class="cm-tag">Resolved</span>' : ''}
-<button type="button" class="icon-btn" data-act="resolve" title="${t.resolved ? 'Reopen' : 'Resolve'}" aria-label="${t.resolved ? 'Reopen thread' : 'Resolve thread'}">${t.resolved ? REOPEN_SVG : RESOLVE_SVG}</button>
+<button type="button" class="icon-btn" data-act="resolve" ${connectionReviewEditable() ? '' : 'disabled'} title="${t.resolved ? 'Reopen' : 'Resolve'}" aria-label="${t.resolved ? 'Reopen thread' : 'Resolve thread'}">${t.resolved ? REOPEN_SVG : RESOLVE_SVG}</button>
 <button type="button" class="icon-btn cm-widen" data-act="widen" title="Widen or narrow comments" aria-label="Widen or narrow comments">${WIDEN_SVG}</button>
-<button type="button" class="icon-btn" data-act="delete-thread" title="Delete thread" aria-label="Delete thread">${TRASH_SVG}</button>`;
+<button type="button" class="icon-btn" data-act="delete-thread" ${connectionCanDeleteThread(t) ? '' : 'disabled'} title="Delete thread" aria-label="Delete thread">${TRASH_SVG}</button>`;
     const authors = [...new Set(t.comments.map((c) => authorName(c.author)))];
     const summary = `<span class="cm-summary" aria-hidden="true">${authors.slice(0, 3).map(avatarHtml).join('')}${t.comments.length > 1 ? `<span class="cm-count">${t.comments.length}</span>` : ''}</span>`;
     const note = isDraft ? '' : threadHooks.note?.(t);
@@ -2395,7 +2450,12 @@ function changeThreads(change, message) {
     const before = structuredClone(threads);
     change();
     commentsChanged();
-    if (message) toast(message, { label: 'Undo', run: () => { threads = before; commentsChanged(); } });
+    const after = structuredClone(threads), documentId = host.currentId?.(), connected = !!host.connection?.();
+    if (message) toast(message, { label: 'Undo', run: () => {
+        if (connected) void (documentId === host.currentId?.() ? flush() : Promise.resolve()).then(() => host.undoReview?.(before, after, documentId)).catch(() => toast('Could not undo this review change. Your current copy is retained. Try again while the connection is active.'));
+        else if (documentId === host.currentId?.()) { threads = before; commentsChanged(); }
+        else toast('Open the original document before undoing this review action.');
+    } });
 }
 
 function setRailWidth(px) {
@@ -2565,6 +2625,7 @@ function createTextareaEditor(parent, text) {
 // Insert mode places new text after `target` (or at the end of the document).
 // List items prefill a sibling marker; other blocks start empty.
 function openBlockEditor(target, insert = false) {
+    if (!connectionEditable()) return;
     tableEditor.cancel();
     commitBlockEditor();
     closeBlockMenu();
@@ -2608,6 +2669,7 @@ function insertionText(pos, value, listItem) {
 }
 
 function commitBlockEditor() {
+    if (connectionDraftBlocked) return;
     tableEditor.flush();
     const ed = blockEditor;
     if (!ed) return;
@@ -3078,6 +3140,7 @@ const MD_PICKER_TYPES = [{ description: 'Markdown', accept: { 'text/markdown': [
 let persistTimer;
 let writeQueue = Promise.resolve();
 let pendingPersistence = Promise.resolve();
+let connectionPersists = 0;
 let eol = '\n';
 // ponytail: a file with mixed line endings is saved with CRLF throughout.
 const withEol = (text) => (eol === '\n' ? text : text.replaceAll('\n', eol));
@@ -3126,6 +3189,8 @@ function updateSaveState() {
     else if (fileConflict) [label, title] = ['Changed on disk', `${fileHandle.name} changed outside this tab. Press Ctrl/Cmd+S to overwrite it.`];
     else if (fileHandle) [label, title] = dirty ? ['Unsaved to disk', `Saved in this browser. Press Ctrl/Cmd+S to save to ${fileHandle.name}`] : ['Saved', `Changes are saved to ${fileHandle.name} and this browser`];
     else if (markdown.trim() || host.currentId?.()) [label, title] = isPersisted() ? ['Saved', 'Saved in this browser'] : ['Saving…', 'Saving in this browser'];
+    const connection = host.connection?.();
+    if (connection) { label = `${isPersisted() ? connection.label : 'Saving locally'}${fileHandle && dirty ? ' · Unsaved to disk' : ''}`; title = connection.label.includes('connection ended') ? 'The connection is no longer available. This copy and any unsent changes are retained on this device.' : 'Connection status describes service acknowledgement, not whether another person read the document.'; }
     els.saveState.textContent = label;
     els.saveState.title = title;
     els.saveState.classList.toggle('su-warn', fileConflict);
@@ -3134,6 +3199,7 @@ function updateSaveState() {
 function persistSoon() {
     updateSaveState();
     clearTimeout(persistTimer);
+    if (host.connection?.() && !connectionApplying) { void persistNow(); return; }
     persistTimer = setTimeout(persistNow, 500);
 }
 
@@ -3143,27 +3209,96 @@ async function persistNow() {
         const doc = currentState();
         markPersisted();
         const task = Promise.resolve().then(() => host.persist?.(doc));
+        if (host.connection?.()) connectionPersists++;
         pendingPersistence = task.catch(() => {});
         try { await task; } catch (err) { persistedText = persistedName = ''; toast(`Could not save in this browser: ${err?.message ?? err}`); }
+        finally {
+            if (connectionPersists) connectionPersists--;
+            if (host.connection?.() && !connectionPersists && isPersisted()) host.connectionSaved?.();
+        }
         updateSaveState();
     }
     await pendingPersistence;
-    if (!host.temporary?.() && fileHandle && !fileConflict && isDirty()
+    if (!host.temporary?.() && host.fileAutoSave?.() !== false && fileHandle && !fileConflict && isDirty()
         && (await fileHandle.queryPermission?.({ mode: 'readwrite' })) === 'granted') await writeToHandle();
 }
 
 // ---- Host API ----
 export { toast };
-export const flush = async () => { commitBlockEditor(); await persistNow(); await writeQueue; };
+export const flush = async () => {
+    commitBlockEditor(); await persistNow(); await writeQueue;
+    if (host.connection?.() && !isPersisted() && !connectionDraftBlocked) throw new Error('The connected edit is not saved locally. Download it or retry before leaving this document.');
+};
 export const currentName = () => filename;
-export const currentText = () => documentText();
+export const currentText = () => connectionDraftBlocked ? connectionDraft()?.text ?? documentText() : documentText();
 export const currentThreads = () => threads;
+export const canPublishConnection = () => isPersisted() && !connectionComposing && !connectionPersists;
+export const canApplyConnection = () => isPersisted() && !connectionComposing && !connectionPersists && !blockEditor && !tableEditor.editing()
+    && !document.activeElement?.closest?.('.cm-composer');
+export function refreshConnection() {
+    window.__suEditorAPI?.setReadOnly?.(!connectionEditable()); updateSaveState();
+    if (!connectionEditable()) { closeBlockMenu(); hideHandle(); endDrag(); }
+    for (const box of els.previewArticle.querySelectorAll('li[data-check] input[type="checkbox"]')) box.disabled = !connectionEditable();
+    $('setSharedReadingWidth').hidden = !host.connection?.() || host.connection().ended || !connectionEditable();
+}
+export function enableConnectionSafety() {
+    if (connectionSafety) return;
+    connectionSafety = true;
+    for (const fig of els.previewArticle.querySelectorAll('.su-diagram, .su-mermaid')) fig.__suDispose?.();
+    els.previewArticle.replaceChildren();
+    scheduleRender();
+}
+export const hasConnectionDraftConflict = () => connectionDraftBlocked;
+export function connectionDraft() {
+    let start, end, text;
+    const cell = tableEditor.draft();
+    if (cell) ({ start, end, text } = cell);
+    else if (blockEditor) {
+        const ed = blockEditor, value = ed.editor.getText();
+        start = ed.start; end = ed.end; text = ed.insert ? insertionText(start, value, ed.listItem) : value + ed.tail;
+    } else return null;
+    const body = `${markdown.slice(0, start)}${text}${markdown.slice(end)}`;
+    return { start: withEol(frontmatter + markdown.slice(0, start)).length, end: withEol(frontmatter + markdown.slice(0, end)).length, text: documentText(body) };
+}
+export function setConnectionDraftConflict(recover) {
+    connectionDraftBlocked = !!recover;
+    let banner = $('connectionDraftRecovery');
+    if (!recover) { banner?.remove(); return; }
+    if (!banner) {
+        banner = document.createElement('div'); banner.id = 'connectionDraftRecovery'; banner.className = 'su-panel'; banner.setAttribute('role', 'alert');
+        const message = document.createElement('p'); message.textContent = 'The edited cell or block changed remotely. Your draft stays here. Save it as a copy before applying the remote update.';
+        const copy = document.createElement('button'); copy.type = 'button'; copy.className = 'btn btn-sm'; copy.textContent = 'Save draft as copy';
+        banner.append(message, copy); els.previewPane.prepend(banner);
+    }
+    banner.querySelector('button').onclick = recover;
+}
+export function discardConnectionDraft() {
+    tableEditor.discardDraft();
+    if (blockEditor) { const ed = blockEditor; blockEditor = null; ed.editor.destroy(); ed.wrap.remove(); if (ed.target) ed.target.hidden = false; }
+    setConnectionDraftConflict(null);
+}
+export function applyConnectionProjection({ text, name, readingWidth }) {
+    if (!canApplyConnection()) return false;
+    const top = els.previewScroll.scrollTop;
+    connectionApplying = true;
+    try {
+        tableEditor.cancel(); endDrag();
+        const body = parseSource(text), normalized = adoptEol(body);
+        filename = name; markdown = normalized;
+        window.__suEditorAPI?.applyRemote?.(normalized);
+        originalSource = { text, body: markdown, frontmatter, comments: commentsState };
+        if (readingWidth !== undefined) setDocumentReadingWidth(readingWidth);
+        markPersisted(); updateSaveState(); setDocTitle(); scheduleRender();
+        els.previewScroll.scrollTop = top;
+    } finally { connectionApplying = false; }
+    return true;
+}
 
 // Narrow, MARS-only export API. Commit the active block before flushing/capturing.
 export async function captureExportSnapshot() {
     tableEditor.cancel();
     commitBlockEditor();
-    const captured = snapshot(host.currentId?.() ?? null, filename, documentText(), readReadingWidth());
+    const captured = snapshot(host.currentId?.() ?? null, filename, currentText(), readReadingWidth());
     await persistNow();
     // A linked-file reload during the write cannot change the captured input.
     return captured.id || captured.text !== documentText() || captured.name !== filename
@@ -3178,14 +3313,21 @@ export function openDocument({ text = '', name = 'Untitled', handle = null, stam
     cancelFileImport();
     clearTimeout(persistTimer);
     if (els.findBar && !els.findBar.hidden) closeFind();
-    const body = parseSource(text);
-    filename = name;
-    loadDocument(body, handle, stamp, true);
-    originalSource = { text, body: markdown, frontmatter, comments: commentsState };
-    if (dirty) savedComments = null;
-    markPersisted();
-    updateSaveState();
-    setDocTitle();
+    const applying = connectionApplying;
+    connectionApplying = true;
+    try {
+        // Hydration is not an edit. An already-ready source editor can notify
+        // synchronously, before the exact source and persisted baseline are set.
+        const body = parseSource(text);
+        filename = name;
+        loadDocument(body, handle, stamp, true);
+        originalSource = { text, body: markdown, frontmatter, comments: commentsState };
+        if (dirty) savedComments = null;
+        markPersisted();
+        updateSaveState();
+        setDocTitle();
+        refreshConnection();
+    } finally { connectionApplying = applying; }
 }
 
 // ---- Review changes hooks (MARS only) ----

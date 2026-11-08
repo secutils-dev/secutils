@@ -10,7 +10,7 @@ import { onUpdate, smartMatches, textMatches } from '../search/search.ts';
 import * as io from '../io/io.ts';
 import * as share from '../share/share.ts';
 import * as db from '../store/db.ts';
-import { openExport } from '../export/dialog.ts';
+import * as sync from '../sync/index.ts';
 
 const tree = $('tree');
 const filterInput = $<HTMLInputElement>('sbFilter');
@@ -103,6 +103,7 @@ function searchResults(q: string) {
     return { rows: [...named, ...texted, ...meaning], note };
 }
 
+const connectionHtml = (n: TreeNode) => n.connection ? `<button type="button" class="tree-connection" title="${esc(sync.label(n))}" data-connection="${n.id}" data-phase="${n.connection.phase ?? 'waiting'}" aria-label="${esc(n.connection.phase === 'ended' ? 'Local document' : n.connection.kind === 'live' ? 'Live document' : n.connection.liveShared ? 'Shared document' : 'Sync')}: ${esc(sync.label(n))}">${icon(n.connection.phase === 'ended' ? 'unlink' : n.connection.kind === 'live' || n.connection.liveShared ? 'link' : 'refresh')}</button>` : '';
 const labelHtml = (n: TreeNode) => (renaming === n.id
     ? `<input class="tree-rename" value="${esc(n.name)}" aria-label="Name" spellcheck="false">`
     : `<span class="tree-label" title="${esc(n.name)}${n.handle ? ` · linked to ${esc(n.handle.name)}` : ''}">${esc(n.name)}</span>`);
@@ -120,7 +121,7 @@ function rowHtml({ n, depth }: { n: TreeNode; depth: number }) {
     const glyph = `<span class="tree-icon">${icon(folder ? (n.open ? 'folderOpen' : 'folder') : 'document')}</span>`;
     const content = `${folder ? chevron : '<span class="tree-chevron leaf"></span>'}${glyph}${labelHtml(n)}${folder ? '' : badgesHtml(n)}`;
     return `<div class="tree-row" role="treeitem" data-id="${n.id}" data-kind="${n.kind}" style="--depth:${depth}" tabindex="-1" draggable="${renaming === n.id ? 'false' : 'true'}"
-${folder ? `aria-expanded="${!!n.open}"` : ''} aria-selected="${selected}" aria-level="${depth + 1}">${!folder && renaming !== n.id ? docLink(n, content) : content}${moreHtml(n)}</div>`;
+${folder ? `aria-expanded="${!!n.open}"` : ''} aria-selected="${selected}" aria-level="${depth + 1}">${!folder && renaming !== n.id ? docLink(n, content) : content}${connectionHtml(n)}${moreHtml(n)}</div>`;
 }
 
 function resultHtml(r: Result) {
@@ -129,7 +130,7 @@ function resultHtml(r: Result) {
         ? `<span class="tree-icon smart" title="Matches by meaning" aria-label="Matches by meaning">${icon('sparkles')}</span>`
         : `<span class="tree-icon">${icon('document')}</span>`;
     const content = `${glyph}${labelHtml(r.n)}${path ? `<span class="tree-path" title="${esc(path)}">${esc(path)}</span>` : ''}${badgesHtml(r.n)}${r.snippet ? `<span class="tree-snippet">${esc(r.snippet)}</span>` : ''}`;
-    return `<div class="tree-row result${r.snippet ? ' has-snippet' : ''}" role="treeitem" data-id="${r.n.id}" data-kind="doc"${r.start === undefined ? '' : ` data-start="${r.start}"`} tabindex="-1" draggable="false" aria-selected="${r.n.id === app.state.currentId}" aria-level="1">${renaming !== r.n.id ? docLink(r.n, content) : content}${moreHtml(r.n)}</div>`;
+    return `<div class="tree-row result${r.snippet ? ' has-snippet' : ''}" role="treeitem" data-id="${r.n.id}" data-kind="doc"${r.start === undefined ? '' : ` data-start="${r.start}"`} tabindex="-1" draggable="false" aria-selected="${r.n.id === app.state.currentId}" aria-level="1">${renaming !== r.n.id ? docLink(r.n, content) : content}${connectionHtml(r.n)}${moreHtml(r.n)}</div>`;
 }
 
 // A render while a rename is in progress replaces the input; the typed name and the
@@ -229,8 +230,15 @@ async function finishRename(commit: boolean) {
 }
 
 async function deleteNode(n: TreeNode) {
+    const connected = !!n.connection;
+    if (n.connection) {
+        const answer = await modal({ title: `Delete "${n.name}"?`, body: 'Deleting a local copy affects only this client. Deleting from the collection ends connected access. Local-only descendants stay local when deleting remote folders.',
+            buttons: [{ label: 'Cancel', value: '' }, { label: 'Delete local copy', value: 'local', danger: true }, ...(n.connection.permission === 'owner' ? [{ label: 'Delete from collection', value: 'remote', danger: true }] : [])] });
+        if (!answer.value) return;
+        await sync.remove(n.id, answer.value === 'remote');
+    }
     const kids = app.state.nodes.filter((c) => c.parentId === n.id).length;
-    if (n.kind === 'folder' && kids && !(await confirmDanger(`Delete "${n.name}"?`, 'The folder and everything in it are removed from this browser. Export it first if you need a copy.', 'Delete folder'))) return;
+    if (!connected && n.kind === 'folder' && kids && !(await confirmDanger(`Delete "${n.name}"?`, 'The folder and everything in it are removed from this browser. Export it first if you need a copy.', 'Delete folder'))) return;
     const undo = await app.remove(n.id);
     if (undo) toast(`Deleted ${n.name}`, { label: 'Undo', run: undo });
 }
@@ -239,42 +247,41 @@ async function deleteNode(n: TreeNode) {
 const linked = (n: TreeNode) => !!(n.handle || n.opened || /^(file|url):/.test(n.originId ?? ''));
 
 async function unlinkDoc(n: TreeNode) {
-    const source = n.handle?.name ?? n.originId?.replace(/^(file|url):/, '') ?? 'its source';
+    if (n.connection) { await sync.unlink(n.id); return; }
     const { value } = await modal({
-        title: `Unlink "${n.name}"?`,
-        html: `<p>MARS forgets that this document came from <strong>${esc(source)}</strong>. The text and comments stay.</p><p>Opening that source again adds a new document instead of updating this one, and "changes since opened" and pending change marks go away.</p>`,
-        buttons: [{ label: 'Cancel', value: '' }, { label: 'Unlink', value: 'ok', primary: true }],
+        title: 'Make this document independent?',
+        body: 'This document and its comments stay here. Opening the original file or link again will not automatically update this document.',
+        buttons: [{ label: 'Cancel', value: '' }, { label: 'Make independent', value: 'ok', primary: true }],
     });
     if (value !== 'ok') return;
     await app.unlink(n.id);
-    toast(`Unlinked "${n.name}"`);
+    toast(`"${n.name}" is now an independent document`);
 }
 
 function menuFor(n: TreeNode): MenuEntry[] {
     const dirPicker = 'showDirectoryPicker' in window;
+    const editable = !n.connection || ['owner', 'edit'].includes(n.connection.permission);
     if (n.kind === 'folder') return [
         { label: 'New document', icon: 'document', run: () => newDoc(n.id) },
         { label: 'New folder', icon: 'folder', run: () => newFolder(n.id) },
-        { label: 'Rename', icon: 'pencil', run: () => startRename(n.id) },
+        { label: 'Rename', icon: 'pencil', disabled: !editable, run: () => startRename(n.id) },
+        { label: 'Sync', icon: 'refresh', disabled: db.isTemporaryStorage() && !n.connection, run: () => sync.enroll(n.id).catch((e) => toast(e.message)) },
         'separator',
-        { label: 'Copy short link', icon: 'link', sub: 'Encrypted copy of the whole folder', run: () => share.copyNodeLink(n.id, 'short') },
-        { label: 'Copy full link', icon: 'documents', sub: 'The folder inside the URL', run: () => share.copyNodeLink(n.id, 'full') },
-        { label: 'Download .zip', icon: 'download', run: () => io.exportZip(n.id) },
+        { label: 'Copy link', icon: 'link', run: () => share.copyLinkDialog(n.id) },
+        { label: 'Download', icon: 'download', run: () => io.exportZip(n.id) },
         ...(dirPicker ? [{ label: 'Export to a folder on disk…', icon: 'save' as const, run: () => io.exportToDirectory(n.id) }] : []),
         'separator',
         { label: 'Delete', icon: 'trash', danger: true, run: () => deleteNode(n) },
     ];
     return [
-        { label: 'Rename', icon: 'pencil', run: () => startRename(n.id) },
+        { label: 'Rename', icon: 'pencil', disabled: !editable, run: () => startRename(n.id) },
         { label: 'Duplicate', icon: 'copy', run: () => app.duplicate(n.id) },
+        { label: n.connection?.kind === 'live' ? 'Live document' : 'Sync', icon: 'refresh', disabled: db.isTemporaryStorage() && !n.connection, run: () => n.connection?.kind === 'live' ? sync.details(n.id).catch((e) => toast(e.message)) : sync.enroll(n.id).catch((e) => toast(e.message)) },
         ...(n.handle ? [{ label: 'Reload from disk', icon: 'refresh' as const, sub: n.handle.name, run: () => app.reloadFromDisk(n.id) }] : []),
-        ...(linked(n) ? [{ label: 'Unlink from source', icon: 'cross' as const, run: () => unlinkDoc(n) }] : []),
-        ...(n.parentId ? [{ label: 'Move to top level', icon: 'home' as const, run: () => app.move(n.id, null) }] : []),
+        ...(linked(n) && !n.connection ? [{ label: 'Make independent', icon: 'cross' as const, run: () => unlinkDoc(n) }] : []),
         'separator',
-        { label: 'Copy short link', icon: 'link', run: () => share.copyNodeLink(n.id, 'short') },
-        { label: 'Copy full link', icon: 'documents', run: () => share.copyNodeLink(n.id, 'full') },
-        { label: 'Download .md', icon: 'download', run: () => io.downloadDoc(n.id) },
-        { label: 'Export…', icon: 'download', disabled: n.size === 0, run: () => openExport(n.id) },
+        { label: 'Copy link', icon: 'link', run: () => share.copyLinkDialog(n.id) },
+        { label: 'Download', icon: 'download', run: () => io.downloadDoc(n.id) },
         'separator',
         { label: 'Delete', icon: 'trash', danger: true, run: () => deleteNode(n) },
         ...(!db.isTemporaryStorage() ? [{ hint: 'Shift + right-click for browser actions' }] : []),
@@ -320,6 +327,7 @@ tree.addEventListener('click', (e) => {
     if (target.closest('.tree-rename')) return;
     const n = rowNode(target);
     if (!n) return;
+    if (target.closest('[data-connection]')) { e.preventDefault(); void sync.details(n.id); return; }
     if (target.closest('.tree-more')) { openMenu(target.closest('.tree-more')!, menuFor(n), `Actions for ${n.name}`); return; }
     if (target.closest('.tree-chevron') && n.kind === 'folder') { app.setOpen(n.id, !n.open); return; }
     if (target.closest('.tree-link')) {
@@ -341,6 +349,8 @@ tree.addEventListener('contextmenu', (e) => {
     openMenu({ x: e.clientX, y: e.clientY }, menuFor(n), `Actions for ${n.name}`);
 });
 tree.addEventListener('keydown', (e) => {
+    const badge = (e.target as HTMLElement).closest<HTMLElement>('[data-connection]');
+    if (badge && (e.key === 'Enter' || e.key === ' ')) { e.stopPropagation(); return; }
     if ((e.target as HTMLElement).matches('.tree-rename')) {
         if (e.key === 'Enter') { e.preventDefault(); finishRename(true); }
         else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finishRename(false); }
@@ -392,6 +402,7 @@ $('sbNewBtn').addEventListener('click', (e) => openMenu(e.currentTarget as HTMLE
     'separator',
     { label: 'Import files…', icon: 'upload', sub: 'Markdown, HTML, or ZIP files', run: () => $('importInput').click() },
     { label: 'Import a folder…', icon: 'folderOpen', run: () => $('importFolderInput').click() },
+    { label: 'Restore backup…', icon: 'lock', run: () => sync.restoreRecovery().catch((error) => toast(error.message)) },
 ], 'New'));
 $('sbExportAllBtn').addEventListener('click', () => io.exportZip(null));
 filterInput.addEventListener('input', render);

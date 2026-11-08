@@ -180,9 +180,15 @@ window.addEventListener('storage', (e) => {
 });
 window.addEventListener('pageshow', syncPaused);
 
+let indexStorage = -1, indexModel: ModelKey | null = null;
 async function loadIndex(key: ModelKey) {
-    if (index.size) return;
-    for (const e of await db.allSides<Entry>('vec')) if (e?.model === key && e.v === indexVersion(key)) index.set(e.id, e);
+    const storage = db.storageGeneration();
+    if (indexStorage === storage && indexModel === key) return;
+    const entries = await db.allSides<Entry>('vec');
+    if (storage !== db.storageGeneration()) return loadIndex(key);
+    index.clear();
+    for (const e of entries) if (e?.model === key && e.v === indexVersion(key)) index.set(e.id, e);
+    indexStorage = storage; indexModel = key;
 }
 
 // Embeds documents whose text changed since they were indexed; one run at a time.
@@ -197,6 +203,7 @@ export function reindex() {
     indexing = (async () => {
         try {
             await loadIndex(key);
+            const storage = db.storageGeneration();
             const docs = app.state.nodes.filter((n) => n.kind === 'doc');
             const ids = new Set(docs.map((n) => n.id));
             for (const id of index.keys()) if (!ids.has(id)) { index.delete(id); changed = true; }
@@ -212,6 +219,7 @@ export function reindex() {
                 const chunks = indexChunks((await db.getText(n.id)) ?? '');
                 const vectors: Float32Array[] = [];
                 for (let j = 0; j < chunks.length; j += 8) vectors.push(...(await embed(key, chunks.slice(j, j + 8).map((c) => passageInput(MODELS[key], n.name, c)))));
+                if (storage !== db.storageGeneration()) { queued = true; return; }
                 if (gen !== generation || !app.node(n.id)) continue;
                 const entry: Entry = { id: n.id, model: key, v: indexVersion(key), at: n.updatedAt, chunks: chunks.map((c, j) => ({ start: c.start, text: c.text.slice(0, 220), v: vectors[j] })) };
                 index.set(n.id, entry);
@@ -285,6 +293,7 @@ export async function enable(key: ModelKey, force = false) {
     if (previous !== key || force) {
         generation++;
         index.clear();
+        indexStorage = -1; indexModel = null;
         await indexing;
         await db.clearSides('vec');
     }
@@ -298,6 +307,7 @@ export async function disable() {
     paused = false;
     generation++;
     index.clear();
+    indexStorage = -1; indexModel = null;
     worker?.terminate();
     worker = null;
     loaded = null;
@@ -309,8 +319,14 @@ export async function disable() {
 }
 
 let timer: ReturnType<typeof setTimeout> | undefined;
+let scheduledDocs = new Map<string, { at: number; name: string }>();
 app.onChange(() => {
     if (!enabledModel()) return;
+    const docs = app.state.nodes.filter(node => node.kind === 'doc');
+    if (scheduledDocs.size === docs.length && docs.every(node => scheduledDocs.get(node.id)?.at === node.updatedAt && scheduledDocs.get(node.id)?.name === node.name)) return;
+    // Connection status and other presentation-only notifications must not keep
+    // postponing a document change while multiple synced tabs are open.
+    scheduledDocs = new Map(docs.map(node => [node.id, { at: node.updatedAt, name: node.name }]));
     clearTimeout(timer);
     timer = setTimeout(reindex, 2000);
 });

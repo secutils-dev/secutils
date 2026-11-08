@@ -80,6 +80,56 @@ Keep EUI glyph attribution in `icons.js` when moving or adding glyphs.
 - Keep control heights fixed when controls share a row.
 - Preserve labels on mobile unless an accessible name remains on the control.
 
+## Buttons, loading, and copy feedback
+
+Use the [EUI button guidance](https://eui.elastic.co/docs/components/navigation/buttons/button/) and [Save button patterns](https://eui.elastic.co/docs/patterns/save-buttons/).
+The shared CSS implements these patterns with native HTML. Keep the same geometry across variants.
+
+| Role | Classes | Use |
+|---|---|---|
+| Primary | `.btn.btn-primary` | One dominant action per group, such as Save, Connect, or Create live link |
+| Secondary | `.btn` | Bordered, text-colored actions, such as Backup and settings |
+| Tertiary | `.btn.btn-empty` | Cancel, Close, and complementary actions beside the primary action |
+| Neutral tertiary | `.btn.btn-empty.btn-text` | Low-prominence navigation or relationship actions on dense screens |
+| Destructive confirmation | `.btn.btn-danger` | Confirm deletion or an irreversible loss of access, never Cancel |
+| Icon-only | `.icon-btn` or `.icon-btn.icon-btn-s` | Recognizable actions with an accessible label and a tooltip |
+
+Use `.btn-flush-left`, `.btn-flush-right`, or `.btn-flush-both` only with empty buttons at a container edge.
+These remove horizontal padding, so the text aligns with the adjacent content.
+Do not remove padding from bordered or filled buttons.
+Keep Cancel beside the primary action, with the same height. Use the neutral text variant in MARS's dense dialogs, never danger styling.
+Keep navigation Back at the left edge when the flow needs it.
+Use primary plus tertiary variants in one group, or a group of secondary actions. Avoid all three variants in one group.
+Use anchors for navigation and buttons for actions, even when an action looks like a text link.
+Use a filled Save button for permanent changes. Reserve Apply for temporary changes.
+Use danger styling only at confirmation. Disconnecting a device does not delete its saved documents.
+
+MARS uses `buttonClass` in `src/ui/ui.ts` for generated buttons.
+Do not make every non-primary action an empty button.
+The 32px default is the compressed EUI size for this dense application. Fields and buttons in one row must match.
+
+### Busy state
+
+Use `.su-spinner`, adapted from EUI's `EuiLoadingSpinner` bordered ring.
+Put it in the active button, change the label to the current action, and disable repeat submissions.
+Set `aria-busy` and announce the action through a status region. Hide the decorative spinner from screen readers.
+Disable related fields during the operation. Keep Close available for dismissal.
+The spinner rotates only when the user permits motion.
+
+### Tooltips and clipboard
+
+Use the [EUI tooltip requirements](https://eui.elastic.co/docs/components/display/tooltip/) and [EuiCopy pattern](https://eui.elastic.co/docs/utilities/copy/).
+In MARS, `src/ui/feedback.ts` provides hover/focus tooltips and `copyFeedback`.
+Icon buttons need an `aria-label` and `data-tooltip`. Do not rely on the browser's `title` tooltip.
+The initializer migrates existing icon titles and follows dynamic buttons.
+Tooltip content must be plain text, not interactive content.
+Suppress duplicate screen-reader output when the tooltip repeats the button label.
+Show a brief Copied tooltip after clipboard success. Show a clear failure message when copying fails.
+Keep feedback outside document flow. Do not add a paragraph, resize the dialog, or replace the button label for Copy feedback.
+Clamp the tooltip to the viewport. Remove it when its control closes or disappears.
+Use `width: max-content` with the viewport width cap. Keep `overflow: visible` so native popovers do not clip arrows.
+The tooltip width must remain unchanged after its positioning helper sets `left`.
+
 The shared foundation owns component geometry and neutral colors.
 An app identity can override `--brand*` and `--focus` in both themes.
 MARS keeps its coral identity. ECHO and Webhook Inspector use the default Secutils yellow/maroon identity.

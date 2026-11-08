@@ -63,6 +63,16 @@ test('EUI glyphs retain their grid, color, and decorative accessibility contract
     assert.throws(() => icon('missing' as keyof typeof ICONS), /Unknown EUI icon/);
 });
 
+test('the disconnect glyph matches EUI link_slash and button feedback primitives stay shared', () => {
+    const source = readFileSync(new URL('../components/secutils-webui/node_modules/@elastic/eui/lib/components/icon/svgs/link_slash.svg', import.meta.url), 'utf8');
+    assert.equal(ICONS.unlink, source.match(/<path[^>]*\/>/)![0]);
+    const css = readFileSync(new URL('../dev/tools/shared/components.css', import.meta.url), 'utf8');
+    assert.match(css, /\.btn-flush-left/);
+    assert.match(css, /\.su-spinner/);
+    assert.match(css, /prefers-reduced-motion: no-preference/);
+    assert.match(css, /\.su-tooltip/);
+});
+
 test('the WEBHOOKS app icon uses SU colors and the Secutils Webhooks glyph', () => {
     const svg = readFileSync(new URL('../dev/tools/webhook/assets/webhook-app-icon.svg', import.meta.url), 'utf8');
     const template = readFileSync(new URL('../dev/tools/og-template.html', import.meta.url), 'utf8');

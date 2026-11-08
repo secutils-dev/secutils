@@ -60,3 +60,19 @@ test('preview links preserve anchors and existing link metadata in both viewers'
         { href: '#section' },
     ]);
 });
+
+test('both viewers parse only the final review block and preserve earlier Markdown examples', () => {
+    const viewer = readFileSync(new URL('../src/doc/viewer.js', import.meta.url), 'utf8');
+    const md = readFileSync(new URL('../../../md.html', import.meta.url), 'utf8');
+    const section = (text: string) => {
+        const start = text.indexOf('const COMMENTS_RE'), fn = text.indexOf('function matchCommentBlock(', start);
+        return text.slice(start, text.indexOf('\n}', fn) + 2);
+    };
+    assert.equal(section(viewer), section(md));
+    const match = runInNewContext(`${section(viewer)}\nmatchCommentBlock`);
+    const body = '# Example\r\n\r\n```md\r\n<!-- su-comments\r\n[]\r\n-->\r\n```\r\n';
+    const text = `${body}\r\n<!-- su-comments\r\n[{"id":"real-review"}]\r\n-->\r\n`;
+    const result = match(text);
+    assert.equal(text.slice(0, result.index), body);
+    assert.equal(JSON.parse(result[1])[0].id, 'real-review');
+});

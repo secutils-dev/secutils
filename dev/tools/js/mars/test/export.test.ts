@@ -26,6 +26,8 @@ test('export snapshots are immutable, omit frontmatter/review metadata, and reta
     assert.equal(renderKey(captured), captured.body);
     assert.equal(exportBody('Text\n<!-- su-comments\nbroken json\n-->'), 'Text');
     assert.equal(exportBody('Ordinary <!-- HTML comment -->.'), 'Ordinary <!-- HTML comment -->.');
+    const example = '# Example\n\n```md\n<!-- su-comments\n[]\n-->\n```\n';
+    assert.equal(exportBody(`${example}\n<!-- su-comments\n[{"id":"private-review"}]\n-->\n`), example);
 });
 
 test('PDF dimensions preserve A4/Letter paper dimensions in both orientations', () => {

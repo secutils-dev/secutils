@@ -120,7 +120,68 @@ This feature is MARS-only. Markdown Preview does not read the layout comment.
 MARS does not download PDF bytes or detect whether the reader saved a file.
 **Download Markdown** in the export dialog retains frontmatter, line endings, and review threads.
 The Share menu keeps review handoffs and links.
-Document action menus can export another document without changing the current selection.
+Document action menus use **Download** for exact Markdown output without changing the current selection.
+Advanced HTML/PDF output is available from the document view, not its action menu.
+Dragging moves a document to the top level.
+
+## Connected documents
+
+Use **Sync** in document/folder actions to enroll selected content in encrypted remote storage.
+Use **Sync link** inside the Sync dialog to connect another device. Both devices must show the same code before approval.
+Keep the original window open only while you approve that code. Later synchronization does not need that window to stay open.
+Sync connects your own devices with the same review identity. Use **Share → Live** for another person's separate access.
+The local library remains the default. Unselected content stays local.
+Each IP address can create 50 new Sync collections per hour. The 100-item selection limit includes documents and folders.
+
+Share offers **Snapshot** and **Live**. A live link grants **Can view**, **Can comment**, or **Can edit** access to one document.
+Live recipients start in temporary memory storage. **Save live document to library** is the explicit persistence action.
+New Live links use `#live=<secret>`, with a 22-character base64url secret. Choose 1, 7, 14, or 30 days. The default is 7 days.
+The responder stores an encrypted bootstrap. Its encryption key stays in the fragment and can remain in browser history.
+Existing long Live links remain supported. The application creates both grants and short links.
+Library saving retains the selected document and unsent changes without rebuilding unchanged library search entries.
+**Can edit** permits comment and thread deletion. Comment editing still requires authorship.
+Undo restores a deleted comment or thread without changing its author. It cancels only the deleting device's own operation.
+**Can comment** permits deletion of the participant's own comments, not other participants' comments or threads with their replies.
+Anyone with the Live link gets its chosen access until expiry or disabling. Copies they save remain available.
+Do not print or log Sync link fragments, scoped credentials, private keys, or outbox records.
+
+Local edits save before upload. **Up to date** means service acknowledgement, not recipient review.
+Unsent temporary edits require download before closing. Reload restores only acknowledged live content.
+Connected documents require explicit disk Save. Remote edits do not write to a linked file automatically.
+**Sync** manages personal-device enrollment on both source and paired devices.
+**Live links** manages document sharing on the source. Recipients use **Live document** for their access and expiry.
+**View only**, **Can comment**, and **Can edit** badges describe a Live recipient's current access. View/comment modes omit body-editing handles.
+Opening a synced folder renews every enrolled document and nested folder. Individual files do not require separate opens.
+**Disconnect this device** retains an independent local copy. Other devices and active Live links remain connected.
+**Keep as local copy** makes a recipient's Live document independent without disabling the owner's link.
+**Stop sharing** disables every Live link for the selected document.
+Disabling the final link on a Live-only document also deletes its remote copy and reclaims storage capacity.
+Personal Sync stays active when it remains in use. Recipients retain a disconnected local copy and unsent work.
+**Try again** also resumes an unfinished key rotation from its saved key updates.
+Encrypted recovery includes scoped credentials and pending work. Large packages use the `.mars-recovery` format instead of JSON.
+Download and Export all offer **Include connections and pending changes** when the selection contains connected documents.
+The option requires a separate password and produces one ZIP with readable document files and encrypted recovery data.
+The default download contains documents only. A selection without connections downloads immediately.
+On ZIP import, choose **Documents only** or **Restore connections**. The latter requires the backup password.
+Restore preserves existing library documents. It cannot restore access that expired or was revoked.
+Advanced Markdown downloads preserve their captured document text. Their optional connection backup contains the latest saved connection state.
+**Devices** in Sync lists personal devices. **Live links** in Copy link lists source-side sharing links.
+Disconnect and disable icons appear beside individual items, not for an empty list.
+Disconnecting a device leaves its saved documents and pending edits there.
+Close MARS on the previous device before restoring its credentials in another profile.
+
+Sync and live links use separate routes from snapshot links. Their fragments are not interchangeable with the documented snapshot encoding.
+Use the application to create Sync links. New `#sync=` links contain a 22-character setup secret and expire after ten minutes.
+Previously issued long `#sync=` and `#invite=` links remain supported until they expire.
+Do not construct or edit grants by hand.
+
+Share and document/folder menus use one **Copy link** dialog. Snapshot and Full are selected by default, with Full first.
+Short snapshots and all Live links offer 1, 7, 14, or 30 days. The choices omit calendar dates.
+**Copy link** creates and copies the URL. The read-only URL appears after creation, including when clipboard access fails.
+Sources manage existing **Live links** from the bottom-left action in this dialog, not from the item or Share menu.
+Full snapshots do not expire. Folder links support snapshots only. Creating Live links requires the sharing source.
+Active recipients use **Copy link → Live** to forward the owner's original link. Access, expiry, and link format stay unchanged.
+Expired or disabled Live links offer snapshots only. The Live document panel has no separate link-copy action.
 
 The HTML tab lists reading width, table of contents, in-page find, a PDF action, and embedded Markdown source together.
 Export width remains separate from the MARS reading width.

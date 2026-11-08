@@ -18,7 +18,7 @@
   const id = (context.query || {}).s;
   if (!id) return null;
 
-  const TTLS = [86400, 604800, 1209600]; // 1, 7, and 14 days.
+  const TTLS = [86400, 604800, 1209600, 2592000]; // 1, 7, 14, and 30 days.
   const DEFAULT_TTL = 604800;
   // base64url length of 1 MiB, the KV value cap. Keep in sync with SHORT_MAX_CHARS in the page.
   const MAX_CHARS = 1398100;
@@ -2447,7 +2447,7 @@ function parseSource(md) {
     const t = m?.[1].match(FRONTMATTER_TITLE_RE);
     if (t) filename = t[1];
     const body = m ? md.slice(m[0].length) : md;
-    const c = body.match(COMMENTS_RE);
+    const c = matchCommentBlock(body);
     let parsed = null;
     try { parsed = c && JSON.parse(c[1]); } catch {}
     // A malformed block stays in the body, where Source view can repair it.
@@ -3163,7 +3163,7 @@ function selectionTarget() {
     const range = sel.getRangeAt(0);
     const node = range.commonAncestorContainer;
     const el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
-    const block = el?.closest(BLOCK_TARGET);
+    let block = el?.closest(BLOCK_TARGET);
     if (!block || !els.previewArticle.contains(block) || el.closest('pre, .katex, .su-diagram, .su-mermaid, .su-anchor')) return null;
     // Alert titles are generated from the directive, not editable source text.
     if ([...block.querySelectorAll('.markdown-alert-title')].some((title) => range.intersectsNode(title))) return null;
@@ -3407,6 +3407,15 @@ els.formatBar.addEventListener('click', (e) => formatBarAction(e.target));
 // the quoted words keeps the anchor. Threads persist as one trailing HTML comment,
 // which other Markdown renderers hide.
 const COMMENTS_RE = /(?:^|\r?\n)<!-- su-comments\r?\n([\s\S]*?)\r?\n-->\s*$/;
+function matchCommentBlock(text) {
+    const markers = /(?:^|\r?\n)<!-- su-comments\r?\n/g;
+    let marker, start = -1;
+    while ((marker = markers.exec(text))) start = marker.index;
+    if (start < 0) return null;
+    const match = text.slice(start).match(COMMENTS_RE);
+    if (match) match.index = start + (match.index ?? 0);
+    return match;
+}
 const COMMENT_CONTEXT = 32;
 const COMMENT_QUOTE_MAX = 2000;
 const AUTHOR_KEY = 'su-md-author';
