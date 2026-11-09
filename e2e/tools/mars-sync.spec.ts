@@ -1,9 +1,10 @@
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 
-import { type Browser, expect, type Page, test } from '@playwright/test';
+import { type Browser, expect, type Page } from '@playwright/test';
 
 import { mockWorker as mockSmartSearchWorker } from './_mars_indexing';
+import { test } from './_mars_test';
 
 // Responder-only synchronization and live-session browser coverage.
 const MARS_BASE_URL = process.env.MARS_BASE_URL ?? 'https://mars.secutils.dev';

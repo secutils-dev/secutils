@@ -2,7 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { deflateRawSync } from 'node:zlib';
 
 import type { Browser, BrowserContext, Page } from '@playwright/test';
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
 
 import { assertSeoBasics, assertSkillMd, getTool } from './_helpers';
 import { blockInteractionTests } from './_markdown_blocks';
@@ -10,6 +10,7 @@ import { previewLinkTests } from './_markdown_links';
 import { readingWidthTests } from './_markdown_reading_width';
 import { alertSelectionTests, listItemTests, selectionToolbarTests, sourceSelectionTests } from './_markdown_selection';
 import { indexingTests } from './_mars_indexing';
+import { test } from './_mars_test';
 import { mermaidNavigationTests } from './_mermaid_navigation';
 
 // MARS keeps reviews in IndexedDB, so every test gets a fresh context. It runs on its own

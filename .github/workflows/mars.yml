@@ -12,6 +12,10 @@ on:
       - 'dev/tools/shared/**'
       - 'dev/tools/shared-assets.ts'
       - 'scripts/tools-shared.test.ts'
+      - 'scripts/mars-test-scopes.test.ts'
+      - 'scripts/mars-test-cleanup.ts'
+      - 'e2e/mars-test-scopes.ts'
+      - 'e2e/tools/_mars_test.ts'
       - '.github/workflows/mars.yml'
   pull_request:
     paths:
@@ -19,6 +23,10 @@ on:
       - 'dev/tools/shared/**'
       - 'dev/tools/shared-assets.ts'
       - 'scripts/tools-shared.test.ts'
+      - 'scripts/mars-test-scopes.test.ts'
+      - 'scripts/mars-test-cleanup.ts'
+      - 'e2e/mars-test-scopes.ts'
+      - 'e2e/tools/_mars_test.ts'
       - '.github/workflows/mars.yml'
 
 jobs:
@@ -52,6 +60,7 @@ jobs:
         run: |
           npm test
           node --test ../../../../scripts/tools-shared.test.ts
+          node --test ../../../../scripts/mars-test-scopes.test.ts
 
       # Best quality (EmbeddingGemma 2, about 200 MB) is checked locally; see README.md#evaluation.
       - name: Cache the Best speed model

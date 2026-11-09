@@ -13,7 +13,8 @@ export interface Kv {
     list(options: { prefix: string; after?: string; limit: number; valuesIncluded?: boolean }): Promise<{ entries: Entry[]; cursor: string | null }>;
 }
 export interface Runtime { kv: Kv; crypto: { sha256(bytes: string): Promise<string> | string } }
-interface Context { path: string; method: string; query?: Record<string, string>; headers?: Record<string, string>; body: Uint8Array; clientAddress?: string; secrets?: Record<string, string>; params?: { secrets?: Record<string, string> } }
+export interface Context { path: string; method: string; query?: Record<string, string>; headers?: Record<string, string>; body: Uint8Array; clientAddress?: string; secrets?: Record<string, string>; params?: { secrets?: Record<string, string> } }
+export { prepareTestScope } from './testing.ts';
 interface Collection { v: 1; owner: SignedGrant; root?: CollectionRoot }
 interface Member { signed: SignedGrant; slot: string; keys?: WrappedKey[] }
 interface InviteRecord { policy: SignedInvitation; tokenHash: string; inviter: string; bootstrap?: { nonce: string; ciphertext: string } }

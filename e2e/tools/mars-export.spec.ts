@@ -3,7 +3,9 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import type { Page } from '@playwright/test';
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
+
+import { test } from './_mars_test';
 
 const MARS_BASE_URL = process.env.MARS_BASE_URL ?? 'https://mars.secutils.dev';
 test.use({ baseURL: MARS_BASE_URL });

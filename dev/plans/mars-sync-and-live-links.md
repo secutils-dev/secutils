@@ -384,6 +384,38 @@ All 128 general production cases passed. This correction passed 140 production b
 The Git publication includes the accumulated MARS implementation, refinements, and this correction. The unrelated plans remain untracked and untouched.
 The owned local preview is stopped. Marketing-page verification remains unavailable, and VoiceOver remains user-skipped.
 
+### Production test cleanup (2026-11-09)
+
+The user authorized removal of all unused Sync/Live collections, while retaining snapshot short links.
+The operator API cleared only `sync/v1/`: 9,035 entries were removed.
+Storage decreased from 6,431,151 bytes and 9,352 entries to 184,166 bytes and 317 entries.
+Sync reservations decreased from 58,720,256 bytes across 139 collections to zero.
+The snapshot namespaces and historical telemetry were not cleared.
+
+The user selected authenticated test namespaces and approved redeployment of the existing responder.
+The new `/sync/testing` operation records run/test identity and issues a separate, one-hour scoped capability.
+All test KV data, including snapshots and quota ledgers, stays under `testing/v1/data/<scope>/`.
+Teardown removes only that scope. It rejects mismatched ownership and prevents late scoped writes from restoring deleted data.
+Closed audit metadata expires after 14 days. Interrupted scopes retain metadata for exact recovery.
+Private manifests retain scoped capabilities and any ordinary preservation-canary delete tokens. They never contain the operator credential.
+The cleanup CLI lists ownership metadata and resumes exact manifests or expired test scopes.
+
+The local unit suite passed 170 cases with one opt-in native skip. Native heap and invocation-limit checks passed separately.
+The eight sandbox/isolation checks, nine shared/client checks, and 20 snapshot-responder checks passed.
+All three engines passed pairing, connected table resize/reload/export, and ordinary-short-link preservation during scoped teardown.
+The broad browser run passed 443 cases with four expected skips. Both fixture failures passed after focused corrections.
+The temporary fixture no longer sends its old isolation header to CDNs. The deletion fixture waits for connection readiness after reload.
+All 445 applicable browser cases now have passing results. All nine final focused cases passed in the three engines.
+Deployment published the updated responder, unchanged application and skill, and discovery aggregates.
+The application bytes retain SHA-256 `a3ef818873bcc900c424078705d6e064b28266c9db463ccbb6d8edf094b092e7`.
+The deployed responder matches the verified compiled script. Request tracking remains disabled, and the isolation headers remain unchanged.
+The production run passed 282 cases with 56 expected local-only skips. Its three canary cases used non-canonical fixture bytes.
+Production correctly rejected those bytes. The fixture and local KV stub now enforce canonical base64, matching the native backend.
+All three corrected preservation cases passed. All 285 applicable production cases have passing results.
+The final registry audit found 249 test scopes, all closed, with 2,327 test entries removed automatically.
+Ordinary Sync collections and reservations remain zero. Current storage is 297,934 bytes across 568 entries, including the expiring test audit records.
+The owned preview is stopped. Marketing-page verification remains unavailable, and VoiceOver remains user-skipped.
+
 ## Approved implementation boundary
 
 The user approved implementation with the existing MARS responder and its KV store.

@@ -1,4 +1,6 @@
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
+
+import { test } from './_mars_test';
 
 const baseURL = process.env.MARS_BASE_URL ?? 'http://localhost:7373';
 test.use({ baseURL });

@@ -109,6 +109,23 @@ Already-expanded folders also renew when their page becomes visible. Renewal abo
 
 ## Telemetry contract
 
+### Operator-only test scopes
+
+The existing responder also accepts `POST /sync/testing` with the operator credential from `MARS_STATS_API_KEY`.
+It can open, list, or close exact test scopes. Scope creation records the run/test identity and a capability hash.
+Closing a scope requires its exact scope, run, and test IDs. User records cannot qualify as test scopes.
+
+Test requests carry `x-mars-test-scope` and `x-mars-test-token`, separate from participant authorization.
+The responder maps every KV operation, including snapshot operations and quota ledgers, into `testing/v1/data/<scope>/`.
+Returned keys and cursors retain their logical names. Invalid, expired, or closed capabilities cannot fall back to user storage.
+Ordinary requests retain their existing namespace, limits, and wire formats.
+
+The scope capability expires after one hour. Cleanup marks the scope as closing before deleting bounded batches of 64 entries.
+An in-flight scoped write checks the scope after storage and removes its write if teardown already started.
+Completed audit metadata expires after 14 days. Interrupted cleanup remains recoverable through operator metadata and private test manifests.
+The registry exposes no operator credential, capability, document content, or participant credential.
+See [the test cleanup commands](../../README.md#isolated-browser-test-data).
+
 The operator-only endpoint uses the existing `MARS_STATS_API_KEY` secret.
 It returns reserved capacity, the reservation unit, the maximum capacity, and the number of collections with reservations.
 It returns no document names, content, credentials, or participant identifiers.

@@ -87,6 +87,42 @@ Loading actions use the shared EUI bordered spinner. Clipboard actions show a br
 `src/ui/feedback.ts` provides plain-text, viewport-clamped tooltips for pointer and keyboard users.
 Icon labels remain accessible when responsive layouts hide their text.
 
+## Isolated browser-test data
+
+MARS mutation specs use `e2e/tools/_mars_test.ts` instead of importing `test` directly from Playwright.
+The fixture registers an authenticated test scope and applies it to the default context and additional `browser.newContext()` contexts.
+Test snapshots, Sync collections, invitations, and quota ledgers stay under `testing/v1/data/<scope>/`.
+Ordinary user records remain outside this namespace.
+
+Only the Node test process receives the operator credential. Synthetic browsers receive a separate capability for their test scope.
+That capability expires after one hour. It does not authorize operator actions or access to other scopes.
+Teardown closes test contexts and deletes the complete scoped data, including its quota ledgers.
+Tests fail if scope creation or cleanup fails. They never fall back to ordinary production storage.
+
+The operator-only `/sync/testing` endpoint records run ID, test ID, title, creation time, expiry, cleanup state, and the removed-entry count.
+Completed audit records expire after 14 days. Interrupted scopes retain their metadata until cleanup resumes.
+Private recovery manifests live under `e2e/.cache/mars-test-scopes/<run>/` with mode `0600`.
+Manifests contain the scoped capability and delete tokens for any ordinary preservation canary, never the operator credential.
+The cleanup attachment omits all credentials.
+
+For production checks, use `MARS_TEST_OPERATOR_KEY` or the operator API key in the root `.env`.
+The local preview uses `local-operator-secret` unless `MARS_TEST_OPERATOR_KEY` specifies another key.
+The test client sends operator credentials only to the configured MARS origin or a loopback preview. Redirects are forbidden.
+
+Run these recovery commands from the repository root:
+
+```bash
+# List metadata without exposing capabilities or user content.
+node --env-file=.env scripts/mars-test-cleanup.ts --list https://mars.secutils.dev
+# Remove expired or interrupted test scopes only. Active tests and user data remain intact.
+node --env-file=.env scripts/mars-test-cleanup.ts --expired https://mars.secutils.dev
+# Resume one recorded scope after a lost cleanup response.
+node --env-file=.env scripts/mars-test-cleanup.ts <private-manifest.json> https://mars.secutils.dev
+```
+
+Native or manual mutation checks use the local preview unless they attach an operator-registered test scope.
+Never clear `sync/v1/` or snapshot prefixes as routine test cleanup.
+
 ## Development
 
 ```bash

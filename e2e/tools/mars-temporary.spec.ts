@@ -2,14 +2,12 @@ import { readFile } from 'node:fs/promises';
 import { deflateRawSync, inflateRawSync } from 'node:zlib';
 
 import type { Page } from '@playwright/test';
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
+
+import { test } from './_mars_test';
 
 const MARS_BASE_URL = process.env.MARS_BASE_URL ?? 'https://mars.secutils.dev';
 test.use({ baseURL: MARS_BASE_URL });
-test.beforeEach(async ({ context }) => {
-  if (new URL(MARS_BASE_URL).hostname === 'localhost')
-    await context.setExtraHTTPHeaders({ 'x-mars-test-client': crypto.randomUUID() });
-});
 const DOC =
   '# Temporary ✓\n\nOriginal paragraph.\n\n<!-- su-table {"v":1,"cols":[0.3,0.7]} -->\n| Name | State |\n| --- | --- |\n| Alice | Ready |\n';
 const state = (text: string) => {

@@ -2,7 +2,9 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { deflateRawSync } from 'node:zlib';
 
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
+
+import { test } from './_mars_test';
 
 const baseURL = process.env.MARS_BASE_URL ?? 'https://mars.secutils.dev';
 const markdownPreview = readFileSync(resolve(__dirname, '../../dev/tools/md.html'), 'utf8').replaceAll(

@@ -1,12 +1,10 @@
-import { type Browser, expect, type Page, test } from '@playwright/test';
+import { type Browser, expect, type Page } from '@playwright/test';
 
 import { configureCopyLink, copyLink } from './_mars_sharing';
+import { test } from './_mars_test';
+
 const baseURL = process.env.MARS_BASE_URL ?? 'http://localhost:7373';
 test.use({ baseURL });
-test.beforeEach(async ({ context }) => {
-  if (new URL(baseURL).hostname === 'localhost')
-    await context.setExtraHTTPHeaders({ 'x-mars-test-client': crypto.randomUUID() });
-});
 async function clients(browser: Browser, count = 2) {
   const key = crypto.randomUUID(),
     contexts = await Promise.all(Array.from({ length: count }, () => browser.newContext()));

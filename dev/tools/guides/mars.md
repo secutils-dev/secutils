@@ -137,7 +137,10 @@ Privacy and Credits use the app's 960px information-dialog cap. The shared viewp
 2. `npm run serve` builds the deploy-equivalent page and serves it at `http://localhost:7373/` and `/llms.txt`, with the
    responder script on an in-memory KV.
 3. From the root: `MARS_BASE_URL=http://localhost:7373 make e2e-tools-test ARGS="mars.spec.ts mars-export.spec.ts mars-import.spec.ts mars-models.spec.ts mars-tables.spec.ts"`.
-   After handoff changes, run `pdf.spec.ts` against the changed PDF Extractor page.
+    After handoff changes, run `pdf.spec.ts` against the changed PDF Extractor page.
+    Mutation specs use `_mars_test.ts` for authenticated isolation and automatic teardown, including manually created browser contexts.
+    Production checks require an operator key in the Node process. Never send that key to the synthetic browser.
+    Use [the cleanup commands](../js/mars/README.md#isolated-browser-test-data) for interrupted runs. Never clear user namespaces as test teardown.
 4. Run steps 2, 4, and 5 of "Change a tool" in [`../AGENTS.md`](../AGENTS.md); for a viewer change, also the affected
    `md.spec.ts` cases.
 5. After a deploy, `make e2e-tools-test ARGS=mars.spec.ts` (`MARS_BASE_URL` defaults to `https://mars.secutils.dev`).

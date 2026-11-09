@@ -2,7 +2,9 @@ import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 
-import { type Browser, expect, type Page, test } from '@playwright/test';
+import { type Browser, expect, type Page } from '@playwright/test';
+
+import { test } from './_mars_test';
 
 const baseURL = process.env.MARS_BASE_URL ?? 'http://localhost:7373';
 test.use({ baseURL });
@@ -72,6 +74,7 @@ test.describe('sync protocol follow-up', () => {
         );
         const link = await live(owner, permission);
         await owner.reload();
+        await expect(owner.locator('#saveState')).toHaveText('Up to date', { timeout: 15000 });
         await expect(owner.locator('.cm-comment').getByRole('button', { name: 'Delete', exact: true })).toBeVisible({
           timeout: 15000,
         });

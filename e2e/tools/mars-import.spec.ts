@@ -2,7 +2,9 @@ import { readFile } from 'node:fs/promises';
 import { deflateRawSync } from 'node:zlib';
 
 import type { Page, Route } from '@playwright/test';
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
+
+import { test } from './_mars_test';
 
 const MARS_BASE_URL = process.env.MARS_BASE_URL ?? 'https://mars.secutils.dev';
 test.use({ baseURL: MARS_BASE_URL });

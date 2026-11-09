@@ -11,12 +11,17 @@ const PORT = Number(process.env.PORT) || 7373;
 const legacyScript = readFileSync('../../mars.html', 'utf8').match(/<!--\s*@su:responder-script\s*([\s\S]*?)-->/)[1]
     .replace('{{OG_JPEG_BASE64}}', readFileSync('../../../../components/secutils-docs/static/img/og/og-mars.jpg').toString('base64'));
 const values = new Map(), expiry = new Map();
+const binary = (value) => {
+    const bytes = Buffer.from(value, 'base64url');
+    if (bytes.toString('base64url') !== value) throw new Error('Invalid base64url value');
+    return bytes;
+};
 const live = (k) => values.has(k) && (expiry.get(k) ?? Infinity) > Date.now() / 1000;
 const kv = {
     get: async (k) => (live(k) ? values.get(k) : null),
     getEntry: async (k) => ({ value: live(k) ? values.get(k) : null, expiresAt: live(k) ? expiry.get(k) ?? null : null }),
     set: async (k, v, o = {}) => {
-        if (Buffer.from(v, 'base64url').length > 1048576) throw new Error('KV value cap');
+        if (binary(v).length > 1048576) throw new Error('KV value cap');
         if (o.ifAbsent && live(k)) return;
         values.set(k, v);
         expiry.set(k, o.ttlSec ? Math.floor(Date.now() / 1000) + o.ttlSec : undefined);
@@ -28,7 +33,7 @@ const kv = {
         return { entries, cursor: entries.at(-1)?.key ?? null };
     },
 };
-const secutils = { kv, crypto: { sha256: (b64) => createHash('sha256').update(Buffer.from(b64, 'base64url')).digest('hex') } };
+const secutils = { kv, crypto: { sha256: (b64) => createHash('sha256').update(binary(b64)).digest('hex') } };
 
 createServer(async (req, res) => {
     const url = new URL(req.url, `http://localhost:${PORT}`);
@@ -43,7 +48,8 @@ createServer(async (req, res) => {
         secutils: { ...secutils, kv: bounded }, Uint8Array, Deno: { core: { encode: (s) => new TextEncoder().encode(s), decode: (b) => new TextDecoder().decode(b) } }, console };
     sandbox.globalThis = sandbox;
     vm.createContext(sandbox);
-    const script = url.pathname.startsWith('/sync/') ? inlineMarsSync(legacyScript, readFileSync('dist/mars-sync-responder.js', 'utf8')) : legacyScript;
+    const script = url.pathname.startsWith('/sync/') || req.headers['x-mars-test-scope'] || req.headers['x-mars-test-token']
+        ? inlineMarsSync(legacyScript, readFileSync('dist/mars-sync-responder.js', 'utf8')) : legacyScript;
     let out;
     try { vm.runInContext(`globalThis.__ret = ${script}`, sandbox); out = await sandbox.__ret; }
     catch (error) { console.error('Preview responder failed:', error.message); res.writeHead(500, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'preview-responder-failed' })); return; }
