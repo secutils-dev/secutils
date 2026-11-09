@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { inlineSharedAssets } from '../dev/tools/shared-assets.ts';
@@ -64,8 +65,8 @@ test('EUI glyphs retain their grid, color, and decorative accessibility contract
 });
 
 test('the disconnect glyph matches EUI link_slash and button feedback primitives stay shared', () => {
-    const source = readFileSync(new URL('../components/secutils-webui/node_modules/@elastic/eui/lib/components/icon/svgs/link_slash.svg', import.meta.url), 'utf8');
-    assert.equal(ICONS.unlink, source.match(/<path[^>]*\/>/)![0]);
+    // Exact link_slash path from @elastic/eui 123.3.0. MARS CI does not install the Web UI.
+    assert.equal(createHash('sha256').update(ICONS.unlink).digest('hex'), 'e3561c722c589e841fb2c46709a19a7fde35b59cf8ccd9145ced7c06d25b4ea4');
     const css = readFileSync(new URL('../dev/tools/shared/components.css', import.meta.url), 'utf8');
     assert.match(css, /\.btn-flush-left/);
     assert.match(css, /\.su-spinner/);

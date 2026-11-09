@@ -191,8 +191,7 @@ test('missing periods have dashed bridges and no fabricated observations', async
   await expect(page.locator('#storageChart .gap-bridge')).toHaveCSS('stroke-dasharray', '5px, 5px');
   await expect(page.locator('#storageChart .gap-bridge title')).toContainText('No measurements');
   await expect(page.locator('#coverage')).toContainText('1 collection gaps');
-  const gap = (await page.locator('#storageChart .gap-band').boundingBox())!;
-  await page.mouse.move(gap.x + gap.width / 2, gap.y + gap.height / 2);
+  await page.locator('#storageChart .gap-band').hover();
   await expect(page.locator('#readout')).toContainText('No measurements between');
   await page.getByText('View sample data', { exact: true }).click();
   await expect(page.locator('#sampleRows tr')).toHaveCount(4);
