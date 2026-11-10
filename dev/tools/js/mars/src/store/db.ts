@@ -1,7 +1,10 @@
 // Review storage in IndexedDB: `nodes` (the folder/document tree), `docs` (document text,
 // kept apart so listing the tree never loads bodies), and `meta` (small app settings).
-import type { TreeNode } from '../tree/model.ts';
+import { descendants, textBytes, type TreeNode } from '../tree/model.ts';
+import { openThreads } from '../share/merge.ts';
 import { MemoryStore } from './memory.ts';
+import { syncDebug, type ConflictReason } from '../sync/debug.ts';
+import type { SessionRecord } from '../sync/session.ts';
 
 const DB_NAME = 'mars';
 let dbPromise: Promise<IDBDatabase> | null = null;
@@ -72,7 +75,7 @@ function openChannel() {
     try {
         if ('BroadcastChannel' in globalThis && BroadcastChannel) {
             channel = new BroadcastChannel('mars');
-            channel.addEventListener('message', (e) => { if (!temporary) for (const fn of remoteListeners) fn(e.data?.ids ?? []); });
+            channel.addEventListener('message', (e) => { if (!temporary) { syncDebug.record('library.refresh', { changed: e.data?.ids?.length ?? 0 }); for (const fn of remoteListeners) fn(e.data?.ids ?? []); } });
         }
     } catch {}
 }
@@ -145,9 +148,10 @@ export const clearSides = async (kind: Side) => {
 };
 
 export const getMeta = <T>(key: string) => temporary ? Promise.resolve(memory.get<T>('meta', key)) : tx(['meta'], 'readonly', (t) => req(t.objectStore('meta').get(key) as IDBRequest<T | undefined>));
-export const setMeta = async (key: string, value: unknown) => {
+export const setMeta = async (key: string, value: unknown, broadcast = false) => {
     if (temporary) memory.put('meta', key, value);
     else await tx(['meta'], 'readwrite', (t) => { t.objectStore('meta').put(value, key); });
+    if (broadcast) announce([]);
 };
 export async function captureConnected(collection: string, member: string, metadataKeys: string[], ids?: string[]) {
     const selection = ids ? new Set(ids) : null;
@@ -175,7 +179,190 @@ export async function captureConnected(collection: string, member: string, metad
 }
 
 export class ReplicaConflict extends Error {
-    constructor() { super('The connected replica changed in another tab. Retry with its current state.'); this.name = 'ReplicaConflict'; }
+    readonly reason: ConflictReason;
+    readonly field?: string;
+    constructor(reason: ConflictReason = 'revision', field?: string) {
+        super('The connected replica changed in another tab. Retry with its current state.'); this.name = 'ReplicaConflict';
+        this.reason = reason; this.field = field;
+        syncDebug.record('store.conflict', { reason, field });
+    }
+}
+// Network/decryption work has finished. Resolve remote identities AGAIN inside
+// the shared write transaction, then publish nodes, bodies and hierarchy together.
+export async function materializeConnected(root: TreeNode, body: string, entries: { node: TreeNode; parent: string; record?: SessionRecord }[], bootstrap?: { record: SessionRecord; metadata: Record<string, unknown> }) {
+    const binding = root.connection!;
+    const publish = (all: TreeNode[], storedBody: string | undefined, write: (node: TreeNode, record?: SessionRecord) => void, meta: (key: string, value: unknown) => void) => {
+        const connected = all.filter(node => node.connection?.collection === binding.collection && node.connection.member === binding.member);
+        const mapping = new Map<string, TreeNode>();
+        for (const node of connected) {
+            if (mapping.has(node.connection!.document)) throw new ReplicaConflict('already-connected');
+            mapping.set(node.connection!.document, node);
+        }
+        const storedRoot = mapping.get(binding.document);
+        if (bootstrap) {
+            if (storedRoot || all.some(node => node.id === root.id)) throw new ReplicaConflict('already-connected');
+            mapping.set(binding.document, root);
+        } else if (storedRoot?.id !== root.id || storedBody !== body) throw new ReplicaConflict();
+        const updates: { node: TreeNode; record?: SessionRecord }[] = bootstrap ? [{ node: root, record: bootstrap.record }] : [];
+        for (const entry of entries) {
+            const incoming = entry.node, remote = incoming.connection!.document, previous = mapping.get(remote), parent = mapping.get(entry.parent);
+            if (!parent || parent.kind !== 'folder') throw new ReplicaConflict('missing-node');
+            if (!previous && (all.some(node => node.id === incoming.id) || incoming.kind === 'doc' && !entry.record)) throw new ReplicaConflict();
+            const node = previous ? { ...previous, parentId: parent.id, name: incoming.name, order: incoming.order } : { ...incoming, parentId: parent.id };
+            mapping.set(remote, node); updates.push({ node, ...(!previous && entry.record ? { record: entry.record } : {}) });
+        }
+        // Validate the entire plan before the first write, including memory mode.
+        if (temporary) structuredClone({ updates, metadata: bootstrap?.metadata });
+        for (const update of updates) write(update.node, update.record);
+        for (const [key, value] of Object.entries(bootstrap?.metadata ?? {})) meta(key, value);
+        return [...mapping.values()];
+    };
+    let nodes: TreeNode[];
+    if (temporary) nodes = publish(memory.all('nodes'), memory.get<SessionRecord>('docs', sideKey('sync', root.id))?.body, (node, record) => {
+        memory.put('nodes', node.id, node);
+        if (record) { memory.put('docs', sideKey('sync', node.id), record); if (node.kind === 'doc') memory.put('docs', node.id, record.projection); }
+    }, (key, value) => memory.put('meta', key, value));
+    else nodes = await tx(['nodes', 'docs', 'meta'], 'readwrite', async t => {
+        const store = t.objectStore('nodes'), docs = t.objectStore('docs');
+        const [all, record] = await Promise.all([req(store.getAll()), req(docs.get(sideKey('sync', root.id)))]);
+        return publish(all, record?.body, (node, record) => {
+            store.put(node);
+            if (record) { docs.put(record, sideKey('sync', node.id)); if (node.kind === 'doc') docs.put(record.projection, node.id); }
+        }, (key, value) => { t.objectStore('meta').put(value, key); });
+    });
+    announce(nodes.map(node => node.id)); return nodes;
+}
+export interface UnfinishedSetupSnapshot {
+    nodes: TreeNode[]; texts: Record<string, string>; records: Record<string, unknown>; metadata: Record<string, unknown>;
+}
+export interface SavedUnfinishedSetup { v: 1; kind: 'mars-unfinished-sync'; at: number; snapshot: UnfinishedSetupSnapshot }
+export interface UnfinishedSetupBackup { key: string; at: number; records: number }
+export const unfinishedSetupIndex = (id: string) => `sync:unfinished-backups:${id}`;
+// Old clients could create several rows for one remote identity. Archive the
+// complete scoped state first. Keep distinct visible text as local-only copies;
+// neither names nor thread counts are evidence that two documents are equal.
+export async function repairDuplicateConnections() {
+    if (temporary) return false;
+    const changed = await tx(['nodes', 'docs', 'meta'], 'readwrite', async t => {
+        const nodes = t.objectStore('nodes'), docs = t.objectStore('docs'), meta = t.objectStore('meta');
+        const all = await req(nodes.getAll() as IDBRequest<TreeNode[]>), grouped = new Map<string, TreeNode[]>();
+        for (const node of all) if (node.connection) {
+            const { collection, member, document } = node.connection, key = `${collection}:${member}:${document}`;
+            grouped.set(key, [...(grouped.get(key) ?? []), node]);
+        }
+        const duplicates = [...grouped.values()].filter(group => group.length > 1);
+        if (!duplicates.length) return false;
+        const snapshots = new Map<string, { root: string; snapshot: UnfinishedSetupSnapshot }>();
+        for (const group of duplicates) {
+            const { collection, member } = group[0].connection!, key = `sync:scope:${collection}:${member}`;
+            if (snapshots.has(key)) continue;
+            const scope = await req(meta.get(key)) ?? await req(meta.get(`sync:scope:${collection}`));
+            if (!scope?.localRoot) throw new ReplicaConflict('missing-node');
+            const scoped = all.filter(node => node.connection?.collection === collection && node.connection.member === member);
+            const snapshot: UnfinishedSetupSnapshot = { nodes: scoped, texts: {}, records: {}, metadata: {} };
+            for (const node of scoped) {
+                const text = await req(docs.get(node.id)), record = await req(docs.get(sideKey('sync', node.id)));
+                if (typeof text === 'string') snapshot.texts[node.id] = text;
+                if (record) snapshot.records[node.id] = record;
+            }
+            for (const name of [key, `sync:scope:${collection}`, `sync:links:${key}`, `sync:rotation:${key}`, `sync:revoked-access:${key}`]) {
+                const value = await req(meta.get(name)); if (value !== undefined) snapshot.metadata[name] = value;
+            }
+            snapshots.set(key, { root: scope.localRoot, snapshot });
+        }
+        for (const { root, snapshot } of snapshots.values()) {
+            const key = `sync:unfinished-setup:${crypto.randomUUID()}`, at = Date.now(), index = unfinishedSetupIndex(root);
+            const backups = await req(meta.get(index)) ?? [];
+            meta.add({ v: 1, kind: 'mars-unfinished-sync', at, snapshot } satisfies SavedUnfinishedSetup, key);
+            meta.put([...backups, { key, at, records: Object.keys(snapshot.records).length }], index);
+        }
+        const replacements = new Map<string, string>();
+        let recovery: TreeNode | undefined;
+        for (const group of duplicates) {
+            const { collection, member } = group[0].connection!, saved = snapshots.get(`sync:scope:${collection}:${member}`)!;
+            group.sort((a, b) => Number(b.id === saved.root) - Number(a.id === saved.root) || a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+            const [keep, ...extras] = group;
+            for (const node of extras) {
+                replacements.set(node.id, keep.id);
+                const text = saved.snapshot.texts[node.id], canonical = saved.snapshot.texts[keep.id];
+                const record = saved.snapshot.records[node.id] as SessionRecord | undefined, previous = saved.snapshot.records[keep.id] as SessionRecord | undefined;
+                const history = await Promise.all(['base', 'opened'].map(async side => {
+                    const [extra, original] = await Promise.all([req(docs.get(`${side}:${node.id}`)), req(docs.get(`${side}:${keep.id}`))]);
+                    return extra !== original;
+                }));
+                if (node.kind === 'doc' && (text !== canonical || record?.projection !== previous?.projection || node.handle || node.dirty || node.pending !== keep.pending || node.opened !== keep.opened || history.some(Boolean))) {
+                    recovery ??= { id: crypto.randomUUID(), kind: 'folder', parentId: null, name: 'Recovered Sync copies', open: false, order: all.length, createdAt: Date.now(), updatedAt: Date.now() };
+                    const copy = { ...node, parentId: recovery.id, originId: node.id, size: textBytes(text ?? ''), threads: openThreads(text ?? '') }; delete copy.connection; nodes.put(copy);
+                    // A stored projection can contain pending work not in the local text.
+                    if (record && record.projection !== text) {
+                        const id = crypto.randomUUID(), projection = { ...copy, id, originId: id, handle: undefined, name: `${node.name} (pending Sync work)`, size: textBytes(record.projection), threads: openThreads(record.projection) };
+                        nodes.add(projection); docs.put(record.projection, projection.id);
+                    }
+                } else { nodes.delete(node.id); docs.delete(node.id); for (const side of SIDES) docs.delete(sideKey(side, node.id)); }
+                docs.delete(sideKey('sync', node.id));
+            }
+        }
+        for (const node of all) if (!replacements.has(node.id) && replacements.has(node.parentId ?? '')) nodes.put({ ...node, parentId: replacements.get(node.parentId!)! });
+        if (recovery) nodes.add(recovery);
+        return true;
+    });
+    if (changed) announce([]);
+    return changed;
+}
+export async function captureUnfinishedSetup(ids: string[]): Promise<UnfinishedSetupSnapshot> {
+    if (temporary) throw new Error('Recovery requires persistent library storage');
+    return tx(['nodes', 'docs', 'meta'], 'readonly', async t => {
+        const all = await req(t.objectStore('nodes').getAll() as IDBRequest<TreeNode[]>);
+        const nodes = ids.map(id => all.find(node => node.id === id));
+        if (nodes.some(node => !node)) throw new ReplicaConflict('missing-node');
+        const snapshot: UnfinishedSetupSnapshot = { nodes: nodes as TreeNode[], texts: {}, records: {}, metadata: {} }, keys = new Set<string>();
+        await Promise.all(snapshot.nodes.map(async node => {
+            const docs = t.objectStore('docs');
+            const [text, record] = await Promise.all([req(docs.get(node.id)), req(docs.get(sideKey('sync', node.id)))]);
+            if (typeof text === 'string') snapshot.texts[node.id] = text;
+            else if (node.kind === 'doc') snapshot.texts[node.id] = '';
+            if (record !== undefined) {
+                snapshot.records[node.id] = record;
+                if (typeof record?.binding?.collection === 'string' && typeof record?.binding?.member === 'string') {
+                    const scope = `sync:scope:${record.binding.collection}:${record.binding.member}`;
+                    for (const key of [scope, `sync:scope:${record.binding.collection}`, `sync:links:${scope}`, `sync:rotation:${scope}`, `sync:revoked-access:${scope}`]) keys.add(key);
+                }
+            }
+        }));
+        await Promise.all([...keys].map(async key => { const value = await req(t.objectStore('meta').get(key)); if (value !== undefined) snapshot.metadata[key] = value; }));
+        return snapshot;
+    });
+}
+// Publish enrollment once, after all network registration and replica preparation.
+// Other tabs must never discover a half-enrolled folder or seed a competing replica.
+export async function enrollConnected(expected: TreeNode[], texts: Record<string, string>, nodes: TreeNode[], records: Record<string, { revision: number }>, metadata: Record<string, unknown>, previous?: UnfinishedSetupSnapshot) {
+    if (temporary) throw new Error('Sync requires persistent library storage');
+    await tx(['nodes', 'docs', 'meta'], 'readwrite', async (t) => {
+        const nodeStore = t.objectStore('nodes'), docs = t.objectStore('docs');
+        const all = await req(nodeStore.getAll() as IDBRequest<TreeNode[]>), selected = new Set(expected.map(node => node.id));
+        if (expected[0]?.kind === 'folder' && descendants(all, expected[0].id).some(node => !selected.has(node.id))) throw new ReplicaConflict('selection-grown');
+        const current = await Promise.all(expected.map(async (node) => {
+            const [stored, text, replica] = await Promise.all([req(nodeStore.get(node.id)), req(docs.get(node.id)), req(docs.get(sideKey('sync', node.id)))]);
+            if (!stored) throw new ReplicaConflict('missing-node');
+            if (stored.connection) throw new ReplicaConflict('already-connected');
+            if (JSON.stringify(replica) !== JSON.stringify(previous?.records[node.id])) throw new ReplicaConflict('orphan-replica');
+            if (text !== texts[node.id]) throw new ReplicaConflict('text-changed');
+            const field = ['name', 'parentId', 'order', 'originId', 'updatedAt', 'readingWidth'].find(key => stored[key] !== node[key as keyof TreeNode]);
+            if (field) throw new ReplicaConflict('metadata-changed', field);
+            return stored as TreeNode;
+        }));
+        if (previous) {
+            for (const [key, value] of Object.entries(previous.metadata)) if (JSON.stringify(await req(t.objectStore('meta').get(key))) !== JSON.stringify(value)) throw new ReplicaConflict();
+            const root = expected[0].id, key = `sync:unfinished-setup:${crypto.randomUUID()}`, at = Date.now();
+            const backups = await req(t.objectStore('meta').get(unfinishedSetupIndex(root))) as UnfinishedSetupBackup[] | undefined;
+            t.objectStore('meta').add({ v: 1, kind: 'mars-unfinished-sync', at, snapshot: previous } satisfies SavedUnfinishedSetup, key);
+            t.objectStore('meta').put([...(backups ?? []), { key, at, records: Object.keys(previous.records).length }], unfinishedSetupIndex(root));
+        }
+        for (const [index, node] of nodes.entries()) nodeStore.put({ ...current[index], connection: node.connection, ...(node.manualFileSave ? { manualFileSave: true } : {}) });
+        for (const [id, record] of Object.entries(records)) docs.put(record, sideKey('sync', id));
+        for (const [key, value] of Object.entries(metadata)) t.objectStore('meta').put(value, key);
+    });
+    announce(nodes.map(node => node.id));
 }
 export async function commitMeta<T extends { revision: number }>(key: string, expected: number | null, value: T | null, extras: Record<string, unknown> = {}) {
     if (temporary) {
@@ -198,12 +385,22 @@ export async function commitMeta<T extends { revision: number }>(key: string, ex
 // Projection, CRDT state, outbox, bindings, and received progress commit together.
 // A stale same-profile tab cannot overwrite a newer replica or advance its cursor.
 export async function commitReplica<T extends { revision: number }>(id: string, expectedRevision: number | null,
-    replica: T, nodes: TreeNode[] = [], texts: Record<string, string> = {}, metadata: Record<string, unknown> = {}, extras: Record<string, unknown> = {}, deletes: string[] = []) {
+    replica: T, nodes: TreeNode[] = [], texts: Record<string, string> = {}, metadata: Record<string, unknown> = {}, extras: Record<string, unknown> = {}, deletes: string[] = [], binding?: { collection: string; document: string; member: string }) {
     const key = sideKey('sync', id);
+    const matches = (previous?: T & { binding?: typeof binding }) => (previous?.revision ?? null) === expectedRevision
+        && (!binding || expectedRevision === null || previous?.binding?.collection === binding.collection && previous.binding.document === binding.document && previous.binding.member === binding.member);
+    const updatedNode = (node: TreeNode, stored?: TreeNode) => {
+        if (!binding || expectedRevision === null) return node;
+        if (stored?.connection?.collection !== binding.collection || stored.connection.document !== binding.document || stored.connection.member !== binding.member) throw new ReplicaConflict();
+        // A body/review commit must not undo an atomically published tree move
+        // or a local display preference captured before its asynchronous work.
+        return { ...stored, ...node, parentId: stored.parentId, order: stored.order, open: stored.open, localReadingWidth: stored.localReadingWidth };
+    };
     if (temporary) {
         const previous = memory.get<T>('docs', key);
-        if ((previous?.revision ?? null) !== expectedRevision) throw new ReplicaConflict();
-        for (const node of nodes) memory.put('nodes', node.id, node);
+        if (!matches(previous)) throw new ReplicaConflict();
+        const updates = nodes.map(node => updatedNode(node, memory.get('nodes', node.id)));
+        for (const node of updates) memory.put('nodes', node.id, node);
         for (const [doc, text] of Object.entries(texts)) memory.put('docs', doc, text);
         for (const [key, value] of Object.entries(extras)) memory.put('docs', key, value);
         for (const key of deletes) memory.delete('docs', key);
@@ -211,22 +408,17 @@ export async function commitReplica<T extends { revision: number }>(id: string, 
         memory.put('docs', key, replica);
         return;
     }
-    await tx(['nodes', 'docs', 'meta'], 'readwrite', (t) => new Promise<void>((resolve, reject) => {
-        const docs = t.objectStore('docs'), existing = docs.get(key);
-        existing.onerror = () => reject(existing.error);
-        existing.onsuccess = () => {
-            try {
-                if (((existing.result as T | undefined)?.revision ?? null) !== expectedRevision) throw new ReplicaConflict();
-                for (const node of nodes) t.objectStore('nodes').put(node);
-                for (const [doc, text] of Object.entries(texts)) docs.put(text, doc);
-                for (const [key, value] of Object.entries(extras)) docs.put(value, key);
-                for (const key of deletes) docs.delete(key);
-                for (const [name, value] of Object.entries(metadata)) t.objectStore('meta').put(value, name);
-                docs.put(replica, key);
-                resolve();
-            } catch (error) { reject(error); }
-        };
-    }));
+    await tx(['nodes', 'docs', 'meta'], 'readwrite', async t => {
+        const docs = t.objectStore('docs'), existing = await req(docs.get(key));
+        if (!matches(existing)) throw new ReplicaConflict();
+        const updates = await Promise.all(nodes.map(async node => updatedNode(node, await req(t.objectStore('nodes').get(node.id)))));
+        for (const node of updates) t.objectStore('nodes').put(node);
+        for (const [doc, text] of Object.entries(texts)) docs.put(text, doc);
+        for (const [key, value] of Object.entries(extras)) docs.put(value, key);
+        for (const key of deletes) docs.delete(key);
+        for (const [name, value] of Object.entries(metadata)) t.objectStore('meta').put(value, name);
+        docs.put(replica, key);
+    });
     announce(nodes.map((n) => n.id));
 }
 

@@ -9,12 +9,14 @@ import { beginInput, cancelInput, checkInput, type InputOperation } from './io/i
 import { validWidth, type ReadingWidth } from './export/settings.ts';
 import { TemporaryRoute, type TemporaryLinkStatus } from './share/temporary.ts';
 import * as sync from './sync/index.ts';
+import { DEFAULT_DESTINATION_KEY, incomingFolder } from './io/destination.ts';
 
 export const state = {
     nodes: [] as TreeNode[],
     currentId: null as string | null,
     // Folder that receives new documents: the open document's folder, or a clicked folder.
     folderId: null as string | null,
+    defaultIncomingFolder: null as string | null,
     temporaryLink: 'empty' as TemporaryLinkStatus,
     storageError: '' as string,
 };
@@ -27,13 +29,19 @@ export const notify = emit;
 export const node = (id: string | null) => (id ? state.nodes.find((n) => n.id === id) : undefined);
 export const current = () => node(state.currentId);
 
-// ponytail: a reload replaces the in-memory tree wholesale, so a write in this tab that
-// races another tab's broadcast can drop out of view until the next change. Merge by
-// `updatedAt` if multi-tab editing becomes common.
 export async function load() {
-    state.nodes = await db.allNodes();
+    const [nodes, destination] = await Promise.all([db.allNodes(), db.getMeta<string>(DEFAULT_DESTINATION_KEY)]);
+    state.nodes = sync.connectionStates.restore(nodes);
+    state.defaultIncomingFolder = incomingFolder(nodes, destination)?.id ?? null;
     if (state.currentId && !current()) state.currentId = null;
+    if (state.folderId && !node(state.folderId)) state.folderId = null;
     emit();
+}
+export const defaultIncomingFolder = () => incomingFolder(state.nodes, state.defaultIncomingFolder);
+export async function setDefaultIncomingFolder(id: string | null) {
+    if (db.isTemporaryStorage() || id && !incomingFolder(state.nodes, id)) throw new Error('Choose an editable library folder.');
+    await db.setMeta(DEFAULT_DESTINATION_KEY, id, true);
+    state.defaultIncomingFolder = id; emit();
 }
 
 const now = () => Date.now();
@@ -46,7 +54,7 @@ export const cancelTemporaryRoute = () => temporaryRoute.cancel();
 export function useTemporaryFallback(error: unknown) {
     db.useTemporaryStorage();
     state.storageError = (error as Error)?.message ?? String(error);
-    state.nodes = []; state.currentId = state.folderId = null;
+    state.nodes = []; state.currentId = state.folderId = state.defaultIncomingFolder = null;
     viewer.toast('Browser storage is unavailable. The document is now temporary.');
     emit();
 }
@@ -371,7 +379,8 @@ export async function remove(id: string) {
     const wasOpen = state.currentId && ids.has(state.currentId) ? state.currentId : null;
     // Leave the tree first, so the smart-search indexer stops writing entries for these documents.
     state.nodes = state.nodes.filter((d) => !ids.has(d.id));
-    await db.deleteNodes([...ids]);
+    try { await db.deleteNodes([...ids]); }
+    catch (error) { state.nodes.push(...gone.filter(node => !state.nodes.some(current => current.id === node.id))); emit(); throw error; }
     if (state.folderId && ids.has(state.folderId)) state.folderId = n.parentId;
     if (wasOpen) closeDoc(); else emit();
     return async () => {

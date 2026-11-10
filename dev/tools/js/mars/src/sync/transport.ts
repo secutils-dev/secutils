@@ -1,8 +1,9 @@
 // Short, scoped polls. Visibility aborts reads, not an upload already in progress.
 // Credentials travel only in Authorization headers. Correctness does not use pagehide.
 import { verify } from './crypto.ts';
-import { LIMITS, SyncError, validCheckpoint, validGrant, type SignedCheckpoint } from './protocol.ts';
-import type { Grant, SignedGrant, Stream, SyncBinding } from './protocol.ts';
+import { LIMITS, SyncError, validCheckpoint, validGrant, validId, type SignedCheckpoint } from './protocol.ts';
+import { syncDebug, safeError } from './debug.ts';
+import type { Grant, SignedGrant, Stream, SyncBinding, SyncDirectory } from './protocol.ts';
 
 export type ConnectionStatus = 'waiting' | 'working' | 'current' | 'offline' | 'attention' | 'ended';
 interface Environment {
@@ -22,13 +23,17 @@ export interface TransportOptions {
     environment?: Environment;
     streams?: Stream[];
     collectionScope?: boolean;
+    directory?: boolean;
+    known?(key: string): Promise<boolean>;
+    wanted?(key: string): boolean;
     authorValid?(author: SignedGrant): Promise<boolean>;
-    receive?(envelope: SignedCheckpoint, author: SignedGrant, signal: AbortSignal): Promise<string | null>;
-    cycle?(signal: AbortSignal): Promise<void>;
+    receive?(envelope: SignedCheckpoint, author: SignedGrant, signal: AbortSignal, directory?: SyncDirectory): Promise<string | null>;
+    cycle?(signal: AbortSignal, directory?: SyncDirectory): Promise<void>;
     exclude?(): string[];
     keyChanged?(envelope: SignedCheckpoint, signal: AbortSignal): Promise<void>;
 }
 export class Transport {
+    lastFailure: unknown = null;
     readonly options: TransportOptions;
     private enabled = false;
     private generation = 0;
@@ -63,7 +68,7 @@ export class Transport {
         this.environment.connectivity.addEventListener('pageshow', this.pageshow);
     }
     start() { this.enabled = true; this.schedule(0); }
-    retry() { this.failures = 0; this.enabled = true; this.schedule(0); }
+    retry() { this.failures = 0; this.lastFailure = null; this.enabled = true; this.schedule(0); }
     private pause() {
         this.generation++; this.reads?.abort(); this.reads = null; this.keyRead?.abort(); this.keyRead = null;
         clearTimeout(this.timer); this.timer = undefined;
@@ -83,12 +88,15 @@ export class Transport {
         this.timer = setTimeout(() => { this.timer = undefined; void this.poll(); }, delay);
     }
     async request(action: string, value: Record<string, unknown>, signal?: AbortSignal) {
+        const started = performance.now();
+        try {
         const b = this.options.replica.binding;
         const response = await (this.options.fetch ?? fetch)(new URL(`/sync/${action}`, this.options.origin), {
             method: 'POST', headers: { Authorization: `Bearer ${this.options.token}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({ collection: b.collection, member: b.member, ...value }), signal,
             credentials: 'omit', cache: 'no-store', redirect: 'error', referrerPolicy: 'no-referrer', priority: 'low',
         });
+        syncDebug.record('request.finished', { action, status: response.status, duration: Math.round(performance.now() - started) });
         const reader = response.body?.getReader(), chunks: Uint8Array[] = [];
         let size = 0;
         if (reader) {
@@ -107,6 +115,7 @@ export class Transport {
         try { result = JSON.parse(new TextDecoder().decode(bytes)); } catch { throw new SyncError('invalid-service-response', 503); }
         if (!response.ok) throw new SyncError(typeof result.error === 'string' ? result.error : 'sync-request-failed', response.status);
         return result;
+        } catch (error) { syncDebug.record('request.failed', { action, duration: Math.round(performance.now() - started), ...safeError(error) }); throw error; }
     }
     upload() {
         if (this.sending) return this.sending;
@@ -122,7 +131,7 @@ export class Transport {
                     if (!this.enabled) return;
                     await this.options.replica.acknowledge(result.operation, result.digest);
                 }
-                if (this.enabled) this.options.status(await this.options.replica.pending() ? 'waiting' : 'current');
+                if (this.enabled) { const pending = await this.options.replica.pending(); if (!pending) this.lastFailure = null; this.options.status(pending ? 'waiting' : 'current'); }
             } catch (error) {
                 if (error instanceof SyncError && error.code === 'key-epoch-changed' && envelope && this.options.keyChanged && this.enabled) {
                     if (this.available()) {
@@ -139,6 +148,7 @@ export class Transport {
     }
     private failure(error: unknown) {
         if ((error as Error)?.name === 'AbortError') return;
+        this.lastFailure = error;
         this.failures++;
         if (error instanceof SyncError && [401, 403, 410].includes(error.status)) { this.stop(); this.options.status('ended', error.code); }
         else if (error instanceof SyncError && [400, 409, 413, 507].includes(error.status)) { this.stop(); this.options.status('attention', error.code); }
@@ -153,11 +163,19 @@ export class Transport {
         try {
             await this.upload();
             let after: string | undefined;
+            let directory: SyncDirectory | undefined;
+            let downloads = 0;
             const visited = new Set<string>();
             do {
                 if (!current()) return;
-                const page = await this.request('index', { document: this.options.collectionScope ? undefined : this.options.replica.binding.document, after, exclude: this.options.exclude?.() }, reads.signal);
+                const page = await this.request('index', { document: this.options.collectionScope ? undefined : this.options.replica.binding.document, after, exclude: this.options.exclude?.(),
+                    ...(this.options.directory && !after ? { directory: true } : {}) }, reads.signal);
                 if (!Array.isArray(page.entries) || page.entries.length > LIMITS.pageSize || typeof page.complete !== 'boolean') throw new SyncError('invalid-checkpoint-index', 503);
+                if (page.directory !== undefined) {
+                    if (!Array.isArray(page.directory?.documents) || page.directory.documents.length > LIMITS.documents
+                        || page.directory.documents.some((item: SyncDirectory['documents'][number]) => !validId(item?.id) || !['doc', 'folder'].includes(item.kind) || typeof item.deleted !== 'boolean' || !validId(item.creator))) throw new SyncError('invalid-checkpoint-index', 503);
+                    directory = page.directory;
+                }
                 for (const entry of page.entries) {
                     if (!current()) return;
                     if (typeof entry.key !== 'string' || entry.key.length > 256) throw new SyncError('invalid-checkpoint-key', 503);
@@ -166,11 +184,14 @@ export class Transport {
                     if (!(this.options.streams ?? ['body']).includes(entry.key.split('/').at(-2) as Stream)) continue;
                     visited.add(entry.key);
                     if (this.seen.has(entry.key)) continue;
-                    const stored = await this.request('get', { key: entry.key }, reads.signal);
+                    if (this.options.wanted && !this.options.wanted(entry.key)) continue;
+                    if (await this.options.known?.(entry.key)) { this.seen.add(entry.key); continue; }
+                    if (!current()) return;
+                    const stored = await this.request('get', { key: entry.key }, reads.signal); downloads++;
                     if (!current()) return;
                     if (!validGrant(stored.author) || !validCheckpoint(stored.envelope)
                         || !(await (this.options.authorValid ? this.options.authorValid(stored.author) : verify(stored.author.grant, stored.author.signature, this.options.ownerPublicKey)))) throw new SyncError('invalid-author-grant', 403);
-                    const text = await (this.options.receive ? this.options.receive(stored.envelope, stored.author, reads.signal) : this.options.replica.receive(stored.envelope, stored.author.grant));
+                    const text = await (this.options.receive ? this.options.receive(stored.envelope, stored.author, reads.signal, directory) : this.options.replica.receive(stored.envelope, stored.author.grant));
                     if (!current()) return;
                     if (text === null) continue;
                     await this.options.projection(text);
@@ -181,7 +202,8 @@ export class Transport {
                 after = page.cursor;
             } while (current());
             this.seen = new Set([...this.seen].filter((key) => visited.has(key)));
-            if (current()) await this.options.cycle?.(reads.signal);
+            if (current()) await this.options.cycle?.(reads.signal, directory);
+            if (current()) syncDebug.record('poll.finished', { items: visited.size, downloads });
             this.failures = 0;
         } catch (error) { this.failure(error); }
         finally {

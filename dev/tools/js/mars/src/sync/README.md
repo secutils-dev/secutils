@@ -18,6 +18,63 @@ Local preview and deployment assemble the same responder through `dev/tools/mars
 - `rotation.ts` saves exact key updates before revocation. Retry resumes the saved plan after reload or a lost acknowledgement.
 - `recovery-archive.ts` supplies authenticated binary chunks for large encrypted backups.
 - `db.commitReplica` atomically saves projection, replica state, outbox, and received progress in existing stores.
+- `db.enrollConnected` saves the complete initial selection after registration. It rejects intervening local edits and retains existing vectors and timestamps.
+
+Initial registration stays separate from the local library until this transaction completes.
+Other tabs discover complete records, rather than a partially seeded folder.
+New scopes already have fresh activity leases, so renewal waits until those leases need extension.
+Sessions retain the latest 64 acknowledgement digests. Another tab can acknowledge the same ciphertext without an outbox mismatch.
+Unknown operations and different digests still fail acknowledgement checks.
+
+## Reload request budget
+
+The transport checks durable received progress before GET. Own ACK commits also advance the local author's stream cursor.
+Skipping an indexed key never advances progress. New payloads still pass grant, signature, key-epoch, decryption, and atomic-storage checks.
+Clients scan every index page, so delayed lower-sequence writes remain discoverable. Missing or older cursors cause a verified download rather than an unsafe skip.
+Unknown document streams wait for their folder manifest instead of fetching ciphertext without a local session.
+
+Folder polls request `directory: true` on the first index page. The responder includes the existing authenticated directory result in that response.
+Document-only grants cannot request this metadata. The 100-item directory stays inside the existing KV and heap budgets.
+The standalone directory endpoint and old index response remain available for older clients.
+
+Cached-manifest reconciliation includes the current directory and exclusions in its version key.
+Late registrations, deletions, and failed incoming downloads therefore remain recoverable without another manifest GET.
+An unchanged hierarchy skips redundant tree writes and broadcasts. Native heap/budget and late-registration cases cover these paths.
+
+## Incoming folder transactions
+
+`materialization.ts` selects complete, registered parent chains in parent-first order. Invalid chains never default to the collection root.
+Incoming sessions use a private repository during download, decryption, metadata updates, and key refresh.
+No staged session changes the visible tree, shared replica storage, or upload-driver session list.
+Initial pairing also stages the root and scope metadata until the hierarchy is ready.
+After code approval, the target shows a native progress bar and a persistent download status.
+The bar starts indeterminate, then counts completed documents. The tree still publishes only after the entire hierarchy is ready.
+Cancel, Close, and page navigation abort the incoming requests. Failure and cancellation close the download dialog without publishing incomplete replicas.
+
+`db.materializeConnected` resolves remote identities inside one shared write transaction.
+Concurrent tabs reuse the winning local IDs, including folder IDs for child placement.
+Existing bodies, pending uploads, timestamps, and local display preferences stay unchanged.
+A changed root checkpoint rejects the prepared hierarchy. Retry reads the latest manifest.
+Body commits retain the latest stored placement, so an asynchronous body update cannot undo a tree move.
+`status.ts` keeps transport activity in memory per collection/member. Only ended state survives a stored tree reload.
+Library refreshes use the current driver state instead of saved working/current/offline labels. Pending review markers remain unchanged.
+Local non-UUID source identities survive replica metadata updates. Sync uses a separate portable UUID without publishing a local file or URL location.
+
+Startup repairs duplicate rows only for equal collection/member/document identities.
+The repair archives the complete affected scope before it deletes or detaches any duplicate row.
+Distinct local text, review history, and pending projections stay under **Recovered Sync copies** without an active connection.
+Archive failure aborts the entire repair. Encrypted backups retain the raw archive and restore one active connection per scope.
+Same names and origins do not authorize a merge across different remote identities.
+
+Focused browser coverage observes committed trees and visible row depths during initial pairing and concurrent downloads.
+The concurrency case holds two stale tabs at the same request, forces download failure, and checks retry, exact text, reviews, and reload.
+The repair case checks encrypted backup restoration of distinct text, pending projections, and raw pending packets.
+
+Initial setup failures carry a fixed error code and setup step to a persistent error screen.
+Debug traces use an allowlist and stay in tab memory, with no document names, content, identifiers, URLs, credentials, or raw error text.
+An orphan-replica preflight failure retains the old record and creates no new collection. Diagnosis does not reset storage or discard pending work.
+See [developer flags and diagnostics](../../README.md#developer-flags-and-diagnostics) for the generic enable, export, and disable actions.
+Sync dialogs have no diagnostic or repair-backup controls. Preserved repair state is included only in full-folder encrypted connection backups.
 
 The tests cover duplicate/reordered body updates, offline outboxes, local undo, malformed envelopes, forged authors, scope escape, storage failures, and database rollback.
 The sandbox test runs the compiled P-256 verifier without browser globals or native Web Crypto.

@@ -74,6 +74,11 @@ test('the disconnect glyph matches EUI link_slash and button feedback primitives
     assert.match(css, /\.su-tooltip/);
 });
 
+test('the default-folder marker retains the EUI filled star at badge size', () => {
+    assert.equal(createHash('sha256').update(ICONS.starFill).digest('hex'), '2fbceb67b18184b8e7212aca329f8092e528171f1c4ec907d27fbacecc9b58d0');
+    assert.match(icon('starFill', 6), /width="6" height="6" viewBox="0 0 16 16"/);
+});
+
 test('the WEBHOOKS app icon uses SU colors and the Secutils Webhooks glyph', () => {
     const svg = readFileSync(new URL('../dev/tools/webhook/assets/webhook-app-icon.svg', import.meta.url), 'utf8');
     const template = readFileSync(new URL('../dev/tools/og-template.html', import.meta.url), 'utf8');

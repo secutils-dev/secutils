@@ -18,6 +18,15 @@ export interface Invitation {
 export interface SignedInvitation { invitation: Invitation; signature: string }
 export interface SignedGrant { grant: Grant; signature: string; issuer?: SignedInvitation }
 export interface CollectionRoot { document: string; kind: 'doc' | 'folder' }
+export interface SyncDirectory { documents: { id: string; kind: 'doc' | 'folder'; creator: string; deleted: boolean }[]; root?: CollectionRoot }
+export function checkpointKey(value: string) {
+    const parts = value.split('/'), suffix = parts[8]?.split('.');
+    if (parts.length !== 9 || parts[0] !== 'sync' || parts[1] !== 'v1' || parts[2] !== 'c' || parts[4] !== 'updates'
+        || ![parts[3], parts[5], parts[6]].every(validId) || !['body', 'review', 'tree'].includes(parts[7])
+        || suffix?.length !== 2 || !/^\d{16}$/.test(suffix[0]) || !validId(suffix[1])) return null;
+    const sequence = Number.MAX_SAFE_INTEGER - Number(suffix[0]);
+    return Number.isSafeInteger(sequence) && sequence > 0 ? { collection: parts[3], document: parts[5], member: parts[6], stream: parts[7] as Stream, sequence } : null;
+}
 export interface Checkpoint {
     v: 1; collection: string; document: string; member: string; stream: Stream;
     epoch: number; sequence: number; operation: string; nonce: string; ciphertext: string;

@@ -100,4 +100,10 @@ test('deployment-assembled sync executes at native heap and invocation limits', 
         const renewed = run('touch-record', JSON.stringify({ collection: grant.collection, member: grant.member, document, key }), seed);
         assert.equal(renewed.result.statusCode, 200);
     }
+    for (let i = 1; i < LIMITS.documents; i++) {
+        const result = await handle({ path: '/sync/document', method: 'POST', headers: { authorization: `Bearer ${token}` }, body: new TextEncoder().encode(JSON.stringify({ collection: grant.collection, member: grant.member, document: crypto.randomUUID(), kind: i % 2 ? 'doc' : 'folder' })) }, runtime);
+        assert.equal(result?.statusCode, 201);
+    }
+    const indexed = run('index', JSON.stringify({ collection: grant.collection, member: grant.member, directory: true }));
+    assert.equal(indexed.result.statusCode, 200); assert.equal(JSON.parse(indexed.result.body).directory.documents.length, LIMITS.documents);
 });

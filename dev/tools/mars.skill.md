@@ -129,9 +129,21 @@ Dragging moves a document to the top level.
 Use **Sync** in document/folder actions to enroll selected content in encrypted remote storage.
 Use **Sync link** inside the Sync dialog to connect another device. Both devices must show the same code before approval.
 Keep the original window open only while you approve that code. Later synchronization does not need that window to stay open.
+On the target browser, keep the download dialog open until **Sync connected** appears. The progress bar counts completed documents.
+**Cancel** stops the initial download. The folder appears only with its complete hierarchy.
 Sync connects your own devices with the same review identity. Use **Share → Live** for another person's separate access.
 The local library remains the default. Unselected content stays local.
 Each IP address can create 50 new Sync collections per hour. The 100-item selection limit includes documents and folders.
+Failed initial setup leaves the selected local documents unchanged. Folder setup preserves existing search indexes.
+An incomplete folder from an older release offers **Restart setup**. Local documents remain, but connected devices need a new Sync link.
+For saved replicas without tree connections, **Restart setup** first requires confirmation and preserves the previous setup in a local backup.
+Full-folder encrypted connection backups include the preserved replicas, credentials, pending work, and saved local text through the existing download option.
+Restore keeps old Sync content and newer local text separate, without replacing existing documents.
+For diagnostics, use `https://{{MARS_HOST}}/?flags=debug:sync`. Use `?flags=debug,experimental` for global categories or scoped forms such as `experimental:live_links`.
+Flags apply to the profile and update other tabs. `?flags=off` clears all flags. `?debug=off` and `?experimental=off` clear their categories.
+Use the sidebar's **Developer tools** for reports and Off controls, not Sync or Share dialogs.
+Console APIs: `marsFlags.set(...)`, `marsFlags.disable('debug')`, `marsFlags.disable('experimental')`, `marsFlags.clear()`, and `marsDebug.report()`.
+Reports exclude document text, names, identifiers, URLs, and credentials. Reports stay local until the user explicitly copies or downloads them.
 
 Share offers **Snapshot** and **Live**. A live link grants **Can view**, **Can comment**, or **Can edit** access to one document.
 Live recipients start in temporary memory storage. **Save live document to library** is the explicit persistence action.
@@ -169,6 +181,14 @@ Advanced Markdown downloads preserve their captured document text. Their optiona
 Disconnect and disable icons appear beside individual items, not for an empty list.
 Disconnecting a device leaves its saved documents and pending edits there.
 Close MARS on the previous device before restoring its credentials in another profile.
+
+Every document and folder deletion requires confirmation.
+The dialog counts known active Live links and short snapshot links. Expired links do not add warnings.
+**Delete local copy** leaves other devices and shared links active.
+Owner-only **Delete from collection** ends Sync and Live access. Saved copies on other devices remain.
+Short snapshots remain available until expiry after either deletion choice. Use Share to delete these links first.
+Ended connections offer local deletion only. Failed deletion retains the local copy and shows **Try again**.
+Undo restores an independent local copy, not remote access.
 
 Sync and live links use separate routes from snapshot links. Their fragments are not interchangeable with the documented snapshot encoding.
 Use the application to create Sync links. New `#sync=` links contain a 22-character setup secret and expire after ten minutes.
@@ -308,7 +328,7 @@ process.exit(bad ? 1 : 0);
 
 ## Open in MARS
 
-- **Fragment**: `https://{{MARS_HOST}}/#name=<name>&md=<state>` adds the document to the user's sidebar (under **Shared with me**) and opens it. The fragment never reaches the server.
+- **Fragment**: `https://{{MARS_HOST}}/#name=<name>&md=<state>` adds a new document to the profile's default destination, or **Shared with me** if none is set. The fragment never reaches the server.
 - **Origin**: add `&o=<id>` for a stable identity. Opening another link with the same `o` merges its threads into the existing copy instead of adding a duplicate. When the text differs, MARS takes the new text and marks the changes if the reader hasn't edited their copy since, and asks otherwise. A link with a new `o` (a moved file) whose threads or text match a stored document offers to update that document, and its origin then follows.
 - **Remote URL**: `https://{{MARS_HOST}}/?url=<public-md-url>` fetches a public, CORS-enabled file (for example from `raw.githubusercontent.com`).
 - **Short links**: `#s=<secret>` links come from the Share menu only.
@@ -327,6 +347,12 @@ The URL form and `?url=` use the same receive path and stable source identity.
 Reopening a known source retains the existing incoming-copy decisions.
 A new file, document, or URL supersedes a pending load.
 Network and CORS failures retain the previous document and display an error.
+
+To choose a destination for new files, links, URLs, and `mars` CLI links, use the folder action **Use as default**.
+The choice persists in that browser profile and updates its other tabs. New documents in a synced destination sync automatically.
+Existing source matches update in place. Explicit import targets override the default.
+A star marks the default folder in both open and closed states. Without an override, **Shared with me** has this marker.
+To switch back, select **Shared with me** with **Use as default**. Temporary sessions keep their own documents separate from this preference.
 
 This shell function opens a local file, using its absolute path as the origin, so
 reopening an updated file merges into the same review. Run the `node -e` command

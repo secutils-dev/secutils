@@ -13,6 +13,74 @@ test.describe('sync user experience', () => {
       route.continue({ headers: { ...route.request().headers(), ...headers } }),
     );
   });
+  test('sidebar Sync icons complete full turns across repeated renders and respect reduced motion', async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await page.goto('/');
+    await expect(page.locator('#emptyState')).toBeVisible();
+    await page.getByRole('button', { name: 'New document, folder, or import', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'New folder', exact: true }).click();
+    await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Rotating folder');
+    await page.getByRole('textbox', { name: 'Name', exact: true }).press('Enter');
+    await page.locator('#fileInput').setInputFiles({
+      name: 'Rotating document.md',
+      mimeType: 'text/markdown',
+      buffer: Buffer.from('# Animation fixture'),
+    });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route('**/sync/append', async (route) => {
+      await gate;
+      await route.fallback();
+    });
+    try {
+      await page.getByRole('button', { name: 'Actions for Rotating folder', exact: true }).click();
+      await page.getByRole('menuitem', { name: 'Sync', exact: true }).click();
+      await page.getByRole('button', { name: 'Turn on sync', exact: true }).click();
+      await expect(page.locator('#tree .tree-connection[data-phase="working"]')).toHaveCount(2);
+      const samples = await page.evaluate(async () => {
+        const history: { time: number; angle: number }[][] = [[], []],
+          started = performance.now();
+        let nextRender = started;
+        while (performance.now() - started < 1300) {
+          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+          if (performance.now() >= nextRender) {
+            document.querySelector('#sbFilter')!.dispatchEvent(new Event('input', { bubbles: true }));
+            nextRender = performance.now() + 50;
+          }
+          [...document.querySelectorAll('#tree .tree-connection svg')].forEach((icon, index) => {
+            const animation = icon
+              .getAnimations()
+              .find((animation) => animation instanceof CSSAnimation && animation.animationName === 'sync-turn');
+            const transform = new DOMMatrixReadOnly(getComputedStyle(icon).transform),
+              angle = ((Math.atan2(transform.b, transform.a) * 180) / Math.PI + 360) % 360;
+            history[index].push({ time: Number(animation?.currentTime), angle });
+          });
+        }
+        return history;
+      });
+      for (const history of samples) {
+        expect(history.at(-1)!.time - history[0].time).toBeGreaterThan(1100);
+        expect(new Set(history.map((sample) => Math.floor(sample.angle / 90))).size).toBe(4);
+        expect(history.slice(1).every((sample, index) => sample.time >= history[index].time)).toBe(true);
+      }
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      for (const icon of await page.locator('#tree .tree-connection svg').all())
+        await expect(icon).toHaveCSS('animation-name', 'none');
+      await page.getByRole('searchbox', { name: 'Search documents', exact: true }).dispatchEvent('input');
+      expect(
+        await page
+          .locator('#tree .tree-connection svg')
+          .evaluateAll((icons) => icons.flatMap((icon) => icon.getAnimations()).length),
+      ).toBe(0);
+    } finally {
+      release();
+    }
+  });
+
   test('Sync loading uses a spinner and Copied feedback never moves the dialog', async ({ page, context }) => {
     await context.addInitScript(() =>
       Object.defineProperty(navigator, 'clipboard', {
@@ -258,7 +326,7 @@ test.describe('sync user experience', () => {
     await page.getByRole('button', { name: 'Actions for Report', exact: true }).click();
     await page.getByRole('menuitem', { name: /^(Sync|Connections)$/, exact: true }).click();
     await page.getByRole('button', { name: 'Turn on sync', exact: true }).click();
-    await expect(page.locator('#syncDialog').getByRole('alert')).toHaveText(
+    await expect(page.locator('#syncDialog').getByRole('alert')).toContainText(
       'Too many new sync connections from this network. Try again later. Your documents stay here.',
     );
     await expect(page.locator('#tree [data-connection]')).toHaveCount(0);

@@ -1,5 +1,6 @@
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
+import { deflateRawSync } from 'node:zlib';
 
 import { type Browser, expect, type Page } from '@playwright/test';
 
@@ -8,6 +9,12 @@ import { test } from './_mars_test';
 
 // Responder-only synchronization and live-session browser coverage.
 const MARS_BASE_URL = process.env.MARS_BASE_URL ?? 'https://mars.secutils.dev';
+const incomingAddress = (name: string, text: string, origin = crypto.randomUUID()) => {
+  const raw = Buffer.from(text),
+    encoded = Buffer.concat([Buffer.alloc(4), deflateRawSync(raw)]);
+  encoded.writeUInt32LE(raw.length, 0);
+  return `${MARS_BASE_URL}/#${new URLSearchParams({ name, md: encoded.toString('base64url'), o: origin })}`;
+};
 test.use({ baseURL: MARS_BASE_URL });
 const require = createRequire(resolve(process.cwd(), '../dev/tools/js/mars/package.json'));
 const { zipSync } = require('fflate') as { zipSync(files: Record<string, Uint8Array>): Uint8Array };
@@ -157,6 +164,540 @@ async function sourceText(page: Page, text: string, action: 'replace' | 'prepend
 }
 
 test.describe('sync protocol', () => {
+  test('warm folder reload downloads no applied checkpoints, batches directory metadata, and loads the editor without CDN requests', async ({
+    page,
+  }) => {
+    test.setTimeout(90000);
+    await page.route('https://esm.sh/**', (route) => route.abort());
+    await page.goto(MARS_BASE_URL);
+    await expect(page.locator('#emptyState')).toBeVisible();
+    await page.locator('#importInput').setInputFiles({
+      name: 'Warm.zip',
+      mimeType: 'application/zip',
+      buffer: Buffer.from(
+        zipSync(
+          Object.fromEntries(
+            Array.from({ length: 18 }, (_, i) => [
+              `Warm/Document ${i}.md`,
+              Buffer.from(`# Document ${i}\n\nOriginal text ${i}.`),
+            ]),
+          ),
+        ),
+      ),
+    });
+    await expect(page.locator('#toast')).toContainText('Imported 18 documents');
+    await page.getByRole('button', { name: 'Actions for Warm', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Sync', exact: true }).click();
+    await page.getByRole('button', { name: 'Turn on sync', exact: true }).click();
+    await expect(page.getByRole('textbox', { name: 'Sync link', exact: true })).toBeVisible({ timeout: 30000 });
+    await page.getByRole('button', { name: 'Close', exact: true }).click();
+    const calls: { action: string; after: boolean; directory: boolean }[] = [],
+      editorRequests: string[] = [];
+    page.on('request', (request) => {
+      const url = new URL(request.url());
+      if (url.hostname === 'esm.sh') editorRequests.push(url.pathname);
+      if (url.pathname.startsWith('/sync/')) {
+        const body = request.postDataJSON();
+        calls.push({ action: url.pathname, after: !!body.after, directory: body.directory === true });
+      }
+    });
+    await page.goto(`${MARS_BASE_URL}/?flags=debug:sync`);
+    await expect(page.getByRole('button', { name: 'Actions for Warm', exact: true })).toBeVisible();
+    const completed = () =>
+      page.evaluate(() =>
+        JSON.parse(
+          (window as unknown as { marsDebug: { report(): string } }).marsDebug.report(),
+        ).channels.sync.events.filter((event: { event: string }) => event.event === 'poll.finished'),
+      );
+    await expect.poll(async () => (await completed()).length).toBeGreaterThan(0);
+    expect((await completed())[0]).toMatchObject({ items: 37, downloads: 0 });
+    expect(calls.filter((call) => call.action === '/sync/get')).toEqual([]);
+    expect(calls.filter((call) => call.action === '/sync/directory')).toEqual([]);
+    expect(calls.filter((call) => call.action === '/sync/index')).toEqual([
+      { action: '/sync/index', after: false, directory: true },
+      { action: '/sync/index', after: true, directory: false },
+    ]);
+    await page.getByRole('link', { name: 'Document 0', exact: true }).click();
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { __suEditorAPI?: { kind: string } }).__suEditorAPI?.kind))
+      .toBe('codemirror');
+    expect(editorRequests).toEqual([]);
+    await page.evaluate(() =>
+      (window as unknown as { __suEditorAPI: { setText(text: string): void } }).__suEditorAPI.setText(
+        '# Document 0\n\nEdited with the bundled editor.',
+      ),
+    );
+    await page.getByRole('button', { name: 'Preview', exact: true }).click();
+    await expect(page.locator('#previewArticle')).toContainText('Edited with the bundled editor.');
+  });
+
+  test('a fresh directory completes a cached manifest without downloading the manifest again', async ({ browser }) => {
+    const headers = { 'x-mars-test-client': crypto.randomUUID() },
+      ownerContext = await isolatedContext(browser, headers),
+      peerContext = await isolatedContext(browser, headers);
+    const owner = await ownerContext.newPage(),
+      peer = await peerContext.newPage();
+    try {
+      await owner.goto(MARS_BASE_URL);
+      await expect(owner.locator('#emptyState')).toBeVisible();
+      await owner.locator('#importInput').setInputFiles({
+        name: 'Cached.zip',
+        mimeType: 'application/zip',
+        buffer: Buffer.from(
+          zipSync({
+            'Cached/Late registration.md': Buffer.from(
+              '# Late registration\n\nThe durable manifest already knows this document.',
+            ),
+          }),
+        ),
+      });
+      await expect(owner.locator('#toast')).toContainText('Imported 1 document');
+      await owner.getByRole('button', { name: 'Actions for Cached', exact: true }).click();
+      await owner.getByRole('menuitem', { name: 'Sync', exact: true }).click();
+      await owner.getByRole('button', { name: 'Turn on sync', exact: true }).click();
+      await expect(owner.getByRole('textbox', { name: 'Sync link', exact: true })).toBeVisible();
+      const saved = await owner.evaluate(async () => {
+        const database = await new Promise<IDBDatabase>((resolve) => {
+          const open = indexedDB.open('mars');
+          open.onsuccess = () => resolve(open.result);
+        });
+        const tx = database.transaction(['nodes', 'docs', 'meta']),
+          nodes = tx.objectStore('nodes').getAll();
+        return new Promise((resolve) => {
+          nodes.onsuccess = () => {
+            const root = nodes.result.find((node) => node.kind === 'folder'),
+              key = `sync:scope:${root.connection.collection}:${root.connection.member}`,
+              record = tx.objectStore('docs').get(`sync:${root.id}`),
+              scope = tx.objectStore('meta').get(key);
+            tx.oncomplete = () => {
+              database.close();
+              resolve({ root, key, record: record.result, scope: scope.result });
+            };
+          };
+        });
+      });
+      await owner.goto('about:blank');
+      await peer.goto(MARS_BASE_URL);
+      await expect(peer.locator('#emptyState')).toBeVisible();
+      await peer.evaluate(async (saved) => {
+        const data = saved as { root: { id: string }; key: string; record: unknown; scope: unknown },
+          database = await new Promise<IDBDatabase>((resolve) => {
+            const open = indexedDB.open('mars');
+            open.onsuccess = () => resolve(open.result);
+          });
+        const tx = database.transaction(['nodes', 'docs', 'meta'], 'readwrite');
+        tx.objectStore('nodes').put(data.root);
+        tx.objectStore('docs').put(data.record, `sync:${data.root.id}`);
+        tx.objectStore('meta').put(data.scope, data.key);
+        await new Promise<void>((resolve) => {
+          tx.oncomplete = () => resolve();
+        });
+        database.close();
+      }, saved);
+      let first = true,
+        rootDownloads = 0;
+      peer.on('request', (request) => {
+        if (
+          new URL(request.url()).pathname === '/sync/get' &&
+          request
+            .postDataJSON()
+            .key.includes((saved as { root: { connection: { document: string } } }).root.connection.document)
+        )
+          rootDownloads++;
+      });
+      await peer.route('**/sync/index', async (route) => {
+        if (route.request().postDataJSON().directory && first) {
+          first = false;
+          const response = await route.fetch(),
+            body = await response.json();
+          body.directory.documents = body.directory.documents.filter(
+            (item: { kind: string }) => item.kind === 'folder',
+          );
+          await route.fulfill({ response, json: body });
+        } else await route.fallback();
+      });
+      await peer.goto(`${MARS_BASE_URL}/?flags=debug:sync`);
+      await expect(peer.getByRole('button', { name: 'Actions for Cached', exact: true })).toBeVisible();
+      await expect
+        .poll(() =>
+          peer.evaluate(
+            () =>
+              JSON.parse(
+                (window as unknown as { marsDebug: { report(): string } }).marsDebug.report(),
+              ).channels.sync.events.filter((event: { event: string }) => event.event === 'poll.finished').length,
+          ),
+        )
+        .toBeGreaterThan(0);
+      await expect(peer.getByRole('link', { name: 'Late registration', exact: true })).toBeVisible({ timeout: 15000 });
+      await peer.getByRole('link', { name: 'Late registration', exact: true }).click();
+      await expect(peer.locator('#previewArticle')).toContainText('The durable manifest already knows this document.');
+      expect(rootDownloads).toBe(0);
+    } finally {
+      await Promise.all([ownerContext.close(), peerContext.close()]);
+    }
+  });
+
+  test('saved Syncing phases do not restart idle icons on reload or cross-tab refresh, and pending review stays pending', async ({
+    page,
+  }) => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route('**/sync/index', async (route) => {
+      await gate;
+      await route.fallback().catch(() => {});
+    });
+    try {
+      await syncedDocument(page, 'Idle replica', '# Idle replica\n\nReview this later.');
+      const badge = page.locator('#tree [data-connection]');
+      await expect(badge).toHaveAttribute('data-phase', 'current');
+      await page.evaluate(async () => {
+        const database = await new Promise<IDBDatabase>((resolve) => {
+          const open = indexedDB.open('mars');
+          open.onsuccess = () => resolve(open.result);
+        });
+        const tx = database.transaction(['nodes', 'docs'], 'readwrite'),
+          store = tx.objectStore('nodes'),
+          request = store.getAll();
+        let id = '';
+        request.onsuccess = () => {
+          const node = request.result.find((node) => node.kind === 'doc');
+          id = node.id;
+          node.connection.phase = 'working';
+          node.pending = true;
+          store.put(node);
+          tx.objectStore('docs').put('# Previous review baseline', `base:${id}`);
+        };
+        await new Promise<void>((resolve) => {
+          tx.oncomplete = () => resolve();
+        });
+        database.close();
+        const channel = new BroadcastChannel('mars');
+        channel.postMessage({ ids: [id] });
+        channel.close();
+      });
+      await expect(page.locator('#tree .tree-dot')).toBeVisible();
+      await expect(badge).toHaveAttribute('data-phase', 'current');
+      await expect(badge.locator('svg')).toHaveCSS('animation-name', 'none');
+      await page.reload();
+      await expect(page.locator('#tree .tree-dot')).toBeVisible();
+      await expect(badge).toHaveAttribute('data-phase', 'current');
+      const saved = await page.evaluate(async () => {
+        const database = await new Promise<IDBDatabase>((resolve) => {
+          const open = indexedDB.open('mars');
+          open.onsuccess = () => resolve(open.result);
+        });
+        const tx = database.transaction(['nodes', 'docs']),
+          request = tx.objectStore('nodes').getAll();
+        return new Promise<{ pending: boolean; outbox: number; baseline: string }>((resolve) => {
+          request.onsuccess = () => {
+            const node = request.result.find((node) => node.kind === 'doc'),
+              record = tx.objectStore('docs').get(`sync:${node.id}`),
+              baseline = tx.objectStore('docs').get(`base:${node.id}`);
+            tx.oncomplete = () => {
+              database.close();
+              resolve({ pending: !!node.pending, outbox: record.result.outbox.length, baseline: baseline.result });
+            };
+          };
+        });
+      });
+      expect(saved).toEqual({ pending: true, outbox: 0, baseline: '# Previous review baseline' });
+    } finally {
+      release?.();
+    }
+  });
+
+  test('an explicit per-profile destination puts new CLI links into a synced folder and existing matches stay in place', async ({
+    page,
+    browser,
+  }) => {
+    await page.goto(MARS_BASE_URL);
+    await expect(page.locator('#emptyState')).toBeVisible();
+    await page.goto(incomingAddress('Global incoming', '# Global incoming\n\nDefault incoming folder.'));
+    await expect(page.locator('#docTitle')).toHaveText('Global incoming');
+    await page.getByRole('button', { name: 'New document, folder, or import', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'New folder', exact: true }).click();
+    await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Work');
+    await page.getByRole('textbox', { name: 'Name', exact: true }).press('Enter');
+    await page
+      .locator('#fileInput')
+      .setInputFiles({ name: 'Seed.md', mimeType: 'text/markdown', buffer: Buffer.from('# Seed\n\nPrivate work.') });
+    await page.getByRole('button', { name: 'Actions for Work', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Sync', exact: true }).click();
+    await page.getByRole('button', { name: 'Turn on sync', exact: true }).click();
+    await expect(page.getByRole('textbox', { name: 'Sync link', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Close', exact: true }).click();
+    await page.getByRole('button', { name: 'Actions for Work', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Use as default', exact: true }).click();
+    await expect(page.getByTitle('Work · Default destination', { exact: true })).toBeVisible();
+    const depth =
+      Number(
+        await page
+          .getByRole('treeitem')
+          .filter({ has: page.getByRole('button', { name: 'Actions for Work', exact: true }) })
+          .getAttribute('aria-level'),
+      ) + 1;
+    const origin = 'file:/synthetic/work/CLI document.md';
+    const link = incomingAddress('CLI document', '# CLI document\n\nExplicit work destination.', origin);
+    await page.goto(link);
+    await expect(page.locator('#docTitle')).toHaveText('CLI document');
+    const row = page
+      .getByRole('treeitem')
+      .filter({ has: page.getByRole('link', { name: 'CLI document', exact: true }) });
+    await expect(row).toHaveAttribute('aria-level', String(depth));
+    await expect(row.locator('[data-connection]')).toHaveCount(1);
+    await expect(row.locator('[data-connection]')).toHaveAttribute('data-phase', 'current', { timeout: 15000 });
+    await page.goto(link);
+    await expect(page.locator('#docTitle')).toHaveText('CLI document');
+    await expect(page.getByRole('link', { name: 'CLI document', exact: true })).toHaveCount(1);
+    await expect(page.locator('#toast')).toContainText('"CLI document" is already up to date');
+    await page.goto(
+      incomingAddress('CLI document', '# CLI document\n\nA changed file at the same local source path.', origin),
+    );
+    await expect(page.locator('#previewArticle')).toContainText('A changed file at the same local source path.');
+    await expect(page.getByRole('link', { name: 'CLI document', exact: true })).toHaveCount(1);
+    await expect(row).toHaveAttribute('aria-level', String(depth));
+    const other = await browser.newContext(),
+      peer = await other.newPage();
+    try {
+      await peer.goto(link);
+      await expect(peer.locator('#docTitle')).toHaveText('CLI document');
+      await expect(peer.getByRole('button', { name: 'Actions for Shared with me', exact: true })).toBeVisible();
+      await expect(peer.locator('#tree [data-connection]')).toHaveCount(0);
+    } finally {
+      await other.close();
+    }
+    await page.getByRole('button', { name: 'Actions for Shared with me', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Use as default', exact: true }).click();
+    await page.goto(incomingAddress('Separate incoming', '# Separate incoming\n\nNot automatically synced.'));
+    await expect(page.locator('#docTitle')).toHaveText('Separate incoming');
+    await expect(page.getByRole('button', { name: 'Actions for Shared with me', exact: true })).toBeVisible();
+    const separate = page
+      .getByRole('treeitem')
+      .filter({ has: page.getByRole('link', { name: 'Separate incoming', exact: true }) });
+    await expect(separate.locator('[data-connection]')).toHaveCount(0);
+  });
+
+  test('two stale tabs publish a nested collection once, with no partial tree during delayed or failed downloads', async ({
+    browser,
+  }) => {
+    test.setTimeout(120000);
+    const headers = { 'x-mars-test-client': crypto.randomUUID() };
+    const ownerContext = await isolatedContext(browser, headers),
+      peerContext = await isolatedContext(browser, headers);
+    const owner = await ownerContext.newPage(),
+      peer = await peerContext.newPage();
+    const snapshot = (page: Page) =>
+      page.evaluate(async () => {
+        const database = await new Promise<IDBDatabase>((resolve, reject) => {
+          const open = indexedDB.open('mars');
+          open.onsuccess = () => resolve(open.result);
+          open.onerror = () => reject(open.error);
+        });
+        const transaction = database.transaction(['nodes', 'docs', 'meta']);
+        const read = <T>(store: string, method: 'getAll' | 'getAllKeys') =>
+          new Promise<T>((resolve) => {
+            const request = transaction.objectStore(store)[method]();
+            request.onsuccess = () => resolve(request.result as T);
+          });
+        const [nodes, values, keys, metadata, metaKeys] = await Promise.all([
+          read<
+            {
+              id: string;
+              kind: string;
+              name: string;
+              connection: { collection: string; member: string; document: string };
+            }[]
+          >('nodes', 'getAll'),
+          read<unknown[]>('docs', 'getAll'),
+          read<string[]>('docs', 'getAllKeys'),
+          read<unknown[]>('meta', 'getAll'),
+          read<string[]>('meta', 'getAllKeys'),
+        ]);
+        database.close();
+        return {
+          nodes,
+          docs: Object.fromEntries(keys.map((key, index) => [key, values[index]])),
+          meta: Object.fromEntries(metaKeys.map((key, index) => [key, metadata[index]])),
+        };
+      });
+    let releaseFailure!: () => void, releaseSuccess!: () => void;
+    const failureGate = new Promise<void>((resolve) => {
+        releaseFailure = resolve;
+      }),
+      successGate = new Promise<void>((resolve) => {
+        releaseSuccess = resolve;
+      });
+    const first = new Set<Page>(),
+      retry = new Set<Page>();
+    try {
+      await owner.goto(MARS_BASE_URL);
+      await expect(owner.locator('#emptyState')).toBeVisible();
+      await owner.locator('#importInput').setInputFiles({
+        name: 'Root.zip',
+        mimeType: 'application/zip',
+        buffer: Buffer.from(
+          zipSync({
+            'Root/A/Nested/One.md': Buffer.from('# One\n\nExact first body.'),
+            'Root/A/Nested/Two.md': Buffer.from(
+              '# Two\n\nExact second body.\n\n<!-- su-comments\n[{"id":"review","quote":"second","comments":[{"id":"comment","author":"Owner","body":"Unique seed review"}]}]\n-->\n',
+            ),
+            'Root/B/Three.md': Buffer.from('# Three\n\nExact third body.'),
+          }),
+        ),
+      });
+      await expect(owner.locator('#toast')).toContainText('Imported 3 documents');
+      await owner.getByRole('button', { name: 'Actions for Root', exact: true }).click();
+      await owner.getByRole('menuitem', { name: 'Sync', exact: true }).click();
+      await owner.getByRole('button', { name: 'Turn on sync', exact: true }).click();
+      await expect(owner.getByRole('textbox', { name: 'Sync link', exact: true })).toBeVisible({ timeout: 30000 });
+      const source = await snapshot(owner),
+        root = source.nodes.find((node) => node.kind === 'folder' && node.name === 'Root');
+      const scopeKey = `sync:scope:${root.connection.collection}:${root.connection.member}`;
+      await owner.goto('about:blank');
+      // Real saved credentials and manifest, but neither tab has its children.
+      await peer.goto(MARS_BASE_URL);
+      await expect(peer.locator('#emptyState')).toBeVisible();
+      await peer.evaluate(
+        async ({ root, record, scope, scopeKey }) => {
+          const database = await new Promise<IDBDatabase>((resolve) => {
+            const open = indexedDB.open('mars');
+            open.onsuccess = () => resolve(open.result);
+          });
+          await new Promise<void>((resolve, reject) => {
+            const tx = database.transaction(['nodes', 'docs', 'meta'], 'readwrite');
+            tx.objectStore('nodes').put({ ...root, open: true });
+            tx.objectStore('docs').put(record, `sync:${root.id}`);
+            tx.objectStore('meta').put(scope, scopeKey);
+            tx.oncomplete = () => resolve();
+            tx.onabort = () => reject(tx.error);
+          });
+          database.close();
+        },
+        { root, record: source.docs[`sync:${root.id}`], scope: source.meta[scopeKey], scopeKey },
+      );
+      await peerContext.addInitScript(() => {
+        const errors: string[] = [],
+          counts: number[] = [];
+        Object.assign(window, { __materialization: { errors, counts } });
+        const expected: Record<string, string> = {
+          Root: 'Root',
+          A: 'Root/A',
+          Nested: 'Root/A/Nested',
+          B: 'Root/B',
+          One: 'Root/A/Nested/One',
+          Two: 'Root/A/Nested/Two',
+          Three: 'Root/B/Three',
+        };
+        const original = IDBDatabase.prototype.transaction;
+        IDBDatabase.prototype.transaction = function (...args) {
+          const transaction = original.apply(this, args);
+          if (transaction.mode === 'readwrite' && transaction.objectStoreNames.contains('nodes'))
+            transaction.addEventListener('complete', () => {
+              const read = original.call(this, ['nodes'], 'readonly').objectStore('nodes').getAll();
+              read.onsuccess = () => {
+                const nodes = read.result.filter((node) => node.connection),
+                  identities = new Set<string>();
+                counts.push(nodes.length);
+                if (nodes.length !== 1 && nodes.length !== 7) errors.push(`Partial committed tree: ${nodes.length}`);
+                for (const node of nodes) {
+                  const identity = `${node.connection.collection}:${node.connection.member}:${node.connection.document}`;
+                  if (identities.has(identity)) errors.push(`Duplicate remote identity: ${node.name}`);
+                  identities.add(identity);
+                  const path = [node.name],
+                    seen = new Set([node.id]);
+                  let parent = node.parentId;
+                  while (parent) {
+                    const p = read.result.find((node) => node.id === parent);
+                    if (!p || seen.has(p.id)) {
+                      errors.push('Broken parent chain');
+                      break;
+                    }
+                    path.unshift(p.name);
+                    seen.add(p.id);
+                    parent = p.parentId;
+                  }
+                  if (path.join('/') !== expected[node.name]) errors.push(`Wrong committed path: ${path.join('/')}`);
+                }
+              };
+            });
+          return transaction;
+        };
+        document.addEventListener('DOMContentLoaded', () => {
+          new MutationObserver(() => {
+            const labels = new Set<string>();
+            for (const row of document.querySelectorAll('#tree .tree-row')) {
+              const name = row.querySelector('.tree-label')?.textContent ?? '';
+              if (labels.has(name)) errors.push(`Duplicate visible row: ${name}`);
+              labels.add(name);
+              if (expected[name] && Number(row.getAttribute('aria-level')) !== expected[name].split('/').length)
+                errors.push(`Wrong visible depth: ${name}`);
+            }
+          }).observe(document.querySelector('#tree')!, { childList: true, subtree: true });
+        });
+      });
+      await peerContext.route('**/sync/document-info', async (route) => {
+        if (route.request().postDataJSON().document === root.connection.document) {
+          await route.fallback();
+          return;
+        }
+        const page = route.request().frame().page();
+        if (!first.has(page)) {
+          first.add(page);
+          await failureGate;
+          await route.fulfill({ status: 503, json: { error: 'service-unavailable' } });
+        } else {
+          retry.add(page);
+          await successGate;
+          await route.fallback();
+        }
+      });
+      const other = await peerContext.newPage();
+      await Promise.all([peer.reload(), other.goto(MARS_BASE_URL)]);
+      await expect.poll(() => first.size, { timeout: 30000 }).toBe(2);
+      expect((await snapshot(peer)).nodes).toHaveLength(1);
+      releaseFailure();
+      await expect.poll(() => retry.size, { timeout: 30000 }).toBe(2);
+      expect((await snapshot(peer)).nodes).toHaveLength(1);
+      releaseSuccess();
+      await expect.poll(async () => (await snapshot(peer)).nodes.length, { timeout: 30000 }).toBe(7);
+      for (const page of [peer, other]) {
+        await expect(page.getByRole('button', { name: 'Actions for A', exact: true })).toBeVisible();
+        for (const folder of ['A', 'Nested', 'B']) {
+          const row = page
+            .getByRole('treeitem')
+            .filter({ has: page.getByRole('button', { name: `Actions for ${folder}`, exact: true }) });
+          if ((await row.getAttribute('aria-expanded')) !== 'true')
+            await row.getByText(folder, { exact: true }).click();
+        }
+        await expect(page.getByRole('link', { name: 'Two', exact: true })).toHaveCount(1);
+        await page.getByRole('link', { name: 'Two', exact: true }).click();
+        await expect(page.locator('#commentsRail')).toContainText('Unique seed review');
+        const observations = await page.evaluate(
+          () => (window as unknown as { __materialization: { errors: string[]; counts: number[] } }).__materialization,
+        );
+        expect(observations.errors).toEqual([]);
+        expect(observations.counts).toContain(7);
+      }
+      const result = await snapshot(peer);
+      expect(result.nodes.filter((node) => node.connection)).toHaveLength(7);
+      for (const name of ['One', 'Two', 'Three']) {
+        const node = result.nodes.find((node) => node.name === name),
+          original = source.nodes.find((node) => node.name === name);
+        expect(result.docs[node.id]).toBe(source.docs[original.id]);
+      }
+      await peer.reload();
+      await expect(peer.getByRole('link', { name: 'Two', exact: true })).toHaveCount(1);
+      expect((await snapshot(peer)).nodes).toHaveLength(7);
+    } finally {
+      releaseFailure?.();
+      releaseSuccess?.();
+      await Promise.all([ownerContext.close(), peerContext.close()]);
+    }
+  });
+
   test('previously issued pairing fragments still connect through the Sync link flow', async ({ browser }) => {
     const headers = { 'x-mars-test-client': crypto.randomUUID() };
     const ownerContext = await isolatedContext(browser, headers),
@@ -282,7 +823,7 @@ test.describe('sync protocol', () => {
       await context.close();
     }
   });
-  test('an imported folder starts uploading and pairs even when no document is open', async ({ browser }) => {
+  test('an imported folder starts uploading and pairs even when no document is open', async ({ browser }, testInfo) => {
     test.setTimeout(120000);
     const headers = { 'x-mars-test-client': crypto.randomUUID() };
     const ownerContext = await isolatedContext(browser, headers),
@@ -295,6 +836,14 @@ test.describe('sync protocol', () => {
         Buffer.from(`# Document ${index}\n\nOriginal text ${index}.`),
       ]),
     );
+    const releases: (() => void)[] = [],
+      gates = Array.from({ length: 3 }, () => new Promise<void>((resolve) => releases.push(resolve)));
+    let reads = 0;
+    await peer.route('**/sync/document-info', async (route) => {
+      const index = reads++;
+      if (index < gates.length) await gates[index];
+      await route.fallback();
+    });
     try {
       await owner.goto(MARS_BASE_URL);
       await expect(owner.locator('#emptyState')).toBeVisible();
@@ -314,8 +863,75 @@ test.describe('sync protocol', () => {
         timeout: 30000,
       });
       await expect(owner.locator('#tree [data-connection]')).toHaveCount(32);
+      await peer.addInitScript(() => {
+        const errors: string[] = [],
+          sizes: number[] = [];
+        Object.assign(window, { __initialHierarchy: { errors, sizes } });
+        const original = IDBDatabase.prototype.transaction;
+        IDBDatabase.prototype.transaction = function (...args) {
+          const transaction = original.apply(this, args);
+          if (transaction.mode === 'readwrite' && transaction.objectStoreNames.contains('nodes'))
+            transaction.addEventListener('complete', () => {
+              const read = original.call(this, ['nodes'], 'readonly').objectStore('nodes').getAll();
+              read.onsuccess = () => {
+                const nodes = read.result.filter((node) => node.connection);
+                sizes.push(nodes.length);
+                if (nodes.length && nodes.length !== 32) errors.push(`Partial initial hierarchy: ${nodes.length}`);
+                for (const node of nodes.filter((node) => node.kind === 'doc')) {
+                  const index = Number(node.name.split(' ')[1]),
+                    parent = nodes.find((parent) => parent.id === node.parentId);
+                  if (parent?.name !== `Folder ${index % 7}` || !parent.parentId)
+                    errors.push(`Incorrect initial parent: ${node.name}`);
+                }
+              };
+            });
+          return transaction;
+        };
+        document.addEventListener('DOMContentLoaded', () => {
+          new MutationObserver(() => {
+            for (const row of document.querySelectorAll('#tree .tree-row')) {
+              const name = row.querySelector('.tree-label')?.textContent ?? '',
+                depth = Number(row.getAttribute('aria-level'));
+              if ((name.startsWith('Document ') && depth !== 3) || (name.startsWith('Folder ') && depth !== 2))
+                errors.push(`Incorrect visible initial depth: ${name}`);
+            }
+          }).observe(document.querySelector('#tree')!, { childList: true, subtree: true });
+        });
+      });
       await pair(owner, peer, 'Imported folder');
+      const downloading = peer.getByRole('dialog', { name: 'Downloading synced folder', exact: true });
+      await expect(downloading).toBeVisible();
+      await expect(downloading.getByRole('progressbar', { name: 'Sync download', exact: true })).not.toHaveAttribute(
+        'value',
+      );
+      await expect(downloading.getByRole('status').filter({ hasText: 'Reading folder details' })).toBeVisible();
+      await expect(peer.locator('#tree [data-connection]')).toHaveCount(0);
+      releases[0]();
+      await expect.poll(() => reads).toBe(2);
+      await expect(downloading).toContainText('0 of 24 documents downloaded');
+      await expect(downloading.getByRole('progressbar', { name: 'Sync download', exact: true })).toHaveAttribute(
+        'max',
+        '24',
+      );
+      releases[1]();
+      await expect.poll(() => reads).toBe(3);
+      await expect(downloading).toContainText('1 of 24 documents downloaded');
+      await expect(downloading.getByRole('progressbar', { name: 'Sync download', exact: true })).toHaveAttribute(
+        'value',
+        '1',
+      );
+      await expect(peer.locator('#tree [data-connection]')).toHaveCount(0);
+      for (const width of [1280, 320]) {
+        await peer.setViewportSize({ width, height: 800 });
+        const bounds = (await downloading.boundingBox())!;
+        expect(bounds.x).toBeGreaterThanOrEqual(0);
+        expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
+        await peer.screenshot({ path: testInfo.outputPath(`sync-download-${width}.png`) });
+      }
+      await peer.setViewportSize({ width: 1280, height: 800 });
+      releases[2]();
       await expect(peer.locator('#toast')).toContainText('Sync connected', { timeout: 60000 });
+      await expect(downloading).toHaveCount(0);
       for (const page of [peer, owner]) {
         const folder = page
           .getByRole('treeitem')
@@ -332,13 +948,66 @@ test.describe('sync protocol', () => {
       await expect(owner.locator('#previewArticle')).toContainText('Edited from the paired browser.', {
         timeout: 15000,
       });
+      const hierarchy = await peer.evaluate(
+        () => (window as unknown as { __initialHierarchy: { errors: string[]; sizes: number[] } }).__initialHierarchy,
+      );
+      expect(hierarchy.errors).toEqual([]);
+      expect(hierarchy.sizes).toContain(32);
     } finally {
+      for (const release of releases) release();
       await owner.goto('about:blank').catch(() => {});
       await peer.goto('about:blank').catch(() => {});
       await ownerContext.close();
       await peerContext.close();
     }
   });
+  for (const outcome of ['cancel', 'failure'] as const)
+    test(`incoming Sync download feedback closes on ${outcome} without a partial library`, async ({ browser }) => {
+      const headers = { 'x-mars-test-client': crypto.randomUUID() },
+        ownerContext = await isolatedContext(browser, headers),
+        peerContext = await isolatedContext(browser, headers);
+      const owner = await ownerContext.newPage(),
+        peer = await peerContext.newPage();
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      try {
+        await syncedDocument(owner, 'Incoming', '# Incoming\n\nRemote text.');
+        await peer.goto(MARS_BASE_URL);
+        await expect(peer.locator('#emptyState')).toBeVisible();
+        await peer.locator('#fileInput').setInputFiles({
+          name: 'Private.md',
+          mimeType: 'text/markdown',
+          buffer: Buffer.from('# Private\n\nDo not replace.'),
+        });
+        await expect(peer.locator('#docTitle')).toHaveText('Private');
+        await peer.route('**/sync/document-info', async (route) => {
+          await gate;
+          if (outcome === 'failure') await route.fulfill({ status: 503, json: { error: 'service-unavailable' } });
+          else await route.abort().catch(() => {});
+        });
+        await pair(owner, peer, 'Incoming');
+        const downloading = peer.getByRole('dialog', { name: 'Downloading synced document', exact: true });
+        await expect(downloading).toBeVisible();
+        await expect(downloading).toContainText('Downloading document');
+        if (outcome === 'cancel') await downloading.getByRole('button', { name: 'Cancel', exact: true }).click();
+        release();
+        await expect(downloading).toHaveCount(0);
+        await expect(peer.locator('#toast')).toContainText(
+          outcome === 'cancel' ? 'Sync setup canceled' : 'Sync service is unavailable',
+        );
+        await expect(peer.locator('#tree [data-connection]')).toHaveCount(0);
+        await expect(peer.locator('#tree .tree-link')).toHaveCount(1);
+        await peer.getByRole('link', { name: 'Private', exact: true }).click();
+        await expect(peer.locator('#previewArticle')).toContainText('Do not replace.');
+        await peer.reload();
+        await expect(peer.locator('#tree .tree-link')).toHaveCount(1);
+      } finally {
+        release?.();
+        await Promise.all([ownerContext.close(), peerContext.close()]);
+      }
+    });
   test('named browser removal stays beside its connection and retains that browser’s local work', async ({
     browser,
   }) => {

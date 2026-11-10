@@ -7,8 +7,9 @@ import { mergeDocuments, openThreads, splitComments } from '../share/merge.ts';
 import { matchScore } from '../share/match.ts';
 import { encodeState, decodeState } from '../share/codec.ts';
 import { identity, keyBytes, randomSecret, tokenHash, sign, signGrant, wrapKey, unwrapKey, verify, verifyGrant, pairingPhrase, sealJson, openJson, openCheckpoint, encryptRecovery, decryptRecovery, hash, MAX_RECOVERY_FILE_BYTES } from './crypto.ts';
-import { encode, decode, LIMITS, validId, validGrant, validInvitation, validWrappedKey, type SignedGrant, type SignedInvitation, type WrappedKey, type SyncBinding } from './protocol.ts';
-import { Session, type SessionRecord, type ManifestNode } from './session.ts';
+import { encode, decode, LIMITS, SyncError, validId, validGrant, validInvitation, validWrappedKey, checkpointKey, type SignedGrant, type SignedInvitation, type WrappedKey, type SyncBinding, type SyncDirectory } from './protocol.ts';
+import { Session, stagedSession, type SessionRecord, type ManifestNode } from './session.ts';
+import { materializable, materializationVersion } from './materialization.ts';
 import { Transport, type ConnectionStatus } from './transport.ts';
 import { BodyReplica } from './replica.ts';
 import { resumeRotation, type RotationPlan, type RotationDocument } from './rotation.ts';
@@ -19,6 +20,8 @@ import { copyFeedback } from '../ui/feedback.ts';
 import { isShortLiveLink, liveAccess, newLiveSecret, openLiveBootstrap, sealLiveBootstrap, type LiveLink } from './live-link.ts';
 import { unzipSync } from 'fflate';
 import { isShortSyncLink, newSyncSecret, openSyncBootstrap, sealSyncBootstrap, syncAccess, type PairLink } from './sync-link.ts';
+import { syncDebug, safeError, type SetupStage } from './debug.ts';
+import { connectionStates } from './status.ts';
 
 interface Scope {
     collection: string; root: string; localRoot: string; kind: 'doc' | 'folder'; key: string; token: string;
@@ -37,7 +40,10 @@ const renewing = new Map<string, Promise<void>>();
 const rotations = new Map<string, RotationPlan>();
 const rotationTasks = new Map<string, Promise<void>>();
 const cleanupTasks = new Map<string, Promise<void>>();
-let initialized = false, materializing = false;
+let initialized = false;
+const materializations = new Map<string, Promise<void>>();
+const materializedViews = new Map<string, string>();
+const creations = new Map<string, Promise<void>>();
 const scopeKey = (collection: string, member: string) => `sync:scope:${collection}:${member}`;
 const scopeId = (scope: Scope) => scopeKey(scope.collection, scope.member.grant.member);
 const rotationKey = (scope: Scope) => `sync:rotation:${scopeId(scope)}`;
@@ -64,7 +70,7 @@ const rootFor = (node: TreeNode) => node.connection ? scopes.get(scopeKey(node.c
 const repository = (id: string) => ({ get: () => db.getSide<SessionRecord>('sync', id), commit: async (expected: number | null, record: SessionRecord, remote = false) => {
     const node = app.node(id); if (!node) throw new Error('Connection was removed');
     const staged = new BodyReplica(decode(record.body)), meta = staged.doc.getMap('meta').toJSON(), body = staged.text(); staged.destroy();
-    const previous = sessions.get(id)?.record.projection;
+    const previous = node.kind === 'doc' ? await db.getText(id) : record.projection;
     const extras: Record<string, unknown> = {};
     const bodyHash = await hash(new TextEncoder().encode(body));
     const reviewed = Object.values(record.reviews).flatMap((packet) => packet.operations).some((op) => op.operation.kind === 'ack'
@@ -72,20 +78,26 @@ const repository = (id: string) => ({ get: () => db.getSide<SessionRecord>('sync
     const changed = remote && previous !== undefined && previous !== '' && app.bodyOf(previous) !== app.bodyOf(record.projection);
     const searchableChanged = previous !== record.projection || typeof meta?.name === 'string' && meta.name !== node.name;
     const updated = { ...node, ...(changed && !node.pending ? { pending: true as const } : {}), ...(typeof meta?.name === 'string' ? { name: meta.name } : {}),
-        ...(validId(meta?.origin) ? { originId: meta.origin } : {}),
+        // Local file/URL identities must survive enrollment and later receipts.
+        // The portable UUID in Sync metadata is not the local source location.
+        ...(validId(meta?.origin) && (!node.originId || validId(node.originId)) ? { originId: meta.origin } : {}),
         ...((meta.readingWidth === 'full' || typeof meta.readingWidth === 'number') ? { readingWidth: meta.readingWidth as 'full' | number } : {}),
         ...(node.handle && previous !== undefined && previous !== record.projection ? { dirty: true } : {}),
         size: textBytes(record.projection), threads: openThreads(record.projection), updatedAt: searchableChanged ? Date.now() : node.updatedAt };
     if (changed && !node.pending) extras[`base:${id}`] = previous;
     if (reviewed) { delete updated.pending; delete extras[`base:${id}`]; }
-    await db.commitReplica(id, expected, record, [updated], node.kind === 'doc' ? { [id]: record.projection } : {}, {}, extras, reviewed ? [`base:${id}`] : []);
-    Object.assign(node, updated); if (reviewed) delete node.pending; app.notify();
+    await db.commitReplica(id, expected, record, [updated], node.kind === 'doc' ? { [id]: record.projection } : {}, {}, extras, reviewed ? [`base:${id}`] : [], record.binding);
+    Object.assign(node, updated); connectionStates.restore([node]); if (reviewed) delete node.pending; app.notify();
 } });
 async function saveScope(scope: Scope) { scopes.set(scopeId(scope), scope); await db.setMeta(scopeId(scope), scope); }
 async function request(action: string, body: Record<string, unknown>, token: string, signal?: AbortSignal) {
+    const started = performance.now();
+    try {
     const response = await fetch(`/sync/${action}`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(body), cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer', redirect: 'error', signal });
-    const result = await response.json(); if (!response.ok) throw new Error(result.error ?? `Sync request failed (${response.status})`); return result;
+    syncDebug.record('request.finished', { action, status: response.status, duration: Math.round(performance.now() - started) });
+    const result = await response.json(); if (!response.ok) throw new SyncError(result.error ?? 'sync-request-failed', response.status); return result;
+    } catch (error) { syncDebug.record('request.failed', { action, duration: Math.round(performance.now() - started), ...safeError(error) }); throw error; }
 }
 const scoped = (scope: Scope, action: string, values: Record<string, unknown> = {}, signal?: AbortSignal) => request(action, { collection: scope.collection, member: scope.member.grant.member, ...values }, scope.token, signal);
 async function waitForPair(action: string, values: Record<string, unknown>, token: string, controller: AbortController, ready: (value: Record<string, unknown>) => boolean) {
@@ -110,7 +122,9 @@ async function waitForPair(action: string, values: Record<string, unknown>, toke
     }
 }
 function phase(scope: Scope, state: ConnectionStatus) {
+    syncDebug.record('transport.status', { state });
     if (rotations.has(scopeId(scope))) state = 'attention';
+    connectionStates.set({ collection: scope.collection, member: scope.member.grant.member }, state);
     for (const node of app.state.nodes) if (belongs(node, scope)) node.connection!.phase = state;
     if (state === 'ended') void db.markConnectionEnded(scope.collection, scope.member.grant.member).catch(() => {});
     viewer.refreshConnection(); app.notify();
@@ -146,6 +160,17 @@ function start(scope: Scope) {
     const driver = new Transport({ origin: location.origin, token: scope.token, ownerPublicKey: scope.owner.grant.publicKey, replica: adapter,
         exclude: () => scope.exclusions,
         streams: ['body', 'review', 'tree'], collectionScope: scope.kind === 'folder' || (scope.selection?.length ?? 0) > 1, authorValid: (author) => verifyGrant(author, scope.owner.grant),
+        directory: scope.kind === 'folder',
+        wanted: key => { const checkpoint = checkpointKey(key); return !checkpoint || list().some(([, session]) => session.record.binding.document === checkpoint.document); },
+        known: async key => {
+            const checkpoint = checkpointKey(key); if (!checkpoint || checkpoint.collection !== scope.collection) return false;
+            const entry = list().find(([, session]) => session.record.binding.document === checkpoint.document); if (!entry) return false;
+            const applied = (record?: SessionRecord) => !!record && !record.ended && record.binding.collection === scope.collection && record.binding.member === scope.member.grant.member
+                && record.binding.document === checkpoint.document && (record.progress[`${checkpoint.member}/${checkpoint.stream}`] ?? 0) >= checkpoint.sequence;
+            // Session.record is a committed snapshot. Only consult storage when
+            // another tab might have received a packet this tab has not seen.
+            return applied(entry[1].record) || applied(await entry[1].repository.get());
+        },
         status: (state) => phase(scope, state), projection: async () => {},
         keyChanged: async (envelope, signal) => {
             const session = list().find(([, item]) => item.record.binding.document === envelope.checkpoint.document)?.[1];
@@ -154,7 +179,7 @@ function start(scope: Scope) {
             await refreshKey(scope, session, epoch, signal);
             preparing.delete(envelope.checkpoint.operation);
         },
-        receive: async (envelope, author, signal) => {
+        receive: async (envelope, author, signal, directory) => {
             const entry = list().find(([, session]) => session.record.binding.document === envelope.checkpoint.document);
             if (!entry) return null;
             const [id, session] = entry;
@@ -177,10 +202,17 @@ function start(scope: Scope) {
             const meta = session.metadata(), node = app.node(id)!;
             if (typeof meta.name === 'string') node.name = meta.name;
             if (meta.readingWidth === 'full' || typeof meta.readingWidth === 'number') node.readingWidth = meta.readingWidth;
-            if (session.folder()) await materialize(scope, session, signal);
+            if (session.folder()) await materialize(scope, session, signal, { directory });
             await persistProjection(id, text); return text;
-        }, cycle: async (signal) => {
-            if (scope.kind === 'folder') await reconcileDirectory(scope, signal);
+        }, cycle: async (signal, directory) => {
+            if (scope.kind === 'folder') {
+                directory ??= await scoped(scope, 'directory', {}, signal);
+                const root = sessions.get(scope.localRoot);
+                // A previous download can fail after its manifest was saved.
+                // Recover from that durable manifest even when no packet needs fetching.
+                if (root) { await root.synchronize(); if (materializedViews.get(scopeId(scope)) !== materializationVersion(scope.localRoot, root.record.body, scope.exclusions, directory!)) await materialize(scope, root, signal, { directory }); }
+                await reconcileDirectory(scope, signal, directory);
+            }
             const current = sessions.get(app.state.currentId ?? '');
             if (current?.record.binding.collection === scope.collection && viewer.canApplyConnection()) await persistProjection(app.state.currentId!, current.record.projection);
         } });
@@ -188,6 +220,7 @@ function start(scope: Scope) {
 }
 export async function initialize(force = false) {
     if (initialized && !force) return; initialized = true;
+    if (await db.repairDuplicateConnections()) await app.load();
     const records = await db.allSides<SessionRecord>('sync');
     for (const record of records) {
         if (record?.kind !== 'connected') continue;
@@ -200,6 +233,7 @@ export async function initialize(force = false) {
         const active = scopes.get(scopeId(scope)); if (active) Object.assign(active, scope); else scopes.set(scopeId(scope), scope);
         if (!sessions.has(node.id)) sessions.set(node.id, new Session(record, repository(node.id)));
     }
+    for (const [id, session] of sessions) if (!app.node(id)?.connection) { session.destroy(); sessions.delete(id); }
     for (const scope of scopes.values()) {
         const wasRotating = rotations.has(scopeId(scope));
         const rotation = await rotationRepository(scope).get();
@@ -243,48 +277,156 @@ async function validateSnapshot(session: Session, text: string) {
     try { await staged.change(record.projection, text); }
     finally { staged.destroy(); }
 }
-async function enrollSelection(id: string, personalSync = true) {
-    await initialize(); const node = app.node(id); if (!node) return;
-    if (node.connection) return;
-    if (db.isTemporaryStorage()) { viewer.toast('Save the document to your library before using Sync.'); return; }
+class SyncSetupError extends Error {
+    readonly code: string;
+    readonly stage: SetupStage;
+    constructor(stage: SetupStage, cause: unknown) {
+        super('Sync setup did not finish', { cause }); this.name = 'SyncSetupError'; this.stage = stage; this.code = safeError(cause).code;
+        syncDebug.record('setup.failed', { stage, ...safeError(cause) }, true);
+    }
+}
+function unfinishedScope(snapshot: db.UnfinishedSetupSnapshot, record: SessionRecord) {
+    return (snapshot.metadata[scopeKey(record.binding.collection, record.binding.member)] ?? snapshot.metadata[`sync:scope:${record.binding.collection}`]) as Scope | undefined;
+}
+function canRestartUnfinished(snapshot: db.UnfinishedSetupSnapshot, id: string) {
+    const records = Object.values(snapshot.records) as SessionRecord[];
+    return snapshot.nodes[0]?.id === id && snapshot.nodes[0].kind === 'folder' && !snapshot.nodes.some(node => node.connection) && records.length > 0
+        && records.every(record => {
+            if (record?.kind !== 'connected' || !record.binding || !validId(record.binding.collection) || !validId(record.binding.member)) return false;
+            const scope = unfinishedScope(snapshot, record);
+            return scope?.kind === 'folder' && scope.localRoot === id && scope.collection === record.binding.collection
+                && validGrant(scope.member) && validGrant(scope.owner) && scope.member.grant.member === record.binding.member
+                && scope.member.grant.document === null;
+        });
+}
+// Convert the preserved raw snapshot only on explicit backup restoration. Current
+// text and the old CRDT/outbox become separate copies, so neither can replace the other.
+function recoveryFromUnfinished(saved: db.SavedUnfinishedSetup) {
+    const snapshot = saved.snapshot;
+    if (saved.v !== 1 || saved.kind !== 'mars-unfinished-sync' || !Array.isArray(snapshot?.nodes) || !snapshot.records || !snapshot.metadata || !snapshot.texts) throw new Error('Invalid unfinished setup backup');
+    const grouped = new Map<string, { scope: Scope; nodes: TreeNode[]; records: { local: string; record: SessionRecord }[] }>();
+    const preservedProjections: { node: TreeNode; text: string }[] = [];
+    const records = Object.entries(snapshot.records).sort(([a, x], [b, y]) => Number(b === unfinishedScope(snapshot, y as SessionRecord)?.localRoot) - Number(a === unfinishedScope(snapshot, x as SessionRecord)?.localRoot));
+    for (const [id, value] of records) {
+        const record = value as SessionRecord, node = snapshot.nodes.find(node => node.id === id);
+        if (!node || record?.kind !== 'connected' || !record.binding) throw new Error('Invalid unfinished setup replica');
+        const scope = unfinishedScope(snapshot, record); if (!scope) throw new Error('Missing unfinished setup credentials');
+        let group = grouped.get(scopeId(scope));
+        if (!group) { group = { scope: structuredClone(scope), nodes: [], records: [] }; grouped.set(scopeId(scope), group); }
+        // Repair archives can include the old competing replicas. Restore one
+        // active binding, and retain every other projection as a local copy.
+        const duplicate = group.nodes.find(item => item.connection!.document === record.binding.document);
+        if (duplicate) {
+            preservedProjections.push({ node: { ...node, id: newId(), parentId: null, connection: undefined, name: `${node.name} (preserved Sync work)` }, text: record.projection });
+            continue;
+        }
+        const { parentId, kind, name, order, readingWidth } = node;
+        group.nodes.push({ id, parentId, kind, name, order, readingWidth, createdAt: saved.at, updatedAt: saved.at, connection: { ...record.binding, phase: 'waiting' } });
+        group.records.push({ local: id, record });
+    }
+    const connections = [...grouped.values()].map(group => {
+        const originalScope = structuredClone(group.scope), root = group.nodes.find(node => node.id === group.scope.localRoot);
+        if (!root || group.scope.selection) {
+            const first = group.nodes.find(node => node.kind === 'doc'), record = group.records.find(item => item.local === first?.id)?.record;
+            if (!first || !record) throw new Error('Missing unfinished setup document');
+            group.scope.root = first.connection!.document; group.scope.localRoot = first.id; group.scope.kind = 'doc'; group.scope.key = record.key;
+            group.scope.selection = group.nodes.filter(node => node.kind === 'doc').map(node => node.connection!.document);
+        }
+        const ids = new Set(group.nodes.map(node => node.id));
+        for (const node of group.nodes) node.parentId = node.id === group.scope.localRoot ? null : ids.has(node.parentId ?? '') ? node.parentId : group.scope.kind === 'folder' ? group.scope.localRoot : null;
+        const documents = new Set(group.nodes.map(node => node.connection!.document));
+        const links = (snapshot.metadata[`sync:links:${scopeId(originalScope)}`] ?? []) as OwnedLink[];
+        return { ...group, links: links.filter(link => documents.has(link.document)), rotation: snapshot.metadata[rotationKey(originalScope)] as RotationPlan | null | undefined, revoked: snapshot.metadata[revokedAccessKey(originalScope)] as RevokedAccess | undefined };
+    });
+    const ids = new Map(snapshot.nodes.map(node => [node.id, newId()]));
+    const local = [...snapshot.nodes.map(node => ({ node: { id: ids.get(node.id)!, parentId: ids.get(node.parentId ?? '') ?? null, kind: node.kind, name: node.name, order: node.order, readingWidth: node.readingWidth }, text: node.kind === 'doc' ? snapshot.texts[node.id] : null })), ...preservedProjections];
+    for (const group of connections) {
+        const ids = new Map(group.nodes.map(node => [node.id, newId()]));
+        group.scope.localRoot = ids.get(group.scope.localRoot)!;
+        group.nodes = group.nodes.map(node => ({ ...node, id: ids.get(node.id)!, parentId: ids.get(node.parentId ?? '') ?? null }));
+        group.records = group.records.map(item => ({ ...item, local: ids.get(item.local)! }));
+    }
+    return { v: 3, connections, local };
+}
+async function enrollSelection(id: string, personalSync = true, previous?: db.UnfinishedSetupSnapshot) {
+    let stage: SetupStage = 'initializing', startedScope: Scope | undefined;
+    const advance = (next: SetupStage, values: Record<string, unknown> = {}) => { stage = next; syncDebug.record('setup.stage', { stage, ...values }); };
+    try {
+    advance('initializing', { temporary: db.isTemporaryStorage(), online: navigator.onLine, hidden: document.hidden });
+    await initialize(); const node = app.node(id); if (!node) throw new db.ReplicaConflict('missing-node');
+    if (node.connection) throw new db.ReplicaConflict('already-connected');
+    if (db.isTemporaryStorage()) throw new Error('temporary-storage');
+    advance('saving-edits');
     await viewer.flush();
-    const selected = [node, ...(node.kind === 'folder' ? descendants(app.state.nodes, id) : [])];
-    if (selected.some((n) => n.connection)) { viewer.toast('Some selected content is already connected. Unlink it before starting another connection.'); return; }
-    if (selected.length > LIMITS.documents) { viewer.toast(`Sync supports at most ${LIMITS.documents} selected items.`); return; }
+    advance('checking-selection');
+    const selected = structuredClone(previous?.nodes ?? [node, ...(node.kind === 'folder' ? descendants(app.state.nodes, id) : [])]);
+    const stored = new Map((await db.allNodes()).map(item => [item.id, item]));
+    const storedConnected = selected.filter(item => stored.get(item.id)?.connection).length;
+    const orphanRecords = (await Promise.all(selected.filter(item => !stored.get(item.id)?.connection).map(item => db.getSide('sync', item.id)))).filter(Boolean).length;
+    syncDebug.record('setup.stage', { stage, items: selected.length, documents: selected.filter(item => item.kind === 'doc').length, folders: selected.filter(item => item.kind === 'folder').length, connected: selected.filter(item => item.connection).length, storedConnected, orphanRecords });
+    if (selected.some((n) => n.connection) || storedConnected) throw new db.ReplicaConflict('already-connected');
+    if (selected.length > LIMITS.documents) throw new Error('selection-too-large');
+    if (orphanRecords && !previous) throw new db.ReplicaConflict('orphan-replica');
+    if (previous && !canRestartUnfinished(previous, id)) throw new Error('unfinished-setup-unavailable');
     viewer.enableConnectionSafety(); await db.setMeta('sync:safety', true);
     const who = await identity(), token = randomSecret(), root = newId(), key = encode(keyBytes()), collection = newId();
     const grant = { v: 1 as const, collection, member: newId(), participant: newId(), permission: 'owner' as const, document: null,
         publicKey: who.publicKey, boxKey: who.boxKey, tokenHash: await tokenHash(token), expires: 0 };
-    const owner = await signGrant(grant, who), scope: Scope = { collection, root, localRoot: id, kind: node.kind, key, token, owner, member: owner, identity: who, exclusions: [], personalSync };
+    const owner = await signGrant(grant, who), scope: Scope = { collection, root, localRoot: id, kind: node.kind, key, token, owner, member: owner, identity: who, exclusions: [], personalSync, lastRenewed: Date.now() };
+    startedScope = scope;
     const ids = new Map(selected.map((n) => [n.id, n.id === id ? root : newId()]));
-    try {
+        advance('reading-documents');
+        const texts: Record<string, string> = previous ? { ...previous.texts } : {};
+        for (const item of selected) if (item.kind === 'doc') texts[item.id] = previous ? previous.texts[item.id] : await app.docText(item.id);
+        advance('creating-collection');
         await request('create', { owner, root: { document: root, kind: node.kind } }, token);
-        await saveScope(scope);
-        const values: ManifestNode[] = [];
-        for (const item of selected) {
+        const values: ManifestNode[] = [], records: Record<string, SessionRecord> = {}, connected = structuredClone(selected);
+        for (const [index, item] of selected.entries()) {
+            advance('registering-items', { item: index + 1, items: selected.length });
             const remote = ids.get(item.id)!, docKey = item.id === id ? key : encode(keyBytes());
             await scoped(scope, 'document', { document: remote, kind: item.kind });
             const binding: SyncBinding = { collection, document: remote, member: grant.member, permission: 'owner', kind: 'sync', epoch: 1, root };
+            binding.participant = grant.participant; binding.ownerParticipant = grant.participant;
+            const target = connected.find(node => node.id === item.id)!;
+            target.connection = { ...binding, phase: 'waiting' }; if (target.handle) target.manualFileSave = true;
             if (item.kind === 'doc' || item.id === id) {
-                const record = Session.seed(binding, item.kind === 'doc' ? await app.docText(item.id) : '', who, token, docKey, owner, item.name);
-                const session = await createSession(item, record);
-                await session.metadataChanged({ kind: item.kind, origin: validId(item.originId) ? item.originId : item.id, ...(item.readingWidth !== undefined ? { readingWidth: item.readingWidth } : {}) });
-                await session.initial();
-            } else { item.connection = { ...binding, phase: 'waiting' }; await db.putNodes([item]); }
+                let record = Session.seed(binding, texts[item.id] ?? '', who, token, docKey, owner, item.name);
+                const session = new Session(record, { get: async () => structuredClone(record), commit: async (_expected, next) => { record = structuredClone(next); } });
+                try {
+                    await session.metadataChanged({ kind: item.kind, origin: validId(item.originId) ? item.originId : item.id, ...(item.readingWidth !== undefined ? { readingWidth: item.readingWidth } : {}) });
+                    await session.initial(); records[item.id] = record;
+                } finally { session.destroy(); }
+            }
             values.push({ id: remote, kind: item.kind, parent: item.id === id ? null : ids.get(item.parentId!) ?? root, name: item.name, order: item.order,
                 ...(item.kind === 'doc' ? { key: docKey, origin: item.originId && !/^(file|url):/.test(item.originId) ? item.originId : item.id } : {}) });
         }
-        if (scope.kind === 'folder') await sessions.get(id)!.editManifest(values);
-        start(scope); await driverFor(scope)!.upload(); viewer.refreshConnection(); app.notify();
+        advance('preparing-manifest');
+        if (scope.kind === 'folder') {
+            const session = new Session(records[id], { get: async () => structuredClone(records[id]), commit: async (_expected, next) => { records[id] = structuredClone(next); } });
+            try { await session.editManifest(values); } finally { session.destroy(); }
+        }
+        advance('saving-connections');
+        await app.serializePersistence(async () => {
+            await db.enrollConnected(selected, texts, connected, records, { [scopeId(scope)]: scope }, previous);
+            scopes.set(scopeId(scope), scope);
+            for (const item of connected) {
+                const current = app.node(item.id); if (current) { current.connection = item.connection; if (item.manualFileSave) current.manualFileSave = true; }
+                if (records[item.id]) { sessions.get(item.id)?.destroy(); sessions.set(item.id, new Session(records[item.id], repository(item.id))); }
+            }
+        });
+        advance('uploading');
+        start(scope); const driver = driverFor(scope)!; await driver.upload();
+        if (await driver.options.replica.pending()) throw driver.lastFailure ?? new Error('sync-pending');
+        viewer.refreshConnection(); app.notify();
+        syncDebug.record('setup.finished', { items: selected.length });
     } catch (error) {
-        phase(scope, 'attention');
-        if (errorText(error) === 'collection-creation-limit') return error;
-        viewer.toast(`Sync did not finish: ${errorText(error)}. Local content is retained.`);
+        if (startedScope && scopes.has(scopeId(startedScope))) phase(startedScope, 'attention');
+        throw new SyncSetupError(stage, error);
     }
 }
-async function loadPackets(scope: Scope, session: Session, signal?: AbortSignal) {
+async function loadPackets(scope: Scope, session: Session, signal?: AbortSignal, staged = false) {
     const info = await scoped(scope, 'document-info', { document: session.record.binding.document }, signal);
-    const stored = await db.getSide<SessionRecord>('sync', app.state.nodes.find((n) => belongs(n, scope) && n.connection!.document === session.record.binding.document)!.id);
+    const stored = await session.repository.get();
     if (stored) { stored.creator = info.creator; await session.repository.commit(stored.revision, { ...stored, revision: stored.revision + 1 }); session.record = { ...stored, revision: stored.revision + 1 }; }
     const keys: string[] = []; let after: string | undefined;
     do {
@@ -295,48 +437,70 @@ async function loadPackets(scope: Scope, session: Session, signal?: AbortSignal)
     keys.sort((a, b) => priority(a) - priority(b));
     for (const key of keys) {
         const packet = await scoped(scope, 'get', { key }, signal);
-        if (packet.envelope.checkpoint.epoch > session.record.binding.epoch) await refreshKey(scope, session, packet.envelope.checkpoint.epoch, signal);
+        if (packet.envelope.checkpoint.epoch > session.record.binding.epoch) await refreshKey(scope, session, packet.envelope.checkpoint.epoch, signal, staged);
         await session.receive(packet.envelope, packet.author);
     }
     session.present(session.record.projection);
 }
-async function materialize(scope: Scope, rootSession: Session, signal?: AbortSignal) {
-    if (materializing) return; materializing = true;
-    try {
-        const directory = await scoped(scope, 'directory', {}, signal);
+async function materialize(scope: Scope, rootSession: Session, signal?: AbortSignal, options: { bootstrap?: TreeNode; progress?: (completed: number, total: number) => void; directory?: SyncDirectory } = {}) {
+    const { bootstrap, progress } = options;
+    const previous = materializations.get(scopeId(scope)) ?? Promise.resolve();
+    const task = previous.catch(() => {}).then(async () => {
+        signal?.throwIfAborted();
+        await rootSession.synchronize();
+        const body = rootSession.record.body, manifest = rootSession.manifest();
+        const directory = options.directory ?? await scoped(scope, 'directory', {}, signal);
+        const version = materializationVersion(scope.localRoot, body, scope.exclusions, directory);
         const registered = new Map<string, { kind: string; deleted: boolean }>(directory.documents.map((item: { id: string; kind: string; deleted: boolean }) => [item.id, item]));
-        const values = rootSession.manifest().filter((item) => registered.get(item.id)?.kind === item.kind && !registered.get(item.id)?.deleted
-            && typeof item.name === 'string' && item.name.length <= 256 && (item.kind !== 'doc' || typeof item.key === 'string' && /^[A-Za-z0-9_-]{43}$/.test(item.key)));
-        const mapping = new Map(app.state.nodes.filter((n) => belongs(n, scope)).map((n) => [n.connection!.document, n.id]));
-        mapping.set(scope.root, scope.localRoot);
+        const values = materializable(scope.root, manifest, registered, scope.exclusions);
+        const current = (await db.allNodes()).filter(node => belongs(node, scope));
+        const mapping = new Map(current.map(node => [node.connection!.document, node]));
+        if (!bootstrap && mapping.size === current.length && mapping.get(scope.root)?.id === scope.localRoot && values.every(item => {
+            const node = mapping.get(item.id), parent = mapping.get(item.parent!);
+            return node?.kind === item.kind && parent?.kind === 'folder' && node.parentId === parent.id && node.name === item.name && node.order === (Number.isSafeInteger(item.order) ? item.order : 0);
+        })) { materializedViews.set(scopeId(scope), version); return; }
+        const entries: { node: TreeNode; parent: string; record?: SessionRecord }[] = [];
+        const total = values.filter(item => item.kind === 'doc' && !mapping.has(item.id)).length; let completed = 0;
+        progress?.(completed, total);
         for (const item of values) {
-            if (item.id === scope.root || scope.exclusions.includes(item.id) || mapping.has(item.id)) continue;
-            if (!['doc', 'folder'].includes(item.kind) || typeof item.name !== 'string') continue;
-            const local = newId(), node: TreeNode = { id: local, parentId: scope.localRoot, kind: item.kind, name: item.name, order: item.order,
+            const existing = mapping.get(item.id), local = existing?.id ?? newId();
+            const node: TreeNode = { id: local, parentId: null, kind: item.kind, name: item.name, order: Number.isSafeInteger(item.order) ? item.order : 0,
                 createdAt: Date.now(), updatedAt: Date.now(), originId: item.origin ?? local,
                 connection: { collection: scope.collection, document: item.id, member: scope.member.grant.member, permission: scope.member.grant.permission, kind: 'sync', epoch: item.epoch ?? 1, root: scope.root, phase: 'working' } };
-            const info = item.kind === 'doc' ? await scoped(scope, 'document-info', { document: item.id }, signal) : null;
-            app.state.nodes.push(node); mapping.set(item.id, local);
-            if (item.kind === 'doc' && typeof item.key === 'string') {
-                const replica = new Session(Session.seed(node.connection!, '', scope.identity, scope.token, item.key, scope.owner, item.name), repository(local));
+            const entry = { node, parent: item.parent! } as typeof entries[number]; entries.push(entry);
+            if (!existing && item.kind === 'doc') {
+                const record = Session.seed(node.connection!, '', scope.identity, scope.token, item.key!, scope.owner, item.name, scope.member);
                 const empty = new BodyReplica();
-                const record = replica.record; record.member = scope.member; record.creator = info.creator; record.body = encode(empty.checkpoint()); record.seed = []; record.suffix = ''; record.outbox = []; empty.destroy();
-                replica.destroy(); await createSession(node, record); await loadPackets(scope, sessions.get(local)!, signal);
-            } else await db.putNodes([node]);
+                record.body = encode(empty.checkpoint()); record.binding.participant = scope.member.grant.participant; record.binding.ownerParticipant = scope.owner.grant.participant; empty.destroy();
+                const staged = stagedSession(record);
+                try {
+                    await loadPackets(scope, staged, signal, true); entry.record = staged.record;
+                    const meta = staged.metadata();
+                    Object.assign(node, { size: textBytes(staged.record.projection), threads: openThreads(staged.record.projection),
+                        ...(validId(meta.origin) ? { originId: meta.origin } : {}),
+                        ...(meta.readingWidth === 'full' || typeof meta.readingWidth === 'number' ? { readingWidth: meta.readingWidth } : {}) });
+                    node.connection = { ...staged.record.binding, phase: 'working' };
+                } finally { staged.destroy(); }
+                progress?.(++completed, total);
+            }
         }
-        for (const item of values) {
-            const node = app.node(mapping.get(item.id) ?? null); if (!node || item.id === scope.root) continue;
-            const chain = new Set([item.id]); let parent = item.parent, invalid = false;
-            while (parent && parent !== scope.root) { if (chain.has(parent)) { invalid = true; break; } chain.add(parent); parent = values.find((n) => n.id === parent)?.parent ?? null; }
-            const parentNode = app.node(mapping.get(item.parent ?? scope.root) ?? null);
-            node.parentId = !invalid && parentNode?.kind === 'folder' ? parentNode.id : scope.localRoot;
-            node.name = item.name; node.order = Number.isSafeInteger(item.order) ? item.order : 0;
-        }
-        await db.putNodes(app.state.nodes.filter((n) => belongs(n, scope))); app.notify();
-    } finally { materializing = false; }
+        signal?.throwIfAborted();
+        await app.serializePersistence(async () => {
+            signal?.throwIfAborted();
+            const root = bootstrap ?? app.node(scope.localRoot); if (!root?.connection) throw new db.ReplicaConflict('missing-node');
+            await db.materializeConnected(root, body, entries, bootstrap ? { record: rootSession.record, metadata: { [scopeId(scope)]: scope, 'sync:safety': true } } : undefined);
+            await app.load();
+        });
+        materializedViews.set(scopeId(scope), version);
+        // Only committed replicas become visible to upload/poll drivers.
+        if (bootstrap) scopes.set(scopeId(scope), scope);
+        await initialize(true);
+    });
+    materializations.set(scopeId(scope), task);
+    try { await task; } finally { if (materializations.get(scopeId(scope)) === task) materializations.delete(scopeId(scope)); }
 }
-async function reconcileDirectory(scope: Scope, signal?: AbortSignal) {
-    const directory = await scoped(scope, 'directory', {}, signal);
+async function reconcileDirectory(scope: Scope, signal?: AbortSignal, received?: SyncDirectory) {
+    const directory = received ?? await scoped(scope, 'directory', {}, signal);
     for (const doc of directory.documents) if (doc.deleted) {
         const node = app.state.nodes.find((n) => belongs(n, scope) && n.connection!.document === doc.id);
         if (node) node.connection!.phase = 'ended';
@@ -363,12 +527,17 @@ async function updateManifest(scope: Scope) {
     await root.editManifest(values);
 }
 export async function created(id: string) {
-    if (materializing) return; await initialize(); const node = app.node(id), parent = app.node(node?.parentId ?? null), scope = parent ? rootFor(parent) : undefined;
+    const active = creations.get(id); if (active) return active;
+    const task = enrollCreated(id); creations.set(id, task);
+    try { await task; } finally { if (creations.get(id) === task) creations.delete(id); }
+}
+async function enrollCreated(id: string) {
+    await initialize(); const node = app.node(id), parent = app.node(node?.parentId ?? null), scope = parent ? rootFor(parent) : undefined;
     if (!node || node.connection || !scope || scope.kind !== 'folder') return;
     const remote = newId(), key = encode(keyBytes()); await scoped(scope, 'document', { document: remote, kind: node.kind });
     const binding: SyncBinding = { collection: scope.collection, document: remote, member: scope.member.grant.member, permission: scope.member.grant.permission, kind: 'sync', epoch: 1, root: scope.root };
     await app.serializePersistence(async () => {
-        if (!app.node(id) || app.node(node.parentId)?.connection?.collection !== scope.collection) return;
+        if (!app.node(id) || app.node(id)?.connection || app.node(node.parentId)?.connection?.collection !== scope.collection) return;
         if (node.kind === 'doc') {
             const record = Session.seed(binding, await app.docText(id), scope.identity, scope.token, key, scope.owner, node.name, scope.member);
             const session = await createSession(node, record); await session.initial();
@@ -417,21 +586,55 @@ export async function details(id: string) {
     return node?.connection?.liveShared ? liveLinks(id) : syncDialog(id);
 }
 const syncError = (error: unknown) => ({
+    'service-unavailable': 'The Sync service is unavailable right now. Your documents are still here. Try again later.',
+    'binding-missing': 'This tab lost the saved connection during setup. MARS has not reset your library. Try again.',
+    'orphan-replica': 'An earlier setup left saved connection data without a connected item. Your saved documents stay unchanged.',
+    'already-connected': 'Some selected items are already connected. Open Sync for those items before connecting the whole folder.',
+    'selection-too-large': `This selection has more than ${LIMITS.documents} items. Choose a smaller folder.`,
+    'temporary-storage': 'Save this document to your library before turning on Sync.',
+    'sync-pending': 'Your connection is saved, but its first upload has not finished. Keep this tab visible and check your connection, then try again.',
+    'selection-grown': 'The folder contents changed during setup. Your documents are still here. Try again with the current folder.',
+    'missing-node': 'The selected item was removed during setup. Your other documents are still here.',
+    'text-changed': 'A document changed during setup. Your latest text is still saved here. Try again.',
+    'metadata-changed': 'A name, location, or document setting changed during setup. Your documents are still here. Try again.',
+    'revision': 'Another tab changed the saved connection during setup. Your local documents are still here. Try again.',
     'collection-creation-limit': 'Too many new sync connections from this network. Try again later. Your documents stay here.',
     'sync-storage-full': 'Sync storage is full. Your changes are saved here. Try again later.',
     'update-too-large': 'This document is too large to sync. Your changes are saved here. Download a copy to keep them.',
     'invitation-expired': 'This Sync link expired. Go back and create a new one.',
-}[errorText(error)] ?? 'Could not finish. Your document is still here. Try again.');
+}[error instanceof SyncSetupError ? error.code : errorText(error)] ?? 'Could not finish. Your document is still here. Try again.');
 const syncTool = (label: string, action: string, glyph: IconName) => `<button type="button" class="btn" data-sync-action="${action}">${icon(glyph)}<span>${label}</span></button>`;
 const confirmationCode = (phrase: string) => `<div class="sync-code" role="group" aria-label="Confirmation code">${phrase.split(' ').map(part => `<span>${esc(part)}</span>`).join(' ')}</div>`;
 async function syncDialog(id: string) {
     await initialize(); const ui = new SyncDialog(); let openSyncLink = false, problem = '', stopped = false;
+    let restart: db.UnfinishedSetupSnapshot | undefined;
     try {
         while (ui.open) {
           try {
+            if (restart) { const previous = restart; restart = undefined; ui.busy('Restarting setup…'); await enrollSelection(id, true, previous); problem = ''; openSyncLink = true; continue; }
             const node = app.node(id); if (!node) break;
             const scope = rootFor(node);
             if (node.connection?.kind === 'live') { ui.close(); return liveDocument(id); }
+            // Older releases exposed the root before finishing its folder manifest.
+            // Restart only after an explicit choice, keeping all saved content local.
+            if (scope?.kind === 'folder' && scope.member.grant.permission === 'owner' && id === scope.localRoot && !scope.selection
+                && sessions.has(id) && !sessions.get(id)!.manifest().length && !app.state.nodes.some(item => belongs(item, scope) && item.connection!.liveShared)) {
+                const answer = await ui.screen({ title: 'Finish folder setup', html: '<p>The previous Sync setup did not finish. Restart setup to include this folder and its documents. Your local documents and comments stay here.</p><p>Devices connected through the incomplete setup will need a new Sync link.</p>',
+                    buttons: [{ label: 'Cancel', value: 'close' }, { label: 'Restart setup', value: 'restart', primary: true }] });
+                if (answer.value !== 'restart') break;
+                ui.busy('Restarting setup…');
+                await viewer.flush();
+                const selected = [node, ...descendants(app.state.nodes, id)];
+                for (const item of selected) if (!item.connection) {
+                    // A stale tab in the old release could save an unconnected node
+                    // over its binding while leaving the atomic projection/outbox.
+                    const record = await db.getSide<SessionRecord>('sync', item.id);
+                    if (record?.binding.collection === scope.collection && record.binding.member === scope.member.grant.member) item.connection = { ...record.binding, phase: 'attention' };
+                }
+                await disconnect(scope, selected.filter(item => belongs(item, scope)));
+                await enrollSelection(id);
+                problem = ''; openSyncLink = true; continue;
+            }
             const personal = scope && (scope.member.grant.permission !== 'owner' || scope.kind === 'folder' || scope.personalSync === true || scope.personalSync === undefined && (!node.connection?.liveShared || Object.keys(scope.clientNames ?? {}).length > 0));
             if (!scope || !personal) {
                 if (db.isTemporaryStorage()) { await ui.screen({ title: 'Sync', html: '<p>Save this document to your library before turning on sync.</p>', buttons: [{ label: 'Close', value: 'close' }] }); break; }
@@ -441,9 +644,9 @@ async function syncDialog(id: string) {
                 if (answer.value !== 'on') break;
                 ui.busy('Turning on Sync…');
                 if (scope) { scope.personalSync = true; await saveScope(scope); }
-                else { const failure = await enrollSelection(id); if (failure) throw failure; }
-                if (!app.node(id)?.connection) { problem = 'Sync could not start. Your document is still saved here.'; continue; }
-                openSyncLink = true; continue;
+                else await enrollSelection(id);
+                if (!app.node(id)?.connection) throw new SyncSetupError('saving-connections', new Error('binding-missing'));
+                problem = ''; openSyncLink = true; continue;
             }
             if (openSyncLink && scope.member.grant.permission === 'owner') {
                 openSyncLink = false; await syncLinkPanel(scope, ui); if (!ui.open) break;
@@ -476,7 +679,24 @@ async function syncDialog(id: string) {
                     buttons: [{ label: 'Disconnect', value: 'stop', primary: true }] });
                 if (result.value === 'stop') { ui.busy('Stopping sync…'); await stopHere(id); stopped = true; }
             }
-          } catch (error) { problem = syncError(error); }
+          } catch (error) {
+              const details = error instanceof SyncSetupError ? { ...safeError(error), stage: error.stage } : safeError(error);
+              if (!(error instanceof SyncSetupError)) syncDebug.record('setup.failed', details, true);
+              problem = syncError(error);
+              let unfinished: db.UnfinishedSetupSnapshot | undefined;
+              if (details.code === 'orphan-replica') {
+                  const node = app.node(id);
+                  try { if (node) { const snapshot = await db.captureUnfinishedSetup([id, ...descendants(app.state.nodes, id).map(node => node.id)]); if (canRestartUnfinished(snapshot, id)) unfinished = snapshot; } }
+                  catch (error) { syncDebug.record('setup.failed', { stage: 'checking-selection', ...safeError(error) }, true); }
+              }
+              const result = await ui.screen({ title: 'Sync did not finish', html: `<div class="sync-error" role="alert"><p><strong>${esc(problem)}</strong></p><p>This setup attempt did not delete local documents or comments.</p><p class="sync-fineprint">Error code: <code>${esc(details.code)}</code>${'stage' in details ? ` · Step: <code>${esc(details.stage)}</code>` : ''}</p></div>`,
+                  buttons: [...(unfinished ? [{ label: 'Restart setup', value: 'restart', primary: true }] : []), { label: 'Back to Sync', value: 'back', primary: !unfinished }] });
+              if (result.value === 'close') break;
+              if (result.value === 'restart' && unfinished) {
+                  const answer = await ui.screen({ title: 'Restart unfinished Sync setup?', back: true, html: '<p>Start a new Sync connection for this folder and its documents.</p><p>Your current documents and comments stay unchanged. Unsent work from the previous setup also stays on this device.</p><p>Devices from the old setup need a new Sync link. Existing saved copies and links are not deleted.</p>', buttons: [{ label: 'Restart setup', value: 'restart', primary: true }] });
+                  if (answer.value === 'restart') restart = unfinished;
+              }
+          }
         }
     }
     finally { ui.close(); }
@@ -674,6 +894,8 @@ export async function receiveLocation(address: string) {
     const encoded = params.get('sync') ?? params.get('invite'); // Accept links issued before #sync=.
     if (encoded === null) return false;
     await initialize(); history.replaceState(history.state, '', location.pathname);
+    let receiving: SyncDialog | undefined;
+    const leave = () => receiving?.close();
     try {
         let link: PairLink, incoming;
         if (isShortSyncLink(encoded)) {
@@ -699,21 +921,52 @@ export async function receiveLocation(address: string) {
         const result = await waitForPair('pair-result', { invitation: link.id }, link.secret, controller, (value) => !!value.approved) as { approved: boolean; signed: SignedGrant; owner: SignedGrant; keys: WrappedKey[]; root: { document: string; kind: 'doc' | 'folder' } } | undefined;
         if (!result?.approved || controller.signal.aborted) return true;
         document.querySelector<HTMLDialogElement>('#marsModal')?.close(); await waiting;
+        const ui = receiving = new SyncDialog('syncDownloadDialog'), folder = result.root.kind === 'folder';
+        void ui.screen({ title: folder ? 'Downloading synced folder' : 'Downloading synced document',
+            html: `<p id="syncDownloadName">${folder ? 'Preparing your synced folder.' : 'Preparing your synced document.'}</p><progress class="sync-download-progress" aria-label="Sync download" aria-describedby="syncDownloadStatus"></progress><p id="syncDownloadStatus" role="status" aria-atomic="true">${folder ? 'Reading folder details…' : 'Downloading document…'}</p><p class="sync-fineprint">Keep this tab open. ${folder ? 'The folder will appear with its complete hierarchy when the download finishes.' : 'The document will appear when the download finishes.'}</p>`,
+            buttons: [{ label: 'Cancel', value: 'cancel' }] }).then(() => ui.close());
+        window.addEventListener('pagehide', leave, { once: true });
+        const meter = ui.element.querySelector('progress')!, status = ui.element.querySelector('#syncDownloadStatus')!;
+        const progress = (completed: number, total: number) => {
+            if (!ui.open) return;
+            if (total) { meter.max = total; meter.value = completed; }
+            status.textContent = total ? `${completed} of ${total} ${total === 1 ? 'document' : 'documents'} downloaded${completed === total ? '. Saving folder…' : '…'}` : 'Saving folder hierarchy…';
+        };
         if (!await verifyGrant(result.signed, result.owner.grant) || result.signed.grant.member !== g.member) throw new Error('Invalid approval');
         const rootKey = await unwrapKey(result.keys[0], who), root = result.root;
         const local = newId(), node: TreeNode = { id: local, parentId: null, kind: root.kind, name: 'Sync', order: nextOrder(app.state.nodes, null), createdAt: Date.now(), updatedAt: Date.now() };
-        app.state.nodes.push(node);
         const scope: Scope = { collection: g.collection, root: root.document, localRoot: local, kind: root.kind, token, key: encode(rootKey), owner: result.owner, member: result.signed, identity: who, exclusions: [] };
-        await saveScope(scope);
-        const binding: SyncBinding = { collection: g.collection, document: root.document, member: g.member, permission: 'edit', kind: 'sync', epoch: result.keys[0].epoch, root: root.document };
+        const binding: SyncBinding = { collection: g.collection, document: root.document, member: g.member, permission: 'edit', kind: 'sync', epoch: result.keys[0].epoch, root: root.document,
+            participant: scope.member.grant.participant, ownerParticipant: scope.owner.grant.participant };
         const record = Session.seed(binding, '', who, token, scope.key, result.owner, 'Sync'); record.member = result.signed;
         const empty = new BodyReplica(); record.body = encode(empty.checkpoint()); empty.destroy();
-        const session = await createSession(node, record); await loadPackets(scope, session); node.name = session.metadata().name ?? 'Sync';
-        if (root.kind === 'folder') await materialize(scope, session);
+        const session = stagedSession(record);
+        try {
+            await loadPackets(scope, session, ui.signal, true); node.name = session.metadata().name ?? 'Sync';
+            ui.element.querySelector('#syncDownloadName')!.textContent = node.name;
+            node.connection = { ...session.record.binding, phase: 'working' };
+            if (root.kind === 'folder') await materialize(scope, session, ui.signal, { bootstrap: node, progress });
+            else {
+                meter.max = meter.value = 1; status.textContent = 'Saving document…';
+                const meta = session.metadata();
+                Object.assign(node, { threads: openThreads(session.record.projection), size: textBytes(session.record.projection),
+                    ...(validId(meta.origin) ? { originId: meta.origin } : {}),
+                    ...(meta.readingWidth === 'full' || typeof meta.readingWidth === 'number' ? { readingWidth: meta.readingWidth } : {}) });
+                await app.serializePersistence(async () => {
+                    ui.signal.throwIfAborted();
+                    await db.materializeConnected(node, session.record.body, [], { record: session.record, metadata: { [scopeId(scope)]: scope, 'sync:safety': true } });
+                    await app.load();
+                });
+                scopes.set(scopeId(scope), scope);
+                await initialize(true);
+            }
+        } finally { session.destroy(); }
+        ui.close();
         await offerLocalMatches(scope); start(scope);
         if (root.kind === 'doc') await app.openDoc(scope.localRoot); else { app.state.folderId = scope.localRoot; await app.setOpen(scope.localRoot, true); }
         app.notify(); viewer.toast('Sync connected');
-    } catch (error) { viewer.toast(errorText(error) === 'Invalid Sync link' ? 'This Sync link is invalid. Get a new one from your other device.' : syncError(error)); }
+    } catch (error) { viewer.toast((error as Error)?.name === 'AbortError' ? 'Sync setup canceled.' : errorText(error) === 'Invalid Sync link' ? 'This Sync link is invalid. Get a new one from your other device.' : syncError(error)); }
+    finally { window.removeEventListener('pagehide', leave); receiving?.close(); }
     return true;
 }
 async function offerLocalMatches(scope: Scope) {
@@ -779,14 +1032,42 @@ async function disconnect(scope: Scope, nodes: TreeNode[]) {
 export async function remove(id: string, remote = false) {
     await initialize(); await viewer.flush();
     if (viewer.hasConnectionDraftConflict()) throw new Error('Save the draft before deleting this document.');
-    const node = app.node(id), scope = node ? rootFor(node) : undefined; if (!node || !scope) return;
-    const all = [node, ...(node.kind === 'folder' ? descendants(app.state.nodes, id) : [])], connected = all.filter((item) => belongs(item, scope));
+    const node = app.node(id); if (!node) return;
+    const scope = rootFor(node), all = [node, ...(node.kind === 'folder' ? descendants(app.state.nodes, id) : [])];
     if (remote) {
-        if (scope.member.grant.permission !== 'owner') throw new Error('Only the owner can delete remote content.');
+        if (!scope || scope.member.grant.permission !== 'owner') throw new Error('Only the owner can delete remote content.');
+        const connected = all.filter((item) => belongs(item, scope));
         for (const item of all.filter((item) => !belongs(item, scope))) if (item.parentId && connected.some((parent) => parent.id === item.parentId)) await app.move(item.id, null);
-        for (const item of connected) await scoped(scope, 'delete-document', { document: item.connection!.document });
+        for (const item of connected) {
+            try { await scoped(scope, 'delete-document', { document: item.connection!.document }); }
+            catch (error) {
+                // Expiry/deletion already ended remote access, including a lost response
+                // to an earlier delete. Still let the reader remove the retained copy.
+                if (!['connection-ended', 'connection-expired', 'document-deleted', 'document-expired'].includes(errorText(error))) throw error;
+            }
+        }
+        await disconnect(scope, connected);
+    } else {
+        for (const scope of scopes.values()) {
+            const connected = all.filter(item => belongs(item, scope));
+            if (connected.length) await disconnect(scope, connected);
+        }
     }
-    await disconnect(scope, connected);
+}
+export async function deletionInfo(ids: string[]) {
+    await initialize();
+    const selected = app.state.nodes.filter(node => ids.includes(node.id)), now = Date.now() / 1000;
+    let liveLinks = 0, synced = 0;
+    for (const scope of scopes.values()) {
+        const nodes = selected.filter(node => belongs(node, scope) && node.connection!.phase !== 'ended');
+        if (!nodes.length) continue;
+        if (!scope.live && (scope.personalSync !== false || scope.kind === 'folder')) synced += nodes.filter(node => node.kind === 'doc').length;
+        const revoked = await db.getMeta<RevokedAccess>(revokedAccessKey(scope));
+        const documents = new Set(nodes.map(node => node.connection!.document));
+        const links = await db.getMeta<OwnedLink[]>(`sync:links:${scopeId(scope)}`) ?? [];
+        liveLinks += links.filter(link => documents.has(link.document) && link.expires > now && !revoked?.invitations.includes(link.id)).length;
+    }
+    return { liveLinks, synced };
 }
 export async function beforeMove(id: string, parent: string | null) {
     await initialize(); const node = app.node(id), target = app.node(parent), scope = node ? rootFor(node) : undefined;
@@ -816,7 +1097,7 @@ export async function live(id: string) {
 export async function createLiveLink(id: string, permission: 'view' | 'comment' | 'edit', ttl: number, format: 'short' | 'full' = 'short') {
     await initialize(); const node = app.node(id); if (!node || node.kind !== 'doc') throw new Error('Choose a document to share live.');
     if (node.connection && rootFor(node)?.member.grant.permission !== 'owner') throw new Error('Create Live links from the original sharing device.');
-    if (!node.connection) { const failure = await enrollSelection(node.id, false); if (failure) throw failure; }
+    if (!node.connection) await enrollSelection(node.id, false);
     const scope = rootFor(node), session = sessions.get(node.id); if (!scope || !session) throw new Error('sync-not-ready');
     await viewer.flush(); await driverFor(scope)?.upload();
     if (await driverFor(scope)?.options.replica.pending()) throw new Error('sync-pending');
@@ -894,7 +1175,7 @@ async function readLiveKey(update: { value: { document: string; epoch: number; n
     if (!await verify(update.value, update.signature, owner.grant.publicKey)) throw new Error('Invalid key update signature');
     return openJson<{ epoch: number; key: string }>(update.value, decode(link.wrappingKey ?? link.secret), { invitation: link.id });
 }
-async function refreshKey(scope: Scope, session: Session, epoch: number, signal?: AbortSignal) {
+async function refreshKey(scope: Scope, session: Session, epoch: number, signal?: AbortSignal, staged = false) {
     const id = session.record.binding.document, response = await scoped(scope, 'key-read', { document: id }, signal);
     let key: string | undefined;
     for (const value of response.values) {
@@ -907,6 +1188,7 @@ async function refreshKey(scope: Scope, session: Session, epoch: number, signal?
     }
     if (!key) throw new Error('A new document key is required. Local work is retained.');
     await session.rekey(epoch, key);
+    if (staged) { if (id === scope.root) scope.key = key; return; }
     const node = app.state.nodes.find((n) => belongs(n, scope) && n.connection!.document === id); if (node) node.connection!.epoch = epoch;
     if (id === scope.root) { scope.key = key; await saveScope(scope); }
 }
@@ -1003,7 +1285,17 @@ export async function exportRecovery(ids: string[], password: string) {
         const { id, parentId, kind, name, order, readingWidth } = node;
         local.push({ node: { id, parentId, kind, name, order, readingWidth }, text: kind === 'doc' ? await app.docText(id) : null });
     }
-    const value = { v: 3, connections, local };
+    // Include preserved repair state in the existing encrypted backup, never in
+    // ordinary downloads or a partial selection of a folder's documents.
+    const savedSetups: db.SavedUnfinishedSetup[] = [], seenBackups = new Set<string>();
+    for (const node of app.state.nodes) if (selected.has(node.id) && (node.kind === 'folder' ? descendants(app.state.nodes, node.id).every(child => selected.has(child.id)) : rootFor(node)?.localRoot === node.id)) {
+        const entries = await db.getMeta<db.UnfinishedSetupBackup[]>(db.unfinishedSetupIndex(node.id)) ?? [];
+        for (const entry of entries) if (!seenBackups.has(entry.key)) {
+            const saved = await db.getMeta<db.SavedUnfinishedSetup>(entry.key); if (!saved) throw new Error('Missing preserved recovery data');
+            savedSetups.push(saved); seenBackups.add(entry.key);
+        }
+    }
+    const value = { v: 3, connections, local, ...(savedSetups.length ? { savedSetups } : {}) };
     try { return { name: 'MARS connections/mars-encrypted-recovery.json', bytes: new TextEncoder().encode(JSON.stringify(await encryptRecovery(value, password))), projections }; }
     catch (error) {
         if (errorText(error) !== 'recovery-package-too-large') throw error;
@@ -1030,7 +1322,30 @@ export async function restoreRecovery(selectedFile?: File) {
         if (answer.value !== 'yes') return;
         try {
             type Recovery = { scope: Scope; nodes: TreeNode[]; records: { local: string; record: SessionRecord }[]; links?: OwnedLink[]; rotation?: RotationPlan | null; revoked?: RevokedAccess };
-            const decoded = archive ? await decryptRecoveryArchive<Recovery | { v: number; connections: Recovery[]; local: { node: TreeNode; text: string | null }[] }>(file, answer.text) : await decryptRecovery<Recovery | { v: number; connections: Recovery[]; local: { node: TreeNode; text: string | null }[] }>(JSON.parse(await file.text()), answer.text);
+            type RecoveryPackage = Recovery | { v: number; connections: Recovery[]; local: { node: TreeNode; text: string | null }[] };
+            type PreviousBackups = { v: number; kind: 'mars-unfinished-sync-backups'; snapshots: db.SavedUnfinishedSetup[] };
+            const raw = archive ? await decryptRecoveryArchive<RecoveryPackage | PreviousBackups>(file, answer.text) : await decryptRecovery<RecoveryPackage | PreviousBackups>(JSON.parse(await file.text()), answer.text);
+            let decoded: RecoveryPackage;
+            if ('kind' in raw && raw.kind === 'mars-unfinished-sync-backups') {
+                if (raw.v !== 1 || !Array.isArray(raw.snapshots) || !raw.snapshots.length) throw new Error('Invalid previous setup backups');
+                const packages = raw.snapshots.map(recoveryFromUnfinished);
+                decoded = { v: 3, connections: packages.flatMap(value => value.connections), local: packages.flatMap(value => value.local) } as RecoveryPackage;
+            } else decoded = raw as RecoveryPackage;
+            if ('savedSetups' in decoded) {
+                if (!Array.isArray(decoded.savedSetups) || !('connections' in decoded)) throw new Error('Invalid preserved recovery data');
+                const packages = (decoded.savedSetups as db.SavedUnfinishedSetup[]).map(recoveryFromUnfinished);
+                const connections = [...decoded.connections], local = [...decoded.local], seen = new Set(connections.map(value => scopeId(value.scope)));
+                for (const saved of packages) {
+                    local.push(...saved.local as typeof local);
+                    for (const connection of saved.connections) {
+                        if (!seen.has(scopeId(connection.scope))) { connections.push(connection); seen.add(scopeId(connection.scope)); continue; }
+                        // The current backup already contains this connection.
+                        // Older competing projections remain independent local work.
+                        for (const node of connection.nodes) local.push({ node: { ...node, connection: undefined }, text: node.kind === 'doc' ? connection.records.find(item => item.local === node.id)!.record.projection : null });
+                    }
+                }
+                decoded = { ...decoded, connections, local } as RecoveryPackage;
+            }
             const values = 'connections' in decoded ? decoded.connections : [decoded], local = 'local' in decoded ? decoded.local : [];
             if (!Array.isArray(values) || !values.length || !Array.isArray(local)
                 || values.some(value => !Array.isArray(value?.nodes) || value.nodes.length > LIMITS.documents || !Array.isArray(value.records))) throw new Error('Invalid recovery contents');
@@ -1111,6 +1426,16 @@ export async function restoreRecovery(selectedFile?: File) {
             }
             const placements = new Map(allNodes.map(node => [node.id, node]));
             for (const node of allNodes) { const parents = new Set([node.id]); let parent = placements.get(node.parentId ?? ''); while (parent) { if (parent.kind !== 'folder' || parents.has(parent.id)) throw new Error('Invalid recovery placement'); parents.add(parent.id); parent = placements.get(parent.parentId ?? ''); } }
+            // Retain original credentials, pending ciphertext and replica variants
+            // in the restored encrypted-backup path, not only their projections.
+            if ('savedSetups' in decoded) for (const saved of decoded.savedSetups as db.SavedUnfinishedSetup[]) {
+                const record = Object.values(saved.snapshot.records)[0] as SessionRecord;
+                const scope = metadata[scopeKey(record.binding.collection, record.binding.member)] as Scope | undefined;
+                if (!scope) throw new Error('Missing preserved recovery scope');
+                const key = `sync:unfinished-setup:${newId()}`, index = db.unfinishedSetupIndex(scope.localRoot);
+                metadata[key] = saved;
+                metadata[index] = [...(metadata[index] as db.UnfinishedSetupBackup[] ?? []), { key, at: saved.at, records: Object.keys(saved.snapshot.records).length }];
+            }
             await db.restoreConnected(allNodes, allRecords, metadata, Object.fromEntries(local.filter(item => item.node.kind === 'doc').map(item => [ids.get(item.node.id)!, item.text as string])));
             viewer.enableConnectionSafety(); await app.load(); await initialize(true);
             viewer.toast('Backup restored. Your documents and unsent changes are saved here.');

@@ -1,10 +1,16 @@
-// CodeMirror 6 source editor, lazy-loaded from esm.sh (ported from md.html's module
-// loader). Falls back to a plain <textarea> if any import fails. The viewer talks to
+// CodeMirror 6 source editor, lazy-imported from one embedded module graph.
+// Falls back to a plain <textarea> if loading fails. The viewer talks to
 // it through `window.__suEditorAPI`, `__suCreateBlockEditor`, and the change hooks.
-const CODEMIRROR_URL = 'https://esm.sh/codemirror@6.0.1';
-const CM_MARKDOWN_URL = 'https://esm.sh/@codemirror/lang-markdown@6.3.0';
-const CM_STATE_URL = 'https://esm.sh/@codemirror/state@^6.0.0?target=es2022';
+import editorRuntime from 'mars-runtime:editor';
 import { sourceChange } from './source-change.ts';
+let editorModule;
+function editorLibrary() {
+    if (!editorModule) {
+        const url = URL.createObjectURL(new Blob([editorRuntime], { type: 'text/javascript' }));
+        editorModule = import(url).catch(error => { editorModule = undefined; throw error; }).finally(() => URL.revokeObjectURL(url));
+    }
+    return editorModule;
+}
 
 function textareaEditor(mount, text) {
     const ta = document.createElement('textarea');
@@ -32,9 +38,7 @@ function textareaEditor(mount, text) {
 
 export async function loadEditor(mount) {
     try {
-        // Unbundled, so both packages share one @codemirror/state instance;
-        // separate ?bundle builds each inline their own and fail instanceof checks.
-        const [cm, cmMd, state] = await Promise.all([import(CODEMIRROR_URL), import(CM_MARKDOWN_URL), import(CM_STATE_URL)]);
+        const cm = await editorLibrary(), cmMd = cm, state = cm;
         const permission = new state.Compartment();
         let applying = false;
         const view = new cm.EditorView({

@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { DurableBody, type DurableRecord } from '../src/sync/durable.ts';
 import { identity, keyBytes, checkpointDigest } from '../src/sync/crypto.ts';
 import { BodyReplica } from '../src/sync/replica.ts';
-import { type SyncBinding } from '../src/sync/protocol.ts';
+import { checkpointKey, reverseSequence, type SyncBinding } from '../src/sync/protocol.ts';
 import { Transport, type ConnectionStatus } from '../src/sync/transport.ts';
 
 async function replica(owner = false) {
@@ -22,6 +22,29 @@ const deferred = <T>() => {
     return { promise, resolve };
 };
 const response = (value: unknown) => new Response(JSON.stringify(value), { status: 200, headers: { 'Content-Type': 'application/json' } });
+
+test('checkpoint keys expose durable cursors only after strict namespace and sequence validation', () => {
+    const collection = crypto.randomUUID(), document = crypto.randomUUID(), member = crypto.randomUUID(), operation = crypto.randomUUID();
+    const key = `sync/v1/c/${collection}/updates/${document}/${member}/body/${reverseSequence(12)}.${operation}`;
+    assert.deepEqual(checkpointKey(key), { collection, document, member, stream: 'body', sequence: 12 });
+    for (const invalid of [key.replace('sync/v1/', 'other/v1/'), key.replace('/body/', '/invalid/'), key + '/extra', key.replace(reverseSequence(12), reverseSequence(0)), key.replace(operation, 'invalid')]) assert.equal(checkpointKey(invalid), null);
+});
+
+test('warm polling skips applied checkpoints before GET and requests directory metadata only on the first index page', async () => {
+    const f = await replica(), visibility = new EventTarget(), connectivity = new EventTarget(), finished = deferred<void>();
+    const calls: { action: string; values: Record<string, unknown> }[] = [], directory = { documents: [{ id: f.client.binding.document, kind: 'folder', creator: f.client.binding.member, deleted: false }] };
+    let pages = 0, known = 0;
+    const transport = new Transport({ origin: 'https://mars.test', token: 'private token', ownerPublicKey: f.who.publicKey, replica: f.client, collectionScope: true, directory: true,
+        environment: { visible: () => true, online: () => true, visibility, connectivity }, status: () => {}, projection: () => {},
+        known: async () => { known++; return true; },
+        fetch: async (url, options) => {
+            const action = new URL(String(url)).pathname.split('/').at(-1)!, values = JSON.parse(options!.body as string); calls.push({ action, values });
+            assert.equal(action, 'index'); pages++;
+            return response({ entries: [{ key: `document/member/body/checkpoint-${pages}` }], complete: pages === 2, cursor: 'next', ...(pages === 1 ? { directory } : {}) });
+        }, cycle: async (_signal, received) => { assert.deepEqual(received, directory); finished.resolve(); } });
+    try { transport.start(); await finished.promise; assert.equal(known, 2); assert.equal(calls.length, 2); assert.equal(calls[0].values.directory, true); assert.equal(calls[1].values.directory, undefined); }
+    finally { transport.dispose(); }
+});
 
 test('hidden tabs abort reads, visible tabs resume, and pagehide aborts even before document.hidden changes', async () => {
     const f = await replica(), visibility = new EventTarget(), connectivity = new EventTarget();

@@ -78,6 +78,8 @@ body.sb-collapsed .mars-sidebar { display: none; }
 .tree-row .tree-chevron.leaf { visibility: hidden; }
 .tree-row .tree-icon { color: var(--text-muted); }
 .tree-row[data-kind="folder"] .tree-icon { color: var(--mars-500); }
+.tree-icon-default { display: inline-flex; }
+.tree-icon-default .tree-default-star { fill: var(--brand-text); }
 .tree-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
 .tree-row.has-snippet { flex-wrap: wrap; height: auto; min-height: 30px; padding-block: 5px; row-gap: 2px; }
 .tree-snippet { flex-basis: 100%; padding-left: 44px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 400; color: var(--text-muted); }
@@ -151,6 +153,8 @@ body.sb-collapsed .mars-sidebar { display: none; }
 
 .mars-modal { max-width: 480px; }
 .su-dialog.mars-info-dialog { max-width: 960px; }
+.developer-dialog ul { padding-inline-start: 20px; margin-block: 8px 16px; }
+.developer-flag-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-block: 16px; }
 .mars-modal-foot { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; padding: 0 24px 20px; }
 .mars-modal .field { display: block; width: 100%; height: 32px; padding: 0 10px; border: 1px solid var(--eui-border-plain); border-radius: var(--radius-s); background: var(--surface); }
 .mars-modal .field:focus { outline: none; border-color: var(--focus); box-shadow: inset 0 0 0 1px var(--focus); }
@@ -193,6 +197,8 @@ body.sb-collapsed .mars-sidebar { display: none; }
 .sync-notice { margin: 0; padding: 0 18px; color: var(--text-muted); }
 .sync-notice:empty { display: none; }
 .sync-dialog .mars-modal-foot { flex-wrap: wrap; }
+.sync-dialog:has(.sync-status) .mars-modal-foot { flex-wrap: nowrap; }
+@media (max-width: 480px) { .sync-dialog:has(.sync-status) .mars-modal-foot .btn { font-size: 12px; padding-inline: 8px; white-space: nowrap; } }
 .sync-footer-left { margin-inline-end: auto; }
 .sync-tools { display: flex; flex-wrap: wrap; gap: 8px; margin-block: 20px 12px; }
 .sync-tools .btn { gap: 6px; }
@@ -205,7 +211,10 @@ body.sb-collapsed .mars-sidebar { display: none; }
 .sync-access-item small { display: block; color: var(--text-muted); }
 .sync-status { display: flex; align-items: center; gap: 8px; }
 .sync-status[data-state="current"] svg { color: var(--success); }
+.sync-error { padding: 12px; border: 1px solid var(--danger); border-inline-start-width: 4px; border-radius: var(--radius); }
+.sync-error code { overflow-wrap: anywhere; }
 .sync-status .su-spinner { color: var(--brand-text); }
+.sync-download-progress { display: block; width: 100%; height: 8px; margin-block: 16px; accent-color: var(--brand); }
 .mars-modal .sync-code { display: flex; align-items: center; justify-content: center; gap: 16px; min-height: 48px; margin-block: 16px; padding: 12px 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-hover); font: 16px/1.5 var(--mono); font-variant-numeric: tabular-nums; letter-spacing: .05em; }
 .sync-code > span { white-space: nowrap; }
 .live-access { display: grid; gap: 8px; border: none; margin-block: 16px; }

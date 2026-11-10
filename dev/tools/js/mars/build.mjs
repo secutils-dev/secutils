@@ -3,19 +3,31 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 
-// Compile the standalone module graphs to source strings, with all closures resolved.
-// Only these small runtimes are embedded; Paged.js remains an on-demand CDN dependency.
+// Compile separate module graphs to embedded source strings. The editor remains
+// lazy-imported; Paged.js remains an on-demand CDN dependency.
 const runtimes = new Map();
 const runtimePlugin = {
     name: 'standalone-runtimes',
     setup(builder) {
-        builder.onResolve({ filter: /^mars-runtime:(reader|print)$/ }, ({ path }) => ({ path: path.split(':')[1], namespace: 'runtime' }));
+        builder.onResolve({ filter: /^mars-runtime:(reader|print|editor)$/ }, ({ path }) => ({ path: path.split(':')[1], namespace: 'runtime' }));
         builder.onLoad({ filter: /.*/, namespace: 'runtime' }, async ({ path }) => {
             if (!runtimes.has(path)) runtimes.set(path, build({
-                entryPoints: [`src/export/${path}-runtime.ts`], bundle: true, minify: true,
-                format: 'iife', target: 'es2023', write: false, loader: { '.css': 'text' }, plugins: [runtimePlugin],
-                legalComments: 'inline',
-            }).then((result) => result.outputFiles[0].text));
+                entryPoints: [`src/${path === 'editor' ? 'doc' : 'export'}/${path}-runtime.ts`], bundle: true, minify: true,
+                format: path === 'editor' ? 'esm' : 'iife', target: 'es2023', write: false, loader: { '.css': 'text' }, plugins: [runtimePlugin],
+                legalComments: 'inline', metafile: path === 'editor',
+            }).then(result => {
+                const text = result.outputFiles[0].text;
+                if (path !== 'editor') return text;
+                const packages = [...new Set(Object.keys(result.metafile.inputs).flatMap(input => input.match(/^node_modules\/((?:@[^/]+\/)?[^/]+)\//)?.[1] ?? []))].sort();
+                const notices = new Map();
+                for (const name of packages) {
+                    const file = ['LICENSE', 'LICENSE.txt', 'LICENSE.md'].map(file => `node_modules/${name}/${file}`).find(existsSync);
+                    if (!file) throw new Error(`Missing bundled-editor license: ${name}`);
+                    const license = readFileSync(file, 'utf8').trim();
+                    notices.set(license, [...(notices.get(license) ?? []), name]);
+                }
+                return `/*!\n${[...notices].map(([license, names]) => `${names.join(', ')}\n${license}`).join('\n\n')}\n*/\n${text}`;
+            }));
             return { contents: `export default ${JSON.stringify(await runtimes.get(path))}`, loader: 'js' };
         });
     },

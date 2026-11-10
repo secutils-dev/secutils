@@ -416,6 +416,283 @@ The final registry audit found 249 test scopes, all closed, with 2,327 test entr
 Ordinary Sync collections and reservations remain zero. Current storage is 297,934 bytes across 568 entries, including the expiring test audit records.
 The owned preview is stopped. Marketing-page verification remains unavailable, and VoiceOver remains user-skipped.
 
+### Follow-up: folder enrollment and deletion (2026-11-09)
+
+The user reported failed Elastic-folder enrollment, unwanted search indexing, and a silent deletion failure for an ended Sync Test copy.
+The user requested contextual delete confirmations and deployment.
+Both supplied ZIPs contain documents and comments, without connection credentials or replica records.
+
+- Initial enrollment prepares every replica before one IndexedDB transaction publishes the complete selection.
+- The transaction rejects changed text, changed metadata, new descendants, and competing enrollment. Existing document bytes, timestamps, and vectors remain unchanged.
+- Tabs can acknowledge the same uploaded packet through a bounded digest history. Unknown operations and different digests still fail.
+- Fresh collections defer activity renewal until their initial lease needs extension.
+- Incomplete folders from older releases offer an explicit restart. Local content remains, and previously connected devices need a new Sync link.
+- Restart also clears orphan replica bindings from that incomplete scope. Binding checks prevent stale tabs from overwriting a replacement connection with the same revision.
+- Every document and folder deletion requires confirmation. Local-only documents use a short confirmation, with initial focus on Cancel.
+- Connected selections explain local and collection deletion. Ended connections offer local deletion only.
+- The dialog counts known active Live links and short snapshots. It explains that local deletion leaves links active and collection deletion leaves snapshots active.
+- Failed deletion shows an error and Retry. Expired remote access does not prevent local deletion, and failed storage deletion restores the tree row.
+
+The Elastic export passed against the local responder with external requests blocked.
+All 54 documents retained exact text and timestamps. Its selected folder contained 58 items, with no pending uploads after setup.
+The second export passed a simulated ended-connection deletion. Sync Test disappeared, and all six other documents remained after reload.
+Desktop and 320px visual checks passed in both themes without horizontal overflow.
+The unit suite passed 175 cases, with one opt-in native skip. Typecheck, E2E lint, seven shared tests, and 20 snapshot-responder checks passed.
+The configured tools check passed. Marketing-page verification remains unavailable because its path is unset.
+The exact minified release passed 24 focused cases across Chromium, Firefox, and WebKit.
+Restart and table-alignment checks passed five consecutive runs per engine, or 30 additional cases.
+The broad run passed 555 cases and skipped 14 expected cases. Its three failures passed after the final restart correction and focused retries.
+The table fixture now waits for the source editor after reload. All six final restart/alignment checks passed.
+All 558 applicable broad cases have passing results. The final release also passed the full Sync suite: 79 cases and two expected skips.
+
+`make deploy-tools ARGS="mars"` published MARS, its skill, and four discovery aggregates.
+The live app and embedded bundles exactly match the reviewed release. The skill and discovery digest also match.
+App SHA-256: `d66b13f249a29eeff6b73d3dfb758f328293fdcc28b50ecd257d04584afd214e` (388,053 bytes).
+Isolation headers and Markdown negotiation remain unchanged.
+All 27 focused production cases and all 128 general production cases passed, for 155 live checks without retries.
+Production checks used isolated synthetic data with automatic cleanup. The supplied documents stayed on the local responder.
+Both owned local preview processes are stopped. Markdown Preview and other tool pages were not redeployed.
+
+### Follow-up: persistent setup errors and opt-in diagnostics
+
+The user reported that Elastic still returned to Turn on sync after a spinner in two refreshed tabs.
+The previous export-based checks did not reproduce that profile's saved connection state. Its exact failure remains unconfirmed.
+
+- Setup now throws explicit preflight failures instead of returning through background toasts.
+- Initial upload failures reach the setup error screen, rather than only changing the connection badge.
+- A missing connection after setup also becomes an explicit failure.
+- The error screen stays open with a fixed error code, setup step, and Copy debug report action, even with debug logging disabled.
+- `?debug=sync` enables detailed tracing for a tab across reloads. `mars.debug=sync` in local storage enables the profile.
+- `?debug=off` disables tracing. Reports stay in tab memory until the reader explicitly copies or downloads them.
+- Reports use allowlisted metadata: browser capabilities, timing, counts, fixed stages, HTTP status, and storage-conflict reasons.
+- Reports exclude document names, Markdown, document IDs, URLs, headers, keys, credentials, encrypted packets, and raw error text or stacks.
+- Orphan-record preflight failures retain those records and create no new collection. This diagnostic release does not reset a library or discard pending work.
+
+The unit suite passed 180 cases with one opt-in native skip. Typecheck, E2E lint, tool parsing, and the configured tools check passed.
+All 30 focused cases passed across Chromium, Firefox, and WebKit, including safe exports, two-tab metadata conflicts, orphan records, upload rejection, and recovery.
+The report and persistent error screen passed desktop and 320px visual checks. Marketing-page verification remains unconfigured.
+
+### Confirmed unbound setup and targeted recovery
+
+Both user reports show the same durable state: 58 items, 50 documents, eight folders, zero tree connections, and 25 orphan replicas.
+Failure occurs at checking-selection before any network request. The earlier repair missed an unbound folder root.
+
+The new explicit restart checks the saved scope and archives all old replicas, keys, pending ciphertext, progress, scope metadata, and current text.
+The archive and new bindings commit atomically. Intervening changes or failed archive storage leave the old setup intact.
+Old records stay outside the active replica namespace. Restart does not resume their uploads or change current text, timestamps, or vectors.
+Sync offers Previous setup backup with password-protected download. Restore retains old Sync projections and newer local text as separate copies.
+
+The exact 58-item/25-orphan regression passed in Chromium and Firefox.
+It covers a prepared outbox, divergent newer local text, injected archive quota failure, two tabs, exact state preservation, and encrypted restore beside an existing library.
+The 22 targeted storage/debug unit cases and typecheck passed. The user explicitly deferred the full recovery regression suite until later.
+No automatic test run is scheduled.
+The recovery release is deployed. Its app and skill match the reviewed artifacts, with unchanged isolation headers and Markdown negotiation.
+App SHA-256: `881840e9363bce9b0f668a3a59ca1d2cc30f0415be899d72349acdd955bbdf31` (395,749 bytes).
+The single live Firefox recovery check passed, including encrypted restore. Its first run used a five-second local-fixture wait during remote registration.
+The corrected fixture waits for registration to finish. No application change or second deployment was necessary.
+Both owned local preview processes are stopped. The full suite remains deferred at the user's request.
+
+### Generic flags and simpler Sync controls
+
+The user rejected Sync-specific debug switches and report buttons in business dialogs.
+The user also requested removal of Previous setup backup from the Sync footer, with targeted verification instead of a full suite.
+
+- `?flags=debug:sync,experimental:live_links` replaces profile-wide client flags. Global categories and repeated category parameters are supported.
+- Generic APIs manage scoped enable/disable, whole-category Off, all-flags Off, persistence, and cross-tab updates. Control queries are consumed after application.
+- Legacy Sync settings migrate once. Explicit Off cannot be undone by stale query parameters or old session flags.
+- A single flag-only Developer tools entry contains diagnostics and Off controls. Generic reports collect registered, sanitized feature channels.
+- Sync has no Copy debug report or Previous setup backup actions, including in error screens. Its normal footer stays in one row.
+- Preserved repair data remains in storage. Full-folder encrypted connection backups include it through the existing Download/Export all option, not a new workflow.
+- Old standalone repair backups remain readable. Restoration retains old pending work and newer local text separately.
+
+The 29 targeted flags/storage/diagnostics unit cases and typecheck passed.
+Six Firefox cases passed for generic flags, Off/reload behavior, safe reports, errors, and recovery through the existing encrypted backup.
+Four Chromium/WebKit cases passed for cross-tab Off controls, preserved recovery data, and single-row Sync actions at 320px and desktop widths.
+The full suite remains deferred. No automatic full run is scheduled.
+The generic-flags/UI cleanup is deployed. Application, embedded bundles, skill, discovery digest, isolation headers, and Markdown negotiation match the release artifacts.
+App SHA-256: `3a8d9104e2f530c466dfa8d9b56cf82c190358b797dfc80a299609f849e30b34` (397,589 bytes).
+Both focused live Firefox checks passed for central reporting and profile-wide Off/reload behavior.
+The owned local preview is stopped. Stored repair archives were retained, not deleted.
+
+### Atomic incoming hierarchy and duplicate identity repair
+
+The user reported duplicate synced rows and files that appeared outside their folders during download.
+Previous focused checks covered enrollment and recovery, but did not observe intermediate materialization or force simultaneous incoming downloads in two tabs.
+The user authorized a Sync purge if necessary. No purge was necessary or performed.
+
+- Incoming replicas now use private repositories during download, decryption, metadata updates, and key refresh.
+- The manifest planner requires complete, registered folder paths. Missing parents, cycles, document parents, and excluded ancestors do not default to the root.
+- One IndexedDB transaction resolves collection/member/document identities against current storage and publishes nodes, bodies, replicas, and parents together.
+- Concurrent tabs reuse the winning local IDs. A changed root checkpoint rejects stale plans. Existing document bodies and pending uploads remain unchanged.
+- Initial pairing also stages the root and scope before publication. Body commits retain the latest stored tree placement.
+- Per-scope materialization tasks and per-item creation tasks replace the global materializing flag, which also skipped unrelated local creation.
+- Startup repairs equal remote identities only. It archives the complete affected scope before deleting redundant rows or detaching distinct local text.
+- Distinct text, review baselines, linked files, and pending projections stay as local-only documents under Recovered Sync copies.
+- Archive failure aborts the repair. Full-folder encrypted backups retain the raw archive, including pending ciphertext and credentials.
+- Restoration retains archive bytes and local variants without activating duplicate connections.
+- Same-named items with different remote identities remain untouched. The screenshot alone cannot establish those identities in the user's Firefox profile.
+
+Verification on the final local application:
+
+- 47 targeted unit cases passed for materialization, storage, sessions, generic flags, and sanitized diagnostics. Typecheck passed.
+- Nine browser cases passed across Chromium, Firefox, and WebKit for concurrent materialization with delayed/failed requests, atomic 32-item initial pairing, and duplicate repair with encrypted restoration.
+- Four focused Firefox regressions passed for the 58-item/25-orphan repair, local creation/comments, same-profile offline edits, and generic Off controls.
+- Six final Firefox cases passed after review of pairing scope references. These cover the three new hierarchy/repair cases, both populated-library matching choices, and single-document pairing with edits and reload.
+- The browser observers inspect committed trees and visible row depths during updates, not only the final sidebar. They also check exact document and review bytes after retry and reload.
+- A temporary artifact restored only the historical materialize() implementation. The new Firefox regression failed as expected: it exposed A and Nested before the first document download completed, with Nested incorrectly under the root.
+- The temporary regression artifact did not change workspace source or release bundles.
+- Tool parsing, tools-check, E2E lint, and diff whitespace checks passed. The marketing-page check remains skipped because its path is unset.
+
+The fix is deployed. Four isolated live Firefox cases passed for concurrent materialization with failure/retry, initial 32-item pairing, duplicate repair with encrypted restoration, and generic Off controls.
+The application, embedded bundles, skill, discovery digest, isolation headers, and Markdown negotiation match the release artifacts.
+App SHA-256: `0b7063fdfcc26f6fa8a8d9ec7b5a04c10b9c5e8e95eb47814c42a0c9fdd28c4e` (400,205 bytes).
+Both owned local servers are stopped. No user Sync namespace was purged, and no existing Firefox profile was inspected or modified.
+The automatic repair runs in the user's profile after the deployed application opens.
+The full suite remains deferred at the user's request. All changes remain uncommitted.
+
+### Continuous sidebar Sync rotation
+
+The user reported that document and folder Sync icons rotated briefly and then restarted.
+The CSS already specified a complete linear turn. Repeated sidebar replacement restarted each new SVG animation.
+The sidebar now anchors the existing CSS animation to the document timeline after each render.
+The rotation remains continuous without a timer or changes to Sync data. The existing reduced-motion rule still disables it.
+
+One focused browser case recreates the sidebar every 50 ms for 1.3 seconds.
+It checks continuous animation time, all four rotation quadrants, document and folder icons, and the reduced-motion rule.
+The case failed against the previous live release: animation time advanced only 33 ms instead of more than 1.1 seconds.
+The fixed case passed in Chromium, Firefox, and WebKit. Typecheck and E2E lint passed.
+Only this focused browser case runs for this visual fix. The full suite remains deferred.
+The fix is deployed. The focused live Firefox case passed, and the served application matches the release artifact.
+App SHA-256: `8a0d5ba5e086862ece924f73b84e4b6ca80d5deb5384842a0a982e687b737cc9` (400,309 bytes).
+Tool parsing, tools-check, and diff whitespace checks passed. The optional marketing-page check remains skipped because its path is unset.
+
+### Target-side initial download feedback
+
+The user reported an unexplained pause after approval of a large folder connection.
+The target now shows a persistent download dialog immediately after approval, before root metadata requests finish.
+It starts with Reading folder details, then displays the root name and a native progress bar with completed-document counts.
+The dialog explains that the full hierarchy appears after download. It closes before local-match choices or the final Sync connected message.
+No placeholder root or partial hierarchy returns to storage or the sidebar.
+Cancel, Close, and page navigation abort incoming requests. Publication checks cancellation again inside the local persistence queue.
+
+Focused checks hold the root request, the first document, and the second document independently.
+They check indeterminate progress, 0/24 and 1/24 counts, no visible partial folder, and the unchanged atomic 32-item hierarchy.
+Desktop and 320px screenshots were reviewed. Cancellation and failed downloads retain an existing private document across reload.
+All three focused cases passed in Chromium, Firefox, and WebKit. Typecheck and E2E lint passed.
+Eight materialization unit cases and three Firefox regressions passed for concurrent downloads and both populated-library matching choices.
+The fix is deployed. The three focused live Firefox cases passed for visible progress, cancellation, and failure.
+The application, embedded bundles, updated skill, discovery digest, isolation headers, and Markdown negotiation match the release artifacts.
+App SHA-256: `d849b8b95828be5323809ee89be845d68ae235ac79f30d5e8a23a31595b62850` (400,973 bytes).
+Tool parsing, tools-check, and diff whitespace checks passed. The optional marketing-page check remains skipped because its path is unset.
+The full suite remains deferred. No user Sync data was purged, and all changes remain uncommitted.
+
+### Stale activity labels and per-profile incoming destination
+
+The user supplied an encrypted origin-folder backup to diagnose icons that spin after reopening the browser.
+Inspection stayed local and offline. No decrypted file was saved, and no archived credential was used for a network request.
+The active backup contains 59 tree nodes, 51 replicas, no queued upload packets, and no pending rotation.
+Saved tree labels include 15 working states despite the empty outboxes. These labels are presentation state, not pending review state.
+
+- `status.ts` retains the current transport state per collection/member in tab memory.
+- Library reloads ignore old activity labels and restore the current driver state. The durable ended marker remains intact.
+- Replica commits also reapply the current view state, so an asynchronous write cannot restore an older spinning label.
+- Pending-review flags, baselines, bodies, and outboxes remain unchanged.
+- Folder actions now offer Use as default destination and Clear default destination.
+- The destination persists by local folder ID in profile metadata. Changes refresh other tabs without changing another browser profile.
+- New file opens, full/short links, URL opens, and CLI-style links use this destination. Explicit import targets and existing source matches retain their placement.
+- New documents in a synced destination enroll through the existing creation path. Read-only, ended, deleted, and missing folders cannot qualify as a saved destination.
+- Local file/URL source identities now survive portable Sync metadata updates, so reopening a changed CLI file still matches its source.
+- Temporary sessions do not read or change the persistent destination setting.
+
+Verification:
+
+- 42 targeted unit cases passed for status, destination selection, sessions, storage, transport, and materialization.
+- Twelve Chromium/Firefox/WebKit cases passed for stale status, active animation, stable CLI source matching inside a synced destination, profile isolation, and routing preference persistence.
+- The routing case also covers file Open, URL loading, explicit import targets, another tab changing the default, and clearing the setting.
+- Seven focused Firefox regressions passed for atomic pairing, concurrent materialization, encrypted repair restoration, offline same-profile edits, review acknowledgement/Undo, deletion, and temporary Live promotion.
+- The stale-state case failed against the previous live release as expected: a cross-tab refresh replaced an idle current badge with working while the outbox remained empty.
+- The fixed case preserves the pending-review marker and exact baseline across reload.
+- The CLI binary is not installed in the agent shell. Browser cases use the documented CLI fragment encoding and stable file-origin format.
+
+The user approved deployment of both changes. Four focused live Firefox cases passed for idle status, active animation, profile routing, and stable CLI source matching.
+The application, embedded bundles, updated skill, discovery digest, isolation headers, and Markdown negotiation match the release artifacts.
+App SHA-256: `866870f5deada35047ef43b5ae22b17a9e3019c0486801bd4ec3a2f02427fffc` (401,749 bytes).
+Tool parsing, tools-check, E2E lint, typecheck, and diff whitespace checks passed. The optional marketing-page check remains skipped because its path is unset.
+No user Sync data was purged or reconnected. The supplied archive remains unchanged, and no existing browser profile was inspected or modified.
+The full suite remains deferred. All changes remain uncommitted.
+
+### Short default action and marked folder icons
+
+The user requested Use as default without a helper hint or a separate Clear action.
+The folder menu now has that one action. It is disabled for the effective default, and another folder can replace the default.
+Shared with me carries the marker when no override exists. Selecting it after another folder switches the incoming destination back.
+The open and closed folder glyphs now include a small EUI filled star. The row also has a Default destination description.
+The marker uses existing theme colors and does not change folder names or row geometry.
+
+The focused checks cover the shorter exact action label, no helper hint, no Clear action, keyboard activation, disabled current default, and both icon states.
+They also retain profile persistence, cross-tab updates, explicit imports, CLI source matching, synced enrollment, and switching back to Shared with me.
+Light/dark and phone/desktop screenshots were reviewed. Shared glyph unit cases and shared-foundation browser checks passed.
+A WebKit source-reopen test now waits for the previous receive operation's completion message before another navigation. Three repeated WebKit runs passed.
+Six focused MARS cases passed in Chromium, Firefox, and WebKit. Eight shared-glyph unit cases and 66 shared-foundation browser cases passed.
+Typecheck, E2E lint, tool parsing for MARS/ECHO/WEBHOOKS, tools-check, and diff whitespace checks passed.
+The optional marketing-page check remains skipped because its path is unset. The full suite remains deferred.
+The user approved this refinement's deployment. Both focused live Firefox cases passed for the new action, icon states, and routing.
+The served application, bundles, updated skill, discovery digest, isolation headers, and Markdown negotiation match the release artifacts.
+App SHA-256: `7b5f6173a5dbb1ca5af76d2b8ff4e69f6bd617e417132c3b62ae52d6c70c0877` (402,033 bytes).
+Only MARS and the normal discovery aggregates were deployed. Other tool pages and user Sync data remain unchanged.
+
+### Smaller, centered default-folder stars
+
+The user requested a smaller star with better alignment in both folder states.
+The star is now 6px instead of 7px. Its center is at x=8 within the 16px folder glyph.
+The closed state centers it at y=9. The open state centers it at y=10, inside the lower front face.
+The adjustment changes no actions, routing, Sync data, or row dimensions.
+
+One focused browser case passed in Chromium, Firefox, and WebKit. It checks exact marker size and both centers in light and dark themes.
+Desktop and phone screenshots were reviewed. Eight shared-glyph unit cases, typecheck, E2E lint, tool parsing, tools-check, and whitespace checks passed.
+The optional marketing-page check remains skipped because its path is unset. The full suite remains deferred.
+
+The user approved deployment of the alignment adjustment. The focused live Firefox case passed, including the exact 6px size and both centers.
+The served application, bundles, skill, discovery digest, isolation headers, and Markdown negotiation match the release artifacts.
+App SHA-256: `2a715f54114df9309d8728005a493aff25d833e4a69ca419be3442002052ff35` (402,053 bytes).
+
+### Reload traffic and fractional Firefox zoom
+
+The user supplied a HAR to investigate reload traffic and reported default-star drift at 120% Firefox zoom.
+The HAR was inspected locally without replaying requests or credentials.
+It contains 243 entries over about 16 seconds: 136 Sync calls, 72 esm.sh module entries, 27 Mermaid/CDN entries, and eight other entries.
+Two of the other entries are embedded data images, not HTTP requests. Sync comprises 116 GETs, ten index calls, and ten directory calls across three scopes.
+Each GET key appeared once in that capture. The defect was reload replay, not duplicate GETs within the capture.
+
+- Transport skips payload GETs only when a validated key is already covered by durable received progress.
+- Own ACKs advance their stream cursor atomically with outbox removal. Missing legacy cursors still require verified reception.
+- The first folder index page carries authenticated directory metadata. Following pages omit it, and document-scoped grants cannot request it.
+- Old clients and standalone endpoints retain their previous behavior. Pagination still scans all keys and preserves delayed writes.
+- Unknown streams wait for manifest materialization. Cached hierarchy versions include directory/exclusion changes, so late registrations and failed downloads remain recoverable.
+- CodeMirror now uses exact npm pins matching the captured browser versions and one embedded ESM graph. State and view classes each resolve to one instance.
+- The editor still imports lazily, retains its textarea fallback, and includes the bundled dependency licenses.
+- This adds about 280 KB to the HTML artifact instead of the editor's external module graph. Mermaid remains lazy rather than adding all diagram code to every page.
+- The default folder and star now share one SVG viewport and transform, replacing independently positioned SVG layout boxes.
+
+Verification:
+
+- 82 focused unit cases passed for protocol, sessions, transport, responder, diagnostics, storage, materialization, routing, and icons.
+- The real native responder check passed at a 10 MiB heap and 200 KV operations, including an index with the full 100-item directory.
+- Twelve Chromium/Firefox/WebKit cases passed for zero-payload warm reload, directory batching, late-registration recovery, editor fallback, and default-folder rendering.
+- The 18-document warm fixture uses two index requests, zero payload GETs, zero separate directory calls, and zero editor-CDN requests. It exercises CodeMirror with esm.sh blocked, not the textarea fallback.
+- Nine focused Firefox regressions passed for atomic pairing, concurrent materialization, encrypted repair restoration, review acknowledgement/Undo, offline edits, deletion, Live permissions, and source/block/table editing.
+- Fresh native Firefox 159.0.1 passed real browser zoom at 100%, 120%, and 130% in both folder states. The checks use a separate temporary profile and inspect the single-SVG geometry and screenshots.
+- No existing browser profile or user Sync data was modified. The supplied HAR credentials were not used.
+- Twenty standalone Markdown/MARS responder smoke cases passed. Typecheck, E2E lint, tool parsing, tools-check, and diff whitespace checks passed.
+- The optional marketing-page check remains skipped because its path is unset.
+
+The user approved deployment of the request reductions, bundled editor, and zoom correction.
+All four focused live Firefox cases passed for request budgets, late-registration recovery, editor fallback, and folder rendering.
+The served application, bundles, skill, discovery digest, isolation headers, and Markdown negotiation match the release artifacts.
+App SHA-256: `bd7294ba73aed846e718f0d8945f87b042b3793def10ddf61f54da9770985399` (683,933 bytes).
+The larger HTML includes the editor and its license notices. No user Sync data was purged, and the HAR was not replayed.
+The full suite remains deferred. All changes remain uncommitted.
+
 ## Approved implementation boundary
 
 The user approved implementation with the existing MARS responder and its KV store.

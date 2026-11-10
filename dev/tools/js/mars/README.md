@@ -8,6 +8,20 @@ Pinned runtime dependencies: `marked` 18.1.2 (the version md.html's unpinned CDN
 resolved to when MARS was extracted) and `fflate` 0.8.3 (same as `three-mf`).
 Sync also uses Yjs, Noble Curves, and DOMPurify. Their exact pins live in `package.json`.
 The connection manager initializes only for enrollment, Sync links, or connected content.
+CodeMirror and its Markdown/state dependencies now build into one embedded module graph with their license notices.
+The source editor imports that graph lazily from a Blob URL instead of fetching the esm.sh dependency graph.
+This increases the HTML artifact size but removes the editor's external module fan-out. Mermaid remains separately lazy-loaded for documents with diagrams.
+
+## Default destination
+
+In a folder's actions, **Use as default** saves that folder for new files, links, URLs, and `mars` CLI links.
+The choice belongs to the browser profile and updates other open tabs. A renamed or moved folder retains its identity.
+The default folder has a star inside its open and closed icons. Without an override, the marker identifies **Shared with me**.
+New documents in a synced destination join that folder's Sync collection. Existing source matches update in place without moving.
+Local file and URL identities remain local after Sync enrollment, so subsequent opens still match their original source.
+Explicit import targets take precedence. New document and folder actions still use their selected folder.
+Choose another folder with the same action to change the destination, including **Shared with me** to return incoming links there.
+Missing, deleted, read-only, and ended destinations are not valid targets. Temporary sessions do not read or change the profile preference.
 
 ## Connected documents
 
@@ -33,8 +47,41 @@ The responder uses that same value for enforcement and `/sync/limits`. Other sto
 Saved folder contents can upload even when no document is open.
 Sync enrollment, upload acknowledgements, key updates, and connection metadata do not change document timestamps or invalidate the smart-search index.
 Document text and name changes still update the timestamp and refresh that document's search entry.
+Folder setup saves every selected connection in one transaction after registration completes.
+Other tabs cannot read a partially connected folder. Failed setup retains the original local documents.
+Repeated upload acknowledgements from tabs in the same profile do not stop Sync.
+Reload uses saved received-progress cursors before it downloads checkpoint payloads. Own upload acknowledgements save their progress in the same transaction.
+The first index page also returns folder directory metadata. Later index pages do not repeat it, and older clients retain their original responses.
+An old record without received progress can require a first verified download. Unsigned index keys never advance saved progress.
+Incoming folders and documents stay outside the library until their bodies and complete parent paths are ready.
+One transaction publishes the prepared hierarchy and replicas. This also applies to the first device connection.
+After code approval, the target browser shows a persistent download dialog. It first reads folder details, then reports completed documents.
+The dialog stays open until the complete hierarchy appears. Cancel stops the initial download without publishing a partial folder.
+The transaction resolves each collection/member/document identity against current storage. Stale tabs reuse the existing local IDs instead of creating duplicate rows.
+Missing parents, document parents, cycles, and excluded ancestors do not place incoming files at the root.
+Failed downloads leave the visible tree unchanged. Retry uses the latest saved manifest.
+
+Startup repairs old rows that share the same remote identity. It does not combine same-named documents with different remote identities.
+The repair first archives all affected replicas, pending uploads, credentials, and local text in one transaction.
+Different local text, review baselines, or pending projections remain as independent documents under **Recovered Sync copies**.
+Identical redundant rows disappear from the active collection. Full-folder encrypted backups include the preserved replica data.
+Restore retains the raw repair archive and local variants without activating duplicate connections.
+If the archive write fails, the repair leaves all original rows unchanged. No server-wide Sync purge is necessary.
+
+An incomplete folder from an older release offers **Restart setup**.
+Restart retains local documents and comments. Devices from the incomplete setup need a new Sync link.
+Unbound replicas now offer the same explicit restart after their saved scope passes structural checks.
+The restart atomically preserves the old replicas, keys, pending ciphertext, progress, scope metadata, and current text in a local backup.
+It does not delete those records or activate the old connection.
+Full-folder encrypted connection backups also include this preserved state. Use the existing **Include connections and pending changes** option in Download or Export all.
+Sync has no separate backup control. Ordinary downloads and partial document selections do not include the preserved credentials.
+Restore keeps old Sync projections and newer local text as separate copies. Existing library documents remain unchanged.
+The local backup and replacement commit together. Storage failures or intervening edits retain the original setup without a partial replacement.
 
 The header shows service acknowledgement, pending local work, offline work, or a connection error.
+Sidebar Sync icons complete continuous turns during work, including across tree updates. Reduced-motion mode disables the rotation.
+Sync activity comes from the current tab's transport, not from saved tree records. Reload and cross-tab refresh do not replay stale spinning states.
+Pending review changes remain independent of upload status. An idle connection can still contain documents that need review.
 **Up to date** does not mean that another person read the document.
 Local edits enter a durable outbox before upload. Retries reuse the stored ciphertext.
 An active document or folder renews its 30-day inactivity lease. Polling alone does not renew it.
@@ -79,7 +126,65 @@ Review-deletion Undo cancels the deleting actor's signed operation. It restores 
 
 Release checks passed on 2026-11-08. Sync and live links require no account, extension, or local helper.
 
+## Developer flags and diagnostics
+
+Flags apply to the browser profile. Changes update open tabs and survive reloads.
+The canonical query replaces the complete flag setting:
+
+```text
+?flags=debug,experimental
+?flags=debug:sync,experimental:live_links
+?flags=off
+```
+
+An unscoped flag enables its category globally. A scoped flag applies to one feature.
+Scoped opt-outs are supported, for example `debug,-debug:sync`.
+Repeated category parameters are also accepted: `?debug=sync&debug=live&experimental=sync&experimental=live_links`.
+Category queries change only the named category. `?debug=off` disables all debug scopes, and `?experimental=off` disables all experimental scopes.
+The app consumes control parameters after application. Reload cannot silently re-enable a flag after an explicit Off.
+
+**Developer tools** appears beside Privacy and Credits only while flag rules are present.
+It is the single UI location for **Copy debug report**, **Turn off debug**, **Turn off experimental**, and **Turn off all flags**.
+Business dialogs have no debug or repair-backup controls. The normal Sync footer contains only disconnect and Sync-link/retry actions.
+Turning off debug also clears captured reports in open tabs. Clearing flags does not delete documents, connection credentials, or preserved recovery data.
+
+The generic console API works without a modal:
+
+```js
+marsFlags.set('debug:sync,experimental:live_links');
+marsFlags.enable('debug', 'sync');
+marsFlags.disable('debug');
+marsFlags.disable('experimental');
+marsFlags.clear();
+marsFlags.list();
+marsFlags.enabled('experimental', 'live_links');
+copy(marsDebug.report());
+marsDebug.clear();
+marsDebug.open();
+```
+
+Manual storage configuration uses the CSV value in `localStorage["mars.flags"]`. Reload after manual edits, or use `marsFlags` for immediate changes.
+Legacy `mars.debug` settings migrate once. An empty generic setting prevents old session flags from restoring debug after Off.
+Experimental flags are client opt-ins, not authorization. Released Sync and Live links remain available without experimental flags.
+Feature modules use `featureFlags.enabled()` and `onChange()`. Debug providers register sanitized schemas with the generic report collector.
+Sync and Live-link diagnostics currently share one sanitized replication-engine trace, exposed under `channels.sync` in report format 2.
+
+Reports contain browser capabilities, timing, item counts, setup steps, storage-conflict reasons, HTTP statuses, and fixed error codes.
+They exclude document names, Markdown, document IDs, URLs, headers, keys, credentials, encrypted packets, raw errors, and unknown flag scopes.
+The latest 500 trace events stay in memory. Reports state how many older events were discarded. No report uploads automatically.
+Clipboard failure downloads `MARS-debug.json` from Developer tools. Failures still stay visible with a code and step when debug is off.
+
 ## Buttons and feedback
+
+Every document and folder deletion requires confirmation. Cancel receives the initial keyboard focus.
+Local documents without connections or known active links use a short confirmation.
+Connected selections explain local deletion and collection deletion separately.
+Ended connections offer local deletion only. Expired remote access does not prevent local deletion.
+The dialog counts known active Live links and short snapshots, including folder snapshots that contain the selection.
+Local deletion leaves shared links active. Collection deletion ends Live access, but independent snapshots remain available until expiry.
+Expired links do not add warnings. Link counts describe records in this browser, not links from other profiles.
+Failed deletion retains the local copy and shows an error with **Try again**.
+Undo restores an independent local copy after a connected deletion. It does not restore remote access.
 
 MARS uses the native EUI-style primitives and [button guidance](../../guides/design-system.md#buttons-loading-and-copy-feedback).
 Generated dialogs use `buttonClass` for primary, secondary, empty, and flush variants.

@@ -11,6 +11,11 @@ import * as db from './store/db.ts';
 import { $ } from './ui/ui.ts';
 import * as sync from './sync/index.ts';
 import { installTooltips } from './ui/feedback.ts';
+import { installSyncDebug } from './sync/debug.ts';
+import { installDeveloperTools } from './ui/developer.ts';
+
+installDeveloperTools();
+installSyncDebug();
 
 const LAST_DOC_KEY = 'lastDoc';
 const DEFAULT_TITLE = document.title;

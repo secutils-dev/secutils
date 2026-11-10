@@ -2,12 +2,97 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { indexedDB, IDBKeyRange } from 'fake-indexeddb';
 import type { TreeNode } from '../src/tree/model.ts';
+import type { UnfinishedSetupBackup, SavedUnfinishedSetup } from '../src/store/db.ts';
 
 // Keep this test's database isolated from real browser data and all other test files.
 Object.assign(globalThis, { indexedDB, IDBKeyRange, location: new URL('https://mars.test/'), BroadcastChannel: undefined });
 Object.defineProperty(globalThis, 'navigator', { value: {}, configurable: true });
 const db = await import('../src/store/db.ts');
 const node = (id: string): TreeNode => ({ id, kind: 'doc', parentId: null, name: 'Local', order: 0, createdAt: 1, updatedAt: 1 });
+
+test('enrollment publishes the complete selection atomically and preserves cached vectors and timestamps', async () => {
+    const nodes = [node(crypto.randomUUID()), node(crypto.randomUUID())], texts = Object.fromEntries(nodes.map(node => [node.id, 'Original bytes']));
+    await db.putNodes(nodes, texts);
+    for (const node of nodes) await db.putSide('vec', node.id, { at: node.updatedAt, chunks: [1, 2] });
+    const connected = nodes.map(node => ({ ...node, connection: { collection: crypto.randomUUID(), member: crypto.randomUUID(), document: crypto.randomUUID(), permission: 'owner' as const, epoch: 1, kind: 'sync' as const } }));
+    const records = Object.fromEntries(nodes.map(node => [node.id, { revision: 1 }]));
+    await db.putNodes([{ ...nodes[1], name: 'Changed during setup' }]);
+    await assert.rejects(db.enrollConnected(nodes, texts, connected, records, { enrollmentMarker: true }), db.ReplicaConflict);
+    assert.equal(await db.getSide('sync', nodes[0].id), undefined);
+    assert.equal(await db.getMeta('enrollmentMarker'), undefined);
+    assert.equal((await db.allNodes()).find(node => node.id === nodes[0].id)?.connection, undefined);
+    await db.putNodes(nodes);
+    await db.enrollConnected(nodes, texts, connected, records, { enrollmentMarker: true });
+    for (const node of nodes) {
+        assert.equal(await db.getText(node.id), texts[node.id]);
+        assert.deepEqual(await db.getSide('vec', node.id), { at: 1, chunks: [1, 2] });
+        assert.equal((await db.allNodes()).find(n => n.id === node.id)?.updatedAt, 1);
+        assert.deepEqual(await db.getSide('sync', node.id), { revision: 1 });
+    }
+    await assert.rejects(db.enrollConnected(nodes, texts, connected, records, {}), db.ReplicaConflict);
+});
+
+test('enrollment cannot replace text edited in another tab during network setup', async () => {
+    const n = node(crypto.randomUUID()); await db.putNodes([n], { [n.id]: 'Before setup' });
+    await db.putNodes([n], { [n.id]: 'New local work' });
+    await assert.rejects(db.enrollConnected([n], { [n.id]: 'Before setup' }, [n], { [n.id]: { revision: 1 } }, {}), db.ReplicaConflict);
+    assert.equal(await db.getText(n.id), 'New local work');
+});
+
+test('enrollment rejects a folder whose selection grew in another tab during setup', async () => {
+    const root = { ...node(crypto.randomUUID()), kind: 'folder' as const }, child = { ...node(crypto.randomUUID()), parentId: '' };
+    child.parentId = root.id;
+    await db.putNodes([root, child], { [child.id]: 'New child' });
+    await assert.rejects(db.enrollConnected([root], {}, [root], { [root.id]: { revision: 1 } }, {}), db.ReplicaConflict);
+    assert.equal(await db.getSide('sync', root.id), undefined);
+    assert.equal(await db.getText(child.id), 'New child');
+});
+
+async function unfinishedFixture() {
+    const root = { ...node(crypto.randomUUID()), kind: 'folder' as const }, doc = { ...node(crypto.randomUUID()), parentId: root.id };
+    const binding = { collection: crypto.randomUUID(), member: crypto.randomUUID(), document: crypto.randomUUID() };
+    const old = { revision: 17, binding, projection: 'Older unsent work', key: 'old-key', outbox: [{ envelope: 'exact prepared ciphertext', sequence: 4 }], progress: { peer: 3 } };
+    const scope = `sync:scope:${binding.collection}:${binding.member}`;
+    await db.putNodes([root, doc], { [doc.id]: 'Newer local text' });
+    await db.putSide('sync', doc.id, old); await db.putSide('vec', doc.id, { at: 1, chunks: [1, 2] });
+    await db.setMeta(scope, { token: 'old-scoped-credential', key: 'old-root-key', localRoot: root.id });
+    const previous = await db.captureUnfinishedSetup([root.id, doc.id]);
+    const nodes = previous.nodes.map(node => ({ ...node, connection: { collection: crypto.randomUUID(), member: crypto.randomUUID(), document: crypto.randomUUID(), kind: 'sync' as const, epoch: 1, permission: 'owner' as const } }));
+    const records = Object.fromEntries(nodes.map(node => [node.id, { revision: 3, binding: node.connection, projection: previous.texts[node.id] ?? '' }]));
+    return { root, doc, old, scope, previous, nodes, records };
+}
+
+test('explicit restart atomically archives old replicas, keys, progress, and pending ciphertext without changing current text or vectors', async () => {
+    const f = await unfinishedFixture();
+    await db.enrollConnected(f.previous.nodes, f.previous.texts, f.nodes, f.records, {}, f.previous);
+    assert.equal(await db.getText(f.doc.id), 'Newer local text');
+    assert.deepEqual(await db.getSide('vec', f.doc.id), { at: 1, chunks: [1, 2] });
+    assert.deepEqual(await db.getSide('sync', f.doc.id), f.records[f.doc.id]);
+    const backups = await db.getMeta<UnfinishedSetupBackup[]>(db.unfinishedSetupIndex(f.root.id));
+    assert.equal(backups?.length, 1);
+    const saved = await db.getMeta<SavedUnfinishedSetup>(backups![0].key);
+    assert.deepEqual(saved?.snapshot.records[f.doc.id], f.old);
+    assert.equal(saved?.snapshot.texts[f.doc.id], 'Newer local text');
+    assert.deepEqual(saved?.snapshot.metadata[f.scope], { token: 'old-scoped-credential', key: 'old-root-key', localRoot: f.root.id });
+});
+
+test('restart refuses a replica changed after confirmation without publishing connections or an incomplete backup', async () => {
+    const f = await unfinishedFixture(), latest = { ...f.old, revision: 18, outbox: [{ envelope: 'newer pending ciphertext', sequence: 5 }] };
+    await db.putSide('sync', f.doc.id, latest);
+    await assert.rejects(db.enrollConnected(f.previous.nodes, f.previous.texts, f.nodes, f.records, {}, f.previous), db.ReplicaConflict);
+    assert.deepEqual(await db.getSide('sync', f.doc.id), latest);
+    assert.equal(await db.getMeta(db.unfinishedSetupIndex(f.root.id)), undefined);
+    assert.equal((await db.allNodes()).find(node => node.id === f.root.id)?.connection, undefined);
+});
+
+test('a failed archive write rolls back the replacement and retains the original unfinished setup', async () => {
+    const f = await unfinishedFixture();
+    Object.assign(f.previous, { invalid: () => {} });
+    await assert.rejects(db.enrollConnected(f.previous.nodes, f.previous.texts, f.nodes, f.records, {}, f.previous));
+    assert.deepEqual(await db.getSide('sync', f.doc.id), f.old);
+    assert.equal(await db.getText(f.doc.id), 'Newer local text');
+    assert.equal(await db.getMeta(db.unfinishedSetupIndex(f.root.id)), undefined);
+});
 
 test('projection, replica, pending envelope, bindings, and progress commit atomically', async () => {
     const id = crypto.randomUUID(), initial = { revision: 1, body: new Uint8Array([1, 2]), outbox: [{ operation: 'one', envelope: null }], progress: {} };
@@ -34,6 +119,14 @@ test('stale tabs cannot overwrite a newer replica or advance an unsaved cursor',
     assert.equal(await db.getText(id), stored?.cursor === 2 ? 'winner A' : 'winner B');
     await assert.rejects(db.commitReplica(id, 1, { revision: 3, cursor: 99 }, [], { [id]: 'lost edit' }), db.ReplicaConflict);
     assert.equal((await db.getSide<{ cursor: number }>('sync', id))?.cursor, stored?.cursor);
+});
+
+test('a stale tab cannot overwrite a replacement connection with the same revision', async () => {
+    const id = crypto.randomUUID(), binding = { collection: crypto.randomUUID(), document: crypto.randomUUID(), member: crypto.randomUUID() };
+    await db.commitReplica(id, null, { revision: 3, binding }, [node(id)], { [id]: 'Replacement connection' });
+    const stale = { ...binding, member: crypto.randomUUID() };
+    await assert.rejects(db.commitReplica(id, 3, { revision: 4, binding: stale }, [], { [id]: 'Old tab' }, {}, {}, [], stale), db.ReplicaConflict);
+    assert.equal(await db.getText(id), 'Replacement connection');
 });
 
 test('a structured-clone storage failure aborts projection and cursor together', async () => {

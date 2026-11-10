@@ -43,7 +43,7 @@ async function stored(page: Page) {
       request.onerror = () => reject(request.error);
     });
     const result = await new Promise<{
-      nodes: { id: string; name: string; kind: string; originId?: string; handle?: unknown }[];
+      nodes: { id: string; parentId: string | null; name: string; kind: string; originId?: string; handle?: unknown }[];
       texts: unknown[];
     }>((resolve, reject) => {
       const transaction = database.transaction(['nodes', 'docs'], 'readonly');
@@ -79,6 +79,141 @@ async function edit(page: Page, text: string) {
 }
 
 test.describe('source import', () => {
+  test('default destination survives reload, follows profile changes across tabs, and keeps explicit import targets', async ({
+    page,
+  }, testInfo) => {
+    await boot(page);
+    const newFolder = async (name: string) => {
+      await boot(page);
+      await page.getByRole('button', { name: 'New document, folder, or import', exact: true }).click();
+      await page.getByRole('menuitem', { name: 'New folder', exact: true }).click();
+      await page.getByRole('textbox', { name: 'Name', exact: true }).fill(name);
+      await page.getByRole('textbox', { name: 'Name', exact: true }).press('Enter');
+      return (await page
+        .getByRole('treeitem')
+        .filter({ has: page.getByRole('button', { name: `Actions for ${name}`, exact: true }) })
+        .getAttribute('data-id'))!;
+    };
+    await newFolder('Shared with me');
+    await expect(page.getByTitle('Shared with me · Default destination', { exact: true })).toBeVisible();
+    const work = await newFolder('Work');
+    await page.getByRole('button', { name: 'Actions for Work', exact: true }).click();
+    const useDefault = page.getByRole('menuitem', { name: 'Use as default', exact: true });
+    await expect(useDefault.locator('.item-sub')).toHaveCount(0);
+    await expect(page.getByRole('menuitem', { name: /^Clear/ })).toHaveCount(0);
+    await useDefault.press('Enter');
+    const workRow = page.locator(`.tree-row[data-id="${work}"]`);
+    await expect(workRow).toHaveAttribute('aria-description', 'Default destination');
+    await expect(page.locator('.tree-icon-default')).toHaveCount(1);
+    await expect(workRow.locator('.tree-default-star')).toBeVisible();
+    const openGlyph = await workRow.locator('.tree-icon > svg path').first().getAttribute('d');
+    await workRow.getByText('Work', { exact: true }).click();
+    await expect(workRow).toHaveAttribute('aria-expanded', 'false');
+    await expect(workRow.locator('.tree-default-star')).toBeVisible();
+    expect(await workRow.locator('.tree-icon > svg path').first().getAttribute('d')).not.toBe(openGlyph);
+    await workRow.getByText('Work', { exact: true }).click();
+    await expect(workRow).toHaveAttribute('aria-expanded', 'true');
+    await page.getByRole('button', { name: 'Actions for Work', exact: true }).click();
+    await expect(page.getByRole('menuitem', { name: 'Use as default', exact: true })).toBeDisabled();
+    await page.keyboard.press('Escape');
+    for (const theme of ['light', 'dark']) {
+      await page.evaluate((theme) => {
+        document.documentElement.dataset.theme = theme;
+      }, theme);
+      for (const expanded of [true, false]) {
+        if ((await workRow.getAttribute('aria-expanded')) !== String(expanded))
+          await workRow.getByText('Work', { exact: true }).click();
+        await expect(workRow.locator('.tree-default-star')).toBeVisible();
+        const geometry = await workRow.locator('.tree-icon-default').evaluate((element) => {
+          const star = element.querySelector<SVGGElement>('.tree-default-star')!,
+            matrix = star.transform.baseVal.consolidate()!.matrix,
+            center = new DOMPoint(8, 8).matrixTransform(matrix);
+          return {
+            width: 16 * matrix.a,
+            height: 16 * matrix.d,
+            centerX: center.x,
+            centerY: center.y,
+          };
+        });
+        expect(geometry).toEqual({ width: 6, height: 6, centerX: 8, centerY: expanded ? 10 : 9 });
+        await expect(workRow.locator('.tree-icon-default svg')).toHaveCount(1);
+        for (const zoom of [1, 1.2, 1.3]) {
+          await page.evaluate((zoom) => {
+            document.documentElement.style.zoom = String(zoom);
+          }, zoom);
+          await page.locator('#sidebar').screenshot({
+            path: testInfo.outputPath(`default-folder-${theme}-${expanded ? 'open' : 'closed'}-${zoom}.png`),
+          });
+        }
+        await page.evaluate(() => {
+          document.documentElement.style.zoom = '';
+        });
+      }
+    }
+    await page.setViewportSize({ width: 320, height: 800 });
+    const navigation = page.getByRole('button', { name: 'Toggle documents sidebar', exact: true });
+    await expect(navigation).toHaveAttribute('aria-expanded', 'false');
+    await navigation.click();
+    await expect(navigation).toHaveAttribute('aria-expanded', 'true');
+    await expect(workRow.locator('.tree-default-star')).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('default-folder-phone.png') });
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const other = await newFolder('Other');
+    const link = (name: string, text: string) => {
+      const raw = Buffer.from(text),
+        encoded = Buffer.concat([Buffer.alloc(4), deflateRawSync(raw)]);
+      encoded.writeUInt32LE(raw.length, 0);
+      return `/#${new URLSearchParams({ name, md: encoded.toString('base64url'), o: crypto.randomUUID() })}`;
+    };
+    await boot(page, link('From CLI', '# From CLI\n\nIncoming from a command.'));
+    await expect(page.locator('#docTitle')).toHaveText('From CLI');
+    expect((await stored(page)).docs.find((doc) => doc.name === 'From CLI')?.parentId).toBe(work);
+    await page
+      .getByRole('treeitem')
+      .filter({ has: page.getByRole('button', { name: 'Actions for Other', exact: true }) })
+      .getByText('Other', { exact: true })
+      .click();
+    await file(page, '# Picked\n\nA unique file from Open.', 'Picked.md');
+    await expect(page.locator('#docTitle')).toHaveText('Picked');
+    expect((await stored(page)).docs.find((doc) => doc.name === 'Picked')?.parentId).toBe(work);
+    const url = 'https://destination.test/Remote.md';
+    await remote(page, url, '# Remote\n\nFetched into the selected default.');
+    await boot(page, `/?url=${encodeURIComponent(url)}`);
+    await expect(page.locator('#docTitle')).toHaveText('Remote');
+    expect((await stored(page)).docs.find((doc) => doc.name === 'Remote')?.parentId).toBe(work);
+    await page
+      .getByRole('treeitem')
+      .filter({ has: page.getByRole('button', { name: 'Actions for Other', exact: true }) })
+      .getByText('Other', { exact: true })
+      .click();
+    await page.locator('#importInput').setInputFiles({
+      name: 'Explicit.md',
+      mimeType: 'text/markdown',
+      buffer: Buffer.from('# Explicit\n\nAn explicit import target.'),
+    });
+    await expect
+      .poll(async () => (await stored(page)).docs.find((doc) => doc.name === 'Explicit')?.parentId)
+      .toBe(other);
+    const second = await page.context().newPage();
+    try {
+      await boot(second);
+      await expect(second.getByTitle('Work · Default destination', { exact: true })).toBeVisible();
+      await second.getByRole('button', { name: 'Actions for Other', exact: true }).click();
+      await second.getByRole('menuitem', { name: 'Use as default', exact: true }).click();
+      await expect(page.getByTitle('Other · Default destination', { exact: true })).toBeVisible();
+      await file(page, '# Cross tab\n\nThe other tab changed the default.', 'Cross tab.md');
+      await expect(page.locator('#docTitle')).toHaveText('Cross tab');
+      expect((await stored(page)).docs.find((doc) => doc.name === 'Cross tab')?.parentId).toBe(other);
+      await page.getByRole('button', { name: 'Actions for Shared with me', exact: true }).click();
+      await page.getByRole('menuitem', { name: 'Use as default', exact: true }).click();
+      await boot(page, link('Shared again', '# Shared again\n\nThe original destination selected again.'));
+      await expect(page.locator('#docTitle')).toHaveText('Shared again');
+      await expect(page.getByRole('button', { name: 'Actions for Shared with me', exact: true })).toBeVisible();
+    } finally {
+      await second.close();
+    }
+  });
+
   test.setTimeout(60000);
   for (const entry of ['file', 'drop', 'form', 'query', 'library']) {
     test(`${entry} preserves Markdown bytes and uses the frontmatter title`, async ({ page }) => {

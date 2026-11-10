@@ -44,8 +44,12 @@ async function tableAction(page: Page, name: string) {
 }
 const cell = (page: Page, row: number, column: number) =>
   table(page).locator('tr').nth(row).locator('th,td').nth(column);
-const source = (page: Page) =>
-  page.evaluate(() => (window as unknown as { __suEditorAPI: { getText(): string } }).__suEditorAPI.getText());
+const source = async (page: Page) => {
+  await page.waitForFunction(
+    () => typeof (window as { __suEditorAPI?: { getText?: unknown } }).__suEditorAPI?.getText === 'function',
+  );
+  return page.evaluate(() => (window as unknown as { __suEditorAPI: { getText(): string } }).__suEditorAPI.getText());
+};
 async function boot(page: Page, text = DOC) {
   await page.goto('/');
   await page.waitForFunction(() => typeof (window as { __suEditorAPI?: unknown }).__suEditorAPI !== 'undefined');

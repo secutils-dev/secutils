@@ -62,7 +62,16 @@ test.describe('temporary sessions', () => {
   });
 
   test('fallback source and block editors retain accessible names and editable content', async ({ page }) => {
-    await page.route('https://esm.sh/**', (route) => route.abort());
+    await page.addInitScript(() => {
+      const create = URL.createObjectURL;
+      let scripts = 0;
+      URL.createObjectURL = function (blob) {
+        // The first JavaScript blob is MARS; the second is the lazy editor.
+        if (blob.type === 'text/javascript' && ++scripts === 2)
+          throw new DOMException('Blocked editor', 'SecurityError');
+        return create.call(this, blob);
+      };
+    });
     await open(page, link(DOC, true));
     await page.getByRole('button', { name: 'Source', exact: true }).click();
     await expect(page.getByRole('textbox', { name: 'Markdown source', exact: true })).toHaveValue(DOC);

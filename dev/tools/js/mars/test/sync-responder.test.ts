@@ -88,6 +88,17 @@ test('the folder-item limit stays at 100 and is distinct from the hourly collect
     assert.equal(rejected.status, 507); assert.equal(rejected.body.error, 'membership-or-document-limit');
 });
 
+test('an index page can include the complete directory within the KV budget without exposing it to document-only grants', async () => {
+    const f = await fixture('folder');
+    for (let i = 1; i < LIMITS.documents; i++) assert.equal((await f.request('document', { document: id(), kind: i % 2 ? 'doc' : 'folder' })).status, 201);
+    const page = await f.request('index', { directory: true });
+    assert.equal(page.status, 200); assert.equal(page.body.directory.documents.length, LIMITS.documents); assert.ok(page.operations <= 200);
+    assert.equal((await f.request('index')).body.directory, undefined);
+    const who = await identity(), token = randomSecret(), grant = await signGrant({ ...f.owner, member: id(), participant: id(), permission: 'view', document: f.document, expires: Math.floor(Date.now() / 1000) + 86400, publicKey: who.publicKey, boxKey: who.boxKey, tokenHash: await tokenHash(token) }, f.who);
+    assert.equal((await f.request('grant', { signed: grant })).status, 201);
+    assert.equal((await f.request('index', { member: grant.grant.member, directory: true }, token)).status, 403);
+});
+
 test('opening a folder can renew nested folder metadata along with unopened document replicas', async (t) => {
     let now = Math.floor(Date.now() / 1000); t.mock.method(Date, 'now', () => now * 1000);
     const f = await fixture('folder'), folder = id(), document = id();

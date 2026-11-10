@@ -42,6 +42,38 @@ test('joining adopts the creator state without adding an independent content see
     assert.equal(f.session.replica.text().split('# Document').length, 2);
 });
 
+test('same-profile tabs can acknowledge the same uploaded packet without stopping Sync', async () => {
+    const f = await fixture(); await f.session.initial();
+    const other = new Session(f.session.record, f.repository);
+    try {
+        const packet = await f.session.prepare(); assert.ok(packet);
+        assert.deepEqual(await other.prepare(), packet);
+        const digest = await checkpointDigest(packet);
+        await f.session.acknowledge(packet.checkpoint.operation, digest);
+        await other.acknowledge(packet.checkpoint.operation, digest);
+        assert.deepEqual(other.record.outbox, f.session.record.outbox);
+        await assert.rejects(other.acknowledge(packet.checkpoint.operation, 'invalid digest'), /acknowledgement-mismatch/);
+    } finally { other.destroy(); f.session.destroy(); }
+});
+
+test('own upload acknowledgements save received progress so a reopened client never needs its own echo', async () => {
+    const f = await fixture();
+    try {
+        await f.session.initial();
+        for (const stream of ['body', 'review']) {
+            const packet = (await f.session.prepare())!; assert.equal(packet.checkpoint.stream, stream);
+            await f.session.acknowledge(packet.checkpoint.operation, await checkpointDigest(packet));
+            const record = await f.repository.get(), cursor = `${f.owner.grant.member}/${stream}`;
+            assert.equal(record.progress[cursor], packet.checkpoint.sequence);
+            const revision = record.revision; await f.session.receive(packet, f.owner);
+            assert.equal((await f.repository.get()).revision, revision);
+        }
+        const reopened = new Session(await f.repository.get(), f.repository);
+        try { assert.equal(await reopened.pending(), 0); assert.equal(Object.keys(reopened.record.progress).length, 2); }
+        finally { reopened.destroy(); }
+    } finally { f.session.destroy(); }
+});
+
 test('alternating owner/commenter replies observe the other author and preserve order after checkpoints and reopen', async () => {
     const f = await fixture('Body.'), peer = await join(f, 'comment'), threadId = `${f.owner.grant.participant}:${crypto.randomUUID()}`;
     await f.session.initial(); await transfer(f.session, peer);

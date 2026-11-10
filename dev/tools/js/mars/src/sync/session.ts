@@ -15,9 +15,18 @@ export interface SessionRecord {
     outbox: PendingPacket[]; nextSequence: number; progress: Record<string, number>;
     ended?: boolean;
     keys?: Record<string, string>;
+    acknowledgements?: Record<string, string>;
 }
 export interface SessionRepository { get(): Promise<SessionRecord | undefined>; commit(expected: number | null, value: SessionRecord, remote?: boolean): Promise<void> }
 export interface ManifestNode { id: string; kind: 'doc' | 'folder'; parent: string | null; name: string; order: number; key?: string; origin?: string; epoch?: number }
+// Incoming replicas stay private until their entire folder can be committed.
+export function stagedSession(initial: SessionRecord) {
+    let record = structuredClone(initial);
+    return new Session(record, { get: async () => structuredClone(record), commit: async (expected, value) => {
+        if (record.revision !== expected) throw new Error('Staged replica changed');
+        record = structuredClone(value);
+    } });
+}
 const normalized = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 const same = (a: unknown, b: unknown) => canonical(normalized(a)) === canonical(normalized(b));
 const validSeed = (value: unknown): value is Thread[] => Array.isArray(value) && value.length <= 1000 && value.every((t) => t && typeof t.id === 'string'
@@ -203,7 +212,13 @@ export class Session {
     async acknowledge(operation: string, digest: string) {
         return this.serial(async () => {
             const record = await this.latest(), pending = record.outbox.find((p) => p.operation === operation);
+            if (!pending && record.acknowledgements?.[operation] === digest) { this.record = structuredClone(record); return; }
             if (!pending?.envelope || await checkpointDigest(pending.envelope) !== digest) return fail('acknowledgement-mismatch', 409);
+            record.acknowledgements = Object.fromEntries([...Object.entries(record.acknowledgements ?? {}), [operation, digest]].slice(-64));
+            // Own operations already exist locally. Persist that with the ACK so
+            // a reopened client does not download the same checkpoints again.
+            const checkpoint = pending.envelope.checkpoint, cursor = `${checkpoint.member}/${checkpoint.stream}`;
+            record.progress[cursor] = Math.max(record.progress[cursor] ?? 0, checkpoint.sequence);
             record.outbox = record.outbox.filter((p) => p.operation !== operation); record.revision++;
             await this.repository.commit(record.revision - 1, record); this.record = structuredClone(record);
         });

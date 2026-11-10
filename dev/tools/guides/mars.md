@@ -127,6 +127,10 @@ It is promoted like any tool, linked by that host. In-app URLs derive from `loca
 
 ## Verify a change
 
+For failures that a document export cannot reproduce, use [developer flags and diagnostics](../js/mars/README.md#developer-flags-and-diagnostics).
+Keep its fields allowlisted. Report setup stages and fixed codes without document content, identifiers, URLs, credentials, or raw errors.
+Register feature flags and report providers with the generic platform modules. Keep diagnostic controls in Developer tools, not feature dialogs.
+
 Privacy and Credits use the app's 960px information-dialog cap. The shared viewport and height caps still apply on phones.
 
 1. In `js/mars/`: `npm test` (codec, tree, merge, diff, match, and search logic) and `npm run typecheck`. `mars.spec.ts`

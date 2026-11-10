@@ -1,9 +1,9 @@
 // Documents sidebar: a docked, hideable tree of folders and documents (EuiCollapsibleNav +
 // EuiTreeView look). Drag rows to move or reorder them; drop files to import them.
 import * as app from '../app.ts';
-import { ancestors, canMove, childrenOf, textBytes, type TreeNode } from '../tree/model.ts';
-import { icon } from '../ui/icons.ts';
-import { $, closeMenu, confirmDanger, esc, modal, openMenu, type MenuEntry } from '../ui/ui.ts';
+import { ancestors, canMove, childrenOf, descendants, textBytes, type TreeNode } from '../tree/model.ts';
+import { icon, folderIcon } from '../ui/icons.ts';
+import { $, closeMenu, esc, modal, openMenu, type MenuEntry } from '../ui/ui.ts';
 import * as viewer from '../doc/viewer.js';
 import { setViewMode, toast } from '../doc/viewer.js';
 import { onUpdate, smartMatches, textMatches } from '../search/search.ts';
@@ -11,6 +11,7 @@ import * as io from '../io/io.ts';
 import * as share from '../share/share.ts';
 import * as db from '../store/db.ts';
 import * as sync from '../sync/index.ts';
+import { incomingFolder } from '../io/destination.ts';
 
 const tree = $('tree');
 const filterInput = $<HTMLInputElement>('sbFilter');
@@ -104,9 +105,13 @@ function searchResults(q: string) {
 }
 
 const connectionHtml = (n: TreeNode) => n.connection ? `<button type="button" class="tree-connection" title="${esc(sync.label(n))}" data-connection="${n.id}" data-phase="${n.connection.phase ?? 'waiting'}" aria-label="${esc(n.connection.phase === 'ended' ? 'Local document' : n.connection.kind === 'live' ? 'Live document' : n.connection.liveShared ? 'Shared document' : 'Sync')}: ${esc(sync.label(n))}">${icon(n.connection.phase === 'ended' ? 'unlink' : n.connection.kind === 'live' || n.connection.liveShared ? 'link' : 'refresh')}</button>` : '';
+const defaultFolder = () => app.defaultIncomingFolder()
+    ?? app.state.nodes.find(node => node.kind === 'folder' && node.parentId === null && node.name === share.SHARED_FOLDER);
+let renderedDefaultFolder: string | undefined;
+const isDefaultFolder = (n: TreeNode) => n.kind === 'folder' && n.id === renderedDefaultFolder;
 const labelHtml = (n: TreeNode) => (renaming === n.id
     ? `<input class="tree-rename" value="${esc(n.name)}" aria-label="Name" spellcheck="false">`
-    : `<span class="tree-label" title="${esc(n.name)}${n.handle ? ` · linked to ${esc(n.handle.name)}` : ''}">${esc(n.name)}</span>`);
+    : `<span class="tree-label" title="${esc(n.name)}${isDefaultFolder(n) ? ' · Default destination' : ''}${n.handle ? ` · linked to ${esc(n.handle.name)}` : ''}">${esc(n.name)}</span>`);
 const badgesHtml = (n: TreeNode) => `${n.pending ? '<span class="tree-dot" title="Changed since your last review" aria-label="Changed since your last review"></span>' : ''}${n.threads ? `<span class="tree-badge" title="${n.threads} open thread${n.threads === 1 ? '' : 's'}">${n.threads}</span>` : ''}`;
 const moreHtml = (n: TreeNode) => `<button type="button" class="tree-more" tabindex="-1" aria-label="Actions for ${esc(n.name)}" title="Actions">${icon('boxesVertical')}</button>`;
 // Local routes are real links, so the browser can open them in another tab/window.
@@ -115,12 +120,13 @@ const docLink = (n: TreeNode, content: string) => db.isTemporaryStorage() ? `<bu
 
 function rowHtml({ n, depth }: { n: TreeNode; depth: number }) {
     const folder = n.kind === 'folder';
+    const defaultFolder = isDefaultFolder(n);
     const hasKids = folder && app.state.nodes.some((c) => c.parentId === n.id);
     const selected = n.id === app.state.currentId || (folder && !app.state.currentId && n.id === app.state.folderId);
     const chevron = `<span class="tree-chevron${hasKids ? '' : ' leaf'}">${icon(n.open ? 'chevronDown' : 'chevronRight')}</span>`;
-    const glyph = `<span class="tree-icon">${icon(folder ? (n.open ? 'folderOpen' : 'folder') : 'document')}</span>`;
+    const glyph = `<span class="tree-icon${defaultFolder ? ' tree-icon-default' : ''}" aria-hidden="true">${folder ? folderIcon(!!n.open, defaultFolder) : icon('document')}</span>`;
     const content = `${folder ? chevron : '<span class="tree-chevron leaf"></span>'}${glyph}${labelHtml(n)}${folder ? '' : badgesHtml(n)}`;
-    return `<div class="tree-row" role="treeitem" data-id="${n.id}" data-kind="${n.kind}" style="--depth:${depth}" tabindex="-1" draggable="${renaming === n.id ? 'false' : 'true'}"
+    return `<div class="tree-row" role="treeitem"${defaultFolder ? ' aria-description="Default destination"' : ''} data-id="${n.id}" data-kind="${n.kind}" style="--depth:${depth}" tabindex="-1" draggable="${renaming === n.id ? 'false' : 'true'}"
 ${folder ? `aria-expanded="${!!n.open}"` : ''} aria-selected="${selected}" aria-level="${depth + 1}">${!folder && renaming !== n.id ? docLink(n, content) : content}${connectionHtml(n)}${moreHtml(n)}</div>`;
 }
 
@@ -140,6 +146,7 @@ let linkGesture = false, renderPending = false;
 export function render() {
     // A save must not replace the anchor between pointerdown and its native navigation.
     if (linkGesture) { renderPending = true; return; }
+    renderedDefaultFolder = defaultFolder()?.id;
     const q = filterText();
     const typing = tree.querySelector<HTMLInputElement>('.tree-rename');
     const draft = typing && { value: typing.value, start: typing.selectionStart, end: typing.selectionEnd };
@@ -155,6 +162,11 @@ export function render() {
             tree.innerHTML = rows.length ? rows.map(resultHtml).join('') + noteHtml : noteHtml || '<div class="tree-empty">No documents match.</div>';
         } else {
             tree.innerHTML = visibleRows().map(rowHtml).join('');
+        }
+        // Rows are rebuilt during Sync. Use the document timeline so replacement
+        // icons continue their full turn instead of restarting on every update.
+        for (const glyph of tree.querySelectorAll('.tree-connection[data-phase="working"] svg')) {
+            for (const animation of glyph.getAnimations()) if (animation instanceof CSSAnimation && animation.animationName === 'sync-turn') animation.startTime = 0;
         }
     } finally {
         rendering = false;
@@ -229,18 +241,37 @@ async function finishRename(commit: boolean) {
     if (id) { focusId = id; focusTarget(rowEl(id))?.focus(); }
 }
 
+const deleting = new Set<string>();
 async function deleteNode(n: TreeNode) {
-    const connected = !!n.connection;
-    if (n.connection) {
-        const answer = await modal({ title: `Delete "${n.name}"?`, body: 'Deleting a local copy affects only this client. Deleting from the collection ends connected access. Local-only descendants stay local when deleting remote folders.',
-            buttons: [{ label: 'Cancel', value: '' }, { label: 'Delete local copy', value: 'local', danger: true }, ...(n.connection.permission === 'owner' ? [{ label: 'Delete from collection', value: 'remote', danger: true }] : [])] });
+    if (deleting.has(n.id)) return;
+    const current = app.node(n.id); if (!current) return; n = current;
+    deleting.add(n.id);
+    try {
+        const selected = [n, ...(n.kind === 'folder' ? descendants(app.state.nodes, n.id) : [])];
+        const ids = selected.map(node => node.id), connected = selected.some(node => node.connection);
+        const shortLinks = share.shortLinksForDeletion(ids);
+        const info = connected ? await sync.deletionInfo(ids) : { liveLinks: 0, synced: 0 };
+        const active = selected.filter(node => node.connection && node.connection.phase !== 'ended');
+        const remote = n.connection?.permission === 'owner' && n.connection.phase !== 'ended';
+        const docs = selected.filter(node => node.kind === 'doc').length;
+        const paragraphs = [n.kind === 'folder' ? `This removes the folder and ${docs} document${docs === 1 ? '' : 's'} from this browser.` : 'This removes the document from this browser.'];
+        if (info.synced) paragraphs.push(`${info.synced === 1 ? 'This document syncs' : `${info.synced} documents sync`} across devices. Deleting the local copy leaves other devices connected.`);
+        if (active.some(node => node.connection!.kind === 'live')) paragraphs.push("This copy receives Live updates. Deleting it does not disable the owner's link.");
+        if (connected && !active.length) paragraphs.push('The connection has ended. Only the saved local copy will be removed.');
+        if (info.liveLinks) paragraphs.push(`${info.liveLinks} active Live link${info.liveLinks === 1 ? '' : 's'}. Deleting the local copy leaves ${info.liveLinks === 1 ? 'it' : 'them'} active.${remote ? ' Deleting from the collection ends Live access. Saved copies on other devices remain.' : ''}`);
+        if (remote && (!info.liveLinks || info.synced)) paragraphs.push('Delete from collection also ends access on other devices. Saved copies on those devices remain.' + (n.kind === 'folder' ? ' Local-only items inside the folder are kept at the top level.' : ''));
+        if (shortLinks) paragraphs.push(`${shortLinks} active short snapshot link${shortLinks === 1 ? '' : 's'} ${shortLinks === 1 ? 'contains' : 'contain'} this content. ${shortLinks === 1 ? 'It stays' : 'They stay'} available until expiry. To delete these links first, cancel and use Share on the shared item.`);
+        const answer = await modal({ title: `Delete "${n.name}"?`, html: paragraphs.map(text => `<p>${esc(text)}</p>`).join(''),
+            buttons: [{ label: 'Cancel', value: '' }, { label: active.length ? 'Delete local copy' : n.kind === 'folder' ? 'Delete folder' : 'Delete document', value: 'local', danger: true }, ...(remote ? [{ label: 'Delete from collection', value: 'remote', danger: true }] : [])] });
         if (!answer.value) return;
-        await sync.remove(n.id, answer.value === 'remote');
-    }
-    const kids = app.state.nodes.filter((c) => c.parentId === n.id).length;
-    if (!connected && n.kind === 'folder' && kids && !(await confirmDanger(`Delete "${n.name}"?`, 'The folder and everything in it are removed from this browser. Export it first if you need a copy.', 'Delete folder'))) return;
-    const undo = await app.remove(n.id);
-    if (undo) toast(`Deleted ${n.name}`, { label: 'Undo', run: undo });
+        if (connected) toast(`Deleting ${n.name}…`);
+        await viewer.flush();
+        if (connected) await sync.remove(n.id, answer.value === 'remote');
+        const undo = await app.remove(n.id);
+        if (undo) toast(`Deleted ${n.name}`, { label: 'Undo', run: undo });
+    } catch (error) {
+        toast(`Could not delete "${n.name}": ${(error as Error).message}. Your local copy is still here.`, { label: 'Try again', run: () => deleteNode(n) });
+    } finally { deleting.delete(n.id); }
 }
 
 // A document tied to its source: a linked file, a recorded source text, or a file or URL origin.
@@ -264,6 +295,13 @@ function menuFor(n: TreeNode): MenuEntry[] {
     if (n.kind === 'folder') return [
         { label: 'New document', icon: 'document', run: () => newDoc(n.id) },
         { label: 'New folder', icon: 'folder', run: () => newFolder(n.id) },
+        { label: 'Use as default', icon: 'folder', disabled: db.isTemporaryStorage() || defaultFolder()?.id === n.id || !incomingFolder(app.state.nodes, n.id),
+            run: async () => {
+                try {
+                    await app.setDefaultIncomingFolder(n.id);
+                    toast(`New files and links will go to "${n.name}".${n.connection ? ' New documents will sync too.' : ''}`);
+                } catch { toast('Could not save the default destination. Try again.'); }
+            } },
         { label: 'Rename', icon: 'pencil', disabled: !editable, run: () => startRename(n.id) },
         { label: 'Sync', icon: 'refresh', disabled: db.isTemporaryStorage() && !n.connection, run: () => sync.enroll(n.id).catch((e) => toast(e.message)) },
         'separator',

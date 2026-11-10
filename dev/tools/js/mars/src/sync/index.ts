@@ -2,6 +2,7 @@
 // when a user connects content or opens an existing connected replica.
 import type { TreeNode } from '../tree/model.ts';
 import type { Thread } from '../share/merge.ts';
+export { connectionStates } from './status.ts';
 let module: Promise<typeof import('./manager.ts')> | null = null;
 const api = () => module ??= import('./manager.ts');
 export const labels = { waiting: 'Saved locally · waiting to sync', working: 'Syncing', current: 'Up to date', offline: 'Offline · changes saved locally', attention: 'Needs attention', ended: 'Local copy · connection ended' };
@@ -31,6 +32,7 @@ export const liveLinkInfo = (id: string) => api().then(m => m.liveLinkInfo(id));
 export const forwardLiveLink = (id: string) => api().then(m => m.forwardLiveLink(id));
 export const saveLive = (id: string) => api().then((m) => m.saveLive(id));
 export const remove = (id: string, remote = false) => api().then((m) => m.remove(id, remote));
+export const deletionInfo = (ids: string[]) => api().then(m => m.deletionInfo(ids));
 export const restoreRecovery = (file?: File) => api().then((m) => m.restoreRecovery(file));
 export const exportRecovery = (ids: string[], password: string) => api().then(m => m.exportRecovery(ids, password));
 export const markReviewed = (id: string) => api().then((m) => m.markReviewed(id));

@@ -69,6 +69,12 @@ const writeLinks = (links: Record<string, LinkRecord>) => {
     if (db.isTemporaryStorage()) { temporaryLinks = links; return; }
     try { localStorage.setItem(LINKS_KEY, JSON.stringify(links)); } catch {}
 };
+// Folder snapshots can also contain a selected descendant. Count each known,
+// unexpired snapshot once; deleting a library item does not revoke snapshots.
+export function shortLinksForDeletion(ids: string[]) {
+    const selected = new Set(ids.flatMap(id => [id, ...ancestors(app.state.nodes, id).map(node => node.id)]));
+    return Object.values(readLinks()).filter(link => selected.has(link.nodeId)).length;
+}
 const shortUrl = (secret: string, bundle: Bundle) => `${base()}#s=${secret}${bundle.temporary ? '&t=1' : ''}`;
 
 async function shortFetch(id: string, { query = '', ...init }: RequestInit & { query?: string } = {}) {
@@ -371,11 +377,11 @@ async function receiveDoc(doc: Bundle['docs'][0], input?: InputOperation) {
     const existing = findDoc(doc.originId) ?? (await findLikely(doc.name, doc.text, doc.originId, input));
     checkInput(input);
     if (existing) { await updateExisting(existing, doc.text, undefined, input, doc.readingWidth); return; }
-    const parent = await sharedRoot();
+    const parent = app.defaultIncomingFolder() ?? await sharedRoot();
     checkInput(input);
     await app.createDoc({ name: app.uniqueName(doc.name || 'Untitled', parent.id), text: doc.text, parentId: parent.id, originId: doc.originId, opened: true, input, readingWidth: doc.readingWidth });
     checkInput(input);
-    viewer.toast(`Added "${doc.name}" to ${SHARED_FOLDER}`);
+    viewer.toast(`Added "${doc.name}" to ${parent.name}`);
 }
 
 // A Markdown file opened with Open or dropped on the preview. Chromium hands over a handle,
@@ -399,7 +405,7 @@ export async function receiveFile(file: { name: string; text: string; handle: Fi
     input.check();
     const link = file.handle ? { handle: file.handle, stamp: file.stamp } : undefined;
     if (existing) { await updateExisting(existing, file.text, link, input); return; }
-    const parentId = file.parentId === undefined ? app.state.folderId : file.parentId;
+    const parentId = file.parentId === undefined ? app.defaultIncomingFolder()?.id ?? app.state.folderId : file.parentId;
     await app.createDoc({ name: app.uniqueName(file.name, parentId), text: file.text, parentId, handle: link?.handle, stamp: link?.stamp, opened: true, input });
     input.check();
 }
@@ -407,7 +413,7 @@ export async function receiveFile(file: { name: string; text: string; handle: Fi
 async function receiveFolder(bundle: Bundle, input?: InputOperation) {
     let target = bundle.originId ? app.state.nodes.find((n) => n.kind === 'folder' && n.originId === bundle.originId) : undefined;
     if (!target) {
-        const parent = await sharedRoot();
+        const parent = app.defaultIncomingFolder() ?? await sharedRoot();
         target = await app.createFolder(app.uniqueName(bundle.name || 'Untitled', parent.id), parent.id, bundle.originId);
     }
     checkInput(input);

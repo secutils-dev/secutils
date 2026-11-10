@@ -309,6 +309,17 @@ export async function handle(context: Context, runtime: Runtime) {
             return id;
         };
         const owner = () => { if (grant.permission !== 'owner') return fail('owner-required', 403); };
+        const readDirectory = async (deleted = new Map<string, boolean>()) => {
+            if (grant.document !== null) return fail('forbidden-directory', 403);
+            const page = await kv.list({ prefix: `${NS}c/${grant.collection}/documents/`, limit: LIMITS.documents, valuesIncluded: true });
+            const documents = [];
+            for (const entry of page.entries) if (entry.value) {
+                const doc = parse<{ id: string; kind: string; creator?: string }>(entry.value);
+                if (!deleted.has(doc.id)) deleted.set(doc.id, !!await kv.get(deletedKey(grant.collection, doc.id)));
+                documents.push({ id: doc.id, kind: doc.kind, creator: doc.creator ?? collection.owner.grant.member, deleted: deleted.get(doc.id)! });
+            }
+            return { documents, root: collection.root };
+        };
         if (action !== 'purge-live-document' && collection.root?.kind === 'doc' && await kv.get(deletedKey(grant.collection, collection.root.document))) return fail('connection-ended', 410);
         const wrappedKeys = (signed: SignedGrant, values: unknown): WrappedKey[] => {
             if (values === undefined) return [];
@@ -423,16 +434,7 @@ export async function handle(context: Context, runtime: Runtime) {
             await first(kv, revokedInviteKey(grant.collection, request.invitation), b64json({ revoked: true }), null);
             await kv.delete(inviteKey(request.invitation)); return json(200, { revoked: true });
         }
-        if (action === 'directory') {
-            if (grant.document !== null) return fail('forbidden-directory', 403);
-            const page = await kv.list({ prefix: `${NS}c/${grant.collection}/documents/`, limit: LIMITS.documents, valuesIncluded: true });
-            const documents = [];
-            for (const entry of page.entries) if (entry.value) {
-                const doc = parse<{ id: string; kind: string; creator?: string }>(entry.value);
-                documents.push({ id: doc.id, kind: doc.kind, creator: doc.creator ?? collection.owner.grant.member, deleted: !!(await kv.get(deletedKey(grant.collection, doc.id))) });
-            }
-            return json(200, { documents, root: collection.root });
-        }
+        if (action === 'directory') return json(200, await readDirectory());
         if (action === 'delete-document') {
             owner(); const id = scope(request.document);
             await first(kv, deletedKey(grant.collection, id), b64json({ deleted: true }), null);
@@ -548,7 +550,8 @@ export async function handle(context: Context, runtime: Runtime) {
                 if (!deleted.get(document)) entries.push({ key });
             }
             return json(200, { entries, cursor: page.cursor,
-                complete: page.entries.length < LIMITS.pageSize, owner: collection.owner });
+                complete: page.entries.length < LIMITS.pageSize, owner: collection.owner,
+                ...(request.directory === true ? { directory: await readDirectory(deleted) } : {}) });
         }
         if (action === 'get') {
             const prefix = updatesPrefix(grant.collection, grant.document ?? '');
