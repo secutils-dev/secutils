@@ -90,7 +90,7 @@ It is promoted like any tool, linked by that host. In-app URLs derive from `loca
   MARS-specific sync hooks stay out of Markdown Preview. Source-mapping parity tests remove only explicit hook lines.
   Local preview and deployment use `mars-sync-assets.ts` to assemble the same sandbox script.
   A live fragment selects memory storage before IndexedDB bootstrap. Explicit library saving uses an atomic promotion.
-  New device-pairing links use short `#sync=` fragments with encrypted bootstraps. Continue accepting legacy long `#sync=` and `#invite=` links.
+  New device-pairing links use short `#sync=` fragments with encrypted bootstraps. Long `#sync=` and `#invite=` links require independent wrapping keys.
   Sync manages personal devices. Live links manages source-side sharing, and Live document manages a recipient's retained copy.
   The common Copy link dialog handles document/folder snapshot formats and document-only Live sharing. Keep link-security explanations in Privacy.
   It defaults to Snapshot and Full. Expiring links offer 1/7/14/30 days without calendar dates.
@@ -101,7 +101,7 @@ It is promoted like any tool, linked by that host. In-app URLs derive from `loca
   Download and Export all offer optional encrypted connection recovery. Normal exports remain credential-free.
   Live-only teardown purges encrypted data and releases capacity after the last link is disabled. Personal Sync remains separate.
   Protocol-only commits retain document timestamps and existing smart-search indexes.
-  New Live links use encrypted KV bootstraps and a short fragment secret. Existing long links remain supported.
+  New Live links use encrypted KV bootstraps and a short fragment secret. Full links require independent wrapping keys.
   Library promotion transfers the selected vector record and reloads the persistent index without invalidating unchanged documents.
 - **Temporary sessions**: `t=1` in the fragment or `?temporary=1` selects the in-memory backend before database bootstrap.
   Denied storage and write-quota failures also select it. Keep the persistent database unchanged, including its last-document metadata.
@@ -132,6 +132,8 @@ Keep its fields allowlisted. Report setup stages and fixed codes without documen
 Register feature flags and report providers with the generic platform modules. Keep diagnostic controls in Developer tools, not feature dialogs.
 
 Privacy and Credits use the app's 960px information-dialog cap. The shared viewport and height caps still apply on phones.
+MARS bundles Plausible with URL redaction before transmission. Keep the legacy analytics script out of its HTML shell.
+Read [Privacy and analytics](../js/mars/README.md#privacy-and-analytics) before changing analytics or privacy claims.
 
 1. In `js/mars/`: `npm test` (codec, tree, merge, diff, match, and search logic) and `npm run typecheck`. `mars.spec.ts`
    never downloads a smart-search model. After changing `search/`, also run the search-quality evaluation

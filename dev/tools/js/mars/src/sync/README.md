@@ -123,12 +123,15 @@ Authenticated data is canonical JSON `{purpose: "mars-live-bootstrap-v1", invita
 The invitation stores only the encrypted bootstrap and token hash. Its signed policy bounds document, permission, and expiry.
 The fragment secret and encryption key never enter requests. Knowledge of the bearer token cannot decrypt the bootstrap or key updates.
 Expiry and revocation prevent bootstrap reads and joins. A revocation fence also blocks retries that attempt to restore the invitation.
-Existing long Live links retain their original receiving and key-update behavior.
+Full Live links require an independent wrapping key. Links without it, or with a wrapping key equal to the bearer token, are rejected before requests.
+Saved unsupported Live connections retain local documents and pending work but do not start transport.
+Recovery applies the same requirement. Pending rotation packets must decrypt with their separate wrapping keys before any remote mutation.
+Owner revocation remains available for unsupported links. They receive no new key-update packets.
 
 Short Sync links use the same bounded bootstrap mechanism with the separate `mars-sync-v1` derivation domain.
 The encrypted payload contains the invitation ID, access token, owner public key, and setup-wrapping key.
 Its authenticated-data purpose is `mars-sync-bootstrap-v1`. Pair labels use the wrapping key, never the request token.
-The invitation expires after ten minutes. Matching-code approval remains mandatory. Legacy long Sync links retain their old receive path.
+The invitation expires after ten minutes. Matching-code approval remains mandatory. Long Sync links also require an independent wrapping key.
 
 Edit-access deletions carry the deleting actor's signature. Comment versions still require author ownership, including for editors.
 Comment-only participants cannot delete another author's comment or a thread with known replies from other authors.

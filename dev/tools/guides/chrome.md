@@ -519,7 +519,10 @@ Watermark CSS: `text-align: center; padding: 32px 24px; opacity: 0.6; font-size:
 
 ## Analytics (Plausible)
 
-Every tool HTML file (including `index.html`) carries the same privacy-friendly
+MARS uses its bundled tracker with browser-side URL redaction. Read [its privacy and analytics contract](../js/mars/README.md#privacy-and-analytics).
+Keep the legacy snippet below out of MARS. Its script ignores `transformRequest` and transmits complete URLs, including fragments.
+
+Tool HTML files (including `index.html`, except MARS) carry the same privacy-friendly
 [Plausible](https://plausible.io/) snippet. The snippet lives in `<head>`, placed
 **immediately after the Google Fonts `<link>`** and before the inline `<style>`
 block (per the [Plausible integration guides](https://plausible.io/docs/integration-guides)).

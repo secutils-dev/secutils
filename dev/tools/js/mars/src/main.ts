@@ -13,7 +13,9 @@ import * as sync from './sync/index.ts';
 import { installTooltips } from './ui/feedback.ts';
 import { installSyncDebug } from './sync/debug.ts';
 import { installDeveloperTools } from './ui/developer.ts';
+import { startAnalytics } from './platform/analytics.ts';
 
+startAnalytics();
 installDeveloperTools();
 installSyncDebug();
 

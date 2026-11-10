@@ -1,10 +1,20 @@
 // Only the derived invitation ID and bearer token go to the responder.
 // The short fragment's encryption key is independent of that bearer token.
 import { hash, openJson, sealJson } from './crypto.ts';
-import { decode, encode, utf8, validId } from './protocol.ts';
+import { decode, encode, utf8, validId, SyncError } from './protocol.ts';
 
-export interface LiveLink { v: 1; id: string; secret: string; ownerKey: string; signing: JsonWebKey; key: string; epoch?: number; wrappingKey?: string }
+export interface LiveLink { v: 1; id: string; secret: string; ownerKey: string; signing: JsonWebKey; key: string; epoch?: number; wrappingKey: string }
 export interface LiveBootstrap { nonce: string; ciphertext: string }
+export function validLinkWrappingKey(value: unknown): value is { secret: string; wrappingKey: string } {
+    const link = value as { secret?: unknown; wrappingKey?: unknown } | null;
+    try { return typeof link?.secret === 'string' && typeof link.wrappingKey === 'string'
+        && link.secret !== link.wrappingKey && decode(link.secret).length === 32 && decode(link.wrappingKey).length === 32; }
+    catch { return false; }
+}
+export function linkWrappingKey(value: unknown) {
+    if (!validLinkWrappingKey(value)) throw new SyncError('unsupported-link-key-format');
+    return decode(value.wrappingKey);
+}
 export const isShortLiveLink = (value: string) => /^[A-Za-z0-9_-]{22}$/.test(value);
 export const newLiveSecret = () => encode(crypto.getRandomValues(new Uint8Array(16)));
 export async function invitationAccess(secret: string, domain: 'mars-live-v1' | 'mars-sync-v1') {
@@ -19,12 +29,12 @@ export const liveAccess = (secret: string) => invitationAccess(secret, 'mars-liv
 const context = (id: string) => ({ purpose: 'mars-live-bootstrap-v1', invitation: id });
 export async function sealLiveBootstrap(link: LiveLink, secret: string): Promise<LiveBootstrap> {
     const access = await liveAccess(secret);
-    if (link.id !== access.id || link.secret !== access.token || link.wrappingKey !== encode(access.key)) throw new Error('Invalid live bootstrap');
+    if (!validLinkWrappingKey(link) || link.id !== access.id || link.secret !== access.token || link.wrappingKey !== encode(access.key)) throw new Error('Invalid live bootstrap');
     return sealJson(link, access.key, context(access.id));
 }
 export async function openLiveBootstrap(bootstrap: LiveBootstrap, secret: string): Promise<LiveLink> {
     const access = await liveAccess(secret), link = await openJson<LiveLink>(bootstrap, access.key, context(access.id));
-    if (link.v !== 1 || !validId(link.id) || link.id !== access.id || link.secret !== access.token || link.wrappingKey !== encode(access.key)
+    if (!validLinkWrappingKey(link) || link.v !== 1 || !validId(link.id) || link.id !== access.id || link.secret !== access.token || link.wrappingKey !== encode(access.key)
         || typeof link.ownerKey !== 'string' || !link.signing || decode(link.key).length !== 32 || !Number.isSafeInteger(link.epoch) || link.epoch! < 1) throw new Error('Invalid live bootstrap');
     return link;
 }

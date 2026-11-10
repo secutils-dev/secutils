@@ -1,3 +1,5 @@
+import { deflateRawSync, inflateRawSync } from 'node:zlib';
+
 import { type Browser, expect, type Page } from '@playwright/test';
 
 import { configureCopyLink, copyLink } from './_mars_sharing';
@@ -52,6 +54,170 @@ async function edit(page: Page, text: string) {
   await page.getByRole('button', { name: 'Preview', exact: true }).click();
 }
 test.describe('sync user experience sharing', () => {
+  test('links require separate wrapping keys before requests and saved unsupported replicas retain local content', async ({
+    browser,
+  }) => {
+    const c = await clients(browser),
+      [owner, guest] = c.pages;
+    try {
+      await owner.goto(baseURL);
+      await expect(owner.locator('#emptyState')).toBeVisible();
+      await owner.locator('#fileInput').setInputFiles({
+        name: 'Keys.md',
+        mimeType: 'text/markdown',
+        buffer: Buffer.from('# Keys\n\nRetained private content.'),
+      });
+      await expect(owner.locator('#previewArticle')).toContainText('Retained private content.');
+      const link = await copyLink(owner, { mode: 'live', format: 'full' });
+      const encoded = new URLSearchParams(new URL(link).hash.slice(1)).get('live')!;
+      const payload = JSON.parse(inflateRawSync(Buffer.from(encoded, 'base64url').subarray(4)).toString());
+      let requests = 0;
+      guest.on('request', (request) => {
+        if (new URL(request.url()).pathname.startsWith('/sync/')) requests++;
+      });
+      for (const kind of ['live', 'sync'])
+        for (const mode of ['missing', 'reused']) {
+          const value = { ...payload };
+          if (mode === 'missing') delete value.wrappingKey;
+          else value.wrappingKey = value.secret;
+          const raw = Buffer.from(JSON.stringify(value)),
+            bytes = Buffer.concat([Buffer.alloc(4), deflateRawSync(raw)]);
+          bytes.writeUInt32LE(raw.length, 0);
+          await guest.goto('about:blank');
+          requests = 0;
+          await guest.goto(`${baseURL}/?temporary=1#${kind}=${bytes.toString('base64url')}`);
+          await expect(guest.locator('#toast')).toContainText('Unsupported link key format');
+          expect(requests).toBe(0);
+        }
+      await guest.goto('about:blank');
+      await guest.goto(link);
+      await expect(guest.locator('#previewArticle')).toContainText('Retained private content.');
+      await guest.getByRole('button', { name: 'Save live document to library', exact: true }).click();
+      await guest
+        .getByRole('dialog', { name: 'Save live document to library', exact: true })
+        .getByRole('button', { name: 'Save to library', exact: true })
+        .click();
+      await expect(guest.locator('#temporarySession')).toBeHidden();
+      await expect(guest).toHaveURL(/#doc=[\w-]+$/);
+      const saved = guest.url();
+      // Stop the live app before changing its stored fixture. A pending activity
+      // renewal can otherwise save its in-memory scope over this test mutation.
+      await guest.goto('about:blank');
+      const storagePage = new URL('/?mars-storage-test=1', baseURL).href;
+      await guest.route(
+        storagePage,
+        (route) => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Storage fixture</title>' }),
+        { times: 1 },
+      );
+      await guest.goto(storagePage);
+      const changed = await guest.evaluate(
+        () =>
+          new Promise<number>((resolve, reject) => {
+            const open = indexedDB.open('mars');
+            open.onerror = () => reject(open.error);
+            open.onsuccess = () => {
+              const db = open.result,
+                tx = db.transaction('meta', 'readwrite'),
+                store = tx.objectStore('meta'),
+                cursor = store.openCursor();
+              let changed = 0;
+              cursor.onsuccess = () => {
+                const entry = cursor.result;
+                if (!entry) return;
+                if (String(entry.key).startsWith('sync:scope:') && entry.value.live) {
+                  const value = entry.value;
+                  delete value.live.wrappingKey;
+                  entry.update(value);
+                  changed++;
+                }
+                entry.continue();
+              };
+              tx.oncomplete = () => {
+                db.close();
+                resolve(changed);
+              };
+              tx.onerror = () => {
+                db.close();
+                reject(tx.error);
+              };
+            };
+          }),
+      );
+      expect(changed).toBe(1);
+      await guest.goto('about:blank');
+      requests = 0;
+      await guest.goto(saved);
+      await expect(guest.locator('#previewArticle')).toContainText('Retained private content.');
+      await expect(guest.locator('#saveState')).toContainText('Needs attention');
+      expect(requests).toBe(0);
+    } finally {
+      await c.close();
+    }
+  });
+
+  test('Plausible keeps pageviews and engagement without document URLs or link secrets', async ({ page, request }) => {
+    const response = await request.get(baseURL);
+    expect(response.ok()).toBe(true);
+    const html = await response.text();
+    const origin = 'https://mars.analytics.test';
+    const events: Record<string, unknown>[] = [];
+    const scripts: string[] = [];
+    await page.addInitScript(() => {
+      (window as unknown as { __plausible: boolean }).__plausible = true;
+      Object.defineProperty(document, 'hasFocus', { value: () => false });
+      Object.defineProperty(document, 'referrer', { value: 'https://referral.example/private?token=private-referrer' });
+    });
+    await page.route('**/*', async (route) => {
+      const req = route.request();
+      const url = new URL(req.url());
+      if (req.resourceType() === 'script') scripts.push(url.href);
+      if (url.protocol === 'blob:') {
+        await route.continue();
+      } else if (url.href === 'https://tools.secutils.dev/api/event') {
+        expect(req.headers().referer).toBeUndefined();
+        events.push(req.postDataJSON());
+        await route.fulfill({ status: 202, headers: { 'Access-Control-Allow-Origin': '*' }, body: '' });
+      } else if (url.origin === origin && req.isNavigationRequest()) {
+        await route.fulfill({
+          contentType: 'text/html',
+          headers: { 'Cross-Origin-Opener-Policy': 'same-origin', 'Cross-Origin-Embedder-Policy': 'credentialless' },
+          body: html,
+        });
+      } else if (url.origin === origin) {
+        await route.fulfill({ status: 410, contentType: 'application/json', body: '{"error":"test-link-expired"}' });
+      } else {
+        await route.abort();
+      }
+    });
+    for (const fragment of [
+      's=private-snapshot-secret',
+      'live=private-live-secret',
+      'sync=private-sync-secret',
+      'invite=private-legacy-secret',
+      'name=Private-name&md=private-document',
+      'b=private-folder',
+      'doc=private-local-id',
+    ]) {
+      await page.goto('about:blank');
+      events.length = 0;
+      await page.goto(`${origin}/?temporary=1&url=https://source.example/private#${fragment}`, {
+        referer: 'https://referral.example/private?token=private-referrer',
+      });
+      await expect.poll(() => events.filter((event) => event.n === 'pageview').length).toBe(1);
+      await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+      await expect.poll(() => events.some((event) => event.n === 'engagement')).toBe(true);
+      for (const event of events) {
+        expect(event.u).toBe(`${origin}/`);
+        expect(event.d).toBe('mars.analytics.test');
+        if (event.n === 'pageview') expect(event.r).toBe('https://referral.example/');
+        expect(JSON.stringify(event)).not.toMatch(/private|source\.example/);
+        expect(Object.keys(event).every((key) => ['n', 'u', 'd', 'r', 'v', 'e', 'sd'].includes(key))).toBe(true);
+      }
+      expect(await page.evaluate(() => 'plausible' in window)).toBe(false);
+    }
+    expect(scripts.some((url) => url.includes('/js/script'))).toBe(false);
+  });
+
   test('Share help and wider Privacy/Credits dialogs remain readable on desktop and phones', async ({ page }) => {
     await page.goto(baseURL);
     await expect(page.locator('#emptyState')).toBeVisible();
@@ -79,6 +245,17 @@ test.describe('sync user experience sharing', () => {
         for (const name of ['Privacy', 'Credits']) {
           await page.getByRole('button', { name, exact: true }).click();
           const dialog = page.getByRole('dialog', { name, exact: true });
+          if (name === 'Privacy') {
+            await expect(dialog).toContainText('End-to-end encryption.');
+            await expect(dialog).toContainText('Secutils.dev has no master decryption key or recovery key.');
+            await expect(dialog).toContainText('unencrypted');
+            await expect(dialog).toContainText('MARS does not encrypt this local library');
+            await expect(dialog).toContainText('MARS redacts event URLs');
+            await expect(dialog).toContainText('malicious page code');
+            await expect(dialog).not.toContainText('Earlier analytics versions');
+            await expect(dialog).not.toContainText('older links');
+            await expect(dialog).not.toContainText('Unsupported saved connections');
+          }
           await expect(dialog).toHaveCSS('max-width', '960px');
           const box = (await dialog.boundingBox())!;
           expect(box.width).toBeCloseTo(width === 1280 ? 960 : 288, 0);

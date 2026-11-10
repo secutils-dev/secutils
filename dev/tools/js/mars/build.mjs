@@ -43,6 +43,7 @@ await build({
     loader: { '.css': 'text' },
     plugins: [runtimePlugin],
     legalComments: 'inline',
+    banner: { js: `/*! @plausible-analytics/tracker\n${readFileSync('node_modules/@plausible-analytics/tracker/LICENSE.md', 'utf8').trim()}\n*/` },
     logLevel: 'warning',
 });
 

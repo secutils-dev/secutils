@@ -77,7 +77,10 @@ Markdown downloads retain frontmatter, line endings, and review threads.
 PDF Extractor's **Export > Open in MARS** sends the active Text or Markdown output to MARS in a new tab.
 The handoff retains the PDF document name and exact extracted text in the URL fragment.
 JSON, Outline, and Screenshots do not offer this handoff.
-MARS processes documents locally and stores only encrypted data for short links.
+MARS processes documents locally. Short snapshots, Sync, and Live links use end-to-end-encrypted remote storage without a server-held master key.
+Full snapshot links contain compressed, unencrypted content. The local library and ordinary document exports remain readable.
+MARS keeps self-hosted Plausible analytics, with browser-side URL redaction that excludes queries, fragments, document content, and link secrets.
+The [privacy and analytics notes](dev/tools/js/mars/README.md#privacy-and-analytics) describe key handling and browser-code trust.
 
 MARS table controls resize columns proportionally and insert, remove, or reorder rows and columns with mouse, touch, or keyboard.
 Column widths travel in Markdown metadata and survive files, full/short links, HTML, and PDF exports.

@@ -12,6 +12,33 @@ CodeMirror and its Markdown/state dependencies now build into one embedded modul
 The source editor imports that graph lazily from a Blob URL instead of fetching the esm.sh dependency graph.
 This increases the HTML artifact size but removes the editor's external module fan-out. Mermaid remains separately lazy-loaded for documents with diagrams.
 
+## Privacy and analytics
+
+Short snapshots, Sync, and Live links encrypt content in the browser before upload.
+The storage protocol has no server-held master decryption key or recovery key.
+Local IndexedDB records and ordinary document exports remain readable. Full snapshots contain compressed, unencrypted content in the fragment.
+Shared links contain access secrets. Browser history and services that receive the complete link can retain those secrets.
+Browser code and loaded dependencies can access plaintext and keys. Encryption does not protect against a compromised client or changed host code.
+The Privacy dialog in `dev/tools/mars.html` describes each mode, service metadata, retention, recovery, and external resource requests.
+
+Sync and Live links require a valid `wrappingKey` that differs from their bearer token.
+The token-as-key compatibility fallback is removed. Unsupported full links fail before any invitation request.
+Saved unsupported Live connections stop without deleting local content or pending work. Recovery rejects unsupported credentials before any library write.
+Owners can still disable old links. Key rotation sends them no new keys, and preserved rotation packets pass decryption checks before retry.
+
+MARS bundles the pinned official `@plausible-analytics/tracker` package instead of loading the legacy `/js/script.js` script.
+`src/platform/analytics.ts` configures `transformRequest` before the tracker starts.
+It rebuilds pageviews from an allowlist: the site root URL, domain, referral origin, event name, and numeric tracker version.
+The tracker derives engagement events from that redacted pageview. Pageviews and visit duration remain available.
+Hash routing, outbound-link, file-download, and form tracking stay off. Custom events and properties are excluded.
+The tracker has no global `window.plausible` binding.
+
+Events still use `https://tools.secutils.dev/api/event`, which routes to the self-hosted Plausible instance.
+No infrastructure change is required. The legacy script ignores `plausible.init({ transformRequest })` and sends `location.href` before server-side normalization.
+Plausible normally omits fragments from stored page paths, but that does not prevent their transmission.
+Keep redaction in the browser. Backend normalization cannot keep secrets out of the original request.
+The unit and browser tests inspect initial pageviews and engagement with synthetic secret-bearing URLs. They send no test events to the real analytics service.
+
 ## Default destination
 
 In a folder's actions, **Use as default** saves that folder for new files, links, URLs, and `mars` CLI links.
@@ -37,7 +64,7 @@ The original window stays open only for code approval. Later sync does not requi
 Sync links connect your own devices with the same review identity. Live links give other people their own view, comment, or edit access.
 Normal ZIP and Markdown exports keep content. The optional encrypted backup also preserves Sync access and its pending upload state.
 New Sync links use a 22-character `#sync=` fragment and an encrypted setup bootstrap with a ten-minute expiry.
-Existing long `#sync=` and `#invite=` links remain supported. Setup encryption and request authentication use separate derived keys.
+Long `#sync=` and `#invite=` links require independent wrapping keys. Setup encryption and request authentication use separate derived keys.
 Existing origin IDs, names, and content provide matching hints in a populated library.
 The reader can keep copies separate or connect the existing local ID. Different local content stays in an independent backup.
 New documents inside a synced folder join that collection. Moving existing local content into it requires confirmation.
@@ -99,7 +126,7 @@ Live recipients have a persistent access badge. View/comment modes hide body-edi
 Live recipients use temporary memory storage by default. **Save live document to library** retains the document, its connection, and unsent changes.
 Promotion copies the selected vector record and loads the persistent library index. Unchanged library documents retain their vectors and timestamps.
 New Live links use a 22-character fragment secret and encrypted KV bootstrap, with 1/7/14/30-day expiry and a 7-day default.
-Existing long Live links remain supported. See [the cryptographic contract](src/sync/README.md#short-live-links).
+Full Live links require independent wrapping keys. See [the cryptographic contract](src/sync/README.md#short-live-links).
 Edit access permits actor-signed comment and thread deletion, but not edits that impersonate comment authors.
 Synced replies retain conversation order. Edits and deletion Undo do not move earlier comments.
 Opening a connected document does not publish review edits. Retained empty threads remain available for replies and recovery without becoming deletion intents.

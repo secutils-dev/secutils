@@ -16,7 +16,7 @@ description: >-
 MARS renders GitHub-flavored Markdown with Mermaid, KaTeX math, GeoJSON/TopoJSON
 maps, STL/3MF models, and GitHub alerts. Readers select text to start a review
 thread, then reply, resolve, and share. Documents live in the reader's browser
-(IndexedDB); the server sees only encrypted short links. Threads travel inside
+(IndexedDB) by default. Short snapshots, Sync, and Live links use end-to-end-encrypted remote storage. Threads travel inside
 the Markdown file as one trailing HTML comment that GitHub and other renderers
 hide, so an agent reads and writes them with ordinary file edits. The format is
 shared with the Secutils.dev Markdown Preview tool.
@@ -149,7 +149,7 @@ Share offers **Snapshot** and **Live**. A live link grants **Can view**, **Can c
 Live recipients start in temporary memory storage. **Save live document to library** is the explicit persistence action.
 New Live links use `#live=<secret>`, with a 22-character base64url secret. Choose 1, 7, 14, or 30 days. The default is 7 days.
 The responder stores an encrypted bootstrap. Its encryption key stays in the fragment and can remain in browser history.
-Existing long Live links remain supported. The application creates both grants and short links.
+Full Live links require independent wrapping keys. The application creates both grants and short links.
 Library saving retains the selected document and unsent changes without rebuilding unchanged library search entries.
 **Can edit** permits comment and thread deletion. Comment editing still requires authorship.
 Undo restores a deleted comment or thread without changing its author. It cancels only the deleting device's own operation.
@@ -192,7 +192,7 @@ Undo restores an independent local copy, not remote access.
 
 Sync and live links use separate routes from snapshot links. Their fragments are not interchangeable with the documented snapshot encoding.
 Use the application to create Sync links. New `#sync=` links contain a 22-character setup secret and expire after ten minutes.
-Previously issued long `#sync=` and `#invite=` links remain supported until they expire.
+Long `#sync=` and `#invite=` links require independent wrapping keys.
 Do not construct or edit grants by hand.
 
 Share and document/folder menus use one **Copy link** dialog. Snapshot and Full are selected by default, with Full first.
@@ -423,5 +423,12 @@ For example, `#s=<secret>&w=1100` opens an older shared document at the wide rea
 
 ## Caveats
 
+- Short snapshots, Sync, and Live links encrypt content in the browser. The storage service has no master decryption key.
+- Sync and Live links require independent wrapping keys. MARS rejects older links that omit them or reuse server-visible access tokens.
+- Full snapshot links contain compressed, unencrypted content. Anyone with the complete link can read it.
+- Treat complete shared links as secrets. Browser history and services where you paste them can retain their contents and decryption secrets.
+- The local library and ordinary document exports are not encrypted by MARS. Optional connection recovery encrypts credentials, not the ZIP's document files.
+- Encryption requires trusted browser code. MARS and loaded scripts can access decrypted content and keys.
+- Self-hosted Plausible receives redacted root URLs and referral origins, without document content, queries, fragments, or link secrets.
 - Full links are bounded by URL limits (about 8 KB in chat apps). For a larger document, hand over the `mars` command, or tell the user to share a short link from the Share menu.
 - MARS renders embedded HTML. Keep `<script>` and other untrusted HTML out of documents you hand over.

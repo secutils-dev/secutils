@@ -12,6 +12,9 @@ explaining (1) tool state stays in the browser and (2) what Plausible
 collects. The dialog is the user-facing complement of the analytics snippet
 above: every tool that runs Plausible discloses Plausible.
 
+MARS uses its own Privacy text in `mars.html`. It distinguishes local storage, end-to-end encryption, full links,
+service metadata, browser-code trust, and redacted self-hosted analytics. Keep those distinctions when changing its copy.
+
 ### Why a native `<dialog>`
 
 `<dialog>.showModal()` gives Escape-to-close, focus trapping, `role="dialog"`,

@@ -10,6 +10,7 @@ export type ConflictReason = typeof REASONS[number];
 const CODES = new Set([...REASONS, 'unexpected-error', 'temporary-storage', 'selection-too-large', 'sync-pending', 'collection-creation-limit', 'sync-storage-full', 'update-too-large', 'invitation-expired', 'membership-or-document-limit', 'renewal-needs-checkpoint', 'connection-expired', 'connection-ended', 'document-deleted', 'document-expired', 'access-ended', 'forbidden', 'forbidden-stream', 'forbidden-document', 'key-epoch-changed', 'invalid-service-response', 'service-unavailable', 'sync-request-failed', 'response-too-large', 'acknowledgement-mismatch']);
 CODES.add('binding-missing');
 CODES.add('unfinished-setup-unavailable');
+CODES.add('unsupported-link-key-format');
 const ERRORS = new Set(['Error', 'ReplicaConflict', 'SyncSetupError', 'SyncError', 'TypeError', 'RangeError', 'SyntaxError', 'AbortError', 'NetworkError', 'NotAllowedError', 'QuotaExceededError', 'SecurityError', 'InvalidStateError', 'TransactionInactiveError', 'DataCloneError', 'VersionError', 'UnknownError']);
 const ACTIONS = new Set(['create', 'document', 'append', 'index', 'get', 'directory', 'document-info', 'touch', 'touch-record', 'touch-folder', 'invite', 'invite-read', 'pair-request', 'pair-status', 'pair-approve', 'members', 'epoch', 'key-read', 'key-write', 'live-key-read', 'live-key-write', 'delete-document']);
 const STATES = new Set(['waiting', 'working', 'current', 'offline', 'attention', 'ended']);

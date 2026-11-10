@@ -1,5 +1,7 @@
 // Durable, exact-byte key distribution. No remote mutation starts before the plan commits.
 import type { WrappedKey } from './protocol.ts';
+import { openJson } from './crypto.ts';
+import { linkWrappingKey } from './live-link.ts';
 
 export interface RotationDocument {
     document: string; epoch: number; key: string;
@@ -16,10 +18,19 @@ export interface RotationRepository {
     get(): Promise<RotationPlan | null | undefined>;
     commit(expected: number | null, value: RotationPlan | null): Promise<void>;
 }
+export async function validateRotationLinks(plan: RotationPlan, links: { id: string; document: string; secret: string; wrappingKey: string }[]) {
+    for (const document of plan.documents) for (const update of document.links) {
+        const link = links.find(link => link.id === update.invitation && link.document === document.document);
+        const value = await openJson<{ epoch: number; key: string }>(update.value, linkWrappingKey(link), { invitation: update.invitation });
+        if (value.epoch !== document.epoch || value.key !== document.key) throw new Error('Invalid saved link key update');
+    }
+}
 export async function resumeRotation(repository: RotationRepository,
     request: (action: string, values: Record<string, unknown>) => Promise<unknown>,
-    apply: (document: RotationDocument) => Promise<void>) {
+    apply: (document: RotationDocument) => Promise<void>,
+    validate?: (plan: RotationPlan) => Promise<void>) {
     let plan = await repository.get(); if (!plan) return;
+    await validate?.(plan);
     const save = async () => { const previous = plan!.revision; plan!.revision++; await repository.commit(previous, plan!); };
     if (!plan.fenced) {
         await request('member' in plan.target ? 'revoke' : 'invite-revoke', 'member' in plan.target ? { target: plan.target.member } : { invitation: plan.target.invitation });

@@ -12,12 +12,12 @@ import { Session, stagedSession, type SessionRecord, type ManifestNode } from '.
 import { materializable, materializationVersion } from './materialization.ts';
 import { Transport, type ConnectionStatus } from './transport.ts';
 import { BodyReplica } from './replica.ts';
-import { resumeRotation, type RotationPlan, type RotationDocument } from './rotation.ts';
+import { resumeRotation, validateRotationLinks, type RotationPlan, type RotationDocument } from './rotation.ts';
 import { encryptRecoveryArchive, decryptRecoveryArchive, isRecoveryArchive, MAX_RECOVERY_ARCHIVE_BYTES } from './recovery-archive.ts';
 import { SyncDialog } from './dialog.ts';
 import { icon, type IconName } from '../ui/icons.ts';
 import { copyFeedback } from '../ui/feedback.ts';
-import { isShortLiveLink, liveAccess, newLiveSecret, openLiveBootstrap, sealLiveBootstrap, type LiveLink } from './live-link.ts';
+import { isShortLiveLink, liveAccess, newLiveSecret, openLiveBootstrap, sealLiveBootstrap, linkWrappingKey, validLinkWrappingKey, type LiveLink } from './live-link.ts';
 import { unzipSync } from 'fflate';
 import { isShortSyncLink, newSyncSecret, openSyncBootstrap, sealSyncBootstrap, syncAccess, type PairLink } from './sync-link.ts';
 import { syncDebug, safeError, type SetupStage } from './debug.ts';
@@ -143,6 +143,7 @@ async function persistProjection(id: string, text: string) {
     if (viewer.applyConnectionProjection({ text, name: app.node(id)!.name, readingWidth: app.node(id)!.localReadingWidth ?? app.node(id)!.readingWidth })) sessions.get(id)?.present(text);
 }
 function start(scope: Scope) {
+    if (scope.live && !validLinkWrappingKey(scope.live)) { driverFor(scope)?.dispose(); drivers.delete(scopeId(scope)); phase(scope, 'attention'); return; }
     if (drivers.has(scopeId(scope))) return;
     const list = () => [...sessions.entries()].filter(([, session]) => session.record.binding.collection === scope.collection && session.record.binding.member === scope.member.grant.member && !session.record.ended);
     const adapter = {
@@ -552,7 +553,7 @@ async function enrollCreated(id: string) {
 }
 export async function opened(id: string) {
     await initialize(); const node = app.node(id); if (!node?.connection || node.connection.phase === 'ended' || document.hidden) return;
-    const scope = rootFor(node); if (!scope) return; start(scope);
+    const scope = rootFor(node); if (!scope || scope.live && !validLinkWrappingKey(scope.live)) return; start(scope);
     if (scope.lastRenewed && Date.now() - scope.lastRenewed < 86400000) return;
     if (renewing.has(scopeId(scope))) return renewing.get(scopeId(scope));
     const root = app.node(scope.localRoot)!;
@@ -602,6 +603,7 @@ const syncError = (error: unknown) => ({
     'sync-storage-full': 'Sync storage is full. Your changes are saved here. Try again later.',
     'update-too-large': 'This document is too large to sync. Your changes are saved here. Download a copy to keep them.',
     'invitation-expired': 'This Sync link expired. Go back and create a new one.',
+    'unsupported-link-key-format': 'Unsupported link key format. Create a new link from the sharing device.',
 }[error instanceof SyncSetupError ? error.code : errorText(error)] ?? 'Could not finish. Your document is still here. Try again.');
 const syncTool = (label: string, action: string, glyph: IconName) => `<button type="button" class="btn" data-sync-action="${action}">${icon(glyph)}<span>${label}</span></button>`;
 const confirmationCode = (phrase: string) => `<div class="sync-code" role="group" aria-label="Confirmation code">${phrase.split(' ').map(part => `<span>${esc(part)}</span>`).join(' ')}</div>`;
@@ -764,7 +766,9 @@ async function liveDocument(id: string) {
     try { while (ui.open) {
         const node = app.node(id), scope = node ? rootFor(node) : undefined; if (!node?.connection || !scope) break;
         const ended = node.connection.phase === 'ended', access = { view: 'View only', comment: 'Can comment', edit: 'Can edit', owner: 'Owner' }[scope.member.grant.permission];
-        const answer = await ui.screen({ title: 'Live document', html: `<p><strong>${esc(node.name)}</strong></p><p><strong>${access}</strong></p><p>${ended ? 'The Live link ended. Your retained copy and any unsent changes are still here.' : `Receives changes from the sharing source. Access expires ${new Date(scope.member.grant.expires * 1000).toLocaleDateString()}, unless the owner disables the link first.`}</p><p class="sync-fineprint">${ended ? 'Keep as a local copy to make this document independent.' : "Keep as a local copy to stop receiving changes without disabling the owner's link."}</p>`, buttons: [{ label: 'Keep as local copy', value: 'local', primary: true }, ...(db.isTemporaryStorage() ? [{ label: 'Save to library', value: 'save' }] : [{ label: 'Remove from library', value: 'remove', empty: true }])] });
+        const description = scope.live && !validLinkWrappingKey(scope.live) ? 'This link uses an unsupported key format. Ask the owner for a new link. Your local content and pending work stay here.'
+            : ended ? 'The Live link ended. Your retained copy and any unsent changes are still here.' : `Receives changes from the sharing source. Access expires ${new Date(scope.member.grant.expires * 1000).toLocaleDateString()}, unless the owner disables the link first.`;
+        const answer = await ui.screen({ title: 'Live document', html: `<p><strong>${esc(node.name)}</strong></p><p><strong>${access}</strong></p><p>${description}</p><p class="sync-fineprint">${ended ? 'Keep as a local copy to make this document independent.' : "Keep as a local copy to stop receiving changes without disabling the owner's link."}</p>`, buttons: [{ label: 'Keep as local copy', value: 'local', primary: true }, ...(db.isTemporaryStorage() ? [{ label: 'Save to library', value: 'save' }] : [{ label: 'Remove from library', value: 'remove', empty: true }])] });
         if (answer.value === 'close') break;
         if (answer.value === 'save') { await saveLive(id); continue; }
         const confirm = await ui.screen({ title: answer.value === 'local' ? 'Keep as local copy?' : 'Remove from library?', back: true, html: answer.value === 'local' ? '<p>This document and your current changes stay on this device. This copy will no longer receive Live updates. The owner\'s link stays active for other people.</p>' : '<p>Remove this copy from your library. This does not disable the owner\'s Live link.</p>', buttons: [{ label: answer.value === 'local' ? 'Keep local copy' : 'Remove', value: 'yes', primary: answer.value === 'local', danger: answer.value !== 'local' }] });
@@ -774,7 +778,7 @@ async function liveDocument(id: string) {
 }
 function receivedLiveScope(id: string) {
     const node = app.node(id), scope = node ? rootFor(node) : undefined;
-    return node?.connection?.kind === 'live' && node.connection.phase !== 'ended' && scope?.live
+    return node?.connection?.kind === 'live' && node.connection.phase !== 'ended' && scope?.live && validLinkWrappingKey(scope.live)
         && scope.member.grant.permission !== 'owner' && scope.member.grant.expires > Date.now() / 1000 ? scope : null;
 }
 export async function liveLinkInfo(id: string) {
@@ -903,7 +907,7 @@ export async function receiveLocation(address: string) {
             link = await openSyncBootstrap(incoming.bootstrap, encoded);
         } else {
             const decoded = await decodeState(encoded); if (!decoded) throw new Error('Invalid Sync link');
-            link = JSON.parse(decoded); incoming = await request('invite-read', { invitation: link.id }, link.secret);
+            link = JSON.parse(decoded); linkWrappingKey(link); incoming = await request('invite-read', { invitation: link.id }, link.secret);
         }
         if (!validInvitation(incoming.policy) || !validGrant(incoming.owner) || incoming.owner.grant.publicKey !== link.ownerKey
             || !await verify(incoming.policy.invitation, incoming.policy.signature, link.ownerKey)) throw new Error('Invalid Sync link');
@@ -913,7 +917,7 @@ export async function receiveLocation(address: string) {
         viewer.enableConnectionSafety(); await db.setMeta('sync:safety', true);
         const who = await identity(), token = randomSecret(), g = { v: 1 as const, collection: incoming.policy.invitation.collection, member: newId(), participant: incoming.policy.invitation.participant,
             permission: 'edit' as const, document: null, publicKey: who.publicKey, boxKey: who.boxKey, tokenHash: await tokenHash(token), expires: 0 };
-        const candidate = await signGrant(g, who), encryptedName = await sealJson({ name: answer.text }, decode(link.wrappingKey ?? link.secret), { invitation: link.id });
+        const candidate = await signGrant(g, who), encryptedName = await sealJson({ name: answer.text }, linkWrappingKey(link), { invitation: link.id });
         await request('pair-request', { invitation: link.id, candidate, label: encryptedName }, link.secret);
         const phrase = await pairingPhrase(incoming.policy, candidate.grant), controller = new AbortController();
         const waiting = modal({ title: 'Sync', html: `<p>Check that your other device shows this same code:</p>${confirmationCode(phrase)}<p role="status">Confirm the code there to finish connecting.</p>`, buttons: [{ label: 'Cancel', value: '' }] });
@@ -1111,7 +1115,7 @@ export async function createLiveLink(id: string, permission: 'view' | 'comment' 
     node.connection!.liveShared = true; await db.putNodes([node]);
     const links = await db.getMeta<OwnedLink[]>(`sync:links:${scopeId(scope)}`) ?? [];
     links.push({ id: policy.invitation.id, document: node.connection!.document, expires: policy.invitation.expires, secret, wrappingKey: link.wrappingKey, permission }); await db.setMeta(`sync:links:${scopeId(scope)}`, links);
-    await writeLiveKey(scope, policy.invitation.id, link.wrappingKey!, node.connection!.document, session.record.binding.epoch, session.record.key);
+    await writeLiveKey(scope, policy.invitation.id, link.wrappingKey, node.connection!.document, session.record.binding.epoch, session.record.key);
     return { url, expires: policy.invitation.expires };
 }
 async function receiveLive(address: string, encoded: string) {
@@ -1125,7 +1129,7 @@ async function receiveLive(address: string, encoded: string) {
             link = await openLiveBootstrap(incoming.bootstrap, encoded);
         } else {
             const raw = await decodeState(encoded); if (!raw) throw new Error('Invalid live link');
-            link = JSON.parse(raw); incoming = await request('invite-read', { invitation: link.id }, link.secret);
+            link = JSON.parse(raw); linkWrappingKey(link); incoming = await request('invite-read', { invitation: link.id }, link.secret);
         }
         if (!validInvitation(incoming.policy) || !validGrant(incoming.owner) || incoming.owner.grant.publicKey !== link.ownerKey
             || incoming.policy.invitation.mode !== 'live' || !await verify(incoming.policy.invitation, incoming.policy.signature, link.ownerKey)) throw new Error('Invalid live-link signature');
@@ -1148,7 +1152,7 @@ async function receiveLive(address: string, encoded: string) {
         record.keys = { [String(link.epoch ?? 1)]: link.key, [String(updated.epoch)]: updated.key };
         const session = await createSession(node, record); await loadPackets(scope, session); node.name = session.metadata().name ?? node.name;
         start(scope); await app.openDoc(id); viewer.endLoading(); app.notify();
-    } catch (error) { viewer.endLoading(); viewer.toast(`Could not open the live link: ${errorText(error)}`); }
+    } catch (error) { viewer.endLoading(); viewer.toast(`Could not open the live link: ${errorText(error) === 'unsupported-link-key-format' ? syncError(error) : errorText(error)}`); }
     return true;
 }
 export async function saveLive(id: string) {
@@ -1165,7 +1169,7 @@ export async function saveLive(id: string) {
     } catch (error) { viewer.toast(`The live session is still temporary: ${errorText(error)}. Download pending work before closing.`); }
 }
 
-interface OwnedLink { id: string; document: string; expires: number; secret: string; wrappingKey?: string; permission?: 'view' | 'comment' | 'edit'; label?: string }
+interface OwnedLink { id: string; document: string; expires: number; secret: string; wrappingKey: string; permission?: 'view' | 'comment' | 'edit'; label?: string }
 async function writeLiveKey(scope: Scope, invitation: string, wrappingKey: string, document: string, epoch: number, key: string) {
     const encrypted = await sealJson({ epoch, key }, decode(wrappingKey), { invitation });
     const value = { document, epoch, ...encrypted };
@@ -1173,7 +1177,7 @@ async function writeLiveKey(scope: Scope, invitation: string, wrappingKey: strin
 }
 async function readLiveKey(update: { value: { document: string; epoch: number; nonce: string; ciphertext: string }; signature: string }, link: LiveLink, owner: SignedGrant) {
     if (!await verify(update.value, update.signature, owner.grant.publicKey)) throw new Error('Invalid key update signature');
-    return openJson<{ epoch: number; key: string }>(update.value, decode(link.wrappingKey ?? link.secret), { invitation: link.id });
+    return openJson<{ epoch: number; key: string }>(update.value, linkWrappingKey(link), { invitation: link.id });
 }
 async function refreshKey(scope: Scope, session: Session, epoch: number, signal?: AbortSignal, staged = false) {
     const id = session.record.binding.document, response = await scoped(scope, 'key-read', { document: id }, signal);
@@ -1214,7 +1218,10 @@ async function revoke(scope: Scope, target: { member?: string; link?: OwnedLink 
                 values.push({ wrapped, signature: await sign(wrapped, scope.identity) });
             }
             for (const link of links) if (link.document === document && link.id !== target.link?.id && !revoked.invitations.includes(link.id) && link.expires > Date.now() / 1000) {
-                const value = { document, epoch, ...await sealJson({ epoch, key }, decode(link.wrappingKey ?? link.secret), { invitation: link.id }) };
+                // Unsupported links receive no new document key. Their records stay
+                // available so the owner can explicitly disable them.
+                if (!validLinkWrappingKey(link)) continue;
+                const value = { document, epoch, ...await sealJson({ epoch, key }, linkWrappingKey(link), { invitation: link.id }) };
                 updates.push({ invitation: link.id, value, signature: await sign(value, scope.identity) });
             }
             plan.documents.push({ document, epoch, key, values, links: updates });
@@ -1237,7 +1244,7 @@ async function continueRotation(scope: Scope) {
                 const root = sessions.get(scope.localRoot)!, old = root.manifest().find((value) => value.id === document);
                 if (old) await root.editManifest([{ ...old, key, epoch }]);
             }
-        });
+        }, async plan => validateRotationLinks(plan, await db.getMeta<OwnedLink[]>(`sync:links:${scopeId(scope)}`) ?? []));
         start(scope); driverFor(scope)?.retry(); await driverFor(scope)?.upload(); viewer.toast('Access revoked and document keys rotated');
     };
     const task = ('locks' in navigator ? navigator.locks.request(rotationKey(scope), run) : run()).catch((error) => {
@@ -1354,6 +1361,7 @@ export async function restoreRecovery(selectedFile?: File) {
             const ids = new Map(allOriginal.map(node => [node.id, newId()])), allNodes: TreeNode[] = [], allRecords: Record<string, SessionRecord> = {}, metadata: Record<string, unknown> = { 'sync:safety': true }, scopesSeen = new Set<string>();
             for (const value of values) {
             const scope = value?.scope;
+            if (scope?.live) linkWrappingKey(scope.live);
             if (!scope || !validId(scope.collection) || !validId(scope.root) || !validId(scope.localRoot) || !['doc', 'folder'].includes(scope.kind)
                 || !validGrant(scope.owner) || scope.owner.grant.permission !== 'owner' || scope.owner.grant.collection !== scope.collection
                 || !await verifyGrant(scope.owner, scope.owner.grant) || !validGrant(scope.member) || scope.member.grant.collection !== scope.collection
@@ -1388,8 +1396,9 @@ export async function restoreRecovery(selectedFile?: File) {
             if (!Array.isArray(revoked.members) || !Array.isArray(revoked.invitations) || !revoked.members.every(validId) || !revoked.invitations.every(validId)) throw new Error('Invalid recovered revocation history');
             const links = value.links ?? [];
             if (!Array.isArray(links) || links.length > LIMITS.liveGrants || links.some((link) => !validId(link.id) || !validId(link.document)
-                || !Number.isSafeInteger(link.expires) || decode(link.secret).length !== 32 || link.wrappingKey !== undefined && decode(link.wrappingKey).length !== 32
+                || !Number.isSafeInteger(link.expires) || !validLinkWrappingKey(link)
                 || !value.nodes.some((node) => node.connection?.document === link.document))) throw new Error('Invalid recovered links');
+            if (value.rotation) await validateRotationLinks(value.rotation, links);
             for (const node of value.nodes) {
                 if (!validId(node.id) || !['doc', 'folder'].includes(node.kind) || typeof node.name !== 'string' || node.name.length > 256
                     || !Number.isSafeInteger(node.order) || !belongs(node, scope) || !validId(node.connection?.document)
