@@ -536,7 +536,8 @@ test.describe(`${tool.name} (${tool.path})`, () => {
           handlers: document.querySelectorAll('[onerror]').length,
           forged: forged ? [...forged.attributes].map((attribute) => attribute.name) : null,
           subscript: article.querySelector('sub')?.textContent,
-          scriptLinks: [...article.querySelectorAll('a')].filter((a) => /script:/i.test(a.getAttribute('href') ?? '')).length,
+          scriptLinks: [...article.querySelectorAll('a')].filter((a) => /script:/i.test(a.getAttribute('href') ?? ''))
+            .length,
         };
       });
       expect(facts).toEqual({ ran: [], handlers: 0, forged: [], subscript: '2', scriptLinks: 0 });

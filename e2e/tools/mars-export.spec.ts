@@ -77,13 +77,17 @@ H<sub>2</sub>O keeps <kbd>inline</kbd> tags.
       const doc = new DOMParser().parseFromString(html, 'text/html');
       const article = doc.querySelector('.preview-article') ?? doc.body;
       const plain = [...article.querySelectorAll('div')].find((node) => node.textContent === 'Plain HTML remains.');
-      const links = [...article.querySelectorAll('a')].filter((node) => /link text remains/.test(node.textContent ?? ''));
+      // The link text stays as content. A link element stays only when its target is safe.
+      const scriptLinks = [...article.querySelectorAll('a')].filter((node) =>
+        /script:/i.test((node.getAttribute('href') ?? '').replace(/\s/g, '')),
+      );
+      const texts = ['Script link text remains.', 'Entity link text remains.'];
       return {
         supplied: doc.querySelectorAll('[id^="supplied-"]').length,
         attributes: plain ? [...plain.attributes].map((attribute) => attribute.name) : null,
         templates: article.querySelectorAll('template').length,
-        scriptLinks: links.filter((node) => node.hasAttribute('href')).length,
-        linkTexts: links.length,
+        scriptLinks: scriptLinks.length,
+        linkTexts: texts.filter((text) => article.textContent?.includes(text)).length,
         subscript: article.querySelector('sub')?.textContent,
         keyboard: article.querySelector('kbd')?.textContent,
         runtime: !!doc.querySelector('script#mars-reader-config'),
