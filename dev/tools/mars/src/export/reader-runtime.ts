@@ -1,4 +1,15 @@
 // Independent standalone reader. No viewer, library storage, analytics, or model importer.
+//
+// This script runs inside an exported HTML file, and inside the HTML preview frame of the export
+// dialog. It adds the reader controls that the document includes: theme, reading width, table of
+// contents, Find, and code copy buttons. It also adds scroll progress, the PDF dialog, and
+// diagrams.
+// - Settings come from the `mars-reader-config` JSON block. The script keeps no state between
+//   visits.
+// - The article is export-safe HTML from the app. Every node that this script adds gets its
+//   text through `textContent`.
+// - Inside a frame, the script reports `ready` or `error` to the parent window with the
+//   operation identifier from its configuration. A file that is opened directly sends nothing.
 import { initDiagrams } from '../doc/diagrams.js';
 import { prepareFrame, printDocument, type PreparedFrame } from './pdf.ts';
 
@@ -9,11 +20,14 @@ const article = document.querySelector('article')!;
 // Capture before reader navigation/find/copy decorations can change the print input.
 const originalContent = article.innerHTML;
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
+// The parent origin is not known here (the app, or any page that frames the file), so the target
+// origin is `*`. The message holds the operation identifier, a type, and an error text.
 const send = (type: string, extra = {}) => {
     if (parent !== window)
         parent.postMessage({ kind: 'mars-export', operation: config.operation, type, ...extra }, '*');
 };
 let toastTimer: ReturnType<typeof setTimeout>;
+/** Shows a status message for 2.2 seconds. */
 const toast = (text: string) => {
     const el = $('reader-toast');
     el.textContent = text;
@@ -29,6 +43,8 @@ $('theme-toggle').addEventListener('click', () => {
 });
 if (matchMedia('(prefers-color-scheme: dark)').matches) root.dataset.theme = 'dark';
 
+// Reading width: the document default comes from the configuration. A change by the reader
+// applies to this page view only.
 const select = $<HTMLSelectElement>('reader-width-select');
 const custom = $<HTMLInputElement>('reader-custom-width');
 let lastCustom = typeof config.readingWidth === 'number' ? config.readingWidth : 800;
@@ -56,6 +72,7 @@ $('reader-width-reset').addEventListener('click', () => {
     setWidth(config.readingWidth);
     syncWidth(config.readingWidth);
 });
+// Fallback for a browser without invoker commands (`commandfor`): toggle the popover by script.
 if (!('commandForElement' in HTMLButtonElement.prototype)) {
     const button = $('reading-settings-btn'),
         panel = $('reading-settings');
@@ -64,6 +81,7 @@ if (!('commandForElement' in HTMLButtonElement.prototype)) {
     );
 }
 
+// Table of contents from the `h2` and `h3` headings. A heading without an id gets one.
 const toc = $('toc');
 if (toc) {
     const title = document.createElement('div');
@@ -76,6 +94,7 @@ if (toc) {
         item.className = heading.tagName === 'H3' ? 'sub' : '';
         const link = document.createElement('a');
         link.href = `#${heading.id}`;
+        // The heading text ends with the `#` of its anchor link.
         link.textContent = heading.textContent!.replace(/#$/, '').trim();
         item.append(link);
         list.append(item);
@@ -84,6 +103,8 @@ if (toc) {
     document.body.classList.add('has-toc');
 }
 
+// Find in page: wraps each match in a `<mark>` and steps through the matches. `clear` puts
+// the plain text nodes back, so a new search starts from the original text.
 const find = $('su-find');
 if (find) {
     const input = find.querySelector('input')!;
@@ -110,6 +131,7 @@ if (find) {
             move(0);
             return;
         }
+        // Skip text that is not prose: scripts, styles, drawings, math, diagrams, and copy buttons.
         const walker = document.createTreeWalker(article, NodeFilter.SHOW_TEXT, {
             acceptNode: (node) =>
                 node.parentElement?.closest('script, style, svg, .katex, .su-diagram, .copy-btn') ||
@@ -170,6 +192,7 @@ if (find) {
     });
 }
 
+// A copy button on each code block. It copies the code text without the button label.
 for (const pre of article.querySelectorAll('pre')) {
     pre.tabIndex = 0;
     const button = document.createElement('button');
@@ -206,6 +229,8 @@ back.addEventListener('click', () =>
     }),
 );
 
+// The PDF dialog paginates the article in a nested sandboxed frame, with the same print
+// document and bridge as the export dialog of the app. Closing the dialog removes the frame.
 const pdfButton = $<HTMLButtonElement>('pdf-btn');
 if (pdfButton)
     pdfButton.addEventListener('click', () => {
@@ -270,6 +295,7 @@ if (pdfButton)
         );
     });
 
+// Diagrams draw last. A failure reaches the parent as `error`, and the preview shows it.
 try {
     initDiagrams(document);
     send('ready');

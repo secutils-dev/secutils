@@ -1,3 +1,13 @@
+// Live links: one document shared with other people through the replication engine that Sync uses.
+// Owner side: creates invitations, lists and disables owned links, and deletes the remote copy of a
+// Live-only document after its last link ends.
+// Recipient side: opens a `#live=` link in a temporary session, forwards the original link, and saves
+// the document to the library.
+// Revocation with key rotation lives in `access.ts`. Link derivation and the bootstrap format live in
+// `../live-link.ts`.
+// Invariants: the fragment secret and the link wrapping key never enter a request in plaintext. A recipient
+// verifies the invitation policy, the owner grant, and each key update against the owner key from the link.
+// Import side effect: this module registers page listeners that resume a pending remote cleanup.
 import * as app from '../../app.ts';
 import * as db from '../../store/db.ts';
 import * as viewer from '../../doc/viewer.js';
@@ -53,6 +63,15 @@ import { ownerMatchesLink } from './pairing.ts';
 import { continueRotation, revoke, stopHere, remove, disconnect } from './access.ts';
 import { syncError } from './dialogs.ts';
 
+/**
+ * Runs the owner's **Live links** dialog for the document node `id` until the reader closes it or the
+ * connection ends. The dialog lists the owned links that are not revoked. It can create a link, disable
+ * one link, or stop all sharing.
+ *
+ * While a key rotation or a remote cleanup is unfinished, the dialog offers only **Try again**, which resumes it.
+ * The function returns without a dialog when this client does not hold the owner grant.
+ * A failed action shows as a message in the dialog.
+ */
 export async function liveLinks(id: string) {
     await initialize();
     const node = app.node(id),
@@ -62,11 +81,14 @@ export async function liveLinks(id: string) {
     let problem = '';
     try {
         while (ui.open && node.connection) {
+            // A saved rotation plan or cleanup job must finish before another sharing change starts.
             const pending = !!scope.cleanup || !!(await rotationRepository(scope).get());
             const revoked = (await db.getMeta<RevokedAccess>(revokedAccessKey(scope))) ?? {
                 members: [],
                 invitations: [],
             };
+            // Owned link records are local metadata, and a restored backup can supply them.
+            // Recovery admits only UUID link ids. The label and the permission pass through `esc()`.
             const links = ((await db.getMeta<OwnedLink[]>(`sync:links:${scopeId(scope)}`)) ?? []).filter(
                 (link) => link.document === node.connection!.document && !revoked.invitations.includes(link.id),
             );
@@ -107,6 +129,8 @@ export async function liveLinks(id: string) {
                     if (confirm.value !== 'disable') continue;
                     ui.busy('Disabling link…');
                     await revoke(scope, { link });
+                    // `revoke` reports its own failure and keeps the saved plan. A saved plan means that
+                    // the revocation is incomplete, so the follow-up waits for **Try again**.
                     if (!(await rotationRepository(scope).get())) await finishSharing(scope, link.document, ui.signal);
                 }
             } catch (error) {
@@ -117,6 +141,12 @@ export async function liveLinks(id: string) {
         ui.close();
     }
 }
+/**
+ * Runs the recipient's **Live document** dialog for node `id`: access level, expiry, and local-copy actions.
+ *
+ * **Keep as local copy** detaches this copy from the link. **Remove from library** detaches and deletes it.
+ * Neither action disables the owner's link. A temporary session offers **Save to library** in place of removal.
+ */
 export async function liveDocument(id: string) {
     await initialize();
     const ui = new SyncDialog('liveDocumentDialog');
@@ -177,6 +207,11 @@ export async function liveDocument(id: string) {
         ui.close();
     }
 }
+/**
+ * Returns the scope of node `id` when the node is a received Live document that still has access, or `null`.
+ * Access needs a connection that has not ended, a supported link key format, a non-owner grant, and an
+ * unexpired grant. The expiry check uses the local clock.
+ */
 function receivedLiveScope(id: string) {
     const node = app.node(id),
         scope = node ? rootFor(node) : undefined;
@@ -189,15 +224,29 @@ function receivedLiveScope(id: string) {
         ? scope
         : null;
 }
+/**
+ * Returns the permission and the expiry (Unix seconds) of a received, active Live link.
+ * Returns `null` for every other node, including the owner's own shared document.
+ */
 export async function liveLinkInfo(id: string) {
     await initialize();
     const scope = receivedLiveScope(id);
     return scope ? { permission: scope.member.grant.permission, expires: scope.member.grant.expires } : null;
 }
+/**
+ * Returns the URL that a recipient passes on, with the grant expiry in Unix seconds.
+ *
+ * The function asks the service whether the invitation is still readable. It creates no grant and no invitation.
+ * A saved connection without its original URL gets a full link that is built from the stored link record.
+ *
+ * @throws Error with a user-facing sentence when the link ended or when the service did not confirm it.
+ * An expired or ended invitation also marks the connection as ended.
+ */
 export async function forwardLiveLink(id: string) {
     await initialize();
     const scope = receivedLiveScope(id);
     if (!scope) throw new Error('The Live link ended. Choose Snapshot to share your local copy.');
+    // The request carries the invitation id and its bearer token. The response body is not used.
     try {
         await request('invite-read', { invitation: scope.live!.id }, scope.live!.secret);
     } catch (error) {
@@ -209,9 +258,18 @@ export async function forwardLiveLink(id: string) {
     }
     const url =
         scope.liveUrl ?? `${location.origin}${location.pathname}#live=${await encodeState(JSON.stringify(scope.live))}`;
+    // The connection can end during the request. Check again before the URL leaves this function.
     if (!receivedLiveScope(id)) throw new Error('The Live link ended. Choose Snapshot to share your local copy.');
     return { url, expires: scope.member.grant.expires };
 }
+/**
+ * Completes the removal of a Live link for the remote document id `document`.
+ *
+ * While an unexpired, unrevoked owned link remains, the function does nothing.
+ * Otherwise it clears `liveShared` on the local nodes of that document and saves them.
+ * A standalone Live-only document without another device enters the remote cleanup instead.
+ * `signal` aborts the cleanup requests of this call. The saved job stays and resumes later.
+ */
 async function finishSharing(scope: Scope, document: string, signal?: AbortSignal) {
     const revoked = (await db.getMeta<RevokedAccess>(revokedAccessKey(scope))) ?? { members: [], invitations: [] };
     const links = ((await db.getMeta<OwnedLink[]>(`sync:links:${scopeId(scope)}`)) ?? []).filter(
@@ -225,10 +283,13 @@ async function finishSharing(scope: Scope, document: string, signal?: AbortSigna
         await db.putNodes(nodes);
         app.notify();
     };
+    // Remote deletion applies only to a standalone document scope that is not personal Sync.
     if (scope.personalSync || scope.kind !== 'doc' || scope.root !== document) {
         await finish();
         return;
     }
+    // The member list is a service response. It only decides whether to request the cleanup.
+    // The responder refuses the cleanup while another device grant exists (`personal-sync-active`).
     const members = (await scoped(scope, 'members')).members as SignedGrant[];
     if (
         members.some(
@@ -246,7 +307,21 @@ async function finishSharing(scope: Scope, document: string, signal?: AbortSigna
     await saveScope(scope);
     await continueCleanup(scope, signal);
 }
+/**
+ * Runs the durable remote deletion of a Live-only document, or joins the run that is active for the scope.
+ *
+ * The transport stops first. Each `purge-live-document` request deletes a bounded batch, and the cursor is
+ * saved after each batch. A retry therefore continues after a lost response, a reload, or navigation.
+ * Requests abort on a hidden tab, on `pagehide`, and on `signal`.
+ * On completion the function detaches every node of the scope and shows a toast.
+ * When the responder reports personal Sync, the function drops the job, marks the scope as personal Sync,
+ * and restarts the transport.
+ *
+ * @param signal Aborts the requests of the run that this call starts. A joined run ignores it.
+ * @returns A promise that rejects on abort or on a service error. `scope.cleanup` then stays saved for a retry.
+ */
 export async function continueCleanup(scope: Scope, signal?: AbortSignal) {
+    // One run per scope in this tab. A second caller receives the promise of the active run.
     if (cleanupTasks.has(scopeId(scope))) return cleanupTasks.get(scopeId(scope));
     const controller = new AbortController(),
         pause = () => {
@@ -258,6 +333,7 @@ export async function continueCleanup(scope: Scope, signal?: AbortSignal) {
     const task = (async () => {
         driverFor(scope)?.stop();
         while (scope.cleanup) {
+            // A hidden tab sends no cleanup request. `resumeCleanup` restarts the job when the page is visible.
             if (document.hidden) throw new DOMException('Cleanup paused', 'AbortError');
             const plan = scope.cleanup;
             let result: { complete: boolean; after?: string };
@@ -269,6 +345,8 @@ export async function continueCleanup(scope: Scope, signal?: AbortSignal) {
                     signal ? AbortSignal.any([signal, controller.signal]) : controller.signal,
                 );
             } catch (error) {
+                // The responder refuses the purge while the collection serves personal Sync.
+                // The remote document stays, and the scope continues as personal Sync.
                 if (errorText(error) === 'personal-sync-active') {
                     delete scope.cleanup;
                     scope.personalSync = true;
@@ -290,6 +368,7 @@ export async function continueCleanup(scope: Scope, signal?: AbortSignal) {
                 viewer.toast('Sharing stopped. The remote copy was deleted. Your local document is retained.');
                 return;
             }
+            // Save the cursor before the next request, so a reload continues from this batch.
             scope.cleanup = { document: plan.document, ...(result.after ? { after: result.after } : {}) };
             await saveScope(scope);
         }
@@ -301,13 +380,21 @@ export async function continueCleanup(scope: Scope, signal?: AbortSignal) {
     cleanupTasks.set(scopeId(scope), task);
     return task;
 }
+/** Restarts each saved cleanup job when the page is visible. A failed run marks its scope as needing attention. */
 const resumeCleanup = () => {
     if (!document.hidden)
         for (const scope of scopes.values())
             if (scope.cleanup) void continueCleanup(scope).catch(() => phase(scope, 'attention'));
 };
+// `pageshow` also covers a page that returns from the back/forward cache.
 document.addEventListener('visibilitychange', resumeCleanup);
 window.addEventListener('pageshow', resumeCleanup);
+/**
+ * Asks for confirmation, then disables every owned link of the document. Each link takes one key rotation.
+ * The follow-up in `finishSharing` runs after the last link.
+ *
+ * @throws Error `revocation-pending` when a rotation plan stays saved. The caller then offers **Try again**.
+ */
 async function stopSharing(scope: Scope, node: TreeNode, ui: SyncDialog) {
     const answer = await ui.screen({
         title: 'Stop sharing?',
@@ -327,6 +414,21 @@ async function stopSharing(scope: Scope, node: TreeNode, ui: SyncDialog) {
     }
     await finishSharing(scope, node.connection!.document, ui.signal);
 }
+/**
+ * Creates a Live link for the document node `id` and returns its URL with the expiry in Unix seconds.
+ *
+ * An unconnected document is enrolled first as a Live-only scope. Only the client with the owner grant
+ * can create a link. The function flushes the editor and uploads pending work before it registers the invitation.
+ * It then stores the owned link record and publishes the current document key for the link.
+ *
+ * The service receives the signed policy, the hash of the bearer token, and the encrypted bootstrap.
+ * The fragment secret and the wrapping key stay in the link.
+ *
+ * @param ttl Link lifetime in seconds, counted from the local clock.
+ * @param format `short` puts the 22-character secret in the fragment. `full` puts the encoded link record there.
+ * @throws Error with a user-facing sentence, or with the code `sync-not-ready` or `sync-pending`.
+ * A setup or service failure propagates unchanged.
+ */
 export async function createLiveLink(
     id: string,
     permission: 'view' | 'comment' | 'edit',
@@ -342,9 +444,12 @@ export async function createLiveLink(
     const scope = rootFor(node),
         session = sessions.get(node.id);
     if (!scope || !session) throw new Error('sync-not-ready');
+    // A recipient starts from the uploaded checkpoints. Refuse a link while local work waits in the outbox.
     await viewer.flush();
     await driverFor(scope)?.upload();
     if (await driverFor(scope)?.options.replica.pending()) throw new Error('sync-pending');
+    // The delegation key pair belongs to this link. Its private key travels inside the link, and each
+    // recipient signs a grant with it. The owner signs the policy that bounds those grants.
     const delegate = await identity(),
         fragment = newLiveSecret(),
         access = await liveAccess(fragment),
@@ -364,6 +469,8 @@ export async function createLiveLink(
             signature: '',
         };
     policy.signature = await sign(policy.invitation, scope.identity);
+    // The wrapping key is the encryption key that derives from the fragment secret.
+    // It is independent of the bearer token, so the service cannot open the bootstrap or a key update.
     const link: LiveLink = {
         v: 1,
         id: policy.invitation.id,
@@ -382,6 +489,7 @@ export async function createLiveLink(
     const url = `${location.origin}${location.pathname}#live=${format === 'full' ? await encodeState(JSON.stringify(link)) : fragment}`;
     node.connection!.liveShared = true;
     await db.putNodes([node]);
+    // The owner record keeps the wrapping key. A later key rotation seals the next document key for this link.
     const links = (await db.getMeta<OwnedLink[]>(`sync:links:${scopeId(scope)}`)) ?? [];
     links.push({
         id: policy.invitation.id,
@@ -402,7 +510,27 @@ export async function createLiveLink(
     );
     return { url, expires: policy.invitation.expires };
 }
+/**
+ * Opens a Live link and joins it as a participant with its own identity, token, and member id.
+ *
+ * The link and each service response are untrusted input. The join request starts only after these checks:
+ * - the link has a wrapping key that differs from the bearer token;
+ * - the returned policy is a well-formed `live` invitation;
+ * - the returned owner grant is self-signed by the owner key from the link;
+ * - that owner key signs the policy.
+ *
+ * A key update must carry the owner signature and must decrypt with the wrapping key.
+ * The recipient grant copies its document, permission, and expiry from the verified policy.
+ *
+ * Side effects: the `invite-read` and `live-join` requests, the checkpoint download, a document node,
+ * a saved scope, and a started transport. A failure shows a toast.
+ *
+ * @param address The complete page URL. The scope keeps it as the link to forward.
+ * @param encoded The `live` fragment value: a 22-character secret, or an encoded full link record.
+ * @returns `true` in every case. The caller treats the address as handled.
+ */
 export async function receiveLive(address: string, encoded: string) {
+    // A Live document opens in memory storage. A persistent session reloads the address as a temporary one.
     if (!db.isTemporaryStorage()) {
         const url = new URL(address);
         url.searchParams.set('temporary', '1');
@@ -413,6 +541,8 @@ export async function receiveLive(address: string, encoded: string) {
     try {
         let link: LiveLink, incoming;
         if (isShortLiveLink(encoded)) {
+            // Short link: the fragment secret derives the invitation id, the bearer token, and the bootstrap key.
+            // `openLiveBootstrap` rejects a bootstrap that does not match those derived values.
             const access = await liveAccess(encoded);
             incoming = await request('invite-read', { invitation: access.id }, access.token);
             link = await openLiveBootstrap(incoming.bootstrap, encoded);
@@ -420,9 +550,12 @@ export async function receiveLive(address: string, encoded: string) {
             const raw = await decodeState(encoded);
             if (!raw) throw new Error('Invalid live link');
             link = JSON.parse(raw);
+            // Full link: reject a missing wrapping key, or one equal to the bearer token, before any request.
             linkWrappingKey(link);
             incoming = await request('invite-read', { invitation: link.id }, link.secret);
         }
+        // The owner key in the link is the trust anchor. The returned owner grant must be self-signed by
+        // that key, and that key must sign the returned policy.
         if (
             !validInvitation(incoming.policy) ||
             !(await ownerMatchesLink(incoming.owner, link.ownerKey)) ||
@@ -434,6 +567,7 @@ export async function receiveLive(address: string, encoded: string) {
             who = await identity(),
             token = randomSecret(),
             memberId = newId();
+        // After a rotation the link holds an older key. The owner-signed update supplies the current epoch and key.
         const updated = incoming.keyUpdate
             ? await readLiveKey(incoming.keyUpdate, link, incoming.owner)
             : { epoch: link.epoch ?? 1, key: link.key };
@@ -449,6 +583,8 @@ export async function receiveLive(address: string, encoded: string) {
             tokenHash: await tokenHash(token),
             expires: policy.invitation.expires,
         };
+        // The delegation key from the link signs the grant. The policy travels with it as the issuer,
+        // so each verifier can follow the chain to the owner key.
         const signed = await signGrant(grant, {
             signing: link.signing,
             box: {},
@@ -492,10 +628,13 @@ export async function receiveLive(address: string, encoded: string) {
             kind: 'live',
             epoch: updated.epoch,
         };
+        // Only the creator seeds a body replica. A joiner starts from an empty replica, and `loadPackets`
+        // applies the downloaded checkpoints.
         const record = Session.seed(binding, '', who, token, updated.key, incoming.owner, node.name, signed),
             empty = new BodyReplica();
         record.body = encode(empty.checkpoint());
         empty.destroy();
+        // Keep the link key beside the current key: checkpoints from an earlier epoch still need it.
         record.keys = { [String(link.epoch ?? 1)]: link.key, [String(updated.epoch)]: updated.key };
         const session = await createSession(node, record);
         await loadPackets(scope, session);
@@ -512,6 +651,14 @@ export async function receiveLive(address: string, encoded: string) {
     }
     return true;
 }
+/**
+ * Asks the reader, then promotes the temporary Live document `id` into the library in one transaction.
+ *
+ * The promotion writes the node, its text, the session record, and the scope. Other temporary documents
+ * are not saved. Afterwards the address becomes `#doc=<id>` without the temporary-session query.
+ * A failure shows a toast, and the session stays temporary.
+ * The function does nothing for a node that is not a Live document with a session.
+ */
 export async function saveLive(id: string) {
     await viewer.flush();
     const node = app.node(id),
@@ -543,6 +690,14 @@ export async function saveLive(id: string) {
         viewer.toast(`The live session is still temporary: ${errorText(error)}. Download pending work before closing.`);
     }
 }
+/**
+ * Publishes a document key for one Live link through `live-key-write`.
+ * The packet is sealed with the wrapping key of the link and bound to the invitation id. The owner signs it.
+ * The service stores the packet and has no key to open it.
+ *
+ * @param wrappingKey Base64url, 32 bytes.
+ * @param key The document key for `epoch`, base64url.
+ */
 async function writeLiveKey(
     scope: Scope,
     invitation: string,

@@ -1,12 +1,21 @@
 // Native EuiToolTip / EuiCopy behavior without React or a tooltip dependency.
+//
+// Owns the one tooltip of the page. Hover and focus tooltips take their text from `data-tooltip`.
+// The text is set as text content, never as markup. `installTooltips` moves the `title` of icon
+// buttons to `data-tooltip`, so the browser shows no second, native tooltip.
+
+// The visible tooltip, its anchor, the pending show or hide timer, and the `aria-describedby`
+// value that the anchor had before.
 let tip: HTMLDivElement | null = null,
     anchor: HTMLElement | null = null;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let describedBy: string | null = null,
     installed = false;
+// Elements whose `title` or `aria-label` becomes a tooltip.
 const ICON_BUTTON =
     '.icon-btn, .su-header-btn, .su-dialog-close, .tree-more, .tree-connection, button[aria-label][title]';
 
+/** Removes the tooltip, cancels a pending show, and restores `aria-describedby` on the anchor. */
 export function hideTooltip() {
     clearTimeout(timer);
     if (anchor) {
@@ -19,6 +28,7 @@ export function hideTooltip() {
     anchor = null;
     describedBy = null;
 }
+// Centers the tooltip above the anchor, or below it when there is no room, 8px inside the viewport.
 function position() {
     if (!tip || !anchor?.isConnected) {
         hideTooltip();
@@ -36,6 +46,11 @@ function position() {
         `${Math.max(8, Math.min(box.width - 8, rect.left + rect.width / 2 - left))}px`,
     );
 }
+/**
+ * Shows a tooltip on `element` at once and replaces a visible one.
+ * `duration` hides it after that many milliseconds. 0 keeps it until `hideTooltip()`.
+ * A detached element has no effect.
+ */
 export function showTooltip(element: HTMLElement, content: string, duration = 0) {
     if (!element.isConnected) return;
     hideTooltip();
@@ -47,6 +62,8 @@ export function showTooltip(element: HTMLElement, content: string, duration = 0)
     tip.textContent = content;
     tip.setAttribute('role', 'tooltip');
     tip.setAttribute('popover', 'manual');
+    // A tooltip that repeats the label is hidden from assistive technology. Other text is linked
+    // as a description.
     const label = element.getAttribute('aria-label') ?? element.textContent?.trim() ?? '';
     if (label.includes(content)) tip.setAttribute('aria-hidden', 'true');
     else element.setAttribute('aria-describedby', `${describedBy ? describedBy + ' ' : ''}${tip.id}`);
@@ -55,8 +72,10 @@ export function showTooltip(element: HTMLElement, content: string, duration = 0)
     position();
     if (duration) timer = setTimeout(hideTooltip, duration);
 }
+/** Shows a short confirmation on the control that copied something. It hides after 1800 ms. */
 export const copyFeedback = (element: HTMLElement, text = 'Copied') => showTooltip(element, text, 1800);
 
+// Turns the `title` of an icon button into `data-tooltip`, and makes sure the button has an `aria-label`.
 function migrate(element: Element) {
     if (!(element instanceof HTMLElement) || !element.matches(ICON_BUTTON)) return;
     const title =
@@ -67,6 +86,12 @@ function migrate(element: Element) {
     element.dataset.tooltip = title;
     element.removeAttribute('title');
 }
+/**
+ * Installs tooltips for the whole page. Later calls have no effect.
+ * It converts current and future icon buttons; a `MutationObserver` watches the body.
+ * Delegated listeners show a tooltip after 250 ms of hover or focus. They hide it on leave,
+ * Escape, scroll, and page hide.
+ */
 export function installTooltips() {
     if (installed) return;
     installed = true;

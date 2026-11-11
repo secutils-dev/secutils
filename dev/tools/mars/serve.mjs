@@ -7,21 +7,28 @@ import { createServer } from 'node:http';
 import * as vm from 'node:vm';
 import { inlineMarsSync } from './sync-assets.ts';
 
+// Port of the local server. The default is 7373.
 const PORT = Number(process.env.PORT) || 7373;
+// The snapshot responder script from the comment at the top of `index.html`, with the link
+// preview image filled in as deployment does.
 const legacyScript = readFileSync('index.html', 'utf8')
     .match(/<!--\s*@su:responder-script\s*([\s\S]*?)-->/)[1]
     .replace(
         '{{OG_JPEG_BASE64}}',
         readFileSync('../../../components/secutils-docs/static/img/og/og-mars.jpg').toString('base64'),
     );
+// The in-memory key-value store: values, and expiry times in seconds since the epoch.
 const values = new Map(),
     expiry = new Map();
+// Decodes a KV value. The store accepts canonical base64url only and throws for other text.
 const binary = (value) => {
     const bytes = Buffer.from(value, 'base64url');
     if (bytes.toString('base64url') !== value) throw new Error('Invalid base64url value');
     return bytes;
 };
+// True when the key exists and has not expired.
 const live = (k) => values.has(k) && (expiry.get(k) ?? Infinity) > Date.now() / 1000;
+// The `secutils.kv` API of the responder runtime. A value holds at most 1 MiB of bytes.
 const kv = {
     get: async (k) => (live(k) ? values.get(k) : null),
     getEntry: async (k) => ({
@@ -44,6 +51,7 @@ const kv = {
         return { entries, cursor: entries.at(-1)?.key ?? null };
     },
 };
+// `sha256` takes base64url bytes and returns the hex digest.
 const secutils = { kv, crypto: { sha256: (b64) => createHash('sha256').update(binary(b64)).digest('hex') } };
 
 createServer(async (req, res) => {
@@ -62,6 +70,7 @@ createServer(async (req, res) => {
         res.end();
         return;
     }
+    // Each request gets a budget of 200 KV operations, like the responder runtime.
     let operations = 0;
     const bounded = new Proxy(kv, {
         get(target, property) {
@@ -72,7 +81,9 @@ createServer(async (req, res) => {
             };
         },
     });
+    // In test mode (`MARS_SYNC_TEST_MODE=1`) the `x-mars-test-client` header sets the client address.
     const testAddress = process.env.MARS_SYNC_TEST_MODE === '1' ? req.headers['x-mars-test-client'] : undefined;
+    // The globals that a responder script sees: `context`, `secutils`, and `Deno.core`.
     const sandbox = {
         context: {
             method: req.method,
@@ -90,6 +101,8 @@ createServer(async (req, res) => {
     };
     sandbox.globalThis = sandbox;
     vm.createContext(sandbox);
+    // Sync paths and test-scope requests run the assembled script. Other requests run the
+    // snapshot script alone.
     const script =
         url.pathname.startsWith('/sync/') || req.headers['x-mars-test-scope'] || req.headers['x-mars-test-token']
             ? inlineMarsSync(legacyScript, readFileSync('dist/mars-sync-responder.js', 'utf8'))
@@ -104,6 +117,7 @@ createServer(async (req, res) => {
         res.end(JSON.stringify({ error: 'preview-responder-failed' }));
         return;
     }
+    // A script result is the response. Null serves the page.
     if (out) {
         res.writeHead(out.statusCode, out.headers);
         res.end(out.body);

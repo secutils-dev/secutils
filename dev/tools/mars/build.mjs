@@ -1,13 +1,20 @@
+// Build script (`npm run build`). It writes `dist/mars.js`, the app bundle that deployment
+// inlines into `index.html`, and `dist/mars-sync-responder.js`, the Sync part of the responder.
+// `--preview` also writes `dist/mars.html` for the local server.
+// License notices stay in the output (`legalComments: 'inline'`, the editor notice block, and
+// the tracker banner). A bundled editor package without a license file fails the build.
 import { build } from 'esbuild';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 
 // Compile separate module graphs to embedded source strings. The editor remains
 // lazy-imported; Paged.js remains an on-demand CDN dependency.
+// name -> promise of the compiled source. Each runtime builds once, also when imported twice.
 const runtimes = new Map();
 const runtimePlugin = {
     name: 'standalone-runtimes',
     setup(builder) {
+        // `import source from 'mars-runtime:<name>'` gives the compiled runtime as a string.
         builder.onResolve({ filter: /^mars-runtime:(reader|print|editor)$/ }, ({ path }) => ({
             path: path.split(':')[1],
             namespace: 'runtime',
@@ -17,6 +24,8 @@ const runtimePlugin = {
                 runtimes.set(
                     path,
                     build({
+                        // The reader and print runtimes are classic scripts for exported pages. The editor is an ES
+                        // module that the app loads from a Blob URL.
                         entryPoints: [`src/${path === 'editor' ? 'doc' : 'export'}/${path}-runtime.ts`],
                         bundle: true,
                         minify: true,
@@ -30,6 +39,8 @@ const runtimePlugin = {
                     }).then((result) => {
                         const text = result.outputFiles[0].text;
                         if (path !== 'editor') return text;
+                        // The editor bundles npm packages. Collect them from the metafile and add each license text.
+                        // Packages with the same license text share one notice.
                         const packages = [
                             ...new Set(
                                 Object.keys(result.metafile.inputs).flatMap(
@@ -54,6 +65,7 @@ const runtimePlugin = {
     },
 };
 
+// The app bundle. CSS files load as text, and `boot.ts` injects them.
 await build({
     entryPoints: ['src/main.ts'],
     bundle: true,
@@ -70,6 +82,8 @@ await build({
     logLevel: 'warning',
 });
 
+// The Sync responder, as a script that defines the global `MARS_SYNC`. `sync-assets.ts`
+// inlines it into the responder script of `index.html`.
 await build({
     entryPoints: ['src/sync/responder.ts'],
     bundle: true,

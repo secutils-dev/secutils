@@ -1,3 +1,13 @@
+// Table controls in the live preview: cell selection, the cell editor, the row and column menus,
+// drag reorder, and column resize. MARS-only.
+//
+// This module owns the controls and their DOM. It does not own the document: every change is a
+// splice from `table.ts` that goes to `host.edit`, and the next render calls `attach`.
+// - A selection is valid only while its model was read from the current source (`owned`).
+//   Each action checks that first and cancels the selection otherwise.
+// - A table is editable only when its rendered shape equals its source model (`compatible`).
+// - The viewer calls `cancel` before a view change and an export capture, and `flush` when it
+//   commits pending edits. Both apply an open cell draft first.
 import { icon } from '../../../shared/icons.js';
 import {
     alignTableColumn,
@@ -12,14 +22,24 @@ import {
 } from './table.ts';
 import { setTableWidths } from './table-layout.ts';
 
+/** What the editor needs from the viewer. */
 interface Host {
+    /** The current document body. Table offsets index into this string. */
     text(): string;
+    /** True while table edits are allowed, for example in Preview with a render of the current text. */
     enabled(): boolean;
+    /** Replaces `[start, end)` of the body with `text` and renders again. `anchor` keeps the scroll position. */
     edit(start: number, end: number, text: string, anchor: HTMLElement): void;
     toast(text: string): void;
+    /** Runs before a cell editor opens, to close the other preview controls. */
     startCell(): void;
+    /** True while a cell draft must stay open, because a remote change conflicts with it. */
     blocked?(): boolean;
 }
+/**
+ * The selected cell. `row` 0 is the header and `row` n is body row n. `ordinal` is the index of
+ * the table among the mapped tables of the article, which identifies it after a render.
+ */
 interface Selection {
     table: HTMLTableElement;
     model: TableModel;
@@ -27,6 +47,11 @@ interface Selection {
     row: number;
     column: number;
 }
+/**
+ * A selection to restore after the next render. `epoch` is the document epoch of the request:
+ * a render of another document drops it. `focus` names the control that gets the focus back.
+ * `passive` restores the selection without moving the focus.
+ */
 interface Restore {
     ordinal: number;
     row: number;
@@ -35,6 +60,10 @@ interface Restore {
     focus?: string;
     passive?: boolean;
 }
+/**
+ * An open cell editor. `content` holds the rendered children of the cell during the edit, and
+ * `original` is the trimmed source text of the cell when the editor opened.
+ */
 interface CellEditor {
     selection: Selection;
     cell: HTMLTableCellElement;
@@ -43,6 +72,13 @@ interface CellEditor {
     content: DocumentFragment;
     original: string;
 }
+/**
+ * A pointer drag on a resize handle or a grip. `x`/`y` is the start point and `clientX`/`clientY`
+ * the latest point, in viewport pixels. `time` is the timestamp of the last auto-scroll frame.
+ * `widths` are the column shares at the start, and `initial` the saved widths for a cancel.
+ * `target` is the drop index among the other rows or columns. `active` turns true after the
+ * pointer moves 4 pixels, so a click on a grip still opens its menu.
+ */
 interface Gesture {
     selection: Selection;
     kind: 'resize' | 'row' | 'column';
@@ -59,6 +95,21 @@ interface Gesture {
     handle: HTMLElement;
 }
 
+/**
+ * Creates the table controls for one preview. Appends a toolbar and a drop line to `pane`, and
+ * adds listeners to `article`, the document, and the window for the lifetime of the page.
+ *
+ * @param article The preview element that contains the rendered tables.
+ * @param pane The element that hosts the floating controls.
+ * @returns The controller that the viewer drives:
+ *   - `attach(source, epoch)`: call after each preview render of `source`. Makes the mapped
+ *     tables editable and restores the selection, the focus, or a running drag.
+ *   - `flush()`: applies an open cell draft. Returns true when that produced a source edit.
+ *   - `cancel()`: applies an open cell draft, aborts a drag, and clears the selection.
+ *   - `editing()`: true while a cell editor is open.
+ *   - `draft()`: the open cell draft as a splice of the source that the editor opened on, or null.
+ *   - `discardDraft()`: closes the cell editor without an edit.
+ */
 export function createTableEditor(article: HTMLElement, pane: HTMLElement, host: Host) {
     const toolbar = document.createElement('div');
     toolbar.className = 'su-table-tools';
@@ -95,6 +146,7 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
     line.className = 'su-table-drop-line';
     line.hidden = true;
     pane.append(line);
+    // Controls by their accessible label. The label also names the action and the focus to restore.
     const buttons = new Map<string, HTMLButtonElement | HTMLInputElement>();
     const add = (
         group: HTMLElement,
@@ -161,6 +213,8 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
     }
     columnGroup.append(alignment);
     add(columnGroup, 'Reset column widths', 'refresh');
+    // `pending` is set by an edit and consumed by the next `attach`. `epoch` is the document epoch
+    // of the last `attach`.
     let selected: Selection | null = null,
         pending: Restore | null = null,
         gesture: Gesture | null = null,
@@ -169,11 +223,16 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
     let observedCell: HTMLTableCellElement | null = null;
     let frame = 0,
         scrollFrame = 0;
+    // A drag ends with a click event on the grip. Clicks before this time do not open the menu.
     let ignoreClickUntil = 0;
     const grids = new WeakMap<HTMLTableElement, HTMLTableCellElement[][]>();
     const tabCells = new WeakMap<HTMLTableElement, HTMLTableCellElement>();
+    // True while the selection can be edited. Its table is in the DOM, its model was read from the
+    // current source, and the host allows edits. Offsets from a stale model would hit other text.
     const owned = (s = selected) => !!s && s.table.isConnected && s.model.source === host.text() && host.enabled();
     const cells = (table: HTMLTableElement) => grids.get(table) ?? [...table.rows].map((r) => [...r.cells]);
+    // The rendered table has one cell for each source cell and no spans. Row and cell indexes of
+    // the DOM then address the model directly.
     const compatible = (table: HTMLTableElement, model: TableModel) =>
         table.rows.length === model.rows.length + 1 &&
         [...table.rows].every(
@@ -184,6 +243,9 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
     const closePanels = () => {
         for (const panel of Object.values(panels)) if (panel.matches(':popover-open')) panel.hidePopover();
     };
+    // Places the grips next to the selected cell, inside the visible part of the pane. Hides them
+    // when the cell is out of view or text is selected. With a cell editor open, it sizes the
+    // textarea to the cell instead.
     const position = () => {
         if (!owned()) return;
         if (cellEditor) {
@@ -275,6 +337,8 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
         position();
         panel.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true });
     };
+    // Selects a cell and reads its table from the current source. Clears the selection when the
+    // table cannot be edited. `row` and `column` are clamped to the table.
     const select = (table: HTMLTableElement, row: number, column: number, focus = false) => {
         const model = readTable(host.text(), {
             start: Number(table.dataset.tableStart),
@@ -346,6 +410,8 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
         toolbar.hidden = false;
         position();
     };
+    // Replaces the whole table range, `su-table` comment included, with `text`. `row`, `column`,
+    // and `focus` say what to select and focus after the render.
     const commit = (s: Selection, text: string, row = s.row, column = s.column, focus?: string) => {
         if (!owned(s)) {
             cancel();
@@ -355,9 +421,12 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
         pending = { ordinal: s.ordinal, row, column, epoch, focus };
         host.edit(s.model.start, s.model.end, text, s.table.closest<HTMLElement>('.su-block') ?? s.table);
     };
+    // Closes the cell editor and applies its draft as a cell splice. Returns true when the source
+    // changed, which starts a render. `focus` returns the focus to the cell.
     function finishCell(focus = false): boolean {
         const ed = cellEditor;
         if (!ed) return false;
+        // The draft conflicts with a remote change. It stays open until the reader resolves it.
         if (host.blocked?.()) return false;
         cellEditor = null;
         layoutObserver.unobserve(ed.input);
@@ -378,6 +447,8 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
         position();
         return false;
     }
+    // Opens a textarea with the source Markdown of the cell. Escape, Ctrl/Cmd+Enter, and a focus
+    // move out of the editor apply the draft.
     const openCell = (cell: HTMLTableCellElement, table: HTMLTableElement) => {
         finishCell();
         select(table, (cell.parentElement as HTMLTableRowElement).rowIndex, cell.cellIndex);
@@ -418,6 +489,7 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
         form.addEventListener(
             'keydown',
             (event) => {
+                // An IME composition uses Escape and Enter itself.
                 if (event.isComposing || event.keyCode === 229) return;
                 if (event.key !== 'Escape' && !(event.key === 'Enter' && (event.metaKey || event.ctrlKey))) return;
                 event.preventDefault();
@@ -433,6 +505,7 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
         input.focus();
         input.setSelectionRange(input.value.length, input.value.length);
     };
+    // Runs the toolbar action with the label `name`. `focus` is the control to focus after the render.
     const action = (name: string, focus = name) => {
         if (!owned()) {
             cancel();
@@ -445,6 +518,7 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
         }
         const axis = name.includes('row') ? 'row' : 'column';
         const index = axis === 'row' ? Math.max(0, s.row - 1) : s.column;
+        // The header is not a body row. "Insert row below" on the header inserts before body row 0.
         const kind = name.startsWith('Insert')
             ? /above|before/.test(name) || (axis === 'row' && !s.row)
                 ? 'before'
@@ -464,9 +538,13 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
             host.toast((error as Error).message);
         }
     };
+    // Column shares: the saved widths, or the rendered header cell widths as a share of the table.
     const measured = (s: Selection) =>
         s.model.widths ??
         [...s.table.rows[0].cells].map((c) => c.getBoundingClientRect().width / s.table.getBoundingClientRect().width);
+    // Moves the border between the selected column and the next one by `dx` pixels. The two
+    // columns keep their combined share. Each keeps at least 48 pixels, or a third of the
+    // combined share when that is less.
     const resized = (g: Gesture, dx: number) => {
         const widths = [...g.widths],
             i = g.selection.column,
@@ -477,6 +555,7 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
         widths[i + 1] = pair - widths[i];
         return widths;
     };
+    // Starts a drag with the primary button. Pointer capture keeps the events on the handle.
     const begin = (event: PointerEvent, kind: Gesture['kind'], handle: HTMLElement) => {
         if (event.button !== 0 || !owned() || gesture) return;
         if (kind !== 'resize' && handle.dataset.canDrag !== 'true') return;
@@ -500,6 +579,8 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
         };
         handle.setPointerCapture(event.pointerId);
     };
+    // Finds the drop position under the pointer among the other rows or columns. Shows the drop
+    // line there, clipped to the visible part of the table.
     const updateDrop = (g: Gesture) => {
         const table = g.selection.table,
             from = g.kind === 'row' ? g.selection.row - 1 : g.selection.column;
@@ -539,6 +620,9 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
         );
         line.hidden = false;
     };
+    // Scrolls during a reorder drag while the pointer is within 32 pixels of an edge. A column drag
+    // scrolls the table wrapper, and a row drag scrolls the parent of the article. The speed grows
+    // to 600 pixels per second.
     const scrollDrag = (time: number) => {
         const g = gesture;
         if (!g?.active || g.kind === 'resize' || !owned(g.selection)) return;
@@ -585,6 +669,7 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
         }
         updateDrop(g);
     };
+    // Ends a drag and commits its result: the new widths, or the move to the drop position.
     const finish = (event: PointerEvent) => {
         const g = gesture;
         if (!g || event.pointerId !== g.pointer) return;
@@ -614,6 +699,8 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
             host.toast((error as Error).message);
         }
     };
+    // Applies an open cell draft, aborts a drag (a resize returns to the saved widths), and clears
+    // the selection.
     function cancel() {
         finishCell();
         closePanels();
@@ -769,6 +856,8 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
             ed.cell.classList.remove('su-table-cell-editing');
         },
         attach(source: string, nextEpoch: number) {
+            // A render of the same source during a reorder drag keeps the drag. Every other render
+            // clears the gesture and the selection, and `restore` selects the cell again.
             const moving =
                 gesture && gesture.kind !== 'resize' && epoch === nextEpoch && gesture.selection.model.source === source
                     ? gesture
@@ -793,6 +882,7 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
                     start: Number(table.dataset.tableStart),
                     end: Number(table.dataset.tableEnd),
                 });
+                // A table without a matching source model stays read-only.
                 if (!model || !compatible(table, model)) continue;
                 let wrap = table.parentElement!;
                 if (!wrap.matches('.mdp-table-wrap')) {
@@ -806,10 +896,12 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
                 wrap.tabIndex = -1;
                 const grid = cells(table);
                 grids.set(table, grid);
+                // Roving tabindex: one cell of each table is in the tab order, and arrow keys move it.
                 for (const row of grid) for (const cell of row) cell.tabIndex = -1;
                 grid[0][0].tabIndex = 0;
                 tabCells.set(table, grid[0][0]);
                 for (const [column, th] of [...table.rows[0].cells].entries()) {
+                    // A handle resizes its column against the next one, so the last column has none.
                     if (column === grid[0].length - 1) continue;
                     th.classList.add('su-table-header-cell');
                     const handle = document.createElement('button');
@@ -837,6 +929,7 @@ export function createTableEditor(article: HTMLElement, pane: HTMLElement, host:
                         if (gesture) cancel();
                     });
                     handle.addEventListener('keydown', (event) => {
+                        // Keyboard resize: 10 pixels for each key press, 30 with Shift.
                         if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
                         event.preventDefault();
                         event.stopPropagation();

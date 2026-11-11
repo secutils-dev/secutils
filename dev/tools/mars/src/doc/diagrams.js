@@ -1,5 +1,24 @@
+// Interactive maps and 3D models in `figure.su-diagram` elements.
 // Shared by the live viewer and the standalone export runtimes. No app/storage imports.
+//
+// The viewer parses a `geojson`, `topojson`, `stl`, or `su-mesh` fence and writes its data into the
+// figure. The data is a JSON `<script>` payload, or `fig.__suPayload` for a large model in the live
+// preview. This module only draws that payload and wires the controls.
+// - The payload is document content. Every node is built with DOM calls and `textContent`.
+//   Feature colors must match a hex pattern, and the only markup strings are fixed icons.
+// - A map requests its basemap tiles from tile.openstreetmap.org. A model makes no request.
+// - A small model and every map draw to SVG, so the serialized figure prints without script.
+//   A large model (a payload with `positions`) draws to a WebGL canvas and keeps a PNG snapshot
+//   for print.
+
+// Creates a WebGL renderer for a triangle mesh on `canvas` and returns its draw function
+// `(yaw, pitch, zoom, panX, panY, display)`. Angles are radians, and pan is in units of the
+// 800 by 400 view. `display` is 'Solid', 'Wireframe', or 'Surface angle'.
+// `mesh` holds `positions` (base64 Float32 values, nine for each triangle), `min` and `max`
+// bounds, optional `colors`, and optional typed arrays in `__buffers`.
+// Throws an Error when WebGL is unavailable or a shader fails to compile or link.
 export function createStlGpu(canvas, mesh) {
+    // `preserveDrawingBuffer` keeps the last frame readable for the PNG snapshot (`toDataURL`).
     const gl = canvas.getContext('webgl', { antialias: true, preserveDrawingBuffer: true });
     if (!gl) throw new Error('WebGL is required to display this model.');
     const decode = (encoded) => {
@@ -9,6 +28,7 @@ export function createStlGpu(canvas, mesh) {
         return new Float32Array(bytes.buffer);
     };
     const positions = mesh.__buffers ? mesh.__buffers.positions.slice() : decode(mesh.positions);
+    // Center the model and scale its longest side to 1, so the shader needs no model bounds.
     const center = mesh.min.map((value, axis) => (value + mesh.max[axis]) / 2);
     const span = Math.max(...mesh.max.map((value, axis) => value - mesh.min[axis]), 0.000001);
     for (let i = 0; i < positions.length; i++) positions[i] = (positions[i] - center[i % 3]) / span;
@@ -31,6 +51,8 @@ export function createStlGpu(canvas, mesh) {
         gl_Position=vec4(p.x*view.z+pan.x,p.y*view.w+pan.y,-p.z*0.5,1.0); }`,
         ),
     );
+    // Screen-space derivatives give a face normal without a normal buffer. Without the extension
+    // every face gets the same light value.
     const derivatives = gl.getExtension('OES_standard_derivatives');
     gl.attachShader(
         program,
@@ -66,6 +88,8 @@ export function createStlGpu(canvas, mesh) {
         mode = gl.getUniformLocation(program, 'mode');
     gl.enable(gl.DEPTH_TEST);
     return (yaw, pitch, zoom, panX, panY, display) => {
+        // Backing store: the CSS size times the device pixel ratio (2 at most), 1,600 pixels wide
+        // at most.
         const width = Math.min(1600, Math.round((canvas.clientWidth || 800) * Math.min(devicePixelRatio || 1, 2)));
         const height = Math.round(width / ((canvas.clientWidth || 800) / (canvas.clientHeight || 400)));
         if (canvas.width !== width || canvas.height !== height) {
@@ -75,6 +99,7 @@ export function createStlGpu(canvas, mesh) {
         gl.viewport(0, 0, width, height);
         gl.clearColor(0.933, 0.953, 0.973, 1);
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        // Build the edge buffer on the first wireframe frame: three line segments for each triangle.
         if (display === 'Wireframe' && !wire) {
             const edges = new Float32Array(positions.length * 2);
             for (let i = 0, j = 0; i < positions.length; i += 9)
@@ -104,6 +129,16 @@ export function createStlGpu(canvas, mesh) {
     };
 }
 
+// Draws each `figure.su-diagram` under `root` (or `root` itself) and adds its controls. A figure
+// is set up once. `root` can be detached: the viewer draws a figure before it enters the page.
+//
+// Side effects on a figure: `__suGetView()` returns the current view, and `dataset.currentView`
+// follows the view of a model. `__suDispose()` releases the WebGL context and listeners of a large
+// model. "Save current view to source" dispatches a bubbling `su-save-model-view` event with the
+// view as `detail`. The control exists only when the viewer set `__suSourceRange`.
+//
+// Throws an Error for GeoJSON that is malformed or has no coordinates. The figures after the
+// failed one stay untouched. A large model without WebGL shows the error text in its figure.
 export function initDiagrams(root) {
     const figures = root.matches?.('figure.su-diagram') ? [root] : root.querySelectorAll('figure.su-diagram');
     const svgNS = 'http://www.w3.org/2000/svg';
@@ -168,6 +203,7 @@ export function initDiagrams(root) {
             navigation = group('navigation'),
             modesGroup = group('modes'),
             rotation = group('rotation');
+        // Web Mercator in the unit square. Latitude is clamped to the limit of the tile grid.
         const mercator = (point) => {
             const latitude = (Math.max(-85.05112878, Math.min(85.05112878, point[1])) * Math.PI) / 180;
             return [(point[0] + 180) / 360, (1 - Math.log(Math.tan(Math.PI / 4 + latitude / 2)) / Math.PI) / 2];
@@ -186,6 +222,7 @@ export function initDiagrams(root) {
         fig.__suGetView = currentView;
         const features = [],
             allPoints = [];
+        // Flattens a GeoJSON value into `features` and validates every coordinate on the way.
         const collectGeometry = (geometry, properties = {}) => {
             if (!geometry) return;
             if (geometry.type === 'FeatureCollection') {
@@ -237,6 +274,7 @@ export function initDiagrams(root) {
         const center = min.map((n, i) => (n + max[i]) / 2);
         const span = Math.max(max[0] - min[0], max[1] - min[1], stl ? max[2] - min[2] : 0, stl ? 0.000001 : 0.0003);
         const baseScale = 300 / span;
+        // Maps a model or map point to the 800 by 400 view. A model rotates by yaw, then by pitch.
         const project = (point) => {
             let x = point[0] - center[0],
                 y = point[1] - center[1],
@@ -256,6 +294,7 @@ export function initDiagrams(root) {
             }
             svg.replaceChildren();
             if (stl) {
+                // Painter's algorithm: draw the triangles in the order of their projected depth.
                 const triangles = data.map((triangle) => triangle.map(project));
                 triangles.sort((a, b) => a.reduce((sum, p) => sum + p[2], 0) - b.reduce((sum, p) => sum + p[2], 0));
                 for (const triangle of triangles) {
@@ -277,6 +316,8 @@ export function initDiagrams(root) {
                     );
                 }
             } else {
+                // The whole world spans `worldSize` view units. Use the deepest tile level, 19 at
+                // most, whose tiles still draw at 256 units or more.
                 const worldSize = baseScale * zoom;
                 const level = Math.max(0, Math.min(19, Math.floor(Math.log2(worldSize / 256))));
                 const count = 2 ** level,
@@ -314,6 +355,7 @@ export function initDiagrams(root) {
                         title = makeSvg('title', {});
                     title.textContent = JSON.stringify(properties);
                     group.appendChild(title);
+                    // A style property from the document becomes an attribute only as a hex color.
                     const color = (value, fallback) =>
                         typeof value === 'string' && /^#[\da-f]{3}(?:[\da-f]{3})?$/i.test(value) ? value : fallback;
                     if (type === 'Point' || type === 'MultiPoint') {
@@ -511,6 +553,8 @@ export function initDiagrams(root) {
         if (!stl) fig.insertBefore(caption, details);
         fig.insertBefore(controls, details);
         draw();
+        // A canvas does not serialize. A detached figure is headed for export, so it stores the
+        // first frame as an image.
         if (large && !fig.isConnected) {
             fig.querySelector('.su-stl-snapshot')?.remove();
             const snapshot = document.createElement('img');
@@ -532,6 +576,7 @@ export function initDiagrams(root) {
                 }
                 snapshot.src = svg.toDataURL('image/png');
             };
+            // Print shows the snapshot, not the canvas. Refresh it with the current view first.
             window.addEventListener('beforeprint', printSnapshot);
             if (fig.isConnected) {
                 resize = new ResizeObserver(() => {

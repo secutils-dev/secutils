@@ -1,9 +1,20 @@
 // Review replication is NOT a Yjs blob. Only these typed, author-bound operations can
 // change reviews. Concurrent comment versions remain visible rather than using timestamps.
+// Each operation is untrusted until `ReviewReplica.apply` accepts it: shape, signature, grant, and ownership.
+// `threads` orders accepted operations by causal links, creation dates, and IDs, not by arrival.
 import { commentKey, joinComments, splitComments, type Comment, type Thread } from '../share/merge.ts';
 import { canonical, fail, validId, type Grant } from './protocol.ts';
 import { sign, verify, type Identity } from './crypto.ts';
 
+/**
+ * One signed change to the review state of a document.
+ * - `id`: unique operation ID. `previous`: at most 64 IDs of operations that this one observed.
+ * - `actor`: member that signs. `participant`: author identity that owns threads and comments.
+ * - `thread`: target thread ID. `comment`: target comment key, or `null` for a thread-level operation.
+ * - `value` for each `kind`: `thread` has the thread fields without comments. `comment` has one comment version.
+ *   `resolve` has a boolean. `delete-comment` and `delete-thread` have `null`. `undo-delete` has the ID of the
+ *   cancelled deletion. `ack` has the SHA-256 (hex) of the reviewed body text.
+ */
 export interface ReviewOperation {
     v: 1;
     id: string;
@@ -16,10 +27,12 @@ export interface ReviewOperation {
     comment: string | null;
     value: Thread | Comment | boolean | string | null;
 }
+/** An operation with the ECDSA signature of its actor over the canonical JSON. */
 export interface SignedReview {
     operation: ReviewOperation;
     signature: string;
 }
+/** Signs an operation with the signing key of the member. It does not validate the operation. */
 export const signReview = async (operation: ReviewOperation, who: Identity): Promise<SignedReview> => ({
     operation,
     signature: await sign(operation, who),
@@ -28,11 +41,16 @@ const object = (value: unknown): value is Record<string, unknown> =>
     !!value && typeof value === 'object' && !Array.isArray(value);
 const shortString = (value: unknown, length: number): value is string =>
     typeof value === 'string' && value.length <= length;
+/** A comment version: a body of at most 65536 characters, short optional metadata, and no unknown key. */
 const validComment = (value: unknown): value is Comment =>
     object(value) &&
     shortString(value.body, 65536) &&
     Object.keys(value).every((key) => ['id', 'author', 'at', 'body', 'edited'].includes(key)) &&
     [value.id, value.author, value.at, value.edited].every((field) => field === undefined || shortString(field, 256));
+/**
+ * Thread fields of a `thread` operation: bounded strings, no unknown key, and an empty `comments` array. Comments
+ * travel as separate operations.
+ */
 const validThread = (value: unknown): value is Thread =>
     object(value) &&
     shortString(value.id, 256) &&
@@ -43,6 +61,10 @@ const validThread = (value: unknown): value is Thread =>
     (value.resolved === undefined || typeof value.resolved === 'boolean') &&
     Array.isArray(value.comments) &&
     value.comments.length === 0;
+/**
+ * Shape check of an untrusted operation: exact keys, valid IDs, bounded strings, at most 64 predecessors, no reference
+ * to itself, and a `value` that fits `kind`. It proves nothing about authorship or permission.
+ */
 export function validReview(value: unknown): value is ReviewOperation {
     if (
         !object(value) ||
@@ -77,6 +99,11 @@ export function validReview(value: unknown): value is ReviewOperation {
                   ? value.comment === null && value.value === null
                   : value.kind === 'delete-comment' && shortString(value.comment, 256) && value.value === null;
 }
+/**
+ * Checks that `grant` authorizes and signed the operation: a grant above `view`, the same actor and participant, a
+ * document inside the grant, and a valid signature of the grant key. The caller verifies `grant` itself first. The
+ * ownership rules are in `ReviewReplica.apply`.
+ */
 export async function verifyReview(signed: SignedReview, grant: Grant) {
     const op = signed.operation;
     return (
@@ -88,6 +115,7 @@ export async function verifyReview(signed: SignedReview, grant: Grant) {
         (await verify(op, signed.signature, grant.publicKey))
     );
 }
+/** Names the state that an operation competes for: the thread itself, its resolution, or one comment. */
 const target = (op: ReviewOperation) =>
     JSON.stringify([
         op.thread,
@@ -95,6 +123,11 @@ const target = (op: ReviewOperation) =>
         op.kind === 'resolve' ? 'resolution' : op.comment === null ? 'thread' : 'comment',
     ]);
 
+/**
+ * Accepted review operations of one document and their projection to threads.
+ * - `seed`: threads that the document had before the connection. `seedParticipant` owns them.
+ * - `recoveredThreads`: after `threads()`, IDs of deleted threads that a concurrent reply kept.
+ */
 export class ReviewReplica {
     readonly operations = new Map<string, SignedReview>();
     readonly recoveredThreads = new Set<string>();
@@ -106,6 +139,20 @@ export class ReviewReplica {
         this.seed = structuredClone(seed);
         this.seedParticipant = seedParticipant;
     }
+    /**
+     * Verifies and stores one operation. The author controls each field, so these rules apply:
+     * - The operation targets this document, is well-formed, and verifies under `grant` (`verifyReview`).
+     * - An operation ID cannot return with different content.
+     * - `undo-delete` cancels only a deletion of the same target that the same actor signed.
+     * - A `thread` operation for a thread that is not in the seed and has no stored `thread` operation needs a thread
+     *   ID that starts with the participant ID of the signer.
+     * - A comment that is not in the seed needs a comment ID that starts with the participant ID of the signer. A seed
+     *   comment needs the owner or the seed participant.
+     * - A comment grant changes thread fields only in its own threads and deletes only its own comments. It deletes its
+     *   own thread only while the replica holds no comment of another author there.
+     * - An edit or owner grant can delete any comment or thread.
+     * @throws `SyncError` (403 or 409) for a violation. The replica then stays unchanged.
+     */
     async apply(signed: SignedReview, grant: Grant) {
         const op = signed.operation;
         if (op.document !== this.document || !(await verifyReview(signed, grant)))
@@ -180,7 +227,10 @@ export class ReviewReplica {
         }
         this.operations.set(op.id, structuredClone(signed));
     }
-    // Causal predecessors, not clocks, determine superseded versions.
+    /**
+     * Returns `ids` and each known transitive predecessor of them. Causal predecessors, not clocks, determine
+     * superseded versions.
+     */
     private predecessors(ids: string[]) {
         const known = new Set<string>(),
             pending = [...ids];
@@ -192,6 +242,12 @@ export class ReviewReplica {
         }
         return known;
     }
+    /**
+     * Returns the current operations of one target: those that no other operation of the target lists as a predecessor,
+     * directly or transitively. A deletion that an `undo-delete` cancelled does not count. Several results are
+     * concurrent versions. The result is sorted by operation ID.
+     * @param kind Selects the target only. The result can hold other kinds of that target, such as deletions.
+     */
     heads(thread: string, comment: string | null, kind: ReviewOperation['kind']) {
         const key = target({ thread, comment, kind } as ReviewOperation);
         const restored = new Set(
@@ -208,6 +264,11 @@ export class ReviewReplica {
             .filter(({ operation }) => !superseded.has(operation.id))
             .sort((a, b) => a.operation.id.localeCompare(b.operation.id));
     }
+    /**
+     * Returns all operations in display order. A stored predecessor always precedes its successor. Unrelated comments
+     * sort by the creation date of their first version, then by operation ID. Dates come from the author and only order
+     * unrelated comments.
+     */
     private ordered() {
         const date = ({ operation }: SignedReview) => {
             const at = Date.parse((operation.value as Comment).at ?? '');
@@ -277,6 +338,12 @@ export class ReviewReplica {
         }
         return out;
     }
+    /**
+     * Projects the seed and all operations to the thread list. It also refills `recoveredThreads`. A deleted thread
+     * disappears, unless a comment exists that the deletion did not observe. That thread stays with those comments
+     * only. A thread is resolved only when each concurrent resolution says so. Concurrent versions of one comment all
+     * appear, each with the ID `<comment>:<operation>`.
+     */
     threads(): Thread[] {
         this.recoveredThreads.clear();
         const out = new Map(this.seed.map((t) => [t.id, structuredClone(t)]));
@@ -339,6 +406,10 @@ export class ReviewReplica {
         }
         return [...out.values()];
     }
+    /**
+     * Replaces the comment block of `original` with the current threads. It returns `original` itself when the threads
+     * are equal, so an unchanged document keeps its exact text. CRLF text keeps CRLF line endings.
+     */
     project(original: string) {
         const parsed = splitComments(original),
             threads = this.threads();

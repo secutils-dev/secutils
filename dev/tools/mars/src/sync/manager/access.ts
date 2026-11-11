@@ -1,3 +1,10 @@
+// Ends access: local disconnection, owner revocation with key rotation, deletion, and tree moves across
+// a synced folder boundary.
+// `disconnect` is local only. It never contacts the service and never revokes a grant.
+// `revoke` is the owner path. It saves the complete key-rotation plan before the first remote change, and
+// `continueRotation` resumes that plan after a reload or a lost response (`../rotation.ts`).
+// Invariants: one rotation runs per scope, across tabs where Web Locks exist. A new document key is wrapped
+// only for members whose grants verify against the owner grant, and sealed only for owned Live links.
 import * as app from '../../app.ts';
 import * as db from '../../store/db.ts';
 import * as viewer from '../../doc/viewer.js';
@@ -31,6 +38,12 @@ import {
 } from './state.ts';
 import { initialize, start } from './engine.ts';
 
+/**
+ * Detaches node `id`, and its descendants in the same scope, from the connection without a confirmation.
+ * The local copies stay, and no request goes to the service. When node `id` is the open document, it reopens.
+ *
+ * @throws Error when the editor holds a draft that conflicts with a remote change.
+ */
 export async function stopHere(id: string) {
     const node = app.node(id),
         scope = node ? rootFor(node) : undefined;
@@ -45,6 +58,14 @@ export async function stopHere(id: string) {
     app.notify();
     if (node.id === app.state.currentId) await app.openDoc(node.id);
 }
+/**
+ * Runs the owner's **Sync devices** screens inside `ui` until the reader goes back or closes the dialog.
+ *
+ * The list shows the other devices: grants for the complete collection that have no invitation issuer
+ * and no local revocation record. Live-link recipients do not appear. A confirmed choice revokes that
+ * device through `revoke`, which verifies each grant signature before it distributes keys.
+ * A failed member request rejects.
+ */
 export async function accessPanel(scope: Scope, ui: SyncDialog) {
     while (ui.open) {
         // The member list is a service response. Keep only well-formed grants: their ids reach HTML attributes.
@@ -59,6 +80,8 @@ export async function accessPanel(scope: Scope, ui: SyncDialog) {
                 !revoked.members.includes(member.grant.member),
         );
         const title = app.node(scope.localRoot)?.name ?? 'this document';
+        // A device name comes from the pairing request of that device, or from a restored backup.
+        // It reaches the markup only through `esc()`.
         const deviceRows = devices
             .map((member, index) => {
                 const name = scope.clientNames?.[member.grant.member] ?? `Device ${index + 1}`;
@@ -88,6 +111,10 @@ export async function accessPanel(scope: Scope, ui: SyncDialog) {
         }
     }
 }
+/**
+ * Asks **Stop sync?**, then detaches node `id` and its descendants in the same scope.
+ * The local copies stay as independent documents. Other devices keep their grants and continue to sync.
+ */
 export async function unlink(id: string) {
     await initialize();
     const node = app.node(id),
@@ -110,11 +137,22 @@ export async function unlink(id: string) {
     viewer.refreshConnection();
     app.notify();
 }
+/**
+ * Detaches `nodes` from `scope` on this client only. It sends no request and revokes nothing.
+ *
+ * For each node it destroys the session, deletes the `sync` side record (replica, outbox, keys), removes
+ * the connection, and assigns a fresh origin id. The stored text stays. A linked file switches to manual save.
+ * The transport is disposed when no node of the scope remains. Otherwise it restarts.
+ *
+ * @param nodes Connected nodes of `scope`. Each one must have a `connection`.
+ */
 export async function disconnect(scope: Scope, nodes: TreeNode[]) {
     driverFor(scope)?.stop();
+    // The exclusion list stops the engine from downloading or materializing these documents again.
     for (const item of nodes)
         if (!scope.exclusions.includes(item.connection!.document)) scope.exclusions.push(item.connection!.document);
     await saveScope(scope);
+    // Run inside the persistence queue, so a pending document save cannot write between these steps.
     await app.serializePersistence(async () => {
         for (const item of nodes) {
             sessions.get(item.id)?.destroy();
@@ -131,6 +169,18 @@ export async function disconnect(scope: Scope, nodes: TreeNode[]) {
         drivers.delete(scopeId(scope));
     } else driverFor(scope)?.retry();
 }
+/**
+ * Detaches node `id` and its subtree from their connections before the caller deletes the local nodes.
+ * This function does not delete a local node.
+ *
+ * With `remote`, the owner also deletes each connected document from the collection. Local-only children
+ * of a connected folder move to the top level first. A lost response is safe to retry: the service codes
+ * for an ended or deleted document count as success.
+ * Without `remote`, the nodes detach locally in every scope that the subtree touches.
+ *
+ * @throws Error when the editor holds a conflicting draft, when `remote` is set without the owner grant,
+ * or when a deletion request fails. Documents that the service already deleted stay deleted.
+ */
 export async function remove(id: string, remote = false) {
     await initialize();
     await viewer.flush();
@@ -143,6 +193,8 @@ export async function remove(id: string, remote = false) {
         if (!scope || scope.member.grant.permission !== 'owner')
             throw new Error('Only the owner can delete remote content.');
         const connected = all.filter((item) => belongs(item, scope));
+        // Items outside this scope are not part of the collection. Keep them: move each one that sits
+        // directly inside a connected folder to the top level, together with its own subtree.
         for (const item of all.filter((item) => !belongs(item, scope)))
             if (item.parentId && connected.some((parent) => parent.id === item.parentId)) await app.move(item.id, null);
         for (const item of connected) {
@@ -167,6 +219,12 @@ export async function remove(id: string, remote = false) {
         }
     }
 }
+/**
+ * Counts what a deletion of the nodes `ids` affects, for the confirmation dialog. The counts come from local state.
+ *
+ * @returns `synced`: selected documents in a personal Sync scope with an active connection.
+ * `liveLinks`: owned Live links for the selected documents that are unexpired and not revoked.
+ */
 export async function deletionInfo(ids: string[]) {
     await initialize();
     const selected = app.state.nodes.filter((node) => ids.includes(node.id)),
@@ -176,6 +234,7 @@ export async function deletionInfo(ids: string[]) {
     for (const scope of scopes.values()) {
         const nodes = selected.filter((node) => belongs(node, scope) && node.connection!.phase !== 'ended');
         if (!nodes.length) continue;
+        // A received Live document and an owner's Live-only document do not count as personal Sync.
         if (!scope.live && (scope.personalSync !== false || scope.kind === 'folder'))
             synced += nodes.filter((node) => node.kind === 'doc').length;
         const revoked = await db.getMeta<RevokedAccess>(revokedAccessKey(scope));
@@ -187,6 +246,15 @@ export async function deletionInfo(ids: string[]) {
     }
     return { liveLinks, synced };
 }
+/**
+ * Decides whether the tree can move node `id` under `parent` (`null` is the top level). `app.move` calls
+ * it when either side has a connection.
+ *
+ * A member of a synced folder that leaves its collection must stop syncing first, after a confirmation.
+ * Local content that enters a connected folder needs a confirmation, because the move uploads it.
+ *
+ * @returns `false` when the reader declines, or when node `id` does not exist. The caller then cancels the move.
+ */
 export async function beforeMove(id: string, parent: string | null) {
     await initialize();
     const node = app.node(id),
@@ -214,6 +282,19 @@ export async function beforeMove(id: string, parent: string | null) {
     }
     return true;
 }
+/**
+ * Revokes one device (`target.member`, a member id) or one Live link (`target.link`) as the owner, and
+ * rotates the document keys that the target could read.
+ *
+ * A device revocation rotates every local session of the scope. A link revocation rotates only the
+ * document of that link. Each affected document gets a random 32-byte key at the service epoch plus one.
+ * The key is wrapped for each remaining member and sealed for each remaining owned link.
+ * The complete plan is saved before `continueRotation` sends the first change.
+ *
+ * A saved plan takes priority: the call resumes that plan and does not revoke `target`.
+ * A failure after the editor flush does not reject. It sets the scope to `attention` and shows a toast,
+ * and a saved plan stays for a retry.
+ */
 export async function revoke(scope: Scope, target: { member?: string; link?: OwnedLink }) {
     await viewer.flush();
     driverFor(scope)?.stop();
@@ -222,6 +303,8 @@ export async function revoke(scope: Scope, target: { member?: string; link?: Own
             await continueRotation(scope);
             return;
         }
+        // The member list is a service response. Each grant must verify against the owner grant of this
+        // scope, so the service cannot add a recipient for the next key. One invalid grant stops the plan.
         const members = (await scoped(scope, 'members')).members as SignedGrant[];
         for (const member of members)
             if (member.grant.collection !== scope.collection || !(await verifyGrant(member, scope.owner.grant)))
@@ -249,6 +332,8 @@ export async function revoke(scope: Scope, target: { member?: string; link?: Own
                 key = encode(keyBytes());
             const values: RotationDocument['values'] = [],
                 updates: RotationDocument['links'] = [];
+            // Recipients: members that can read this document, minus the target, earlier revocations,
+            // expired grants, and grants that a revoked or targeted invitation issued.
             for (const member of members)
                 if (
                     member.grant.member !== target.member &&
@@ -266,6 +351,7 @@ export async function revoke(scope: Scope, target: { member?: string; link?: Own
                     );
                     values.push({ wrapped, signature: await sign(wrapped, scope.identity) });
                 }
+            // Each remaining link gets a sealed update, so a person who opens the link later reads the current key.
             for (const link of links)
                 if (
                     link.document === document &&
@@ -285,6 +371,7 @@ export async function revoke(scope: Scope, target: { member?: string; link?: Own
                 }
             plan.documents.push({ document, epoch, key, values, links: updates });
         }
+        // Save the exact packets first. The `null` revision makes the commit fail when a plan already exists.
         await rotationRepository(scope).commit(null, plan);
         await continueRotation(scope);
     } catch (error) {
@@ -294,6 +381,17 @@ export async function revoke(scope: Scope, target: { member?: string; link?: Own
         );
     }
 }
+/**
+ * Runs the saved rotation plan of `scope` to completion, or joins the run that is active in this tab.
+ *
+ * The run holds a Web Lock for the scope where the browser supports locks, so two tabs do not run one plan.
+ * It stops the transport, then `resumeRotation` continues from the last saved step: revocation fence, key
+ * delivery, epoch activation, and the local key change. The completed plan is removed, and the target
+ * enters the local revocation record in the same write. Then the transport restarts and uploads.
+ *
+ * @returns A promise that never rejects. A failure sets the scope to `attention`, shows a toast, and keeps
+ * the plan for a retry.
+ */
 export async function continueRotation(scope: Scope) {
     if (rotationTasks.has(scopeId(scope))) return rotationTasks.get(scopeId(scope));
     const run = async () => {
@@ -301,6 +399,8 @@ export async function continueRotation(scope: Scope) {
         await resumeRotation(
             rotationRepository(scope),
             (action, values) => scoped(scope, action, values),
+            // Local step for one document. The session adopts the key first. The key then goes to the
+            // scope for the root document, or to the folder manifest for a child.
             async ({ document, epoch, key }) => {
                 const session = [...sessions.values()].find(
                     (session) =>
@@ -321,6 +421,8 @@ export async function continueRotation(scope: Scope) {
                     if (old) await root.editManifest([{ ...old, key, epoch }]);
                 }
             },
+            // Before any request: each saved link packet must open with the wrapping key of its owned link
+            // and must hold the planned epoch and key. This also covers a plan from a recovery file.
             async (plan) =>
                 validateRotationLinks(plan, (await db.getMeta<OwnedLink[]>(`sync:links:${scopeId(scope)}`)) ?? []),
         );
@@ -329,6 +431,7 @@ export async function continueRotation(scope: Scope) {
         await driverFor(scope)?.upload();
         viewer.toast('Access revoked and document keys rotated');
     };
+    // The lock name is the storage key of the plan, so each tab waits on the same lock.
     const task = ('locks' in navigator ? navigator.locks.request(rotationKey(scope), run) : run())
         .catch((error) => {
             phase(scope, 'attention');

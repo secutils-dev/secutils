@@ -1,15 +1,26 @@
 // Durable body replica and outbox, independent of UI and HTTP. Repository.commit must
 // atomically save projection, replica, progress, and outbox (db.commitReplica does this).
+// This engine covers one body stream at one key epoch, without reviews. `Session` in session.ts applies the
+// same rules to connected documents with reviews, manifests, and key rotation.
+// Durability order: the plain local change, then the exact ciphertext, then the upload, then the acknowledgement.
 import { BodyReplica, type SourceChange } from './replica.ts';
 import { decode, encode, fail, permitted, type Grant, type SignedCheckpoint, type SyncBinding } from './protocol.ts';
 import { checkpointDigest, openCheckpoint, sealCheckpoint, type Identity } from './crypto.ts';
 
+/**
+ * One queued body upload. `bytes` is the plaintext Yjs state in base64url. `envelope` is `null` until `prepare` seals
+ * the packet, and never changes afterwards.
+ */
 export interface PendingBody {
     operation: string;
     sequence: number;
     bytes: string;
     envelope: SignedCheckpoint | null;
 }
+/**
+ * Stored state of one body replica. `revision` increments with each commit. `body` is the Yjs state in base64url and
+ * `projection` is its text. `progress` holds the highest applied sequence for each `<member>/<stream>`.
+ */
 export interface DurableRecord {
     v: 1;
     revision: number;
@@ -20,10 +31,18 @@ export interface DurableRecord {
     outbox: PendingBody[];
     progress: Record<string, number>;
 }
+/**
+ * Storage of one record. `commit` must be atomic and must reject when the stored revision differs from `expected`.
+ * `null` expects no stored record.
+ */
 export interface ReplicaRepository {
     get(): Promise<DurableRecord | undefined>;
     commit(expected: number | null, value: DurableRecord): Promise<void>;
 }
+/**
+ * A body replica that commits each change before the network or the in-memory document can see it. Operations run one
+ * at a time. The instance holds a copy of the document key and zeroes it in `destroy`.
+ */
 export class DurableBody {
     readonly body: BodyReplica;
     readonly repository: ReplicaRepository;
@@ -43,6 +62,11 @@ export class DurableBody {
         this.key = new Uint8Array(key);
         this.binding = { ...record.binding };
     }
+    /**
+     * Creates the replica of a document creator from `text` and queues its first checkpoint with sequence 1.
+     * @throws `SyncError` `creator-required` (403) for a binding without owner permission, or `binding-already-exists`
+     *   (409) when the repository holds a record.
+     */
     static async create(
         binding: SyncBinding,
         text: string,
@@ -68,6 +92,10 @@ export class DurableBody {
         await repository.commit(null, record);
         return new DurableBody(record, repository, identity, key);
     }
+    /**
+     * Creates the replica of a joiner from the decrypted checkpoint of the creator. Its outbox starts empty.
+     * @throws `SyncError` `binding-already-exists` (409) when the repository holds a record.
+     */
     static async join(
         binding: SyncBinding,
         checkpoint: Uint8Array<ArrayBuffer>,
@@ -93,11 +121,13 @@ export class DurableBody {
         await repository.commit(null, record);
         return new DurableBody(record, repository, identity, key);
     }
+    /** Runs `run` after all earlier operations. A failed operation does not block the later ones. */
     private serial<T>(run: () => Promise<T>): Promise<T> {
         const task = this.queue.then(run);
         this.queue = task.catch(() => {});
         return task;
     }
+    /** Reads the stored record. Fails with `connection-detached` (409) when it is missing or has another binding. */
     private async record() {
         const record = await this.repository.get();
         if (
@@ -109,9 +139,14 @@ export class DurableBody {
             return fail('connection-detached', 409);
         return record;
     }
+    /** Number of queued uploads in the stored record. */
     async pending() {
         return (await this.record()).outbox.length;
     }
+    /**
+     * Builds the next record after a local change. The complete current state replaces the payload of an unsealed tail
+     * packet, or becomes a fresh packet.
+     */
     private intent(record: DurableRecord) {
         const bytes = encode(this.body.checkpoint()),
             pending = structuredClone(record.outbox),
@@ -120,6 +155,11 @@ export class DurableBody {
         else pending.push({ operation: crypto.randomUUID(), sequence: record.nextSequence++, bytes, envelope: null });
         return { ...record, revision: record.revision + 1, body: bytes, projection: this.body.text(), outbox: pending };
     }
+    /**
+     * Applies a local edit and commits it together with its outbox entry.
+     * @returns The committed record.
+     * @throws `SyncError` `body-read-only` (403), or `replica-changed` (409) when storage differs from this instance.
+     */
     edit(change: SourceChange) {
         return this.serial(async () => {
             if (!['edit', 'owner'].includes(this.binding.permission)) return fail('body-read-only', 403);
@@ -134,6 +174,10 @@ export class DurableBody {
             return next;
         });
     }
+    /**
+     * Undoes or redoes the latest local edit and commits the result. An empty stack returns the stored record. It fails
+     * in the same cases as `edit`.
+     */
     undo(redo = false) {
         return this.serial(async () => {
             if (!['edit', 'owner'].includes(this.binding.permission)) return fail('body-read-only', 403);
@@ -147,6 +191,10 @@ export class DurableBody {
             return next;
         });
     }
+    /**
+     * Returns the envelope of the oldest queued packet, or `null` for an empty outbox. The first call seals the packet
+     * and commits the exact ciphertext before it returns.
+     */
     prepare() {
         return this.serial(async () => {
             const record = await this.record(),
@@ -179,6 +227,11 @@ export class DurableBody {
             return envelope;
         });
     }
+    /**
+     * Removes a packet after the service confirms it. The digest comes from the service and must equal the local digest
+     * of the saved envelope.
+     * @throws `SyncError` `acknowledgement-mismatch` (409) for an unknown operation or a different digest.
+     */
     acknowledge(operation: string, digest: string) {
         return this.serial(async () => {
             const record = await this.record(),
@@ -192,6 +245,14 @@ export class DurableBody {
             });
         });
     }
+    /**
+     * Verifies, decrypts, and applies a downloaded body checkpoint. State and progress commit together. `envelope` is
+     * untrusted. `author` must be a grant that the caller verified against the owner key. The checkpoint must name the
+     * bound collection and document, the current epoch, and the body stream, and the author needs edit permission. A
+     * checkpoint at or below the stored cursor changes nothing.
+     * @returns The projection after the checkpoint.
+     * @throws `SyncError` `unauthorized-body-checkpoint` (403), or an error of `openCheckpoint`.
+     */
     receive(envelope: SignedCheckpoint, author: Grant) {
         return this.serial(async () => {
             const record = await this.record(),
@@ -227,6 +288,7 @@ export class DurableBody {
             }
         });
     }
+    /** Releases the Yjs document and zeroes the key copy. */
     destroy() {
         this.body.destroy();
         this.key.fill(0);

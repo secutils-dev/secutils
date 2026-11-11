@@ -1,10 +1,26 @@
+// The print document for PDF output, and the sandboxed preview frame with its message bridge.
+// The export dialog and the standalone reader both use this module, so it imports no app,
+// storage, or UI module.
+// - A preview frame is a `srcdoc` iframe without `allow-same-origin`. Its origin is opaque: its
+//   scripts cannot read the storage, cookies, or DOM of the page that embeds it.
+// - An opaque origin has no name to use as a `postMessage` target, and its `event.origin`
+//   (`null`) identifies no frame. The bridge accepts a message only from the window of its own
+//   frame, with the fixed kind and the operation identifier of that frame. The one message to
+//   a frame, `print`, carries no document content.
 import printRuntime from 'mars-runtime:print';
 import { head, jsonTag, scriptTag, watermark } from './document.ts';
 import { pageDimensions, type PdfSettings } from './settings.ts';
 
+/** Sandbox of the PDF frame: scripts for pagination, and modals for the print dialog of the browser. */
 export const PRINT_SANDBOX = 'allow-scripts allow-modals';
+/** The `kind` field of each bridge message. The runtimes in the frames use the same literal. */
 export const MESSAGE_KIND = 'mars-export';
 
+/**
+ * The print stylesheet for a paper size: page boxes with a page counter and the document title,
+ * break rules, and hidden interactive controls. Paged.js parses this CSS, so it stays within
+ * what that parser supports.
+ */
 export function printCss(settings: PdfSettings) {
     const { width, height } = pageDimensions(settings);
     return `@page {
@@ -34,7 +50,14 @@ export function printCss(settings: PdfSettings) {
     `;
 }
 
-// Uses the already-rendered content. Model PNGs and complete Mermaid SVGs are immutable.
+/**
+ * Builds the print document for the PDF frame.
+ * Uses the already-rendered content. Model PNGs and complete Mermaid SVGs are immutable.
+ *
+ * @param content Export-safe HTML of the body. Scripts, canvases, and controls are removed.
+ * @param title The document name. It is escaped in the head and set through the DOM as an attribute.
+ * @param operation The identifier that the print runtime puts on its messages.
+ */
 export function printDocument(content: string, title: string, settings: PdfSettings, operation: string) {
     // Content is export-safe renderer output, but discard interactive model payloads/controls.
     const root = new DOMParser().parseFromString(content, 'text/html');
@@ -46,14 +69,33 @@ export function printDocument(content: string, title: string, settings: PdfSetti
     return `<!DOCTYPE html><html lang="en" data-theme="light"><head>${head(title, content, printCss(settings))}</head><body><main>${article.outerHTML}</main>${watermark}${jsonTag('mars-print-config', { operation, ...pageDimensions(settings) })}${scriptTag(printRuntime)}</body></html>`;
 }
 
+/** A preview frame and its controls. */
 export interface PreparedFrame {
     frame: HTMLIFrameElement;
+    /**
+     * Resolves when the frame reports `ready`. Rejects with the error text of the frame, after
+     * 60 seconds without an answer, or with an `AbortError` when `dispose` runs first.
+     */
     ready: Promise<void>;
+    /** Asks the frame to open the print dialog. Does nothing before `ready` or after `dispose`. */
     print(): void;
+    /** Removes the frame and the message listener. Safe to call more than once. */
     dispose(): void;
 }
 
-// Opaque srcdoc: communicate through source-window + operation checks, never child globals.
+/**
+ * Appends a sandboxed frame with `html` to `container` and connects the message bridge.
+ * Opaque srcdoc: communicate through source-window + operation checks, never child globals.
+ *
+ * Messages from the frame: `ready` and `error` settle `ready` once. `print-requested` counts only
+ * after `ready`, and `afterprint` only after a `print-requested`. Every other message is ignored.
+ *
+ * @param html The complete document for the frame, from `htmlDocument` or `printDocument`.
+ * @param operation The identifier inside `html`. Use a fresh random value for each frame.
+ * @param format `pdf` uses `PRINT_SANDBOX`. `html` also allows popups and downloads.
+ * @param onPrint Runs when the frame is about to open the print dialog.
+ * @param onAfterPrint Runs when that print dialog closed.
+ */
 export function prepareFrame(
     container: HTMLElement,
     html: string,
@@ -84,6 +126,8 @@ export function prepareFrame(
             60000,
         );
         const receive = (event: MessageEvent) => {
+            // Any window can post to this page. Accept only this frame's window, and only a
+            // message with this frame's operation identifier.
             if (
                 event.source !== frame.contentWindow ||
                 event.data?.kind !== MESSAGE_KIND ||
@@ -120,6 +164,7 @@ export function prepareFrame(
         dispose: () => dispose(),
         print: () => {
             if (!succeeded || !frame.isConnected) return;
+            // The opaque origin of the frame has no name, so the target origin is `*`.
             frame.contentWindow?.postMessage({ kind: MESSAGE_KIND, operation, type: 'print' }, '*');
         },
     };

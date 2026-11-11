@@ -1,5 +1,19 @@
 // Review storage in IndexedDB: `nodes` (the folder/document tree), `docs` (document text,
 // kept apart so listing the tree never loads bodies), and `meta` (small app settings).
+//
+// Owns the database connection, the memory backend of a temporary session, the transaction
+// helper, and the change broadcast to other tabs. It does not own the meaning of Sync records:
+// the connected-content functions take prepared data from `sync/` and store it.
+// Invariants:
+// - Every function works on the active backend. While the memory backend is active, no call
+//   reads or writes IndexedDB, and nothing is broadcast. `promoteConnected` is the one exit.
+// - One call is one IndexedDB transaction: its writes commit together or not at all.
+// - Network and cryptographic work finishes before a transaction opens. A transaction with
+//   no pending request commits by itself.
+// - A compare-and-set function throws `ReplicaConflict`, and writes nothing, when the stored
+//   state differs from the state that the caller prepared against.
+// - The database opens without a version and keeps unknown stores. It is never downgraded or deleted.
+// - A node write in the library broadcasts the ids of the changed nodes to other tabs.
 import { descendants, textBytes, type TreeNode } from '../tree/model.ts';
 import { openThreads } from '../share/merge.ts';
 import { MemoryStore } from './memory.ts';
@@ -7,19 +21,37 @@ import { syncDebug, type ConflictReason } from '../sync/debug.ts';
 import type { SessionRecord } from '../sync/session.ts';
 
 const DB_NAME = 'mars';
+// The shared connection. Null before the first use, after a `versionchange`, and after a
+// switch to the memory backend.
 let dbPromise: Promise<IDBDatabase> | null = null;
 const memory = new MemoryStore();
 const address = new URL(location.href);
+// True while the memory backend is active. The page address decides it before the first
+// storage call: `?temporary=1`, `t=1` in the fragment, or a `live` fragment.
 let temporary =
     address.searchParams.get('temporary') === '1' ||
     new URLSearchParams(address.hash.slice(1)).get('t') === '1' ||
     new URLSearchParams(address.hash.slice(1)).has('live');
+/** True while this tab stores documents in memory and not in the library. */
 export const isTemporaryStorage = () => temporary;
+// Counts backend switches in this tab.
 let storageRevision = 0;
+/**
+ * A counter that changes with each backend switch. Code that caches stored data reads it
+ * before and after a wait, and discards its result when the value changed.
+ */
 export const storageGeneration = () => storageRevision;
+/**
+ * True for a `DOMException` that means browser storage is full or unusable. The app answers
+ * with a temporary session. A `ReplicaConflict` and other errors are not storage failures.
+ */
 export const isStorageFailure = (error: unknown) =>
     error instanceof DOMException &&
     ['QuotaExceededError', 'SecurityError', 'UnknownError', 'InvalidStateError', 'VersionError'].includes(error.name);
+/**
+ * Switches this tab to the memory backend and closes the database connection.
+ * The memory backend starts empty: nothing is copied from the library.
+ */
 export function useTemporaryStorage() {
     if (!temporary) storageRevision++;
     temporary = true;
@@ -28,12 +60,15 @@ export function useTemporaryStorage() {
     closing?.then((database) => database.close()).catch(() => {});
 }
 
+// An IndexedDB request as a promise.
 const req = <T>(r: IDBRequest<T>) =>
     new Promise<T>((resolve, reject) => {
         r.onsuccess = () => resolve(r.result);
         r.onerror = () => reject(r.error);
     });
 
+// Opens the database once and returns the shared connection. The first open creates the three
+// stores. A failed open stays cached, so later calls fail until `useTemporaryStorage()`.
 function db() {
     dbPromise ??= new Promise((resolve, reject) => {
         // Open the existing version, including databases upgraded by the optional review feature.
@@ -46,6 +81,8 @@ function db() {
             d.createObjectStore('meta');
         };
         open.onsuccess = () => {
+            // Another tab wants to upgrade or delete the database. Close this connection so that it is
+            // not blocked. The next call opens the database again.
             open.result.onversionchange = () => {
                 open.result.close();
                 dbPromise = null;
@@ -58,6 +95,10 @@ function db() {
     return dbPromise;
 }
 
+// Runs `run` in one transaction and resolves with its result after the commit.
+// `run` must wait only for requests of this transaction. A wait on anything else lets the
+// transaction commit early. When `run` or a request fails, the transaction aborts, no write
+// stays, and the error propagates.
 async function tx<T>(
     stores: string[],
     mode: IDBTransactionMode,
@@ -84,7 +125,8 @@ async function tx<T>(
     }
 }
 
-// Other tabs refresh their tree when this one writes.
+// Other tabs refresh their tree when this one writes. The channel carries node ids only,
+// never names or text. A temporary session neither sends nor receives.
 let channel: BroadcastChannel | null = null;
 const remoteListeners = new Set<(ids: string[]) => void>();
 function openChannel() {
@@ -102,6 +144,10 @@ function openChannel() {
     } catch {}
 }
 openChannel();
+/**
+ * Registers a listener for library writes of other tabs. `ids` are the changed node ids.
+ * The list is empty for a change that is not tied to nodes, such as a metadata write.
+ */
 export const onRemoteChange = (fn: (ids: string[]) => void) => {
     remoteListeners.add(fn);
 };
@@ -112,10 +158,15 @@ const announce = (ids: string[]) => {
     }
 };
 
+/** Every stored node, in no particular order. */
 export const allNodes = () =>
     temporary
         ? Promise.resolve(memory.all<TreeNode>('nodes'))
         : tx(['nodes'], 'readonly', (t) => req(t.objectStore('nodes').getAll() as IDBRequest<TreeNode[]>));
+/**
+ * Marks every stored node of one connection (collection and member) as `ended`, in one
+ * transaction. `ended` is the only phase that survives a reload. It sends no broadcast.
+ */
 export async function markConnectionEnded(collection: string, member: string) {
     const mark = (node: TreeNode) =>
         node.connection?.collection === collection && node.connection.member === member
@@ -146,11 +197,16 @@ export async function markConnectionEnded(collection: string, member: string) {
             }),
     );
 }
+/** The stored text of a document, or undefined. */
 export const getText = (id: string) =>
     temporary
         ? Promise.resolve(memory.get<string>('docs', id))
         : tx(['docs'], 'readonly', (t) => req(t.objectStore('docs').get(id) as IDBRequest<string | undefined>));
 
+/**
+ * Inserts or replaces nodes and document texts (`texts`: id -> text) in one transaction, then
+ * broadcasts the node ids. A node and its text therefore never disagree after a crash.
+ */
 export async function putNodes(nodes: TreeNode[], texts: Record<string, string> = {}) {
     if (temporary) {
         for (const node of nodes) memory.put('nodes', node.id, node);
@@ -164,6 +220,10 @@ export async function putNodes(nodes: TreeNode[], texts: Record<string, string> 
     announce(nodes.map((n) => n.id));
 }
 
+/**
+ * Deletes nodes with their texts and every side record in one transaction, then broadcasts.
+ * It does not look for descendants. The caller passes the complete subtree.
+ */
 export async function deleteNodes(ids: string[]) {
     if (temporary) {
         for (const id of ids) {
@@ -183,18 +243,26 @@ export async function deleteNodes(ids: string[]) {
     announce(ids);
 }
 
-// Per-document side data in the `docs` store, so it needs no new store:
-// `base` (the text at the last review, kept while changes are unreviewed), `opened` (the
-// source text as MARS last received it), and `vec` (the smart-search index entry).
+/**
+ * Per-document side data in the `docs` store, so it needs no new store.
+ * - `base`: the text at the last review, kept while changes are unreviewed.
+ * - `opened`: the source text as MARS last received it.
+ * - `vec`: the smart-search index entry.
+ * - `sync`: the replica record of a connected node (state, outbox, keys, and progress).
+ */
 export type Side = 'base' | 'opened' | 'vec' | 'sync';
+// Every kind. `deleteNodes` uses the list, so a new kind must be added here.
 const SIDES: Side[] = ['base', 'opened', 'vec', 'sync'];
+// The key of a side record in the `docs` store: `<kind>:<id>`.
 const sideKey = (kind: Side, id: string) => `${kind}:${id}`;
+/** One side record, or undefined. */
 export const getSide = <T = string>(kind: Side, id: string) =>
     temporary
         ? Promise.resolve(memory.get<T>('docs', sideKey(kind, id)))
         : tx(['docs'], 'readonly', (t) =>
               req(t.objectStore('docs').get(sideKey(kind, id)) as IDBRequest<T | undefined>),
           );
+/** Inserts or replaces one side record. It sends no broadcast. */
 export const putSide = async (kind: Side, id: string, value: unknown) => {
     if (temporary) memory.put('docs', sideKey(kind, id), value);
     else
@@ -202,6 +270,7 @@ export const putSide = async (kind: Side, id: string, value: unknown) => {
             t.objectStore('docs').put(value, sideKey(kind, id));
         });
 };
+/** Deletes one side record. A missing record is not an error. */
 export const deleteSide = async (kind: Side, id: string) => {
     if (temporary) memory.delete('docs', sideKey(kind, id));
     else
@@ -209,11 +278,14 @@ export const deleteSide = async (kind: Side, id: string) => {
             t.objectStore('docs').delete(sideKey(kind, id));
         });
 };
+// The key range that holds every record of one kind.
 const sideRange = (kind: Side) => IDBKeyRange.bound(`${kind}:`, `${kind}:\uffff`);
+/** The values of every side record of one kind, without their ids. */
 export const allSides = <T>(kind: Side) =>
     temporary
         ? Promise.resolve(memory.all<T>('docs', `${kind}:`))
         : tx(['docs'], 'readonly', (t) => req(t.objectStore('docs').getAll(sideRange(kind)) as IDBRequest<T[]>));
+/** Deletes every side record of one kind, for example to reset the search index. */
 export const clearSides = async (kind: Side) => {
     if (temporary) memory.clearPrefix('docs', `${kind}:`);
     else
@@ -222,10 +294,15 @@ export const clearSides = async (kind: Side) => {
         });
 };
 
+/** One value of the `meta` store, or undefined. */
 export const getMeta = <T>(key: string) =>
     temporary
         ? Promise.resolve(memory.get<T>('meta', key))
         : tx(['meta'], 'readonly', (t) => req(t.objectStore('meta').get(key) as IDBRequest<T | undefined>));
+/**
+ * Inserts or replaces one `meta` value. With `broadcast`, other tabs receive an empty change
+ * list. A temporary session keeps the value in memory and never broadcasts.
+ */
 export const setMeta = async (key: string, value: unknown, broadcast = false) => {
     if (temporary) memory.put('meta', key, value);
     else
@@ -234,6 +311,14 @@ export const setMeta = async (key: string, value: unknown, broadcast = false) =>
         });
     if (broadcast) announce([]);
 };
+/**
+ * Reads a consistent snapshot of one connection (collection and member) for a recovery export.
+ * One read-only transaction supplies every part, so the parts match each other.
+ * - `nodes`: the connected nodes, limited to `ids` when given.
+ * - `excludedDocuments`: remote document ids of the connected nodes that `ids` leaves out.
+ * - `records`: the `sync` side records of `nodes`.
+ * - `metadata`: the `meta` value of each key in `metadataKeys`.
+ */
 export async function captureConnected(collection: string, member: string, metadataKeys: string[], ids?: string[]) {
     const selection = ids ? new Set(ids) : null;
     const matches = (node: TreeNode) => node.connection?.collection === collection && node.connection.member === member;
@@ -286,6 +371,12 @@ export async function captureConnected(collection: string, member: string, metad
     );
 }
 
+/**
+ * Thrown when stored state differs from the state that the caller prepared against.
+ * The call wrote nothing. `reason` is a fixed diagnostic code,
+ * and `field` names the node field for `metadata-changed`. Each construction records a
+ * `store.conflict` trace event. The usual answer is to read the current state and retry.
+ */
 export class ReplicaConflict extends Error {
     readonly reason: ConflictReason;
     readonly field?: string;
@@ -297,8 +388,25 @@ export class ReplicaConflict extends Error {
         syncDebug.record('store.conflict', { reason, field });
     }
 }
-// Network/decryption work has finished. Resolve remote identities AGAIN inside
-// the shared write transaction, then publish nodes, bodies and hierarchy together.
+/**
+ * Publishes a downloaded folder hierarchy in one transaction and broadcasts it.
+ * Network/decryption work has finished. Resolve remote identities AGAIN inside
+ * the shared write transaction, then publish nodes, bodies and hierarchy together.
+ *
+ * @param root The local root node of the connection.
+ * @param body The body of the root replica that the hierarchy was prepared against.
+ * @param entries Incoming nodes, each parent before its children. `parent` is a remote
+ *   document id. `record` is required for a document that is not stored yet.
+ * @param bootstrap First publication of the connection: the root record and its metadata.
+ * @returns Every node of the connection after the publication.
+ *
+ * A node that another tab already stored for the same remote document keeps its id and its
+ * other fields. Only parent, name, and order change.
+ * Throws `ReplicaConflict`:
+ * - `already-connected`: two rows hold one remote document, or a bootstrap finds a stored root.
+ * - `missing-node`: a parent is not a known folder.
+ * - `revision`: the stored root or its body changed, or a new node cannot be added.
+ */
 export async function materializeConnected(
     root: TreeNode,
     body: string,
@@ -388,27 +496,43 @@ export async function materializeConnected(
     announce(nodes.map((node) => node.id));
     return nodes;
 }
+/**
+ * A copy of local Sync state: nodes, texts by node id, `sync` records by node id, and `meta`
+ * values by key. It is taken before a repair or a new setup replaces that state.
+ */
 export interface UnfinishedSetupSnapshot {
     nodes: TreeNode[];
     texts: Record<string, string>;
     records: Record<string, unknown>;
     metadata: Record<string, unknown>;
 }
+/** A snapshot as archived in the `meta` store under `sync:unfinished-setup:<uuid>`. `at` is in milliseconds. */
 export interface SavedUnfinishedSetup {
     v: 1;
     kind: 'mars-unfinished-sync';
     at: number;
     snapshot: UnfinishedSetupSnapshot;
 }
+/** One entry of the archive index: the archive key, its time in milliseconds, and its number of records. */
 export interface UnfinishedSetupBackup {
     key: string;
     at: number;
     records: number;
 }
+/** The `meta` key of the archive index for the local root node `id`. */
 export const unfinishedSetupIndex = (id: string) => `sync:unfinished-backups:${id}`;
-// Old clients could create several rows for one remote identity. Archive the
-// complete scoped state first. Keep distinct visible text as local-only copies;
-// neither names nor thread counts are evidence that two documents are equal.
+/**
+ * Removes duplicate rows of one remote identity (collection, member, and document).
+ * Old clients could create several rows for one remote identity. Archive the
+ * complete scoped state first. Keep distinct visible text as local-only copies;
+ * neither names nor thread counts are evidence that two documents are equal.
+ *
+ * One transaction covers the archive and the repair, so a failed archive leaves every row
+ * as it was. The row that is the scope root, or else the oldest row, keeps the connection.
+ * Returns true and broadcasts when it changed the library. Returns false in a temporary
+ * session and when no duplicate exists. Throws `ReplicaConflict('missing-node')` when the scope
+ * metadata of a duplicate names no local root.
+ */
 export async function repairDuplicateConnections() {
     if (temporary) return false;
     const changed = await tx(['nodes', 'docs', 'meta'], 'readwrite', async (t) => {
@@ -425,6 +549,7 @@ export async function repairDuplicateConnections() {
             }
         const duplicates = [...grouped.values()].filter((group) => group.length > 1);
         if (!duplicates.length) return false;
+        // Step 1: archive the complete state of each affected scope, once for each scope.
         const snapshots = new Map<string, { root: string; snapshot: UnfinishedSetupSnapshot }>();
         for (const group of duplicates) {
             const { collection, member } = group[0].connection!,
@@ -462,6 +587,8 @@ export async function repairDuplicateConnections() {
             meta.add({ v: 1, kind: 'mars-unfinished-sync', at, snapshot } satisfies SavedUnfinishedSetup, key);
             meta.put([...backups, { key, at, records: Object.keys(snapshot.records).length }], index);
         }
+        // Step 2: one row of each group keeps the connection. Each other document row becomes a local
+        // copy when it holds anything distinct. Otherwise the row is deleted.
         const replacements = new Map<string, string>();
         let recovery: TreeNode | undefined;
         for (const group of duplicates) {
@@ -541,6 +668,7 @@ export async function repairDuplicateConnections() {
                 docs.delete(sideKey('sync', node.id));
             }
         }
+        // Step 3: the children of a replaced row move to the row that stays.
         for (const node of all)
             if (!replacements.has(node.id) && replacements.has(node.parentId ?? ''))
                 nodes.put({ ...node, parentId: replacements.get(node.parentId!)! });
@@ -550,6 +678,11 @@ export async function repairDuplicateConnections() {
     if (changed) announce([]);
     return changed;
 }
+/**
+ * Reads the nodes `ids` with their texts, their `sync` records, and the scope metadata of
+ * those records, in one read-only transaction.
+ * Throws in a temporary session. Throws `ReplicaConflict('missing-node')` when an id is gone.
+ */
 export async function captureUnfinishedSetup(ids: string[]): Promise<UnfinishedSetupSnapshot> {
     if (temporary) throw new Error('Recovery requires persistent library storage');
     return tx(['nodes', 'docs', 'meta'], 'readonly', async (t) => {
@@ -595,8 +728,23 @@ export async function captureUnfinishedSetup(ids: string[]): Promise<UnfinishedS
         return snapshot;
     });
 }
-// Publish enrollment once, after all network registration and replica preparation.
-// Other tabs must never discover a half-enrolled folder or seed a competing replica.
+/**
+ * Publish enrollment once, after all network registration and replica preparation.
+ * Other tabs must never discover a half-enrolled folder or seed a competing replica.
+ *
+ * @param expected The selection as the caller read it before registration. The root is first.
+ * @param texts The document texts as the caller read them, by node id.
+ * @param nodes The same nodes, in the same order, with their `connection`.
+ * @param records The new `sync` record of each node, by node id.
+ * @param metadata `meta` values to write, by key.
+ * @param previous An unfinished setup that this enrollment replaces. It is archived in the
+ *   same transaction.
+ *
+ * Stored node fields other than `connection` and `manualFileSave` stay as they are.
+ * Throws in a temporary session. Throws `ReplicaConflict` when the library changed since the read.
+ * The reasons are `selection-grown`, `missing-node`, `already-connected`, `orphan-replica`,
+ * `text-changed`, `metadata-changed` (with the field), and `revision` for changed scope metadata.
+ */
 export async function enrollConnected(
     expected: TreeNode[],
     texts: Record<string, string>,
@@ -611,6 +759,7 @@ export async function enrollConnected(
             docs = t.objectStore('docs');
         const all = await req(nodeStore.getAll() as IDBRequest<TreeNode[]>),
             selected = new Set(expected.map((node) => node.id));
+        // The folder gained a descendant after the caller read the selection.
         if (expected[0]?.kind === 'folder' && descendants(all, expected[0].id).some((node) => !selected.has(node.id)))
             throw new ReplicaConflict('selection-grown');
         const current = await Promise.all(
@@ -622,6 +771,7 @@ export async function enrollConnected(
                 ]);
                 if (!stored) throw new ReplicaConflict('missing-node');
                 if (stored.connection) throw new ReplicaConflict('already-connected');
+                // A stored replica must be the record of the unfinished setup that the caller saw, or absent.
                 if (JSON.stringify(replica) !== JSON.stringify(previous?.records[node.id]))
                     throw new ReplicaConflict('orphan-replica');
                 if (text !== texts[node.id]) throw new ReplicaConflict('text-changed');
@@ -661,6 +811,11 @@ export async function enrollConnected(
     });
     announce(nodes.map((node) => node.id));
 }
+/**
+ * Compare-and-set of one `meta` record by its `revision`. `expected` null requires that no
+ * record exists. `extras` are further `meta` values that commit in the same transaction.
+ * Throws `ReplicaConflict` and writes nothing on a mismatch. Broadcasts after a library write.
+ */
 export async function commitMeta<T extends { revision: number }>(
     key: string,
     expected: number | null,
@@ -695,9 +850,26 @@ export async function commitMeta<T extends { revision: number }>(
     );
     announce([]);
 }
-// Prepared bytes only. Encryption and network work happen BEFORE this transaction.
-// Projection, CRDT state, outbox, bindings, and received progress commit together.
-// A stale same-profile tab cannot overwrite a newer replica or advance its cursor.
+/**
+ * Saves one replica record with everything that depends on it.
+ * Prepared bytes only. Encryption and network work happen BEFORE this transaction.
+ * Projection, CRDT state, outbox, bindings, and received progress commit together.
+ * A stale same-profile tab cannot overwrite a newer replica or advance its cursor.
+ *
+ * @param id The local node id. The record is the `sync` side record of this node.
+ * @param expectedRevision The stored revision that `replica` builds on. Null requires that no
+ *   record exists.
+ * @param nodes Node updates.
+ * @param texts Markdown projections, by node id.
+ * @param metadata `meta` values, by key.
+ * @param extras Further `docs` store values, by complete key.
+ * @param deletes `docs` store keys to delete.
+ * @param binding With a non-null `expectedRevision`, the stored record and each stored node
+ *   must carry this binding. Each node update then keeps the stored parent, order, folder
+ *   state, and local reading width.
+ *
+ * Throws `ReplicaConflict` and writes nothing on a mismatch. Broadcasts the ids of `nodes`.
+ */
 export async function commitReplica<T extends { revision: number }>(
     id: string,
     expectedRevision: number | null,
@@ -765,12 +937,19 @@ export async function commitReplica<T extends { revision: number }>(
     announce(nodes.map((n) => n.id));
 }
 
-// Asks the browser not to evict reviews under storage pressure (granted silently in most browsers).
+/** Asks the browser not to evict reviews under storage pressure (granted silently in most browsers). */
 export const persistStorage = () =>
     temporary ? Promise.resolve(false) : navigator.storage?.persist?.().catch(() => false);
 
-// The only in-place exit from a temporary connected session. The caller supplies only
-// the explicitly selected document, not every temporary document or global preference.
+/**
+ * The only in-place exit from a temporary connected session. The caller supplies only
+ * the explicitly selected document, not every temporary document or global preference.
+ *
+ * One transaction writes the node, its text, its `sync` record, its search vector, and
+ * `metadata` to the library. After the commit this tab uses the IndexedDB backend.
+ * Throws outside a temporary session. Throws `ReplicaConflict` when the library holds the
+ * node id already. After a failure the tab stays in its temporary session.
+ */
 export async function promoteConnected(
     node: TreeNode,
     text: string,
@@ -807,8 +986,15 @@ export async function promoteConnected(
     announce([node.id]);
 }
 
-// Recovery is all-or-nothing. Validation and decryption finish before this transaction.
-// Existing nodes and existing credentials cannot be overwritten by a partial restore.
+/**
+ * Recovery is all-or-nothing. Validation and decryption finish before this transaction.
+ * Existing nodes and existing credentials cannot be overwritten by a partial restore.
+ *
+ * `records` holds the `sync` records by node id. The projection of a record becomes the text
+ * of its document. `texts` holds the texts of restored documents that have no record.
+ * Throws in a temporary session. Throws `ReplicaConflict` when a node id exists, and when the
+ * library holds a node of the same connection.
+ */
 export async function restoreConnected(
     nodes: TreeNode[],
     records: Record<string, { revision: number; projection: string }>,
@@ -856,8 +1042,21 @@ export async function restoreConnected(
     announce(nodes.map((node) => node.id));
 }
 
-// A confirmed local match retains its ID. Both copies are checked again inside the
-// transaction, so an edit from another tab cannot disappear behind the match dialog.
+/**
+ * A confirmed local match retains its ID. Both copies are checked again inside the
+ * transaction, so an edit from another tab cannot disappear behind the match dialog.
+ *
+ * @param incoming The id of the downloaded node. Its rows are deleted.
+ * @param expected The local node as the match dialog saw it.
+ * @param node The node to store under the local id.
+ * @param localText The local text as the match dialog saw it.
+ * @param record The replica record. Its revision must equal the stored revision of `incoming`.
+ * @param metadata `meta` values to write, by key.
+ * @param backup A node that keeps `localText` as a separate local document.
+ *
+ * Throws in a temporary session. Throws `ReplicaConflict` when the local node, its text, or
+ * the downloaded replica changed, or when the local node is connected.
+ */
 export async function adoptConnected(
     incoming: string,
     expected: TreeNode,
@@ -878,6 +1077,7 @@ export async function adoptConnected(
                 const local = nodes.get(node.id),
                     previousText = docs.get(node.id),
                     replica = docs.get(sideKey('sync', incoming));
+                // The three reads run in parallel. Continue when the last one is done.
                 const finish = () => {
                     if (
                         local.readyState !== 'done' ||

@@ -1,3 +1,11 @@
+// Sync pairing: connects another device of the same person to an existing collection.
+// The owner device creates a Sync link that expires after ten minutes, and approves one request
+// after the reader confirms that both devices show the same code.
+// The receiving device reads the link, requests an edit grant for the whole collection, waits for
+// the approval, and downloads the collection before anything appears in its library.
+// The service relays every message, so both sides treat each response as untrusted. They verify
+// signatures against the owner key from the link, and they bind the request to the link key,
+// which the service never receives.
 import * as app from '../../app.ts';
 import * as db from '../../store/db.ts';
 import * as viewer from '../../doc/viewer.js';
@@ -66,6 +74,13 @@ import { initialize, loadPackets, materialize, start, validateSnapshot } from '.
 import { receiveLive } from './live-links.ts';
 import { syncError, confirmationCode } from './dialogs.ts';
 
+/**
+ * Polls a pairing endpoint until `ready` accepts a response, and returns that response.
+ * It waits one second between polls.
+ * Returns `undefined` when `controller` aborts first. A page unload aborts the controller.
+ * A hidden tab or a lost network connection aborts the request in progress, and polls resume afterwards.
+ * A service error other than an abort propagates to the caller.
+ */
 async function waitForPair(
     action: string,
     values: Record<string, unknown>,
@@ -105,7 +120,7 @@ async function waitForPair(
         controller.signal.removeEventListener('abort', pause);
     }
 }
-/** The longest device name that a pairing request carries. */
+/** The longest device name that a pairing request carries, in UTF-16 code units. */
 const MAX_DEVICE_NAME = 64;
 /**
  * Authenticated data for the encrypted device name of a pairing request. It binds the requested
@@ -115,7 +130,10 @@ const pairLabelContext = async (invitation: string, grant: SignedGrant['grant'])
     invitation,
     grant: await hash(jsonBytes(grant)),
 });
-/** True when `owner` is a well-formed, self-signed owner grant for the owner key of a link. */
+/**
+ * True when `owner` is a well-formed, self-signed owner grant for the owner key of a link.
+ * `owner` comes from the service. The owner key comes from the link, which the service cannot forge.
+ */
 export async function ownerMatchesLink(owner: unknown, ownerKey: string): Promise<boolean> {
     return (
         validGrant(owner) &&
@@ -125,6 +143,16 @@ export async function ownerMatchesLink(owner: unknown, ownerKey: string): Promis
         verify(owner.grant, owner.signature, ownerKey)
     );
 }
+/**
+ * Runs the owner side of pairing inside the Sync dialog: creates a Sync link, waits for one request,
+ * shows the confirmation code, and approves the request when the reader confirms the code.
+ * The link gives edit access to the whole collection as the same participant, and expires after
+ * `LIMITS.invitationSeconds`. It needs an empty outbox, so the other device downloads the latest state.
+ * Approval signs the requested grant, wraps the root key for the new device, and saves its name.
+ * Marks the scope as personal Sync. A scope restored from a partial selection cannot pair.
+ * Returns when the reader leaves the flow. A failed `invite` or `pair-approve` request throws.
+ * A failed poll shows an error screen instead.
+ */
 export async function syncLinkPanel(scope: Scope, ui: SyncDialog) {
     if (!ui.open) return;
     if (scope.selection) {
@@ -148,6 +176,8 @@ export async function syncLinkPanel(scope: Scope, ui: SyncDialog) {
         });
         return;
     }
+    // The URL fragment holds one random secret. The invitation ID, the bearer token, and the
+    // encryption key derive from it separately. The secret and the encryption key never enter a request.
     const fragment = newSyncSecret(),
         access = await syncAccess(fragment),
         secret = access.token,
@@ -182,6 +212,8 @@ export async function syncLinkPanel(scope: Scope, ui: SyncDialog) {
     let pending: Record<string, unknown> | undefined,
         problem = '';
     const name = app.node(scope.localRoot)?.name ?? 'this document';
+    // The link screen and the poll run together. The poll resolves the screen when a request
+    // arrives or the poll fails. The reader resolves it with Back or Close.
     const screen = ui.screen({
         title: 'Sync link',
         back: true,
@@ -265,6 +297,8 @@ export async function syncLinkPanel(scope: Scope, ui: SyncDialog) {
             buttons: [{ label: 'Codes match', value: 'yes', primary: true }],
         });
         if (answer.value !== 'yes') return;
+        // Only the root key is wrapped for the new device. The keys of the other documents are in
+        // the folder manifest, inside the root replica.
         const rootEpoch = sessions.get(scope.localRoot)?.record.binding.epoch ?? 1;
         const signed = await signGrant(candidate.grant, scope.identity),
             keys = [
@@ -289,28 +323,46 @@ export async function syncLinkPanel(scope: Scope, ui: SyncDialog) {
         ui.signal.removeEventListener('abort', close);
     }
 }
+/**
+ * Handles an address whose fragment holds a Live link (`#live=`) or a Sync link (`#sync=`, `#invite=`).
+ * Returns `false` when the fragment holds neither, so the caller can try other link types.
+ * Returns `true` when it handled the link, including a cancellation and a failure. It reports a
+ * failure in a toast and does not throw for it.
+ * For a Sync link it runs the receiving side of pairing: verifies the invitation, asks for a device
+ * name, sends the request, shows the confirmation code, verifies the approval, and downloads the
+ * collection. The library changes in one transaction, after the complete download.
+ * The link, the invitation, and the approval are untrusted until they verify against the owner key
+ * from the link.
+ */
 export async function receiveLocation(address: string) {
     const params = new URLSearchParams(new URL(address).hash.slice(1));
     if (params.has('live')) return receiveLive(address, params.get('live')!);
     const encoded = params.get('sync') ?? params.get('invite'); // Accept links issued before #sync=.
     if (encoded === null) return false;
     await initialize();
+    // Remove the link secret from the address bar and from the current history entry.
     history.replaceState(history.state, '', location.pathname);
     let receiving: SyncDialog | undefined;
     const leave = () => receiving?.close();
     try {
         let link: PairLink, incoming;
+        // A short link holds the 22-character secret. The link record arrives encrypted from the
+        // service, and `openSyncBootstrap` rejects a record that does not match the secret.
         if (isShortSyncLink(encoded)) {
             const access = await syncAccess(encoded);
             incoming = await request('invite-read', { invitation: access.id }, access.token);
             link = await openSyncBootstrap(incoming.bootstrap, encoded);
         } else {
+            // A long link holds the complete link record. `linkWrappingKey` throws before any
+            // request when the record has no wrapping key that differs from the bearer token.
             const decoded = await decodeState(encoded);
             if (!decoded) throw new Error('Invalid Sync link');
             link = JSON.parse(decoded);
             linkWrappingKey(link);
             incoming = await request('invite-read', { invitation: link.id }, link.secret);
         }
+        // The owner grant must be self-signed with the owner key from the link, and the same key
+        // must have signed the invitation.
         if (
             !validInvitation(incoming.policy) ||
             !(await ownerMatchesLink(incoming.owner, link.ownerKey)) ||
@@ -327,6 +379,8 @@ export async function receiveLocation(address: string) {
             ],
         });
         if (answer.value !== 'yes') return true;
+        // This device makes its own keys and bearer token. It requests an edit grant for the whole
+        // collection, as the participant that the invitation names.
         const who = await identity(),
             token = randomSecret(),
             g = {
@@ -342,12 +396,16 @@ export async function receiveLocation(address: string) {
                 expires: 0,
             };
         const candidate = await signGrant(g, who);
+        // The device name travels encrypted under the link key, with the requested grant as
+        // authenticated data. The owner device accepts the request only when this decrypts.
         const encryptedName = await sealJson(
             { name: answer.text.trim().slice(0, MAX_DEVICE_NAME) || 'My device' },
             linkWrappingKey(link),
             await pairLabelContext(link.id, g),
         );
         await request('pair-request', { invitation: link.id, candidate, label: encryptedName }, link.secret);
+        // Both devices derive the code from the signed invitation and the requested grant. A request
+        // that the service replaced produces a different code on the owner device.
         const phrase = await pairingPhrase(incoming.policy, candidate.grant),
             controller = new AbortController();
         const waiting = modal({
@@ -355,6 +413,7 @@ export async function receiveLocation(address: string) {
             html: `<p>Check that your other device shows this same code:</p>${confirmationCode(phrase)}<p role="status">Confirm the code there to finish connecting.</p>`,
             buttons: [{ label: 'Cancel', value: '' }],
         });
+        // Closing the code dialog stops the wait for approval.
         waiting.then(() => controller.abort());
         const result = (await waitForPair(
             'pair-result',
@@ -451,9 +510,13 @@ export async function receiveLocation(address: string) {
         };
         const record = Session.seed(binding, '', who, token, scope.key, result.owner, 'Sync');
         record.member = result.signed;
+        // Only the creator seeds a replica. This device starts from an empty replica and takes
+        // the stored checkpoints.
         const empty = new BodyReplica();
         record.body = encode(empty.checkpoint());
         empty.destroy();
+        // The root replica, the scope, and the folder hierarchy stay in memory during the download.
+        // One transaction then saves them, so a cancellation or a failure leaves the library unchanged.
         const session = stagedSession(record);
         try {
             await loadPackets(scope, session, ui.signal, true);
@@ -511,6 +574,16 @@ export async function receiveLocation(address: string) {
     }
     return true;
 }
+/**
+ * After pairing, offers to connect an existing local document in place of each downloaded copy that
+ * matches it. The default answer keeps both copies.
+ * A match needs the same origin ID, or similar name and text. Neither proves identity, so the
+ * reader decides and selects the text to keep.
+ * An accepted match keeps the ID of the local document and moves the replica to it in one
+ * transaction. That transaction checks both copies again. Local text that differs from the result
+ * stays in a separate backup document.
+ * A failure shows a toast and leaves both copies separate.
+ */
 async function offerLocalMatches(scope: Scope) {
     for (const incoming of app.state.nodes.filter((node) => node.kind === 'doc' && belongs(node, scope))) {
         const session = sessions.get(incoming.id);
@@ -519,6 +592,7 @@ async function offerLocalMatches(scope: Scope) {
         let best: TreeNode | undefined,
             localText = '',
             score = 0;
+        // An equal origin ID outranks every text similarity score, which is at most 1.
         for (const local of app.state.nodes.filter((node) => node.kind === 'doc' && !node.connection)) {
             const text = (await db.getText(local.id)) ?? '';
             const match =
@@ -547,6 +621,8 @@ async function offerLocalMatches(scope: Scope) {
         if (!answer.value) continue;
         const next = answer.value === 'mine' ? merged.mine : merged.theirs;
         try {
+            // The selected text enters the downloaded replica as a local change, so the other
+            // devices receive it. Then the replica moves to the existing node.
             await validateSnapshot(session, next);
             await session.change(session.record.projection, next);
             const record = await session.repository.get();

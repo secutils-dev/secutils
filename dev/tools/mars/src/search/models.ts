@@ -1,13 +1,22 @@
 // Smart-search models and the pure parts of embedding and ranking, shared by the app
 // (search/embed.ts) and the quality evaluation (eval/), so the evaluation measures what ships.
+//
+// This module owns the model table, the model input format, vector normalization, and ranking.
+// It does not own the worker, the stored index, or the settings (`embed.ts`). Apart from
+// `createEncoder`, every function is pure. A change here changes search quality: run the
+// evaluation, and bump `INDEX_VERSION` in `embed.ts` when the change affects what gets embedded.
 import { type Chunk, chunkDoc, embeddable, searchBody, threadChunks } from './chunks.ts';
 
 // The Transformers.js release the app loads; eval/package.json pins the same version.
 export const TRANSFORMERS_VERSION = '4.3.1';
 
+/** One selectable embedding model. */
 export interface Model {
+    /** Name in the model picker. */
     label: string;
+    /** Technical model name, also shown in the picker. */
     name: string;
+    /** Hugging Face repository id. Stored index entries and cached model files are matched by it. */
     id: string;
     // ONNX file stem (`onnx/<file>_<dtype>.onnx`), the quantization, and its download size.
     file: string;
@@ -17,6 +26,7 @@ export interface Model {
     // WebGPU, float16 weights run far faster than 8-bit ones (see `placement`).
     gpuDtype?: string;
     gpuBytes?: number;
+    /** Supported languages, as shown in the smart-search menu. */
     langs: string;
     // Prefixes the model was trained with, for queries and for passages of a document.
     query: string;
@@ -68,6 +78,7 @@ export const MODELS = {
         gpu: true,
     },
 } satisfies Record<string, Model>;
+/** The stored setting value that selects a model. */
 export type ModelKey = keyof typeof MODELS;
 
 // The ONNX file a dtype loads, as Transformers.js names them.
@@ -81,45 +92,69 @@ const SUFFIX: Record<string, string> = {
     q4f16: '_q4f16',
     bnb4: '_bnb4',
 };
+/** File name of the weights for a quantization, for example `model_quantized.onnx` for `q8`. */
 export const onnxFile = (m: Model, dtype: string) => `${m.file}${SUFFIX[dtype] ?? `_${dtype}`}.onnx`;
 
+/** WebGPU capability of this browser: `ok` for a hardware adapter, `f16` for its `shader-f16` feature. */
 export interface Gpu {
     ok: boolean;
     f16: boolean;
 }
+/** The device that runs a model, the quantization to load there, and its download size in bytes. */
 export interface Placement {
     device: 'webgpu' | 'wasm';
     dtype: string;
     bytes: number;
 }
 
-// Where a model runs and which weights it loads, or null when it cannot run here. Per chunk
-// in Chrome on an Apple M-series GPU, GTE Small takes 7 ms at fp16 on WebGPU, 78 ms at q8 on
-// WebGPU, and 48 ms at q8 on WebAssembly threads (600 ms in Firefox); EmbeddingGemma 2 takes
-// 23 ms at q4f16 and 39 ms at q4. Without `shader-f16`, Best speed stays on WebAssembly.
+/**
+ * Where a model runs and which weights it loads, or null when it cannot run here. Per chunk
+ * in Chrome on an Apple M-series GPU, GTE Small takes 7 ms at fp16 on WebGPU, 78 ms at q8 on
+ * WebGPU, and 48 ms at q8 on WebAssembly threads (600 ms in Firefox); EmbeddingGemma 2 takes
+ * 23 ms at q4f16 and 39 ms at q4. Without `shader-f16`, Best speed stays on WebAssembly.
+ */
 export function placement(m: Model, gpu: Gpu): Placement | null {
     if (gpu.ok && gpu.f16 && m.gpuDtype) return { device: 'webgpu', dtype: m.gpuDtype, bytes: m.gpuBytes ?? m.bytes };
     if (m.gpu) return gpu.ok ? { device: 'webgpu', dtype: m.dtype, bytes: m.bytes } : null;
     return { device: 'wasm', dtype: m.dtype, bytes: m.bytes };
 }
 
-// A long paragraph or code block can exceed the chunk target; the cap bounds a batch's
-// token count (and memory).
+/**
+ * Longest passage text that reaches the model, in characters.
+ * A long paragraph or code block can exceed the chunk target; the cap bounds a batch's
+ * token count (and memory).
+ */
 export const MAX_EMBED_CHARS = 1500;
 
-// The passages of a document that get a vector: paragraphs with their heading, then review
-// threads of at least three words.
+/**
+ * The passages of a document that get a vector: paragraphs with their heading, then review
+ * threads of at least three words.
+ *
+ * @param text The complete document text, with its comments block.
+ */
 export function indexChunks(text: string): Chunk[] {
     const body = searchBody(text);
     return [...chunkDoc(body).filter(embeddable), ...threadChunks(text, body, 3)];
 }
 
+/** The model input for a passage: the document prefix of the model, then the text cut to `MAX_EMBED_CHARS`. */
 export const passageInput = (m: Model, title: string, c: Chunk) =>
     m.doc(title) + (c.embed ?? c.text).slice(0, MAX_EMBED_CHARS);
+/** The model input for a search query: the query prefix of the model, then the query. */
 export const queryInput = (m: Model, query: string) => m.query + query;
 
-// Builds the embedding function from a Transformers.js module (`tf`). The worker runs this
-// function's source text, so it may use only its parameters and globals.
+/**
+ * Builds the embedding function from a Transformers.js module (`tf`). The worker runs this
+ * function's source text, so it may use only its parameters and globals.
+ *
+ * Loads the configuration, the tokenizer, and the weights. Transformers.js downloads the files
+ * that its cache lacks. A load failure rejects.
+ *
+ * @param data The model repository id, the ONNX file stem, and the quantization.
+ * @param device The Transformers.js device, `webgpu` or `wasm`.
+ * @returns A function from a batch of texts to one `[count, dims]` tensor of embeddings. The
+ *   caller normalizes them (`toVectors`). A text beyond the model limit is truncated.
+ */
 export async function createEncoder(
     tf: any,
     data: { model: string; file: string; dtype: string },
@@ -147,7 +182,7 @@ export async function createEncoder(
     };
 }
 
-// Splits a [count, dims] batch into unit vectors, truncated to `m.dims` first.
+/** Splits a [count, dims] batch into unit vectors, truncated to `m.dims` first. */
 export function toVectors(m: Model, dims: number, data: Float32Array, count: number) {
     const keep = m.dims || dims;
     return Array.from({ length: count }, (_, i) => {
@@ -160,19 +195,28 @@ export function toVectors(m: Model, dims: number, data: Float32Array, count: num
     });
 }
 
+/** A search result: the document, the score of its best passage, and that passage's body offset and text. */
 export interface Hit {
     id: string;
     score: number;
     start: number;
     text: string;
 }
+/** The indexed passages of one document. Each vector `v` has unit length. */
 export interface Indexed {
     id: string;
     chunks: { start: number; text: string; v: Float32Array }[];
 }
 
-// The best-matching passage of each document, best first: what the sidebar shows. With
-// `min`, documents scoring lower are left out.
+/**
+ * The best-matching passage of each document, best first: what the sidebar shows. With
+ * `min`, documents scoring lower are left out.
+ *
+ * The score is the dot product, which is the cosine similarity for unit vectors. A passage
+ * whose vector length differs from the query's is skipped.
+ *
+ * @param q The unit vector of the query.
+ */
 export function rank(docs: Iterable<Indexed>, q: Float32Array, min = -Infinity, limit = Infinity): Hit[] {
     const hits: Hit[] = [];
     for (const e of docs) {

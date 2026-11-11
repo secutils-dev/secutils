@@ -1,9 +1,16 @@
 // Bundled independently and inlined into the opaque print frame. No MARS imports.
+//
+// This script paginates the print document with Paged.js and reports the result to the parent
+// window. Messages to the parent: `ready` with the page count, `error` with a message,
+// `print-requested`, and `afterprint`. It accepts one message, `print`, and only from the parent
+// window with the operation identifier of this document. The parent origin is not known here
+// (the app, or an exported file), so messages go to `*`.
 export {};
 // Select the script element itself: a document heading can produce the same id.
 const config = JSON.parse(document.querySelector('script#mars-print-config')!.textContent!);
 const send = (type: string, extra = {}) =>
     parent.postMessage({ kind: 'mars-export', operation: config.operation, type, ...extra }, '*');
+// True after pagination produced pages. A print request before that is ignored.
 let ready = false;
 const print = () => {
     if (!ready) return;
@@ -21,6 +28,10 @@ window.addEventListener('message', (event) => {
 });
 window.addEventListener('afterprint', () => send('afterprint'));
 
+/**
+ * Loads Paged.js, waits for images and fonts, paginates, and adds the screen preview layout.
+ * Rejects when Paged.js or a document image cannot load, or when pagination yields no page.
+ */
 async function paginate() {
     // Paged.js is the only export-specific external JS dependency. Never fetched by HTML
     // preview, app startup, or Markdown download. Browser HTTP caching serves subsequent frames.
@@ -39,6 +50,8 @@ async function paginate() {
             reject(new Error('Paged.js could not load. HTML and Markdown downloads are still available.'));
         document.head.append(script);
     });
+    // Pagination needs the final size of each image. Load every image first, and fail when one
+    // cannot load.
     for (const image of document.images) {
         image.loading = 'eager';
         if (!image.complete)
@@ -82,6 +95,8 @@ async function paginate() {
     @media print { body { height: auto !important; } .pagedjs_pages { transform: none !important; } .pagedjs_page { margin: 0; box-shadow: none; } }`;
     document.head.append(screenStyle);
     const pages = document.querySelector<HTMLElement>('.pagedjs_pages')!;
+    // Fits the pages to the frame width and centers them. The page width in millimeters converts
+    // to CSS pixels at 96 pixels per inch. The 32 pixels are the body padding on both sides.
     const scale = () => {
         const width = (config.width * 96) / 25.4;
         const available = Math.max(1, document.documentElement.clientWidth - 32);

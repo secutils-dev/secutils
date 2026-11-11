@@ -1,12 +1,22 @@
 // Small EUI-like toolset: icon hydration, a context menu, a modal, clipboard, and downloads.
+//
+// The page has one menu element (`#marsMenu`) and one modal element (`#marsModal`), so one of
+// each is open at a time. Trust: `modal({ html })` inserts markup as it is. The caller escapes
+// every interpolated value with `esc()`. `modal({ body })` and menu labels are escaped here.
 import { icon, type IconName } from './icons.ts';
 export { hydrateIcons } from '../../../shared/icons.js';
 import { hydrateIcons } from '../../../shared/icons.js';
 
+/** The shell element with this id. The id must exist: the result is not checked for null. */
 export const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
+/**
+ * Escapes `&`, `<`, `>`, and `"` for HTML text and for a double-quoted attribute value.
+ * It does not escape `'`, so it is not safe inside a single-quoted attribute.
+ */
 export const esc = (s: string) =>
     s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
+/** One action of a context menu. `sub` is a second line under the label. */
 export interface MenuItem {
     label: string;
     icon?: IconName;
@@ -15,17 +25,24 @@ export interface MenuItem {
     disabled?: boolean;
     run?: () => void;
 }
+/** A menu row: an action, a separator line, or a hint paragraph that is not interactive. */
 export type MenuEntry = MenuItem | 'separator' | { hint: string };
 
 const menuEl = () => $('marsMenu');
 let menuCleanup: (() => void) | null = null;
 
+/** Closes the context menu and removes its document listeners. Safe when no menu is open. */
 export function closeMenu() {
     menuCleanup?.();
     menuCleanup = null;
 }
 
-// Opens the shared context menu below `anchor` (an element) or at a pointer position.
+/**
+ * Opens the shared context menu below `anchor` (an element) or at a pointer position.
+ * An open menu closes first. The menu stays inside the viewport and opens above the anchor when
+ * there is no room below. It closes on an outside press, on Escape (focus returns to an anchor
+ * element), on window blur, and after an action. Arrow keys move between enabled actions.
+ */
 export function openMenu(anchor: Element | { x: number; y: number }, entries: MenuEntry[], label = 'Actions') {
     closeMenu();
     const menu = menuEl();
@@ -77,6 +94,7 @@ export function openMenu(anchor: Element | { x: number; y: number }, entries: Me
             items[(i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus();
         }
     };
+    // Listen after this task, so the press that opened the menu does not close it.
     setTimeout(() => document.addEventListener('pointerdown', onDown, true));
     document.addEventListener('keydown', onKey, true);
     window.addEventListener('blur', closeMenu, { once: true });
@@ -87,6 +105,7 @@ export function openMenu(anchor: Element | { x: number; y: number }, entries: Me
     };
 }
 
+/** Visual variants of the shared button style. `primary` wins over `danger`, and `danger` over `empty`. */
 export interface ButtonAppearance {
     primary?: boolean;
     danger?: boolean;
@@ -94,8 +113,10 @@ export interface ButtonAppearance {
     text?: boolean;
     flush?: 'left' | 'right' | 'both';
 }
+/** The class string for a button with the shared style. */
 export const buttonClass = (button: ButtonAppearance = {}) =>
     `btn${button.primary ? ' btn-primary' : button.danger ? ' btn-danger' : button.empty ? ' btn-empty' : ''}${button.text ? ' btn-text' : ''}${button.flush ? ` btn-flush-${button.flush}` : ''}`;
+/** One footer button of a modal. `value` is the result when the reader clicks it. */
 export interface ModalButton {
     label: string;
     value: string;
@@ -104,8 +125,14 @@ export interface ModalButton {
     empty?: boolean;
 }
 
-// Resolves with the clicked button's value, or '' when dismissed. A `field` adds a text input
-// whose value is returned for the primary button as `{ value, text }`.
+/**
+ * Resolves with the clicked button's value, or '' when dismissed. A `field` adds a text input
+ * whose value is returned for the primary button as `{ value, text }`.
+ *
+ * `body` is plain text. `html` is trusted markup: escape each interpolated value with `esc()`.
+ * An aborted `signal` closes the modal and resolves with ''. `text` is the trimmed field value.
+ * A call while the modal is open overwrites its content, so callers open one modal at a time.
+ */
 export function modal(opts: {
     title: string;
     body?: string;
@@ -149,6 +176,7 @@ export function modal(opts: {
                 value: b.value,
                 textContent: b.label,
             });
+            // A button whose value means dismiss renders as a text button, unless it has an emphasis.
             const empty = !b.primary && !b.danger && (b.empty ?? ['', 'close', 'back', 'cancel'].includes(b.value));
             el.className = buttonClass({
                 ...b,
@@ -185,6 +213,7 @@ export function modal(opts: {
     });
 }
 
+/** Asks for confirmation of a destructive action. Returns true only for the danger button. */
 export const confirmDanger = async (title: string, body: string, label: string) =>
     (
         await modal({
@@ -197,6 +226,7 @@ export const confirmDanger = async (title: string, body: string, label: string) 
         })
     ).value === 'ok';
 
+/** Asks for one line of text. Returns the trimmed text, or null when cancelled or empty. */
 export async function prompt(title: string, label: string, value: string, action = 'Save') {
     const r = await modal({
         title,
@@ -209,8 +239,15 @@ export async function prompt(title: string, label: string, value: string, action
     return r.value === 'ok' && r.text ? r.text : null;
 }
 
-// Safari keeps the click's user activation only for a clipboard write started synchronously,
-// so the write starts at once with promises that settle after the async work.
+/**
+ * Writes text, and optionally an HTML flavor, to the clipboard.
+ * Safari keeps the click's user activation only for a clipboard write started synchronously,
+ * so the write starts at once with promises that settle after the async work.
+ * Call it inside the click handler, before the first `await`.
+ * When the `ClipboardItem` write fails but the text resolved, it retries with `writeText`,
+ * which copies the plain text only. Rejects when the text promise rejects or the browser
+ * refuses both writes.
+ */
 export async function copyRich(text: Promise<string> | string, html?: Promise<string> | string) {
     const plain = Promise.resolve(text),
         rich = html === undefined ? null : Promise.resolve(html);
@@ -235,6 +272,10 @@ export async function copyRich(text: Promise<string> | string, html?: Promise<st
     await navigator.clipboard.writeText(await plain);
 }
 
+/**
+ * Starts a browser download of `data` under the file name `name`, with MIME type `type`.
+ * The temporary object URL is revoked after 1 second.
+ */
 export function download(name: string, data: BlobPart, type: string) {
     const url = URL.createObjectURL(new Blob([data], { type }));
     const a = Object.assign(document.createElement('a'), { href: url, download: name });
@@ -247,6 +288,11 @@ export function download(name: string, data: BlobPart, type: string) {
     }, 1000);
 }
 
+/**
+ * Makes a document name usable as a file name. The result has no reserved or control
+ * characters, no leading or trailing dot or space, and at most 120 characters.
+ * An empty result becomes "Untitled".
+ */
 export const fileSafe = (name: string) =>
     name
         .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '-')

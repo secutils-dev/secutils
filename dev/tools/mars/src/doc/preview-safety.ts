@@ -43,9 +43,15 @@ const VOID_TAGS = new Set([
     'track',
     'wbr',
 ]);
+/** A start or end tag. Group 1 is the slash of an end tag, group 2 the name. A quoted attribute value can hold `>`. */
 const TAG_RE = /<(\/?)([a-zA-Z][a-zA-Z0-9-]*)\b(?:"[^"]*"|'[^']*'|[^'">])*>/g;
+/** HTML comments. The tag scan removes them first, so a tag inside a comment does not count. */
 const COMMENT_RE = /<!--[\s\S]*?-->/g;
 
+/**
+ * The policy for document-supplied HTML. Besides the forbidden elements, it removes `style`,
+ * `id`, `name`, `class`, `srcset`, and every `data-*` and `aria-*` attribute.
+ */
 const sanitizeRaw = (html: string): string =>
     DOMPurify.sanitize(html, {
         USE_PROFILES: { html: true },
@@ -57,6 +63,7 @@ const sanitizeRaw = (html: string): string =>
     });
 
 const allowedTags = new Map<string, boolean>();
+/** True when the raw policy keeps an element with this name. The answer is cached for each name. */
 const allowedTag = (name: string) => {
     if (!allowedTags.has(name)) allowedTags.set(name, sanitizeRaw(`<${name}></${name}>`) !== '');
     return allowedTags.get(name)!;
@@ -115,13 +122,15 @@ export function safeRawHtml(html: string, balanced = false): string {
     const sanitized = sanitizeRaw(html);
     if (!balanced) return sanitized;
     const { open, orphans } = unbalancedTags(html);
+    // Put back an end tag only for an element that the policy allows.
     return open.length || orphans.length ? rebalance(sanitized, open, orphans.filter(allowedTag)) : sanitized;
 }
 
 /**
  * Sanitizes complete renderer output before it reaches `innerHTML`. Source-range attributes and
  * classes are allowed here because the renderer adds them after `safeRawHtml` removed every
- * document-supplied `data-*` attribute and class.
+ * document-supplied `data-*` attribute and class. `input` is allowed for the task-list
+ * checkboxes that the Markdown renderer emits.
  */
 export function safeRenderedHtml(html: string): string {
     return DOMPurify.sanitize(html, {

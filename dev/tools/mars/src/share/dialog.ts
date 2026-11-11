@@ -1,3 +1,8 @@
+// The Copy link dialog: one dialog for snapshot links (full or short) and Live links.
+// It owns the dialog state and the choice of link. `share.ts` creates snapshot links, and
+// `sync/` creates, forwards, and manages Live links.
+// Invariants: the dialog opens on Snapshot and Full unless the caller asks for Live. The
+// clipboard write starts inside the button click. The document name is escaped in the markup.
 import * as app from '../app.ts';
 import * as db from '../store/db.ts';
 import * as sync from '../sync/index.ts';
@@ -6,21 +11,33 @@ import { copyRich, esc } from '../ui/ui.ts';
 import { copyFeedback, hideTooltip } from '../ui/feedback.ts';
 import { SyncDialog } from '../sync/dialog.ts';
 
+/**
+ * Opens the Copy link dialog for a node and resolves when it closes. An unknown id has no effect.
+ * `initial` selects the Live tab when this reader can create or forward a Live link.
+ * Side effects: creates links through `share.ts` and `sync/`, and writes to the clipboard.
+ */
 export async function openShareDialog(id: string, initial: 'snapshot' | 'live' = 'snapshot') {
     const node = app.node(id);
     if (!node) return;
+    // A received Live document can only forward the owner's link. `original` describes that link
+    // and becomes null when it ends.
     const received = node.connection?.kind === 'live';
     let original = received ? await sync.liveLinkInfo(id) : null;
+    // A new Live link needs a library document that is local or owned by this reader.
     const canCreate =
         node.kind === 'doc' && !db.isTemporaryStorage() && (!node.connection || node.connection.permission === 'owner');
     const canLive = canCreate || !!original;
     const ui = new SyncDialog('copyLinkDialog');
     let busy = false;
     let refreshTimer: ReturnType<typeof setInterval> | undefined;
+    // The Live link of the last copy. The same options reuse it while more than 60 seconds remain,
+    // so a second click does not create a second link.
     let cachedLive: { key: string; value: { url: string; expires: number } } | null = null;
     let mode = initial === 'live' && canLive ? 'live' : 'snapshot',
         format = 'full';
+    // The chosen lifetime of each mode, in seconds. The default is 7 days.
     const lifetimes = { snapshot: 604800, live: 604800 };
+    // Shows the generated link, or the instruction text when `url` is empty.
     const showLink = (url = '') => {
         if (!url) hideTooltip();
         ui.element.querySelector<HTMLInputElement>('#copyLinkValue')!.value = url;
@@ -78,6 +95,7 @@ export async function openShareDialog(id: string, initial: 'snapshot' | 'live' =
                                 copyFeedback(button);
                             }
                         } catch (error) {
+                            // The clipboard write can fail after the link exists. Show the link for a manual copy then.
                             ui.idle();
                             const value = await result.catch(() => null);
                             if (ui.open && value) {
@@ -86,6 +104,8 @@ export async function openShareDialog(id: string, initial: 'snapshot' | 'live' =
                                 showLink(value.url);
                                 ui.message('Could not copy. Select the link above and copy it manually.');
                             } else if (ui.open) {
+                                // A fixed error code (lower-case words with hyphens) becomes a plain sentence. Other
+                                // messages are display text already.
                                 const message = (error as Error).message;
                                 ui.message(
                                     message === 'sync-pending'
@@ -109,6 +129,7 @@ export async function openShareDialog(id: string, initial: 'snapshot' | 'live' =
                 },
             ],
         });
+        // Brings every control in line with the mode, the format, and the state of a forwarded link.
         const update = () => {
             const live = mode === 'live',
                 forwarding = live && received,
@@ -172,6 +193,7 @@ export async function openShareDialog(id: string, initial: 'snapshot' | 'live' =
             };
         update();
         showLink();
+        // A forwarded link can end or expire while the dialog is open. Check once per second.
         if (original)
             refreshTimer = setInterval(() => {
                 if (

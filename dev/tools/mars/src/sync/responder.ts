@@ -1,5 +1,24 @@
-// Compiled into the existing MARS responder. It uses only the existing KV and SHA-256 ops.
-// No waits, mutable shared head, native Web Crypto, Rust route, or SQL migration.
+// The server side of Sync and Live links. esbuild compiles this module to an IIFE, and
+// `sync-assets.ts` splices it into the MARS webhook responder script, which runs once for each
+// HTTP request in a small V8 sandbox. There is no other backend: no waits, no Rust route, no SQL.
+//
+// The sandbox shapes the design:
+// - Storage is one key-value store with `get`, `set` (with `ifAbsent` and a time to live),
+//   `delete`, and a prefix `list`. It has no transactions and no compare-and-swap. Records are
+//   therefore immutable or append-only: a writer creates a key with `ifAbsent` and reads it back
+//   to learn which writer won (`first`). No record is a mutable shared head.
+// - One request can use 200 KV operations and a 10 MiB heap. Each action stays inside both
+//   limits, and long work is paged across requests.
+// - Web Crypto is not available. `@noble/curves` verifies P-256 signatures, and the host
+//   supplies SHA-256.
+//
+// Trust: the service never holds a document key. It stores ciphertext and signed headers, checks
+// signatures and grants, and enforces quotas, expiry, and revocation. Every request is untrusted
+// input. Validate its shape and size before a write, and scope each key to the collection of
+// the caller.
+//
+// Every response sets `skipRequest`, so request history never records user data. An error is a
+// fixed code without request content.
 import { p256 } from '@noble/curves/nist.js';
 import {
     canonical,
@@ -26,11 +45,17 @@ import {
     type SignedGrant,
 } from './protocol.ts';
 
+/** One row of a `Kv.list` page. */
 interface Entry {
     key: string;
     value?: string | null;
     createdAt?: number;
 }
+/**
+ * The key-value store of the responder host. A value is a base64url string of at most 1 MiB of bytes.
+ * `set` with `ifAbsent` keeps an existing live value, and `ttlSec` sets the expiry. A record
+ * without `ttlSec` never expires. `list` returns keys in ascending order.
+ */
 export interface Kv {
     get(key: string): Promise<string | null>;
     getEntry(key: string): Promise<{ value: string | null; expiresAt: number | null }>;
@@ -43,10 +68,12 @@ export interface Kv {
         valuesIncluded?: boolean;
     }): Promise<{ entries: Entry[]; cursor: string | null }>;
 }
+/** Host services for one request. `sha256` takes base64url bytes and returns a lowercase hex digest. */
 export interface Runtime {
     kv: Kv;
     crypto: { sha256(bytes: string): Promise<string> | string };
 }
+/** The HTTP request as the responder host presents it. `body` is the raw request body. */
 export interface Context {
     path: string;
     method: string;
@@ -58,28 +85,39 @@ export interface Context {
     params?: { secrets?: Record<string, string> };
 }
 export { prepareTestScope } from './testing.ts';
+/** The root record of a collection: the self-signed owner grant, and the root for a single-root collection. */
 interface Collection {
     v: 1;
     owner: SignedGrant;
     root?: CollectionRoot;
 }
+/** A member record: the signed grant, the membership slot that it holds, and its wrapped keys from pairing. */
 interface Member {
     signed: SignedGrant;
     slot: string;
     keys?: WrappedKey[];
 }
+/**
+ * An invitation for a Sync link (`pair`) or a Live link (`live`). The service stores the hash of
+ * the bearer token and, for a short link, a bootstrap that only the link secret decrypts.
+ */
 interface InviteRecord {
     policy: SignedInvitation;
     tokenHash: string;
     inviter: string;
     bootstrap?: { nonce: string; ciphertext: string };
 }
+/**
+ * A stored checkpoint header. `payload` names the separate ciphertext record, and `slots` lists
+ * the capacity permits that the checkpoint holds until it is pruned or deleted.
+ */
 interface Stored {
     envelope: SignedCheckpoint;
     author: SignedGrant;
     slots: string[];
     payload?: string;
 }
+/** One generation of a quota slot ledger. `busy` is false after a release. See `reserve`. */
 interface Permit {
     collection: string;
     operation: string;
@@ -88,13 +126,19 @@ interface Permit {
     generation: number;
     busy: boolean;
 }
+/** Key prefix of every Sync record. Snapshot links and test scopes use other prefixes. */
 const NS = 'sync/v1/';
+/** Bytes that one quota slot reserves. A checkpoint reserves whole slots. */
 const UNIT = 64 * 1024;
 const COLLECTION_SLOTS = LIMITS.collectionBytes / UNIT;
-const GLOBAL_SLOTS = (900 * 1024 * 1024) / UNIT; // Leave capacity for snapshots and metadata.
+/** Slots for all collections together. The store holds 1 GiB; the rest stays free for snapshots and metadata. */
+const GLOBAL_SLOTS = (900 * 1024 * 1024) / UNIT;
+/** The current time in seconds, the unit of every expiry in this module. */
 const clock = () => Math.floor(Date.now() / 1000);
+/** Encodes a record as canonical JSON in base64url, the value format of the store. */
 const b64json = (value: unknown) => encode(jsonBytes(value));
 const parse = <T>(value: string): T => JSON.parse(new TextDecoder().decode(decode(value)));
+/** Verifies an ECDSA P-256 signature over the canonical JSON of `value`. Malformed input is an invalid signature. */
 const signatureValid = (value: unknown, signature: string, publicKey: string) => {
     try {
         return p256.verify(decode(signature), jsonBytes(value), decode(publicKey), { prehash: true, lowS: false });
@@ -102,6 +146,7 @@ const signatureValid = (value: unknown, signature: string, publicKey: string) =>
         return false;
     }
 };
+/** Builds every response of this module: JSON, never cached, never recorded in request history. */
 const json = (statusCode: number, value?: unknown) => ({
     statusCode,
     headers: {
@@ -114,6 +159,7 @@ const json = (statusCode: number, value?: unknown) => ({
     body: value === undefined ? '' : JSON.stringify(value),
     skipRequest: true,
 });
+// Record keys. Every id in a key passed `validId` first, so a request cannot leave its prefix.
 const grantKey = (collection: string, member: string) => `${NS}c/${collection}/members/${member}`;
 const revokedKey = (collection: string, member: string) => `${NS}c/${collection}/revoked/${member}`;
 const collectionKey = (collection: string) => `${NS}c/${collection}/owner`;
@@ -149,6 +195,10 @@ async function currentEpoch(kv: Kv, collection: string, document: string) {
 async function liveKeyUpdate(kv: Kv, id: string, collection: string, document: string) {
     return read(kv, `${inviteKey(id)}/keys/${reverseSequence(await currentEpoch(kv, collection, document))}`);
 }
+/**
+ * True when the owner authorized `signed`: directly, or through a Live invitation that the owner
+ * signed and whose delegation key signed the grant within the limits of that invitation.
+ */
 const signedByOwner = (signed: SignedGrant, owner: SignedGrant) =>
     signed.issuer
         ? delegatedGrant(signed, owner.grant) &&
@@ -164,6 +214,14 @@ function takeCiphertext(checkpoint: SignedCheckpoint['checkpoint']) {
     return value;
 }
 
+/**
+ * Writes an immutable record: creates `key` unless it exists, then reads it back. A different
+ * stored value means that another writer holds the key, and the call fails with 409. An equal
+ * value makes a retry of the same write succeed.
+ *
+ * @param ttlSec Seconds until expiry, or `null` for a record that never expires.
+ * @param crypto When given, a large value is compared by digest, to keep one copy in the heap.
+ */
 async function first(
     kv: Kv,
     key: string,
@@ -181,10 +239,12 @@ async function first(
         if (!stored || (await crypto.sha256(stored)) !== digest) return fail('immutable-record-conflict', 409);
     } else if ((await kv.get(key)) !== value) return fail('immutable-record-conflict', 409);
 }
+/** Reads and decodes a record that this module wrote, or returns `null` when it is absent or expired. */
 async function read<T>(kv: Kv, key: string): Promise<T | null> {
     const raw = await kv.get(key);
     return raw ? parse<T>(raw) : null;
 }
+/** Lists every key under `prefix`, and fails with 507 above `ceiling` keys to protect the heap. */
 async function allKeys(kv: Kv, prefix: string, ceiling: number) {
     const entries: Entry[] = [];
     let after: string | undefined;
@@ -199,10 +259,18 @@ async function allKeys(kv: Kv, prefix: string, ceiling: number) {
     return entries;
 }
 
-// Each quota slot is a tiny immutable generation ledger, not a mutable head. A claimant
-// competes for the next exact generation key with ifAbsent, then reads back the winner.
-// Release appends a free generation. A delayed duplicate release cannot delete/release a
-// later claimant's slot. Newest-first key scans do not depend on timestamps or notifications.
+/**
+ * Reserves capacity for one checkpoint in the global budget and in the collection budget, and
+ * returns the permit keys in a stable order.
+ *
+ * Each quota slot is a small immutable generation ledger, not a mutable head. A claimant competes
+ * for the next generation key with `ifAbsent`, then reads back the winner. A release appends a
+ * free generation, so a delayed duplicate release cannot free the slot of a later claimant.
+ * Keys sort newest first, so a scan does not depend on timestamps.
+ *
+ * A retry with the same `operation` finds its permits through the reference records and takes
+ * only the missing ones. A request that runs out of KV operations therefore makes progress.
+ */
 async function reserve(
     kv: Kv,
     collection: string,
@@ -267,6 +335,10 @@ async function reserve(
     }
     return result;
 }
+/**
+ * Frees up to `maximum` permits of `operation`, global and collection permits in turn. A permit
+ * that another operation holds, or that is already free, only loses its reference record.
+ */
 async function release(kv: Kv, slots: string[], operation: string, maximum = 8, collection?: string) {
     const global = slots.filter((key) => key.startsWith(`${NS}budget/all/`)),
         local = slots.filter((key) => !key.startsWith(`${NS}budget/all/`));
@@ -294,6 +366,11 @@ async function release(kv: Kv, slots: string[], operation: string, maximum = 8, 
         for (const entry of old.entries.slice(1)) await kv.delete(entry.key);
     }
 }
+/**
+ * Takes one of `count` numbered slots under `prefix` for `id` and returns its key. The slot
+ * count is the limit: members, Live grants, documents, invitations, or collections for each
+ * client address. A second call for the same `id` returns the slot that it already holds.
+ */
 async function allocate(
     kv: Kv,
     prefix: string,
@@ -315,6 +392,19 @@ async function allocate(
     return fail(limitError, limitStatus);
 }
 
+/**
+ * Handles one `/sync/<action>` request, and returns `null` for any other path.
+ *
+ * Actions fall into four groups with separate authorization:
+ * 1. Invitation actions (`invite-read`, `pair-request`, `pair-result`, `live-join`): the bearer
+ *    token of the invitation.
+ * 2. Operator actions (`telemetry`, `maintenance`): the operator secret of the responder.
+ * 3. `create`: a self-signed owner grant, limited for each client address.
+ * 4. Member actions (all others): the bearer token of a grant that the collection owner signed,
+ *    that is not revoked or expired, and whose slot is still held.
+ *
+ * A failure is a `SyncError` code with its HTTP status. Any other error becomes a generic 503.
+ */
 export async function handle(context: Context, runtime: Runtime) {
     if (!context.path.startsWith('/sync/')) return null;
     const { kv } = runtime;
@@ -326,6 +416,7 @@ export async function handle(context: Context, runtime: Runtime) {
         if (context.body.length > LIMITS.updateBytes) return json(413, { error: 'update-too-large' });
         const request = JSON.parse(new TextDecoder().decode(context.body));
         if (!request || typeof request !== 'object' || Array.isArray(request)) return fail('invalid-request');
+        // ---- Invitation actions: authorized by the bearer token of the invitation. ----
         if (['invite-read', 'pair-request', 'pair-result', 'live-join'].includes(action)) {
             if (!validId(request.invitation)) return fail('invalid-invitation');
             const entry = await read<InviteRecord>(kv, inviteKey(request.invitation));
@@ -408,6 +499,7 @@ export async function handle(context: Context, runtime: Runtime) {
             if (!member || (await kv.get(revokedKey(p.collection, approved.member)))) return fail('access-ended', 403);
             return json(200, { approved: true, ...member, owner: collection.owner, root: collection.root });
         }
+        // ---- Operator actions: authorized by the operator secret of the responder. ----
         if (action === 'telemetry' || action === 'maintenance') {
             const secret = context.secrets?.MARS_STATS_API_KEY ?? context.params?.secrets?.MARS_STATS_API_KEY;
             const token = context.headers?.authorization?.replace(/^Bearer /, '');
@@ -509,6 +601,7 @@ export async function handle(context: Context, runtime: Runtime) {
                 complete: !reclaimedOperations && page.entries.length < 8,
             });
         }
+        // ---- Collection creation: authorized by a self-signed owner grant. ----
         if (action === 'create') {
             const signed = request.owner;
             if (
@@ -545,6 +638,7 @@ export async function handle(context: Context, runtime: Runtime) {
             await first(kv, grantKey(g.collection, g.member), b64json({ signed, slot }));
             return json(201, { collection: g.collection, limits: LIMITS });
         }
+        // ---- Member actions: every action below needs a valid grant of this collection. ----
         if (!validId(request.collection) || !validId(request.member)) return fail('invalid-scope');
         const collection = await read<Collection>(kv, collectionKey(request.collection));
         if (!collection) return fail('connection-expired', 410);
@@ -1360,4 +1454,5 @@ export async function handle(context: Context, runtime: Runtime) {
     }
 }
 
+/** Internals for unit tests. */
 export const responderInternals = { signatureValid, reserve, release, allocate, first };

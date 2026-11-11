@@ -1,3 +1,10 @@
+// The Sync dialog for one tree node: setup, status, retry, device management, and disconnection.
+// This module also routes a node to its dialog (Sync, Live links, or Live document) and maps fixed
+// error codes to user-visible sentences.
+// It owns screens and their flow only. Enrollment, pairing, access changes, and Live links live in the
+// sibling modules, and each loop pass reads their current state.
+// Invariants: document names, error sentences, and codes reach dialog markup only through `esc()`.
+// Raw error text never reaches a screen: the reader sees a mapped sentence and an allowlisted code.
 import * as app from '../../app.ts';
 import * as db from '../../store/db.ts';
 import * as viewer from '../../doc/viewer.js';
@@ -15,13 +22,25 @@ import { syncLinkPanel } from './pairing.ts';
 import { liveDocument, liveLinks, continueCleanup } from './live-links.ts';
 import { disconnect, accessPanel, continueRotation, stopHere } from './access.ts';
 
+/** Opens the Sync dialog for node `id`: the setup offer for a local node, or the status of a connection. */
 export const enroll = (id: string) => syncDialog(id);
+/**
+ * Opens the dialog that matches the connection of node `id`: **Live document** for a received Live link,
+ * **Live links** for a document that the owner shares through links, and the Sync dialog otherwise.
+ */
 export async function details(id: string) {
     await initialize();
     const node = app.node(id);
     if (node?.connection?.kind === 'live') return liveDocument(id);
     return node?.connection?.liveShared ? liveLinks(id) : syncDialog(id);
 }
+/**
+ * Maps a failure to one user-visible sentence.
+ *
+ * The lookup key is the code of a `SyncSetupError`, or else the error message, which holds the fixed code
+ * of a service or setup failure. An unknown key returns a generic sentence, so raw error text never
+ * reaches the reader. The result is plain text: the caller escapes it for markup.
+ */
 export const syncError = (error: unknown) =>
     ({
         'service-unavailable':
@@ -53,19 +72,42 @@ export const syncError = (error: unknown) =>
         'unsupported-link-key-format': 'Unsupported link key format. Create a new link from the sharing device.',
     })[error instanceof SyncSetupError ? error.code : errorText(error)] ??
     'Could not finish. Your document is still here. Try again.';
+/**
+ * Markup for an action button inside a dialog body. `SyncDialog` resolves a click with `action`.
+ * The arguments are not escaped: pass literals only.
+ */
 const syncTool = (label: string, action: string, glyph: IconName) =>
     `<button type="button" class="btn" data-sync-action="${action}">${icon(glyph)}<span>${label}</span></button>`;
+/**
+ * Markup for a pairing confirmation code. `phrase` holds groups separated by single spaces, as
+ * `pairingPhrase` returns them. Each group is escaped.
+ */
 export const confirmationCode = (phrase: string) =>
     `<div class="sync-code" role="group" aria-label="Confirmation code">${phrase
         .split(' ')
         .map((part) => `<span>${esc(part)}</span>`)
         .join(' ')}</div>`;
+/**
+ * Runs the Sync dialog for node `id` until the reader closes it.
+ *
+ * Each loop pass reads the current state and shows one screen:
+ * - a received Live document hands over to `liveDocument`;
+ * - an owner folder root with an empty manifest offers to finish its setup;
+ * - a local node, or an owner document that only backs Live links, gets the offer to turn on Sync;
+ * - a personal Sync connection shows its status with the device list, Sync link, retry, and disconnect actions.
+ *
+ * A failure shows the error screen with a mapped sentence, a fixed code, and the setup step when known.
+ * An `orphan-replica` failure also offers a restart when the preserved snapshot qualifies.
+ */
 async function syncDialog(id: string) {
     await initialize();
     const ui = new SyncDialog();
+    // `openSyncLink` sends the owner to the Sync link screen on the next pass. `problem` is the sentence
+    // for the next screen. `stopped` records that this dialog disconnected the device.
     let openSyncLink = false,
         problem = '',
         stopped = false;
+    // The snapshot that the reader chose to restart from on the error screen.
     let restart: db.UnfinishedSetupSnapshot | undefined;
     try {
         while (ui.open) {
@@ -129,6 +171,9 @@ async function syncDialog(id: string) {
                     openSyncLink = true;
                     continue;
                 }
+                // Personal Sync, as opposed to a document that only backs Live links. A non-owner connection
+                // and a folder are always personal. A scope without the flag counts as personal unless the
+                // document has Live links and no paired device.
                 const personal =
                     scope &&
                     (scope.member.grant.permission !== 'owner' ||
@@ -157,6 +202,7 @@ async function syncDialog(id: string) {
                     });
                     if (answer.value !== 'on') break;
                     ui.busy('Turning on Sync…');
+                    // A Live-only scope already has a collection. Turning on Sync only sets its flag.
                     if (scope) {
                         scope.personalSync = true;
                         await saveScope(scope);
@@ -174,6 +220,8 @@ async function syncDialog(id: string) {
                 }
                 const owner = scope.member.grant.permission === 'owner',
                     current = app.node(app.state.currentId);
+                // The open document cannot publish its latest edits yet. Show `attention`, whatever the
+                // transport reports.
                 const blocked = !!current && belongs(current, scope) && !viewer.canPublishConnection();
                 const status = blocked ? 'attention' : (node.connection!.phase ?? 'waiting');
                 const rotating = !!(await rotationRepository(scope).get());
@@ -233,6 +281,7 @@ async function syncDialog(id: string) {
                 else if (answer.value === 'retry') {
                     ui.busy('Trying again…');
                     await viewer.flush();
+                    // Resume in this order: a remote cleanup, then a saved key rotation, then the transport.
                     if (scope.cleanup) await continueCleanup(scope, ui.signal);
                     else if (await rotationRepository(scope).get()) await continueRotation(scope);
                     else {
@@ -253,11 +302,15 @@ async function syncDialog(id: string) {
                     }
                 }
             } catch (error) {
+                // `safeError` reduces the failure to allowlisted fields. A `SyncSetupError` recorded its
+                // own trace event, so only other failures are recorded here.
                 const details =
                     error instanceof SyncSetupError ? { ...safeError(error), stage: error.stage } : safeError(error);
                 if (!(error instanceof SyncSetupError)) syncDebug.record('setup.failed', details, true);
                 problem = syncError(error);
                 let unfinished: db.UnfinishedSetupSnapshot | undefined;
+                // Saved connection data exists without a connected node. Offer a restart only when
+                // `canRestartUnfinished` accepts the snapshot of this subtree.
                 if (details.code === 'orphan-replica') {
                     const node = app.node(id);
                     try {

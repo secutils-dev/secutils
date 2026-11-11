@@ -1,39 +1,75 @@
 // MARS-only table source operations. Layout travels in Markdown, not browser side data.
+//
+// This module owns the mapping between a GFM pipe table and its source text. It locates a table,
+// parses it into a `TableModel`, and computes the text of an edit. It is pure (no DOM, no storage)
+// and never changes the document. The caller splices the returned text into the source.
+// - Every offset is a UTF-16 index into `TableModel.source`. A model is valid for that exact
+//   string only. Read the table again after any source change.
+// - Each operation states the range that its result replaces and the bytes that it keeps.
+// - Column proportions live in an adjacent `<!-- su-table {"v":1,"cols":[...]} -->` comment.
+//   The comment is document content, so its values are validated before use.
 import { marked } from 'marked';
+/** A half-open `[start, end)` range of source offsets. */
 export interface TableRange {
     start: number;
     end: number;
 }
+/** A splice: replace `[start, end)` of the source with `text`. */
 export interface TableEdit extends TableRange {
     text: string;
 }
 export type TableAlignment = 'left' | 'center' | 'right';
+/**
+ * One source line of a table. `raw` is the line without its line break, and `prefix` is its
+ * indentation and blockquote markers. `newline` is its line break ('' when the range ends without
+ * one). `cells` holds each cell's source text with its padding and without the outer pipes.
+ */
 interface Row {
     cells: string[];
     raw: string;
     prefix: string;
     newline: string;
 }
+/**
+ * A parsed table. `[tableStart, end)` covers the table lines. `[start, end)` also covers the
+ * `su-table` comment when one precedes the table, and equals the table range otherwise.
+ * Whole-table edits replace `[start, end)`.
+ */
 export interface TableModel extends TableRange {
     tableStart: number;
+    /** The complete document body that the offsets index into. */
     source: string;
     header: Row;
     divider: Row;
+    /** Body rows. A short row is padded with empty cells to the header length. */
     rows: Row[];
+    /** Column shares that sum to 1, or null without a valid `su-table` comment. */
     widths: number[] | null;
+    /** Source text from `start` to `tableStart`: the comment line and an optional blank line, or ''. */
     marker: string;
+    /** Line break of the header line (`\n` when it has none), used for inserted lines. */
     eol: string;
 }
+/**
+ * A structural change for `changeTable`. `index` is zero-based: a column, or a body row (the
+ * header is not a row here). `before` and `after` insert next to `index`, and `move` needs `to`.
+ */
 export type TableAction = {
     axis: 'row' | 'column';
     index: number;
     kind: 'before' | 'after' | 'remove' | 'move';
     to?: number;
 };
+/** Splits a line into its indentation and blockquote markers (group 1) and the rest (group 2). */
 const PREFIX = /^([ \t]*(?:>[ \t]*)*)(.*)$/;
+/** A complete `su-table` comment line without its prefix. Group 1 is the JSON metadata. */
 const MARKER = /^<!--\s*su-table\s+([^\r\n]*?)\s*-->[ \t]*$/;
 
-// Review baselines must group the same source span as the live table block, including its marker.
+/**
+ * Splits a document body into the source text of its top-level blocks, for review baselines.
+ * Review baselines must group the same source span as the live table block, including its marker. A
+ * `su-table` comment and the table (GFM or raw HTML) that follows it form one entry.
+ */
 export function tableReviewBlocks(source: string): string[] {
     const raws: string[] = [];
     let cursor = 0,
@@ -50,6 +86,11 @@ export function tableReviewBlocks(source: string): string[] {
     return raws;
 }
 
+/**
+ * Validates column widths and scales them to shares that sum to 1. Returns null unless `value`
+ * is an array of exactly `count` positive finite numbers, with 1 to 1,000 columns and no share
+ * below 0.000001. The input can come from document content.
+ */
 export function normalizeWidths(value: unknown, count: number): number[] | null {
     if (
         !Array.isArray(value) ||
@@ -64,6 +105,10 @@ export function normalizeWidths(value: unknown, count: number): number[] | null 
     const widths = value.map((n) => n / sum);
     return widths.some((n) => n < 0.000001) ? null : widths;
 }
+/**
+ * Reads column shares from the JSON of a `su-table` comment. Accepts only `{"v":1,"cols":[...]}`
+ * without other keys, for a table with `count` columns. Returns null for anything else.
+ */
 export function metadataWidths(text: string, count: number): number[] | null {
     try {
         const data = JSON.parse(text);
@@ -75,7 +120,11 @@ export function metadataWidths(text: string, count: number): number[] | null {
     }
 }
 
-// GFM pipes split cells unless escaped by an odd number of backslashes, including code spans.
+/**
+ * Ranges of the cells in one table line, relative to `text` (the line without its prefix).
+ * GFM pipes split cells unless escaped by an odd number of backslashes, including code spans.
+ * A blank first or last span comes from an outer pipe and is not a cell.
+ */
 function cellSpans(text: string): TableRange[] {
     const cells: TableRange[] = [];
     let from = 0,
@@ -92,9 +141,15 @@ function cellSpans(text: string): TableRange[] {
     if (cells.length > 1 && !text.slice(cells.at(-1)!.start).trim()) cells.pop();
     return cells;
 }
+/** Source text of each cell in one table line, with its padding and without the outer pipes. */
 export const splitTableCells = (text: string): string[] =>
     cellSpans(text).map(({ start, end }) => text.slice(start, end));
 
+/**
+ * Source range of a cell's content without its padding. `line` counts source lines: 0 is the
+ * header, 1 the divider, 2 the first body row. An empty cell yields an empty range at its middle.
+ * Returns null when the source line has no such cell (an implicit cell of a short row).
+ */
 function contentRange(model: TableModel, line: number, column: number): TableRange | null {
     const lines = [model.header, model.divider, ...model.rows],
         row = lines[line];
@@ -108,6 +163,11 @@ function contentRange(model: TableModel, line: number, column: number): TableRan
     const start = span.start + (raw.trim() ? raw.length - raw.trimStart().length : Math.floor(raw.length / 2));
     return { start: offset + start, end: offset + (raw.trim() ? span.end - raw.length + raw.trimEnd().length : start) };
 }
+/**
+ * Source range of the content of a cell, for selection formatting in Preview. `row` 0 is the
+ * header and `row` n is body row n. Returns null for a cell outside the table and for an
+ * implicit cell of a short row.
+ */
 export function tableCellRange(model: TableModel, row: number, column: number): TableRange | null {
     if (
         !Number.isInteger(row) ||
@@ -121,6 +181,17 @@ export function tableCellRange(model: TableModel, row: number, column: number): 
     return contentRange(model, row ? row + 1 : 0, column);
 }
 
+/**
+ * Computes the splice that sets the content of one cell. The splice covers only the content of
+ * that cell, so padding, the other cells, and the other lines keep their bytes. A line break in
+ * `value` becomes `<br>`, and an unescaped pipe gains a backslash.
+ *
+ * An implicit cell of a short row has no source range. The splice then replaces that row after
+ * its prefix with every cell written out.
+ *
+ * @param row 0 for the header, n for body row n.
+ * @throws Error when the cell is outside the table.
+ */
 export function editTableCell(model: TableModel, row: number, column: number, value: string): TableEdit {
     if (
         !Number.isInteger(row) ||
@@ -151,11 +222,18 @@ export function editTableCell(model: TableModel, row: number, column: number, va
     return { start, end: start + target.raw.length - target.prefix.length, text: `|${cells.join('|')}|` };
 }
 
+/** Alignment of a column from the colons of its divider cell. A divider without a trailing colon is `left`. */
 export function columnAlignment(model: TableModel, column: number): TableAlignment {
     const value = model.divider.cells[column]?.trim() ?? '';
     return value.endsWith(':') ? (value.startsWith(':') ? 'center' : 'right') : 'left';
 }
 
+/**
+ * Returns the replacement for `[model.start, model.end)` with a new alignment for one column.
+ * Only the colons of that divider cell change. Its dashes, its padding, and every other byte stay.
+ *
+ * @throws Error for a column outside the table or an unknown alignment.
+ */
 export function alignTableColumn(model: TableModel, column: number, alignment: TableAlignment): string {
     if (
         !Number.isInteger(column) ||
@@ -171,7 +249,21 @@ export function alignTableColumn(model: TableModel, column: number, alignment: T
     return model.source.slice(model.start, range.start) + text + model.source.slice(range.end, model.end);
 }
 
-// Recover quoted/indented table tokens without letting a table's source range include other prose.
+/**
+ * Finds the source lines of a table token. For a table inside a blockquote or a list item,
+ * marked strips the quote markers and the indentation from `token.raw`. The raw text then does not
+ * occur verbatim in the source. Recover quoted/indented table tokens without letting a table's
+ * source range include other prose.
+ *
+ * A match starts at the start of a source line at or after `from` and ends at or before `limit`.
+ * Each line must end with the token line. Before it, only indentation and blockquote markers
+ * are allowed, with the blockquote depth of the first line.
+ *
+ * @param raw `token.raw` of the table.
+ * @param allowInlineList Also accept a list marker before the first line (`- | a | b |`).
+ * @returns The range of whole lines, with the last line break only when `raw` ends with one,
+ *   or null when no candidate matches.
+ */
 export function locateTable(
     source: string,
     raw: string,
@@ -214,6 +306,15 @@ export function locateTable(
     return null;
 }
 
+/**
+ * Parses the table lines in `range` (from `locateTable`) into a model. Returns null unless the
+ * lines form a pipe table. A pipe table has a header, a divider of dashes with the same cell count,
+ * and no body row with more cells than the header.
+ *
+ * A `su-table` comment on the line before the table belongs to it when both lines have the same
+ * blockquote markers. One blank line can separate them. The model then starts at the comment
+ * line. A comment with invalid metadata still belongs to the table and yields `widths: null`.
+ */
 export function readTable(source: string, range: TableRange): TableModel | null {
     const raw = source.slice(range.start, range.end);
     const lines = [...raw.matchAll(/([^\r\n]*)(\r?\n|$)/g)].filter((m) => m[0]);
@@ -261,8 +362,16 @@ export function readTable(source: string, range: TableRange): TableModel | null 
     };
 }
 
+/** A `su-table` comment line for `widths`, with the prefix of the header line. Shares keep 8 decimals. */
 const markerText = (model: TableModel, widths: number[]) =>
     `${model.header.prefix}<!-- su-table ${JSON.stringify({ v: 1, cols: widths.map((n) => Number(n.toFixed(8))) })} -->${model.eol}`;
+/**
+ * Returns the replacement for `[model.start, model.end)` with new column widths. The table lines
+ * keep their bytes. Only the `su-table` comment changes: `null` removes it, and an array writes
+ * it directly above the header.
+ *
+ * @throws Error when `widths` fails `normalizeWidths` for the column count.
+ */
 export function resizeTable(model: TableModel, widths: number[] | null): string {
     if (widths === null) return model.source.slice(model.tableStart, model.end);
     const normalized = normalizeWidths(widths, model.header.cells.length);
@@ -270,6 +379,20 @@ export function resizeTable(model: TableModel, widths: number[] | null): string 
     return markerText(model, normalized) + model.source.slice(model.tableStart, model.end);
 }
 
+/**
+ * Returns the replacement for `[model.start, model.end)` after a row or column insert, removal,
+ * or move.
+ *
+ * - A row action keeps the `su-table` comment and the bytes of every remaining line. An inserted
+ *   row has empty cells and the prefix of the divider line.
+ * - A column action writes each line again as `prefix|cells|` with the original cell text. Cell
+ *   Markdown and padding stay, and the outer pipes become explicit. Saved widths follow the
+ *   columns: a move reorders them, a removal scales the rest to 1, and an insert gives the
+ *   column an equal share.
+ *
+ * @throws Error for an index outside the table, a removal of the only column, or a move without a
+ *   valid `to`. A row removal in a table without body rows also throws.
+ */
 export function changeTable(model: TableModel, action: TableAction): string {
     const { axis, index, kind, to } = action;
     const count = axis === 'column' ? model.header.cells.length : model.rows.length;
@@ -278,6 +401,7 @@ export function changeTable(model: TableModel, action: TableAction): string {
     if (kind === 'remove' && (!count || (axis === 'column' && count === 1)))
         throw new Error('Keep at least one table column.');
     if (kind === 'move' && (!Number.isInteger(to) || to! < 0 || to! >= count)) throw new Error('Invalid table move.');
+    // An insert into a table without body rows uses index 0 and lands at position 0.
     const at = kind === 'before' ? index : kind === 'after' ? Math.min(count, index + 1) : index;
     const move = <T>(items: T[]) => {
         items.splice(to!, 0, ...items.splice(index, 1));
@@ -300,6 +424,7 @@ export function changeTable(model: TableModel, action: TableAction): string {
                 .map(
                     (r, i) =>
                         r.raw +
+                        // The result ends with a line break only when the original table range did.
                         (i === lines.length - 1
                             ? model.source.slice(model.tableStart, model.end).endsWith('\n')
                                 ? model.eol

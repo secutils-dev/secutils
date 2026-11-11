@@ -1,3 +1,10 @@
+// Enrollment: turns a local document or folder into a collection that this device owns.
+// Service registration and replica preparation finish first. One storage transaction then publishes
+// every binding, so another tab never finds a partly enrolled folder.
+// A failure before that transaction leaves the local library unchanged.
+// The module also converts the saved snapshot of an unfinished setup into a recovery package.
+// A snapshot can come from a recovery file. It gets a structure check here, and the restore
+// validates the complete package before any write.
 import * as app from '../../app.ts';
 import * as db from '../../store/db.ts';
 import * as viewer from '../../doc/viewer.js';
@@ -25,6 +32,12 @@ import {
 } from './state.ts';
 import { initialize, start } from './engine.ts';
 
+/**
+ * A failed Sync setup. `stage` names the setup step that failed. `code` is a fixed code from the
+ * diagnostics allowlist, or `unexpected-error`. The original error stays in `cause`.
+ * The message is fixed, so no raw error text reaches the dialog or the debug trace.
+ * The constructor records a `setup.failed` diagnostic event.
+ */
 export class SyncSetupError extends Error {
     readonly code: string;
     readonly stage: SetupStage;
@@ -36,10 +49,18 @@ export class SyncSetupError extends Error {
         syncDebug.record('setup.failed', { stage, ...safeError(cause) }, true);
     }
 }
+/** The saved scope of a replica record in a snapshot. A key without the member ID is the fallback. */
 function unfinishedScope(snapshot: db.UnfinishedSetupSnapshot, record: SessionRecord) {
     return (snapshot.metadata[scopeKey(record.binding.collection, record.binding.member)] ??
         snapshot.metadata[`sync:scope:${record.binding.collection}`]) as Scope | undefined;
 }
+/**
+ * True when a snapshot holds only the remains of a folder setup that never saved its bindings.
+ * The folder `id` is the first node, no node has a connection, and each replica record belongs to
+ * a full-collection folder scope whose local root is `id`.
+ * `enrollSelection` can then archive the snapshot and set the folder up again.
+ * The check covers structure only. It verifies no signature.
+ */
 export function canRestartUnfinished(snapshot: db.UnfinishedSetupSnapshot, id: string) {
     const records = Object.values(snapshot.records) as SessionRecord[];
     return (
@@ -68,8 +89,17 @@ export function canRestartUnfinished(snapshot: db.UnfinishedSetupSnapshot, id: s
         })
     );
 }
-// Convert the preserved raw snapshot only on explicit backup restoration. Current
-// text and the old CRDT/outbox become separate copies, so neither can replace the other.
+/**
+ * Converts the archived snapshot of an unfinished setup into a version 3 recovery payload.
+ * Only an explicit backup restoration calls it. The current text and the old replica with its outbox
+ * become separate copies, so neither can replace the other.
+ * `connections` holds one entry for each saved scope, with its replica records, nodes, owned links,
+ * rotation plan, and revocation history. `local` holds the current text of each node, and the text
+ * of each duplicate replica, as unconnected documents.
+ * Every node gets a new ID, so a restore cannot overwrite a document in the library.
+ * Throws `Error` when the snapshot structure is invalid. The input can come from a recovery file,
+ * and `restoreRecovery` validates the returned package before any write.
+ */
 export function recoveryFromUnfinished(saved: db.SavedUnfinishedSetup) {
     const snapshot = saved.snapshot;
     if (
@@ -86,6 +116,7 @@ export function recoveryFromUnfinished(saved: db.SavedUnfinishedSetup) {
         { scope: Scope; nodes: TreeNode[]; records: { local: string; record: SessionRecord }[] }
     >();
     const preservedProjections: { node: TreeNode; text: string }[] = [];
+    // Put the replica of each scope's local root first, so it wins over a duplicate of the same document.
     const records = Object.entries(snapshot.records).sort(
         ([a, x], [b, y]) =>
             Number(b === unfinishedScope(snapshot, y as SessionRecord)?.localRoot) -
@@ -136,6 +167,8 @@ export function recoveryFromUnfinished(saved: db.SavedUnfinishedSetup) {
     const connections = [...grouped.values()].map((group) => {
         const originalScope = structuredClone(group.scope),
             root = group.nodes.find((node) => node.id === group.scope.localRoot);
+        // A group without its root node, or one that is already a partial selection, restores as a
+        // selection of documents. Its first document becomes the root.
         if (!root || group.scope.selection) {
             const first = group.nodes.find((node) => node.kind === 'doc'),
                 record = group.records.find((item) => item.local === first?.id)?.record;
@@ -149,6 +182,7 @@ export function recoveryFromUnfinished(saved: db.SavedUnfinishedSetup) {
                 .map((node) => node.connection!.document);
         }
         const ids = new Set(group.nodes.map((node) => node.id));
+        // A node whose parent is not in the group moves under the folder root, or to the top level.
         for (const node of group.nodes)
             node.parentId =
                 node.id === group.scope.localRoot
@@ -167,6 +201,7 @@ export function recoveryFromUnfinished(saved: db.SavedUnfinishedSetup) {
             revoked: snapshot.metadata[revokedAccessKey(originalScope)] as RevokedAccess | undefined,
         };
     });
+    // The current text of every snapshot node becomes an independent, unconnected copy.
     const ids = new Map(snapshot.nodes.map((node) => [node.id, newId()]));
     const local = [
         ...snapshot.nodes.map((node) => ({
@@ -182,6 +217,7 @@ export function recoveryFromUnfinished(saved: db.SavedUnfinishedSetup) {
         })),
         ...preservedProjections,
     ];
+    // The connected copies get their own new IDs, separate from the local copies above.
     for (const group of connections) {
         const ids = new Map(group.nodes.map((node) => [node.id, newId()]));
         group.scope.localRoot = ids.get(group.scope.localRoot)!;
@@ -194,6 +230,18 @@ export function recoveryFromUnfinished(saved: db.SavedUnfinishedSetup) {
     }
     return { v: 3, connections, local };
 }
+/**
+ * Creates a collection from local node `id` and connects this device as its owner. A folder brings
+ * all of its descendants. The selection holds at most `LIMITS.documents` documents and folders.
+ * Order: flush the editor, check the selection, create the collection and register each item on the
+ * service, prepare every replica in memory, save all bindings in one transaction, then upload.
+ * The call succeeds only after the service acknowledges the first upload.
+ * Throws `SyncSetupError` with the failed stage. A failure before the save leaves local storage
+ * unchanged. A failure after it keeps the saved connection and shows `attention`.
+ * @param personalSync False when the scope exists only to share a Live link.
+ * @param previous The captured remains of an unfinished setup of the same folder. Its nodes and
+ *   texts become the selection, and the save archives it in the same transaction.
+ */
 export async function enrollSelection(id: string, personalSync = true, previous?: db.UnfinishedSetupSnapshot) {
     let stage: SetupStage = 'initializing',
         startedScope: Scope | undefined;
@@ -215,6 +263,8 @@ export async function enrollSelection(id: string, personalSync = true, previous?
         advance('saving-edits');
         await viewer.flush();
         advance('checking-selection');
+        // Copy the selection. The save compares this copy with storage and rejects a local change
+        // that happened during setup.
         const selected = structuredClone(
             previous?.nodes ?? [node, ...(node.kind === 'folder' ? descendants(app.state.nodes, id) : [])],
         );
@@ -236,8 +286,12 @@ export async function enrollSelection(id: string, personalSync = true, previous?
         });
         if (selected.some((n) => n.connection) || storedConnected) throw new db.ReplicaConflict('already-connected');
         if (selected.length > LIMITS.documents) throw new Error('selection-too-large');
+        // A replica record without a bound node is the remains of an earlier setup. Keep it and
+        // stop. The Sync dialog can then offer an explicit restart, which archives the record.
         if (orphanRecords && !previous) throw new db.ReplicaConflict('orphan-replica');
         if (previous && !canRestartUnfinished(previous, id)) throw new Error('unfinished-setup-unavailable');
+        // Each collection has its own identity keys, bearer token, and data keys. The owner grant
+        // is self-signed, covers every document, and does not expire.
         const who = await identity(),
             token = randomSecret(),
             root = newId(),
@@ -268,6 +322,7 @@ export async function enrollSelection(id: string, personalSync = true, previous?
                 identity: who,
                 exclusions: [],
                 personalSync,
+                // A new collection starts with fresh activity leases.
                 lastRenewed: Date.now(),
             };
         startedScope = scope;
@@ -299,7 +354,10 @@ export async function enrollSelection(id: string, personalSync = true, previous?
             binding.ownerParticipant = grant.participant;
             const target = connected.find((node) => node.id === item.id)!;
             target.connection = { ...binding, phase: 'waiting' };
+            // Remote edits never write to a linked file. A connected document needs an explicit disk Save.
             if (target.handle) target.manualFileSave = true;
+            // Documents and the root have a replica. A folder below the root is a manifest entry only.
+            // The session works on an in-memory record, so storage stays unchanged until the save.
             if (item.kind === 'doc' || item.id === id) {
                 let record = Session.seed(binding, texts[item.id] ?? '', who, token, docKey, owner, item.name);
                 const session = new Session(record, {
@@ -309,6 +367,7 @@ export async function enrollSelection(id: string, personalSync = true, previous?
                     },
                 });
                 try {
+                    // Publish a UUID origin only. A local file or URL identity stays on this device.
                     await session.metadataChanged({
                         kind: item.kind,
                         origin: validId(item.originId) ? item.originId : item.id,
@@ -320,6 +379,8 @@ export async function enrollSelection(id: string, personalSync = true, previous?
                     session.destroy();
                 }
             }
+            // The manifest entry carries the key of its document. The manifest travels inside the
+            // root replica, encrypted with the root key.
             values.push({
                 id: remote,
                 kind: item.kind,
@@ -349,6 +410,8 @@ export async function enrollSelection(id: string, personalSync = true, previous?
             }
         }
         advance('saving-connections');
+        // One transaction publishes the bindings, the replicas, and the scope. It throws
+        // `ReplicaConflict` when the selection, a text, or a node changed after the copy above.
         await app.serializePersistence(async () => {
             await db.enrollConnected(selected, texts, connected, records, { [scopeId(scope)]: scope }, previous);
             scopes.set(scopeId(scope), scope);
@@ -368,11 +431,13 @@ export async function enrollSelection(id: string, personalSync = true, previous?
         start(scope);
         const driver = driverFor(scope)!;
         await driver.upload();
+        // A hidden or offline tab uploads nothing. Report the setup as unfinished while the outbox has entries.
         if (await driver.options.replica.pending()) throw driver.lastFailure ?? new Error('sync-pending');
         viewer.refreshConnection();
         app.notify();
         syncDebug.record('setup.finished', { items: selected.length });
     } catch (error) {
+        // The scope is in the registry only after the save. The connection then exists and needs attention.
         if (startedScope && scopes.has(scopeId(startedScope))) phase(startedScope, 'attention');
         throw new SyncSetupError(stage, error);
     }

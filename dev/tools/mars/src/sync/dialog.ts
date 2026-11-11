@@ -1,7 +1,16 @@
+// Modal flow dialog of Sync and Live links: one <dialog> shows a sequence of screens and resolves each
+// with the chosen action. It owns focus, the busy state, and an abort signal for the requests of the flow.
+// `FlowScreen.html` reaches `innerHTML` as given. The caller escapes each interpolated value with `esc()`.
 import { icon } from '../ui/icons.ts';
 import { buttonClass } from '../ui/ui.ts';
 import { hideTooltip } from '../ui/feedback.ts';
 
+/**
+ * A footer button. Without `run`, a click resolves the screen with `value`. With `run`, a click calls it and the screen
+ * stays. A rejection of `run` shows a generic retry message. `empty` selects the borderless style, which is also the
+ * default for the values `back`, `close`, `cancel`, and the empty string. `left` moves the button to the left edge of
+ * the footer.
+ */
 export interface FlowButton {
     label: string;
     value: string;
@@ -11,6 +20,10 @@ export interface FlowButton {
     left?: boolean;
     run?(button: HTMLButtonElement): void | Promise<void>;
 }
+/**
+ * One step of a flow. `html` is trusted markup. An element with `data-sync-action` resolves the screen with that value.
+ * `back` shows the Back button. `field` adds one labeled input below the markup.
+ */
 export interface FlowScreen {
     title: string;
     html: string;
@@ -18,8 +31,14 @@ export interface FlowScreen {
     buttons?: FlowButton[];
     field?: { label: string; value: string; type?: 'text' | 'password'; readonly?: boolean };
 }
+/**
+ * A modal dialog. The constructor adds it to the page, and the first `screen` call opens it. A close aborts `signal`,
+ * resolves the pending screen with `close`, and removes the element. Escape goes back when the Back button is
+ * available. Otherwise it closes. A closed instance cannot open again.
+ */
 export class SyncDialog {
     readonly element = document.createElement('dialog');
+    /** Aborts when the dialog closes. Pass it to the requests of the flow. */
     readonly signal: AbortSignal;
     private controller = new AbortController();
     private heading = document.createElement('h2');
@@ -67,9 +86,15 @@ export class SyncDialog {
             else this.close();
         });
     }
+    /** False after the dialog closed. */
     get open() {
         return !this.signal.aborted;
     }
+    /**
+     * Shows a screen. The promise resolves with the chosen action value and the trimmed text of the input. A pending
+     * earlier screen resolves with `replaced`. A closed dialog resolves with `close` at once. Enter in an editable
+     * input chooses the primary button, or `back` without one.
+     */
     screen(screen: FlowScreen) {
         if (!this.open) return Promise.resolve({ value: 'close', text: '' });
         this.idle();
@@ -130,17 +155,23 @@ export class SyncDialog {
             this.answer = resolve;
         });
     }
+    /** Resolves the pending screen, if one exists, with `value` and the current input text. */
     resolve(value: string) {
         const answer = this.answer;
         this.answer = null;
         answer?.({ value, text: this.input?.value.trim() ?? '' });
     }
+    /** Shows a status line below the body. It has the `status` role for screen readers. */
     message(text: string) {
         if (this.open) {
             this.notice.classList.remove('sr-only');
             this.notice.textContent = text;
         }
     }
+    /**
+     * Disables each control except Close and shows a spinner with `text` on the primary or danger button. A call during
+     * the busy state does nothing.
+     */
     busy(text: string) {
         if (this.resetBusy) return;
         const controls = [
@@ -177,6 +208,7 @@ export class SyncDialog {
             input.disabled = true;
         this.back.disabled = true;
     }
+    /** Ends the busy state, restores the earlier disabled state of each control, and clears the status line. */
     idle() {
         this.resetBusy?.();
         this.resetBusy = null;
@@ -185,6 +217,7 @@ export class SyncDialog {
         this.notice.classList.remove('sr-only');
         this.notice.textContent = '';
     }
+    /** Closes and removes the dialog, aborts `signal`, and resolves the pending screen with `close`. */
     close() {
         hideTooltip();
         this.controller.abort();

@@ -1,15 +1,34 @@
+// The standalone HTML document: the rendered article, the reader controls that the settings
+// select, the reader runtime, and its configuration. The dialog shows this exact string in the
+// preview frame and writes it to the download.
+// `content` must be export-safe HTML from `viewer.renderExportBody`. It enters the document as
+// it is. The document name passes `head()`, which escapes it, and settings enter as validated
+// numbers and booleans.
 import readerRuntime from 'mars-runtime:reader';
 import { head, jsonTag, scriptTag, watermark } from './document.ts';
 import { icon } from '../ui/icons.ts';
 import type { ExportSnapshot } from './snapshot.ts';
 import type { ExportSettings } from './settings.ts';
 
+/**
+ * Embeds the Markdown body in an inert `<script type="text/markdown">`. Each `</script` in the
+ * body gets a backslash, so the body cannot end the element. A reader of the embedded source
+ * sees that backslash.
+ */
 export const embedSource = (body: string) =>
     `<script type="text/markdown" id="su-md-source" data-source="markdown">\n${body.replace(/<\/(script)/gi, '<\\/$1')}\n</script>`;
+/** True when the content has more than two `h2` or `h3` headings, the minimum for a table of contents. */
 export function hasToc(content: string) {
     return (content.match(/<h[23]\b/gi)?.length ?? 0) > 2;
 }
 
+/**
+ * Builds the complete standalone HTML document.
+ *
+ * @param content Export-safe HTML of the body. It is not escaped or sanitized again.
+ * @param operation The identifier that the reader runtime puts on its messages to a parent
+ *   frame. A downloaded file keeps it and sends no message without a parent.
+ */
 export function htmlDocument(value: ExportSnapshot, content: string, settings: ExportSettings, operation: string) {
     const { html, pdf } = settings;
     const width = html.readingWidth === 'full' ? 'none' : `${html.readingWidth}px`;

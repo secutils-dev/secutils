@@ -4,9 +4,17 @@
 // ponytail: the LCS table is O(n*m). Above this many cells a gap counts as one replacement,
 // so a rewrite of a huge document marks every block in the gap as edited.
 const MAX_CELLS = 4_000_000;
+/**
+ * Token limit for each side of a word comparison. Two sides at the limit fill exactly `MAX_CELLS`,
+ * so a word comparison always uses the full table.
+ */
 const MAX_WORDS = 2000;
 
-// Index pairs [i, j] with a[i] === b[j], in increasing order, forming a longest common subsequence.
+/**
+ * Index pairs [i, j] with a[i] === b[j], in increasing order, forming a longest common subsequence.
+ * The common prefix and suffix pair up without the table. When the remaining middle exceeds
+ * `MAX_CELLS`, it contributes no pairs.
+ */
 function commonPairs(a: string[], b: string[]): [number, number][] {
     let start = 0;
     while (start < a.length && start < b.length && a[start] === b[start]) start++;
@@ -22,6 +30,7 @@ function commonPairs(a: string[], b: string[]): [number, number][] {
         m = endB - start;
     if (n && m && n * m <= MAX_CELLS) {
         // lcs[i][j]: LCS length of a[start+i..endA) and b[start+j..endB).
+        // The cell limit keeps the shorter side at or below 2,000 entries, so a length fits in 16 bits.
         const w = m + 1,
             lcs = new Uint16Array((n + 1) * w);
         for (let i = n - 1; i >= 0; i--) {
@@ -45,13 +54,20 @@ function commonPairs(a: string[], b: string[]): [number, number][] {
     return pairs;
 }
 
-// `cur` is the current block index; a removed block's `cur` is the block it sat before
-// (equal to the block count when it was last).
+/**
+ * One block-level difference. `old` indexes the baseline blocks and `cur` the current blocks.
+ * A removed block's `cur` is the block it sat before (equal to the block count when it was last).
+ */
 export type BlockChange =
     | { kind: 'edited'; old: number; cur: number }
     | { kind: 'added'; cur: number }
     | { kind: 'removed'; old: number; cur: number };
 
+/**
+ * Compares two block lists and returns the changes in document order. Blocks match on their
+ * trimmed text. Between two matching blocks, old and new blocks pair up in order as `edited`,
+ * and the surplus on one side becomes `added` or `removed`.
+ */
 export function diffBlocks(oldRaws: string[], newRaws: string[]): BlockChange[] {
     const a = oldRaws.map((s) => s.trim()),
         b = newRaws.map((s) => s.trim());
@@ -69,10 +85,14 @@ export function diffBlocks(oldRaws: string[], newRaws: string[]): BlockChange[] 
     return out;
 }
 
+/** Splits text into whitespace runs, words, and single punctuation characters. The tokens rebuild the text. */
 const tokens = (text: string) => text.match(/\s+|[\p{L}\p{N}_]+|[^\s\p{L}\p{N}_]/gu) ?? [];
 
-// Inserted `[start, end)` ranges of `newText`, or null when either side is too long to compare.
-// Ranges separated only by whitespace merge, and whitespace-only insertions are dropped.
+/**
+ * Inserted `[start, end)` ranges of `newText` in UTF-16 units, or null when either side has more
+ * than `MAX_WORDS` tokens. Ranges separated only by whitespace merge, and whitespace-only
+ * insertions are dropped.
+ */
 export function diffWords(oldText: string, newText: string): [number, number][] | null {
     const a = tokens(oldText),
         b = tokens(newText);

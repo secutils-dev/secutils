@@ -1,5 +1,16 @@
 // Sharing: full links and encrypted short links for documents and folders, Slack/GitHub
 // copies, and opening shared links into the recipient's tree ("Shared with me").
+//
+// Owns snapshot links, the registry of short links that this browser created, the Share menu,
+// and the receive path for links, files, and URLs. Does not own the wire formats (`codec.ts`),
+// the Copy link dialog (`dialog.ts`), or Live links (`sync/`).
+// Trust:
+// - A fragment, a fetched URL, a file, and a service response are untrusted. Links decode through
+//   `codec.ts`, which bounds the size and checks the shape. Document names pass through `esc()`
+//   before they enter dialog markup.
+// - The short-link service receives the derived id, the ciphertext, a delete token, and the
+//   lifetime. The `#s=` secret stays in the fragment.
+// Each receive step takes the `InputOperation` of its request and checks it after every wait.
 import * as app from '../app.ts';
 import * as db from '../store/db.ts';
 import { ancestors, descendants, textBytes, type TreeNode } from '../tree/model.ts';
@@ -26,17 +37,24 @@ import { validWidth, type ReadingWidth } from '../export/settings.ts';
 import { temporaryFragment } from './temporary.ts';
 import * as sync from '../sync/index.ts';
 
+/** Name of the top-level folder that receives shared documents when no default folder is set. */
 export const SHARED_FOLDER = 'Shared with me';
+// Short-link lifetimes in seconds: 1, 7, 14, and 30 days. The responder script accepts the same values.
 const SHORT_TTLS = [86400, 604800, 1209600, 2592000];
+// `localStorage` key of the short-link registry: service id -> `LinkRecord`.
 const LINKS_KEY = 'mars.shortLinks';
+// `localStorage` key of the lifetime that the reader chose last, in seconds.
 const TTL_KEY = 'mars.shortTtl';
+// The default lifetime is 7 days.
 let shortTtl = 604800;
 try {
     shortTtl = SHORT_TTLS.find((t) => t === Number(localStorage.getItem(TTL_KEY))) ?? shortTtl;
 } catch {}
 
+// The page address without query and fragment. Every generated link starts with it.
 const base = () => `${location.origin}${location.pathname}`;
 const ttlLabel = (sec: number) => `${sec / 86400} day${sec === 86400 ? '' : 's'}`;
+// `exp` is in seconds since the epoch.
 const fmtExpiry = (exp: number) =>
     new Date(exp * 1000).toLocaleString(undefined, {
         month: 'short',
@@ -52,6 +70,11 @@ const fmtSize = (chars: number) =>
           : `${(chars / 1048576).toFixed(1)} MB`;
 
 // ---- Bundles ----
+/**
+ * Builds the bundle of a document, or of a folder with every document below it. Returns null
+ * for an unknown id. The open document contributes its viewer text and width. Callers flush the
+ * viewer first, so that text includes a pending edit. A temporary session marks the bundle `temporary`.
+ */
 async function bundleFor(id: string): Promise<Bundle | null> {
     const n = app.node(id);
     if (!n) return null;
@@ -78,6 +101,7 @@ async function bundleFor(id: string): Promise<Bundle | null> {
     const docs = [];
     for (const d of descendants(app.state.nodes, n.id)) {
         if (d.kind !== 'doc') continue;
+        // Folder names between the shared folder and the document.
         const path = ancestors(app.state.nodes, d.id)
             .slice(ancestors(app.state.nodes, n.id).length + 1)
             .map((f) => f.name);
@@ -94,6 +118,10 @@ async function bundleFor(id: string): Promise<Bundle | null> {
     };
 }
 
+/**
+ * Builds a full link: the content travels in the fragment, and nothing is uploaded.
+ * A document uses the Markdown Preview form (`name`, `md`, `o`, optional `w`). A folder uses `#b=`.
+ */
 async function fullLink(bundle: Bundle) {
     if (bundle.kind === 'doc') {
         const d = bundle.docs[0];
@@ -105,10 +133,18 @@ async function fullLink(bundle: Bundle) {
     return `${base()}#b=${await encodeState(JSON.stringify(bundle))}${bundle.temporary ? '&t=1' : ''}`;
 }
 
-// ---- Short links (stored by the responder script in mars.html) ----
+// ---- Short links (stored by the responder script in index.html) ----
+/**
+ * One short link that this browser created.
+ * `token` deletes the link early. The service keeps only its hash. `secret` rebuilds the URL
+ * when the link is reused. `hash` identifies the shared content. `exp` is in seconds since
+ * the epoch, and `ttl` in seconds.
+ */
 type LinkRecord = { token: string; exp: number; secret: string; ttl: number; hash: string; nodeId: string };
+// The registry of a temporary session. Its delete tokens stay in memory.
 let temporaryLinks: Record<string, LinkRecord> = {};
 
+// Returns the unexpired records of the active registry. Unreadable storage gives an empty registry.
 function readLinks(): Record<string, LinkRecord> {
     let links: Record<string, LinkRecord> = {};
     if (db.isTemporaryStorage()) links = { ...temporaryLinks };
@@ -129,14 +165,23 @@ const writeLinks = (links: Record<string, LinkRecord>) => {
         localStorage.setItem(LINKS_KEY, JSON.stringify(links));
     } catch {}
 };
-// Folder snapshots can also contain a selected descendant. Count each known,
-// unexpired snapshot once; deleting a library item does not revoke snapshots.
+/**
+ * Folder snapshots can also contain a selected descendant. Count each known,
+ * unexpired snapshot once; deleting a library item does not revoke snapshots.
+ * Returns the number of short links of this browser that include one of `ids`.
+ */
 export function shortLinksForDeletion(ids: string[]) {
     const selected = new Set(ids.flatMap((id) => [id, ...ancestors(app.state.nodes, id).map((node) => node.id)]));
     return Object.values(readLinks()).filter((link) => selected.has(link.nodeId)).length;
 }
 const shortUrl = (secret: string, bundle: Bundle) => `${base()}#s=${secret}${bundle.temporary ? '&t=1' : ''}`;
 
+/**
+ * Sends one request to the short-link endpoint of this page (`?s=<id>`). The response is never cached.
+ * A network failure throws an `Error` with a display message. An HTTP error status returns normally.
+ * After a 429 from the concurrency limit, it waits and sends the request once more.
+ * The wait is `Retry-After`, at most 5 seconds, and 1 second by default.
+ */
 async function shortFetch(id: string, { query = '', ...init }: RequestInit & { query?: string } = {}) {
     const send = () =>
         fetch(`${location.pathname}?s=${id}${query}`, { cache: 'no-store', ...init }).catch(() => {
@@ -158,6 +203,13 @@ async function shortFetch(id: string, { query = '', ...init }: RequestInit & { q
     return send();
 }
 
+/**
+ * Returns a short link for `bundle`, with `exp` in seconds since the epoch.
+ * It reuses a link of this browser with the same content and lifetime while at least half of
+ * that lifetime remains. Otherwise it encrypts the bundle, uploads the blob, and records the
+ * link with its delete token. Throws an `Error` with a display message when the blob exceeds
+ * `SHORT_MAX_CHARS` and when the service refuses the upload.
+ */
 async function shortLink(nodeId: string, bundle: Bundle, ttl = shortTtl) {
     const hash = await hashText(JSON.stringify(bundle)),
         now = Date.now() / 1000;
@@ -167,6 +219,7 @@ async function shortLink(nodeId: string, bundle: Bundle, ttl = shortTtl) {
     const { id, secret, blob } = await sealBundle(bundle);
     if (blob.length > SHORT_MAX_CHARS)
         throw new Error('Too large for a short link. Copy a full link or download the file instead.');
+    // A random 128-bit delete token. Only this browser holds it, so only it can delete the link early.
     const token = toBase64Url(crypto.getRandomValues(new Uint8Array(16)));
     const res = await shortFetch(id, {
         method: 'POST',
@@ -190,6 +243,12 @@ async function shortLink(nodeId: string, bundle: Bundle, ttl = shortTtl) {
     writeLinks(links);
     return { url: shortUrl(secret, bundle), exp };
 }
+/**
+ * Creates a snapshot link for a node. Pending edits of the open document are saved first.
+ * `full` uploads nothing and returns `expires: null`. `short` requires a lifetime from
+ * `SHORT_TTLS`, stores it as the preference, and returns `expires` in seconds since the epoch.
+ * Throws an `Error` with a display message.
+ */
 export async function snapshotLink(id: string, format: 'short' | 'full', ttl = shortTtl) {
     if (id === app.state.currentId || descendants(app.state.nodes, id).some((node) => node.id === app.state.currentId))
         await viewer.flush();
@@ -204,10 +263,14 @@ export async function snapshotLink(id: string, format: 'short' | 'full', ttl = s
     const result = await shortLink(id, bundle, ttl);
     return { url: result.url, expires: result.exp };
 }
+/** Opens the Copy link dialog. The dialog module loads on first use. */
 export const copyLinkDialog = (id: string, mode: 'snapshot' | 'live' = 'snapshot') =>
     import('./dialog.ts').then((module) => module.openShareDialog(id, mode));
 
-// Copies a link for a tree node. The clipboard write starts synchronously (Safari).
+/**
+ * Copies a link for a tree node. The clipboard write starts synchronously (Safari).
+ * A short link uses the stored lifetime preference. The result and a failure show as a toast.
+ */
 export async function copyNodeLink(id: string, kind: 'short' | 'full') {
     let sharedId = id;
     const bundle = (async () => {
@@ -247,6 +310,8 @@ async function bestLink(id: string, bundle: Bundle) {
     }
 }
 
+// A GitHub comment in Markdown: a link line, then each open thread with its quote (at most
+// 400 characters) and its comments.
 function githubSummary(name: string, url: string, threads: Thread[]) {
     const open = threads.filter((t) => !t.resolved);
     const quote = (s: string) =>
@@ -266,7 +331,8 @@ function githubSummary(name: string, url: string, threads: Thread[]) {
 }
 
 // A prompt that hands the open threads to an AI agent. The protocol itself lives in the
-// skill (mars.skill.md -> "Address review threads"); this is its paste-ready summary.
+// skill (SKILL.md -> "Address review threads"); this is its paste-ready summary.
+// An origin of the form `file:<path>` names the file that the agent must edit.
 function agentPrompt(n: TreeNode, threads: Thread[]) {
     const open = threads.filter((t) => !t.resolved);
     const file = n.originId?.startsWith('file:') ? n.originId.slice(5) : null;
@@ -289,6 +355,7 @@ const hideMenu = () => {
     if (menu.matches(':popover-open')) menu.hidePopover();
 };
 
+// The bundle of the open document, after a save of pending edits. Throws when no document is open.
 async function currentBundle() {
     await viewer.flush();
     const id = app.state.currentId;
@@ -297,12 +364,18 @@ async function currentBundle() {
     return { id, bundle };
 }
 
+/**
+ * Starts a temporary session with a page load on `?temporary=1`, which selects the memory
+ * backend before the database opens. `copyCurrent` carries the open document in the fragment
+ * (Read temporarily). Otherwise `new=1` requests an empty document.
+ */
 export async function startTemporary(copyCurrent = false) {
     await viewer.flush();
     const hash = copyCurrent ? await temporaryFragment((await currentBundle()).bundle.docs[0]) : '';
     location.assign(`${base()}?temporary=1${copyCurrent ? '' : '&new=1'}${hash}`);
 }
 
+// Shows "Delete short link" when this browser holds an unexpired short link of the open document.
 function renderMenu(tooLarge = false) {
     const owned = Object.values(readLinks()).filter((l) => l.nodeId === app.state.currentId);
     $('deleteShortLinkBtn').hidden = !owned.length;
@@ -319,6 +392,8 @@ $('copyLinkBtn').addEventListener('click', () => {
     hideMenu();
     if (app.state.currentId) void copyLinkDialog(app.state.currentId);
 });
+// The Share menu copies start the clipboard write in the click, with promises for the content
+// (see `copyRich`). The HTML flavor escapes the name and the URL, because the name is document content.
 $('copySlackBtn').addEventListener('click', async () => {
     hideMenu();
     const data = currentBundle().then(async ({ id, bundle }) => {
@@ -376,6 +451,8 @@ $('copyAgentBtn').addEventListener('click', async () => {
         viewer.toast((err as Error)?.message ?? 'Failed to copy');
     }
 });
+// Deletes every short link of the open document at the service. 404 counts as deleted. The
+// registry is saved in `finally`, so a link that was deleted before a failure does not come back.
 $('deleteShortLinkBtn').addEventListener('click', async () => {
     hideMenu();
     const links = readLinks();
@@ -396,10 +473,13 @@ $('deleteShortLinkBtn').addEventListener('click', async () => {
 });
 
 // ---- Receiving ----
+// A document without `originId` uses its own id as the origin.
 const findDoc = (originId: string) =>
     app.state.nodes.find((n) => n.kind === 'doc' && (n.originId ?? n.id) === originId);
 const sharedRoot = () => app.findOrCreateFolder(SHARED_FOLDER, null);
 
+// Replaces the text of a stored document. A connected document goes through Sync, which can
+// reject the text. The open document reloads in the viewer.
 async function saveText(n: TreeNode, text: string) {
     if (n.connection) {
         await sync.snapshot(n, text);
@@ -420,11 +500,17 @@ async function saveText(n: TreeNode, text: string) {
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
-// Brings an incoming copy of a stored document in. Comments always merge. The text is
-// decided against `opened`, the source text as MARS last received it: when only the source
-// changed it is taken (and the changes marked), when only the stored copy changed it stays,
-// and when both changed (or the source text is unknown) the reader decides. `link` attaches
-// the file an incoming copy was opened from.
+/**
+ * Brings an incoming copy of a stored document in. Comments always merge. The text is
+ * decided against `opened`, the source text as MARS last received it: when only the source
+ * changed it is taken (and the changes marked), when only the stored copy changed it stays,
+ * and when both changed (or the source text is unknown) the reader decides. `link` attaches
+ * the file an incoming copy was opened from.
+ *
+ * The incoming text is untrusted. It is stored and merged as text only.
+ * `readingWidth` is the width from the link. The call opens `existing` first, and it returns
+ * without a change when the reader dismisses the dialog.
+ */
 async function updateExisting(
     existing: TreeNode,
     text: string,
@@ -495,6 +581,7 @@ async function updateExisting(
         return;
     }
     if (!choice) return;
+    // The width from the link applies with the incoming text, or when the document has no shared width.
     if (validWidth(readingWidth) && (choice === 'theirs' || existing.readingWidth === undefined)) {
         existing.readingWidth = readingWidth;
         viewer.setDocumentReadingWidth(readingWidth);
@@ -507,6 +594,8 @@ async function updateExisting(
         });
     const next = choice === 'theirs' ? merged.theirs : merged.mine;
     if (next !== local) {
+        // Sync can refuse the text of a connected document. Offer an independent local copy then, so
+        // the incoming content is not lost.
         try {
             await saveText(existing, next);
         } catch (error) {
@@ -537,8 +626,12 @@ async function updateExisting(
     viewer.toast(note);
 }
 
-// A stored document the incoming one is likely an updated copy of (a moved file, or a file
-// opened with Open), confirmed by the reader. The origin then follows the new location.
+/**
+ * A stored document the incoming one is likely an updated copy of (a moved file, or a file
+ * opened with Open), confirmed by the reader. The origin then follows the new location.
+ * Returns null when no document scores above 0 and when the reader declines.
+ * It reads the text of every stored document.
+ */
 async function findLikely(name: string, text: string, originId?: string, input?: InputOperation) {
     let best: TreeNode | null = null,
         bestScore = 0;
@@ -561,6 +654,7 @@ async function findLikely(name: string, text: string, originId?: string, input?:
     });
     checkInput(input);
     if (value !== 'update') return null;
+    // Only a location origin (`file:` or `url:`) replaces the stored origin.
     if (originId && /^(file|url):/.test(originId)) {
         best.originId = originId;
         await db.putNodes([best]);
@@ -568,6 +662,8 @@ async function findLikely(name: string, text: string, originId?: string, input?:
     return best;
 }
 
+// One shared document: update the stored document with the same origin or a confirmed likely
+// copy. Otherwise add it to the default folder, or to "Shared with me".
 async function receiveDoc(doc: Bundle['docs'][0], input?: InputOperation) {
     const existing = findDoc(doc.originId) ?? (await findLikely(doc.name, doc.text, doc.originId, input));
     checkInput(input);
@@ -590,8 +686,14 @@ async function receiveDoc(doc: Bundle['docs'][0], input?: InputOperation) {
     viewer.toast(`Added "${doc.name}" to ${parent.name}`);
 }
 
-// A Markdown file opened with Open or dropped on the preview. Chromium hands over a handle,
-// which identifies a file already in the sidebar exactly; otherwise the content decides.
+/**
+ * A Markdown file opened with Open or dropped on the preview. Chromium hands over a handle,
+ * which identifies a file already in the sidebar exactly; otherwise the content decides.
+ *
+ * `parentId`: undefined selects the default incoming folder, then the current folder.
+ * A temporary session always adds a new top-level document and keeps no file handle.
+ * A superseded `input` throws `AbortError`.
+ */
 export async function receiveFile(
     file: { name: string; text: string; handle: FileSystemFileHandle | null; stamp: number; parentId?: string | null },
     input: InputOperation = beginInput(),
@@ -611,6 +713,7 @@ export async function receiveFile(
     let existing: TreeNode | null = null;
     if (file.handle) {
         for (const n of app.state.nodes) {
+            // `isSameEntry` compares the files on disk, not their names. A failed comparison counts as different.
             if (n.handle && (await n.handle.isSameEntry(file.handle).catch(() => false))) {
                 existing = n;
                 break;
@@ -640,6 +743,8 @@ export async function receiveFile(
     input.check();
 }
 
+// A shared folder. A folder with the same origin receives the documents again. Otherwise a new
+// folder goes to the default folder, or to "Shared with me".
 async function receiveFolder(bundle: Bundle, input?: InputOperation) {
     let target = bundle.originId
         ? app.state.nodes.find((n) => n.kind === 'folder' && n.originId === bundle.originId)
@@ -660,6 +765,8 @@ async function receiveFolder(bundle: Bundle, input?: InputOperation) {
     for (const doc of bundle.docs) {
         checkInput(input);
         const existing = findDoc(doc.originId);
+        // A known document keeps its text. A folder link merges comments only and never asks. The
+        // toast reports the number of documents whose text differs.
         if (existing) {
             const addWidth = existing.readingWidth === undefined && validWidth(doc.readingWidth);
             if (addWidth) existing.readingWidth = doc.readingWidth;
@@ -702,6 +809,11 @@ async function receiveFolder(bundle: Bundle, input?: InputOperation) {
     viewer.toast(`"${target.name}": ${parts.join(', ') || 'already up to date'}`);
 }
 
+/**
+ * Brings a decoded bundle into the tree, after a save of pending edits. A bundle of one
+ * document updates or adds that document. Every other bundle arrives as a folder.
+ * A superseded `input` throws `AbortError`.
+ */
 export async function receive(bundle: Bundle, input: InputOperation = beginInput()) {
     await viewer.flush();
     input.check();
@@ -709,7 +821,14 @@ export async function receive(bundle: Bundle, input: InputOperation = beginInput
     else await receiveFolder(bundle, input);
 }
 
-// Fetches a remote Markdown file (?url=, or the empty-state URL box) into the tree.
+/**
+ * Fetches a remote Markdown file (?url=, or the empty-state URL box) into the tree.
+ *
+ * The browser fetches the address directly, without a proxy, so a cross-origin source needs CORS
+ * headers. The response is untrusted text, and its origin id is `url:<address>`.
+ * Throws an `Error` with a display message for an invalid address, an HTTP error, and a network
+ * or CORS failure. A superseded `input` throws `AbortError`.
+ */
 export async function receiveUrl(url: string, input: InputOperation = beginInput()) {
     const cancelled = () => viewer.endLoading();
     input.signal.addEventListener('abort', cancelled, { once: true });
@@ -732,6 +851,7 @@ export async function receiveUrl(url: string, input: InputOperation = beginInput
         viewer.endLoading();
     } catch (error) {
         input.check();
+        // `fetch` reports a CORS or network failure as a `TypeError`.
         if (error instanceof TypeError) throw new Error('Fetch failed (CORS or network). Try a raw, CORS-enabled URL.');
         throw error;
     } finally {
@@ -739,17 +859,27 @@ export async function receiveUrl(url: string, input: InputOperation = beginInput
     }
 }
 
-// Opens whatever the address bar carries: `#doc=<id>`, a share link, or `?url=`.
-// Returns false when there was nothing to open.
+/**
+ * Opens whatever the address bar carries: `#doc=<id>`, a share link, or `?url=`.
+ * Returns false when there was nothing to open.
+ *
+ * Share links: `#s=<secret>` (short), `#b=<state>` (folder), `#name=&md=&o=` or a bare
+ * `#<state>` (document). Every one of them is untrusted input. True means that the address was
+ * handled, also when the link was damaged and a message replaced it. The call starts an input
+ * operation, so it supersedes a pending open.
+ */
 export async function openFromLocation(address = location.href): Promise<boolean> {
     const request = new URL(address);
     const hash = request.hash.slice(1);
     const params = new URLSearchParams(hash.includes('=') ? hash : '');
     const urlParam = request.searchParams.get('url');
+    // A fragment of `t=1` alone marks an empty temporary session.
     if (params.get('t') === '1' && !params.has('md') && !params.has('s') && !params.has('b') && !urlParam) return false;
     if (!hash && !urlParam) return false;
     const input = beginInput();
     app.cancelTemporaryRoute();
+    // Ends a failed open: clears the address, so a reload does not retry the link, and shows `msg`.
+    // Null shows the notice of the viewer for a missing or expired short link.
     const fail = (msg: string | null) => {
         input.check();
         history.replaceState(history.state, '', location.pathname);
@@ -758,6 +888,7 @@ export async function openFromLocation(address = location.href): Promise<boolean
         return true;
     };
     try {
+        // `#doc=<id>` is a route of this browser profile. An unknown id clears the address.
         if (params.has('doc')) {
             const id = params.get('doc')!;
             if (app.node(id)?.kind === 'doc') {
@@ -768,6 +899,7 @@ export async function openFromLocation(address = location.href): Promise<boolean
             return false;
         }
         let bundle: Bundle | null = null;
+        // Only the derived id goes to the service. The secret and the key stay in this page.
         if (params.has('s')) {
             const secret = params.get('s')!;
             let id: string;
@@ -780,6 +912,8 @@ export async function openFromLocation(address = location.href): Promise<boolean
             input.check();
             if (res.status === 404) return fail(null);
             if (!res.ok) return fail(`Could not load the short link (HTTP ${res.status}). Reload to retry.`);
+            // The response is untrusted. `openSealed` authenticates the blob with the key from the
+            // fragment and returns null for every other input.
             const { v, exp } = await res.json();
             bundle = await openSealed(secret, v);
             input.check();
@@ -822,6 +956,8 @@ export async function openFromLocation(address = location.href): Promise<boolean
             return false;
         }
         input.check();
+        // A link from a temporary session must not enter the library. Reload on the temporary address.
+        // The fragment stays, so the temporary session receives the same link.
         if ((params.get('t') === '1' || bundle.temporary) && !db.isTemporaryStorage()) {
             await viewer.flush();
             input.check();

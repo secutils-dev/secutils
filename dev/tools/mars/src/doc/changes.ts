@@ -1,6 +1,13 @@
 // Review changes: what changed, marked in the preview, against one of two baselines:
 // - `review`: the text before an outside change replaced it (app.rebase); "Mark reviewed" drops it.
 // - `opened`: the source text as MARS last received it, shown on request ("since opened").
+//
+// This module owns the changes bar, the block and word marks in the preview, and the "before"
+// popover. Its thread hooks keep a comment attached after its quote changed. It reads the baselines
+// and never writes them: `app.rebase` stores the review baseline and `app.markReviewed` deletes it.
+// A baseline is document text from another person. Its HTML reaches the page only through the
+// preview HTML policy (see `baselineRenderer`). Marks are valid only while the preview is in sync
+// with the source (`viewer.inSync`).
 import { marked } from 'marked';
 import * as app from '../app.ts';
 import * as db from '../store/db.ts';
@@ -12,13 +19,20 @@ import { tableReviewBlocks } from './table.ts';
 import { applyTableLayouts, tableMetadataHtml } from './table-layout.ts';
 import { safeRawHtml, safeRenderedHtml } from './preview-safety.ts';
 
+/** Leading YAML frontmatter. The preview does not render it, so the baseline drops it too. */
 const FRONTMATTER_RE = /^---\r?\n[\s\S]*?\r?\n---\r?\n/;
 // Rendered widgets whose text doesn't line up with their source get the block bar only.
 const RICH = 'pre, figure, .su-diagram, .katex';
+/** Every class that this module adds to a preview block. `clearMarks` removes them all. */
 const MARKS = ['su-diff-add', 'su-diff-edit', 'su-diff-del', 'su-diff-del-end', 'su-diff-focus'];
+/** Label of each change kind in the changes bar. */
 const KIND = { added: 'Added', edited: 'Edited', removed: 'Removed' } as const;
 
 type Mode = 'review' | 'opened';
+/**
+ * A parsed baseline of one document. `raws` holds its blocks as source text, and `texts` caches the
+ * rendered text of a block by index. `comments` holds the keys of the comments it contained.
+ */
 interface Base {
     id: string;
     mode: Mode;
@@ -26,7 +40,12 @@ interface Base {
     texts: Map<number, string>;
     comments: Set<string>;
 }
-// `span`: from the first to the last inserted word of an edited block, when words were compared.
+/**
+ * One marked change in the preview. `el` is the block that carries the mark, `old` lists the
+ * baseline blocks behind it, and `at` is its current block index. A run of removed blocks shares
+ * one change on the block that follows the run.
+ * `span`: from the first to the last inserted word of an edited block, when words were compared.
+ */
 interface Change {
     kind: keyof typeof KIND;
     el: HTMLElement;
@@ -35,17 +54,23 @@ interface Change {
     span?: [number, number];
 }
 
+// `<mode>:<id>` of the baseline that `load` last asked for. A slower read for another key is dropped.
 let wanted: string | null = null;
 let base: Base | null = null;
 // The document whose "since opened" view the reader asked for.
 let sinceOpened: string | null = null;
 let changes: Change[] = [];
+// Index into `changes` of the change that Previous and Next selected, or -1.
 let focused = -1;
+// Comments that are absent from the baseline and written by another author.
 let newCount = 0;
+// Baseline block index to the change that replaced or removed that block.
 let byOld = new Map<number, Change>();
 // Threads whose quoted text was rewritten (the edited block's change) or removed (null).
 const followed = new Map<string, Change | null>();
 
+// Inserted words use the CSS Custom Highlight API, so marking them changes no preview DOM.
+// Without the API, an edited block shows its block bar only.
 const highlight = 'highlights' in CSS ? new Highlight() : null;
 if (highlight) CSS.highlights.set('su-diff-ins', highlight);
 
@@ -60,6 +85,7 @@ const doneBtn = $('changesDone'),
     swapBtn = $('changesSwap'),
     openedBtn = $<HTMLButtonElement>('optSinceOpened');
 
+/** Splits baseline text into the same blocks as the live preview: no comments block, no frontmatter. */
 function parseBase(id: string, mode: Mode, text: string): Base {
     const { body, threads } = splitComments(text.replace(/\r\n?/g, '\n'));
     const raws = tableReviewBlocks(body.replace(FRONTMATTER_RE, ''));
@@ -76,8 +102,10 @@ baselineRenderer.text = function (token) {
         ? token.text.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
         : renderBaselineText.call(this, token);
 };
+/** Sanitized HTML of baseline block `i`. */
 const oldHtml = (i: number) =>
     safeRenderedHtml(marked.parse(base!.raws[i], { async: false, renderer: baselineRenderer }));
+/** Rendered text of baseline block `i`, parsed in a detached element and cached on the baseline. */
 function oldText(i: number) {
     let text = base!.texts.get(i);
     if (text === undefined) {
@@ -89,6 +117,7 @@ function oldText(i: number) {
 }
 
 const author = (name?: string) => name?.trim() || 'Anonymous';
+/** True for a comment that the baseline lacks and that another author wrote. */
 const isNew = (c: Comment) =>
     !!base && !base.comments.has(commentKey(c)) && author(c.author) !== author(viewer.currentAuthor());
 
@@ -102,6 +131,7 @@ function clearMarks() {
     newCount = 0;
 }
 
+/** Highlights the words that an edited block gained since `previous`, and records their span. */
 function markWords(change: Change, previous: string) {
     if (!highlight || change.el.querySelector(RICH)) return;
     const { text, range } = viewer.blockText(change.el);
@@ -116,16 +146,23 @@ function followRange(change: Change) {
     return change.span ? range(...change.span) : range(0, text.length);
 }
 
-// Recomputes the marks for the rendered preview. After a render with nothing left to show,
-// the baseline clears itself.
+/**
+ * Recomputes the marks for the rendered preview. After a render with nothing left to show,
+ * the baseline clears itself.
+ *
+ * @param fromRender True when a preview render triggered the call. Only then can an empty
+ *   `review` result mark the document as reviewed.
+ */
 function apply(fromRender = false) {
     clearMarks();
+    // Block offsets belong to the rendered source. Skip the diff until the preview catches up.
     if (!base || base.id !== app.state.currentId || !viewer.inSync()) {
         renderBar();
         return;
     }
     const blocks = [...$('previewArticle').querySelectorAll<HTMLElement>(':scope > .su-block')];
     const src = viewer.renderedSource();
+    // A preview without source-mapped blocks (a very large document) has no ranges to compare.
     if (blocks.length || !src.trim()) {
         const ops = diffBlocks(
             base.raws,
@@ -133,12 +170,14 @@ function apply(fromRender = false) {
         );
         for (const op of ops) {
             if (op.kind === 'removed') {
+                // Consecutive removed blocks share one mark on the block that follows them.
                 const last = changes.at(-1);
                 if (last?.kind === 'removed' && last.at === op.cur) {
                     last.old.push(op.old);
                     byOld.set(op.old, last);
                     continue;
                 }
+                // A block removed from the end has no successor. Mark the end of the last block.
                 const el = blocks[op.cur] ?? blocks.at(-1);
                 if (!el) continue;
                 el.classList.add(op.cur < blocks.length ? 'su-diff-del' : 'su-diff-del-end');
@@ -168,7 +207,12 @@ function apply(fromRender = false) {
     renderBar();
 }
 
-// A thread whose quote is gone follows it into the block that replaced the quoted text.
+/**
+ * A thread whose quote is gone follows it into the block that replaced the quoted text.
+ * The baseline block that contains the quote, preferably with its prefix and suffix, selects the
+ * change. Returns null when no baseline block holds the quote, or when that block is unchanged
+ * or removed.
+ */
 function fallbackAnchor(t: Thread): Range | null {
     if (!base || base.id !== app.state.currentId) return null;
     let best = -1,
@@ -198,6 +242,7 @@ function note(t: Thread) {
     return `Quoted text ${followed.get(t.id) ? 'changed' : 'removed'} ${since()}`;
 }
 
+/** Updates the changes bar and the "since opened" menu item for the open document. */
 function renderBar() {
     const cur = app.current();
     openedBtn.disabled = !cur?.opened;
@@ -230,6 +275,7 @@ function setSinceOpened(on: boolean) {
     load();
 }
 
+/** Moves the focus to the next (`1`) or previous (`-1`) change, wraps around, and scrolls to it. */
 function go(step: number) {
     if (!changes.length) return;
     hideBefore();
@@ -246,6 +292,7 @@ function hideBefore() {
     beforeBtn.setAttribute('aria-expanded', 'false');
 }
 
+/** Toggles the popover with the baseline blocks of the focused change, next to its block. */
 function showBefore() {
     const c = changes[focused];
     if (!c || !base) return;
@@ -253,6 +300,7 @@ function showBefore() {
         hideBefore();
         return;
     }
+    // `oldHtml` returns sanitized output, and the heading is a fixed string.
     before.innerHTML = `<div class="diff-before-head">${base.mode === 'opened' ? 'As opened' : 'Before your last review'}</div><div class="preview-article">${c.old.map(oldHtml).join('')}</div>`;
     applyTableLayouts(before, true);
     before.showPopover();
@@ -263,6 +311,10 @@ function showBefore() {
     beforeBtn.setAttribute('aria-expanded', 'true');
 }
 
+/**
+ * Ends the pending review of the open document. A thread that followed its quote into an edited
+ * block is quoted again from that block first, so it stays attached without the baseline.
+ */
 async function markReviewed() {
     const id = app.state.currentId;
     if (!id || base?.mode !== 'review') return;
@@ -291,8 +343,11 @@ before.addEventListener('toggle', (e) => {
 viewer.onRendered(() => apply(true));
 viewer.setThreadHooks({ fallbackAnchor, note, isNew });
 
-// Loads the baseline the open document calls for: "since opened" when asked for, otherwise
-// the pending review.
+/**
+ * Loads the baseline the open document calls for: "since opened" when asked for, otherwise
+ * the pending review. Runs on every app change and reads storage only when the wanted
+ * baseline changed. A `review` document without a stored baseline is marked as reviewed.
+ */
 async function load() {
     const cur = app.current();
     if (sinceOpened !== cur?.id) sinceOpened = null;
@@ -307,6 +362,7 @@ async function load() {
     focused = -1;
     if (mode) {
         const text = await db.getSide(mode === 'opened' ? 'opened' : 'base', cur!.id);
+        // Another document or mode was requested during the read. That call owns the state.
         if (wanted !== want) return;
         if (text === undefined) {
             if (mode === 'review') app.markReviewed(cur!.id);

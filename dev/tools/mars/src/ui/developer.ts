@@ -1,9 +1,18 @@
+// The Developer tools entry beside Privacy and Credits, and its dialog.
+// Diagnostic controls live here, not in feature dialogs. The entry shows only while a flag is set.
+// Flags and report data come from `platform/flags.ts` and `platform/debug.ts`.
 import { featureFlags, installFlags } from '../platform/flags.ts';
 import { clearDebugReport, debugReport, installDebug } from '../platform/debug.ts';
 import { $, buttonClass, copyRich, download, esc } from './ui.ts';
 import { copyFeedback } from './feedback.ts';
 import { icon } from './icons.ts';
 
+/**
+ * Installs the flag and debug console APIs, the Developer tools link, and its dialog.
+ * Call it once at startup. The dialog follows flag changes, also from another tab.
+ * "Copy debug report" writes the report to the clipboard, or downloads `MARS-debug.json`
+ * when the clipboard refuses.
+ */
 export function installDeveloperTools() {
     installFlags();
     installDebug();
@@ -23,6 +32,7 @@ export function installDeveloperTools() {
     document.body.append(dialog);
     dialog.querySelector<HTMLButtonElement>('.su-dialog-close')!.onclick = () => dialog.close();
     const render = () => {
+        // A render replaces the controls. Remember the focus, to move it to Close when its control is gone.
         const active = dialog.contains(document.activeElement) ? (document.activeElement as HTMLElement) : null;
         const flags = featureFlags.list(),
             debug = featureFlags.any('debug'),
@@ -76,6 +86,7 @@ export function installDeveloperTools() {
         render();
         dialog.showModal();
     };
+    // Replaces the `marsDebug` object of `installDebug` with one that also opens this dialog.
     Object.assign(window, {
         marsDebug: {
             report: debugReport,

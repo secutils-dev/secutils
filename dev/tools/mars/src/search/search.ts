@@ -1,6 +1,13 @@
 // Sidebar search: the filter matches document names and text, and, when smart search is on,
 // lists passages that match by meaning. Also the smart-search settings and the suggestion
 // to turn it on as the sidebar grows.
+//
+// This module owns the search state behind the sidebar list and the smart-search controls. The
+// sidebar renders the results (`sidebar.ts`), and `embed.ts` owns the model and the index.
+// - `textMatches` and `smartMatches` are synchronous and safe to call on every render. They
+//   start background work and call the `onUpdate` listeners when a newer answer exists.
+// - Snippets are plain text from documents. The caller escapes them.
+// - Dialog and badge markup here uses fixed strings and model table values only.
 import * as app from '../app.ts';
 import * as db from '../store/db.ts';
 import { icon } from '../ui/icons.ts';
@@ -32,6 +39,7 @@ import {
 const smartBtn = $('sbSmartBtn'),
     statusEl = $('sbSmartStatus');
 const listeners = new Set<() => void>();
+/** Registers a listener that runs when search results or smart-search settings changed. */
 export const onUpdate = (fn: () => void) => {
     listeners.add(fn);
 };
@@ -40,9 +48,12 @@ const notify = () => {
 };
 
 // ---- Text matches ----
+// Searchable text of each document in memory. An entry is current when its `at` equals the
+// `updatedAt` of the document.
 const texts = new Map<string, { at: number; body: string; threads: Chunk[] }>();
 let loadingTexts: Promise<void> | null = null;
 
+/** Reads the text of each document whose entry is missing or behind, one load at a time, then notifies. */
 function refreshTexts() {
     loadingTexts ??= (async () => {
         const docs = app.state.nodes.filter((n) => n.kind === 'doc');
@@ -60,9 +71,14 @@ function refreshTexts() {
     });
 }
 
-// Documents whose text or review comments contain `query`, with a snippet around the first
-// match; a match in a comment carries the commented passage's offset. Loads the texts on
-// first use and re-renders the sidebar when they arrive.
+/**
+ * Documents whose text or review comments contain `query`, with a snippet around the first
+ * match; a match in a comment carries the commented passage's offset. Loads the texts on
+ * first use and re-renders the sidebar when they arrive.
+ *
+ * A query under 2 characters matches nothing. The match ignores case. Results come from the
+ * cached texts, so a document that changed can show its previous match until the reload finishes.
+ */
 export function textMatches(query: string) {
     const out = new Map<string, { snippet: string; start?: number }>();
     if (query.length < 2) return out;
@@ -90,16 +106,24 @@ export function textMatches(query: string) {
 }
 
 // ---- Smart matches ----
-// The last query's passages by meaning, against index revision `at`. `pending` while the
-// query is being embedded.
+/**
+ * The last query's passages by meaning, against index revision `at`. `pending` while the
+ * query is being embedded.
+ */
 type Smart = { query: string; at: number; hits: Hit[]; pending: boolean; error?: string };
 let smart: Smart = { query: '', at: -1, hits: [], pending: false };
 let smartTimer: ReturnType<typeof setTimeout> | undefined;
 const same = (s: Smart, query: string, at: number) => s.query === query && s.at === at;
 
-// Passages that match `query` by meaning, for the sidebar's ranked list. Starts a search
-// (debounced) when the query or the index changed, and re-renders the sidebar when it finishes.
-// After an index change, the previous matches stay on screen, without the pending note, until the new ones arrive.
+/**
+ * Passages that match `query` by meaning, for the sidebar's ranked list. Starts a search
+ * (debounced) when the query or the index changed, and re-renders the sidebar when it finishes.
+ * After an index change, the previous matches stay on screen, without the pending note, until the new ones arrive.
+ *
+ * Returns null when smart search is off or the query has under 3 characters. The search starts
+ * 350 ms after the last call with a new query or index revision. An answer for an earlier query
+ * or revision is dropped.
+ */
 export function smartMatches(query: string) {
     if (!enabledModel() || query.length < 3) return null;
     const at = indexRevision();
@@ -123,8 +147,10 @@ export function smartMatches(query: string) {
 onIndexed(notify);
 
 // ---- Settings ----
+/** 'GPU' or 'CPU' for the device of the loaded model, or undefined before a model loaded. */
 const deviceLabel = () => (({ webgpu: 'GPU', wasm: 'CPU' }) as Record<string, string>)[activeDevice() ?? ''];
 
+/** Updates the pressed state and tooltip of the sparkles button. */
 function syncButton() {
     const key = enabledModel(),
         on = deviceLabel();
@@ -159,12 +185,17 @@ onStatus((s) => {
 });
 statusEl.addEventListener('click', () => (enabledModel() ? smartMenu(statusEl) : turnOn()));
 
+/** One-line description of each model in the picker. */
 const OPTION_TEXT: Record<ModelKey, string> = {
     fast: 'Small download, quick to index. English only.',
     best: 'Closest matches, in any language. Needs a graphics card.',
 };
 
-// The model picker. Resolves with the chosen model, or null when cancelled.
+/**
+ * The model picker. Resolves with the chosen model, or null when cancelled.
+ * A model that cannot run in this browser is disabled. A model that is not downloaded shows the
+ * download size of the weights this browser would load.
+ */
 async function chooseModel(current: ModelKey | null): Promise<ModelKey | null> {
     const keys = Object.keys(MODELS) as ModelKey[];
     const info = Object.fromEntries(
@@ -197,6 +228,10 @@ async function chooseModel(current: ModelKey | null): Promise<ModelKey | null> {
     );
 }
 
+/**
+ * Opens the model picker and turns smart search on with the chosen model, or switches the model.
+ * Does nothing when the reader cancels or keeps the current model. A switch rebuilds the index.
+ */
 export async function turnOn() {
     const current = enabledModel();
     const key = await chooseModel(current);
@@ -214,6 +249,7 @@ const fmtBytes = (b: number) => (b < 1e6 ? `${Math.max(1, Math.round(b / 1e3))} 
 
 smartBtn.addEventListener('click', () => (enabledModel() ? smartMenu(smartBtn) : turnOn()));
 
+/** Opens the smart-search menu: the model, pause or resume, rebuild, model removal, and turn off. */
 async function smartMenu(anchor: HTMLElement) {
     const key = enabledModel();
     if (!key) return;
@@ -300,8 +336,10 @@ async function smartMenu(anchor: HTMLElement) {
 
 // ---- Suggestion ----
 // Shown at 6, 20, and 50 documents, then every 10 more, until turned on or declined for good.
+/** `localStorage` key of the suggestion state. */
 const NUDGE_KEY = 'mars.smartNudge';
 const nudge = $('smartNudge');
+/** `shown` is the last threshold that showed the suggestion. `never` stops it for good. */
 type NudgeState = { shown: number; never?: boolean };
 const readNudge = (): NudgeState => {
     try {
@@ -319,6 +357,7 @@ const hideNudge = () => {
     nudge.hidden = true;
 };
 
+/** Shows the suggestion when the document count reached a threshold that has not shown it yet. */
 function checkNudge() {
     const state = readNudge();
     if (enabledModel() || state.never || !nudge.hidden) return;
@@ -336,6 +375,7 @@ $('smartNudgeNever').addEventListener('click', () => {
 });
 $('smartNudgeOn').addEventListener('click', turnOn);
 
+// Check for the suggestion 1.5 seconds after the last tree change.
 let nudgeTimer: ReturnType<typeof setTimeout> | undefined;
 app.onChange(() => {
     clearTimeout(nudgeTimer);
@@ -343,4 +383,5 @@ app.onChange(() => {
 });
 
 syncButton();
+// Start one indexing pass 3 seconds after startup.
 if (enabledModel()) setTimeout(reindex, 3000);

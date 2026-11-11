@@ -1,6 +1,16 @@
 // Smart (semantic) search: an embedding model runs in a module worker via Transformers.js,
 // lazy-loaded from jsDelivr, with weights from Hugging Face cached by the browser. The index
 // (one `vec:<id>` entry per document) lives in IndexedDB and follows document edits.
+//
+// This module owns the worker, the model lifecycle, the stored index, and the on, off, and pause
+// settings. The model table, the input format, and ranking live in `models.ts`.
+// - An index entry is current when two conditions hold. Its `at` equals the `updatedAt` of the
+//   document. Its model and version equal `indexVersion` of the selected model. Every other
+//   entry is embedded again by the next pass. A search uses each entry of that model and
+//   version, also one whose `at` is behind.
+// - At most one indexing pass runs at a time. A change during a pass queues exactly one more.
+// - Network: the Transformers.js module comes from jsDelivr at a pinned version, and the model
+//   files come from Hugging Face. Document text never leaves the browser.
 import * as app from '../app.ts';
 import * as db from '../store/db.ts';
 import {
@@ -21,13 +31,20 @@ import {
 
 export { MODELS, type Hit, type ModelKey };
 
+/** The Transformers.js module that the worker imports. The version is pinned in `models.ts`. */
 const TRANSFORMERS_URL = `https://cdn.jsdelivr.net/npm/@huggingface/transformers@${TRANSFORMERS_VERSION}`;
 
 // Bump when what gets embedded, or how, changes, so stored indexes rebuild. A new model or
 // quantization for a key rebuilds too.
 const INDEX_VERSION = 5;
+/**
+ * The version tag of an index entry: `INDEX_VERSION`, the model id, and the base quantization
+ * (`dtype`) of the model. The WebGPU quantization (`gpuDtype`) is not part of it.
+ */
 const indexVersion = (key: ModelKey) => `${INDEX_VERSION}:${MODELS[key].id}:${MODELS[key].dtype}`;
+/** `localStorage` key: the selected `ModelKey`. Smart search is off when the key is absent or unknown. */
 const SETTING_KEY = 'mars.smartSearch';
+/** `localStorage` key: '1' while indexing is paused. It applies to every MARS tab of this browser. */
 const PAUSE_KEY = 'mars.indexingPaused';
 const readPaused = () => {
     try {
@@ -37,6 +54,7 @@ const readPaused = () => {
     }
 };
 let paused = readPaused();
+/** The selected model, or null when smart search is off or storage is unavailable. */
 export function enabledModel(): ModelKey | null {
     try {
         const v = localStorage.getItem(SETTING_KEY);
@@ -46,6 +64,11 @@ export function enabledModel(): ModelKey | null {
     }
 }
 
+/**
+ * The stored index of one document (`vec:<id>`). `v` is the `indexVersion` of the write, and
+ * `at` is the `updatedAt` of the document when its text was read. `chunks[].text` is the
+ * passage text cut to 220 characters, for the result list.
+ */
 interface Entry {
     id: string;
     model: ModelKey;
@@ -54,6 +77,7 @@ interface Entry {
     chunks: { start: number; text: string; v: Float32Array }[];
 }
 
+// The entries of the selected model in memory, by document id. `loadIndex` fills it from storage.
 const index = new Map<string, Entry>();
 // What smart search is doing: `label` fits the sidebar badge, `text` is the full sentence.
 export type Status = {
@@ -62,6 +86,7 @@ export type Status = {
     text: string;
 } | null;
 const statusListeners = new Set<(s: Status) => void>();
+/** Registers a status listener and calls it at once with the current status. `null` means idle. */
 export const onStatus = (fn: (s: Status) => void) => {
     statusListeners.add(fn);
     fn(currentStatus);
@@ -80,6 +105,9 @@ const unavailable = (err: unknown): Status => ({
 });
 
 // ---- Worker ----
+// Source of the module worker. Messages: `{ id, type: 'load', ... }` loads a model and answers
+// `{ id, ok, device }`, with `{ id, progress }` messages before it. `{ id, type: 'embed', texts }`
+// answers `{ id, ok, device, dims, data }`. A failure answers `{ id, error }`.
 const WORKER = `
 import * as tf from '${TRANSFORMERS_URL}';
 tf.env.allowLocalModels = false;
@@ -113,8 +141,10 @@ self.onmessage = async ({ data }) => {
 };`;
 
 let worker: Worker | null = null;
+// The model that the worker holds or loads. A failed load clears it, so the next call loads again.
 let loaded: { key: ModelKey; ready: Promise<void> } | null = null;
 let seq = 0;
+// Requests to the worker that wait for their answer, by message id.
 const pending = new Map<
     number,
     {
@@ -124,6 +154,10 @@ const pending = new Map<
     }
 >();
 
+/**
+ * Sends one request to the worker and resolves with its answer. Creates the worker on first use.
+ * Rejects with the error text of the worker, or when `disable` ends the worker.
+ */
 function call(msg: Record<string, unknown>, progress?: (p: { file: string; loaded: number; total: number }) => void) {
     worker ??= Object.assign(
         new Worker(URL.createObjectURL(new Blob([WORKER], { type: 'text/javascript' })), {
@@ -154,6 +188,7 @@ function call(msg: Record<string, unknown>, progress?: (p: { file: string; loade
 // A hardware WebGPU adapter. `navigator.gpu` can exist without one (VMs, blocklisted GPUs),
 // and headless browsers offer a software fallback adapter, far too slow for embeddings.
 let gpu: Promise<Gpu> | null = null;
+/** Detects the WebGPU capability once for the page. Never rejects: a failure reports no GPU. */
 export function gpuInfo() {
     type Adapter = {
         isFallbackAdapter?: boolean;
@@ -169,13 +204,19 @@ export function gpuInfo() {
         .catch(() => ({ ok: false, f16: false }));
     return gpu;
 }
-// This browser's device and weights for a model (see `placement`).
+/** This browser's device and weights for a model (see `placement`), or null when it cannot run here. */
 export const placementOf = async (key: ModelKey) => placement(MODELS[key], await gpuInfo());
 
 // The device the loaded model runs on: 'webgpu' or 'wasm' (WebAssembly).
 let device: string | null = null;
+/** The device of the loaded model, or null before a model loaded. */
 export const activeDevice = () => device;
 
+/**
+ * Loads a model in the worker and reports the download and preparation as status. Calls for the
+ * loaded model share one promise. Rejects when the model cannot run in this browser or the load
+ * fails. A later call then starts a fresh load.
+ */
 function loadModel(key: ModelKey) {
     if (loaded?.key === key) return loaded.ready;
     const m = MODELS[key],
@@ -209,6 +250,8 @@ function loadModel(key: ModelKey) {
                     gpuOnly: m.gpu,
                 },
                 ({ file, loaded: got, total }) => {
+                    // Sum the progress of all files. The denominator is at least the expected download
+                    // size, so small files that finish first do not show a high percentage.
                     files.set(file, [got, total]);
                     const [done, all] = [...files.values()].reduce((s, [a, b]) => [s[0] + a, s[1] + b], [0, 0]);
                     const pct = Math.min(99, Math.round((done / Math.max(all, p.bytes)) * 100));
@@ -234,9 +277,11 @@ function loadModel(key: ModelKey) {
     return ready;
 }
 
+/** Embeds a batch of model inputs and returns one unit vector for each. Loads the model when needed. */
 async function embed(key: ModelKey, texts: string[]) {
     await loadModel(key);
     const { dims, data, device: used } = await call({ type: 'embed', texts });
+    // The worker can fall back from WebGPU to WebAssembly on first use. Follow its device.
     if (used && used !== device) {
         device = used;
         status(currentStatus);
@@ -245,30 +290,38 @@ async function embed(key: ModelKey, texts: string[]) {
 }
 
 // ---- Index ----
+// Bumped by a model switch, a rebuild, and `disable`. A pass from an earlier generation stops
+// and writes no entry.
 let generation = 0;
+// The pass in progress, or null.
 let indexing: Promise<void> | null = null;
 // A change arrived during a run, so another run follows it.
 let queued = false;
 // Bumped after a run that changed the index, so earlier search results go stale.
 let revision = 0;
+/** A counter that changes when a pass changed the index. Search results belong to one revision. */
 export const indexRevision = () => revision;
 const indexedListeners = new Set<() => void>();
+/** Registers a listener that runs after each pass that changed the index. */
 export const onIndexed = (fn: () => void) => {
     indexedListeners.add(fn);
 };
 export const isPaused = () => paused;
+/** Sets the pause state of this tab and its status. Returns true when the state changed. */
 function setPaused(value: boolean) {
     if (paused === value) return false;
     paused = value;
     status(enabledModel() && paused ? PAUSED : null);
     return true;
 }
+/** Pauses indexing in every MARS tab. A running pass stops after its current document. */
 export function pause() {
     try {
         localStorage.setItem(PAUSE_KEY, '1');
     } catch {}
     setPaused(true);
 }
+/** Ends the pause in every MARS tab and starts a pass for the documents that changed meanwhile. */
 export function resume() {
     try {
         localStorage.removeItem(PAUSE_KEY);
@@ -285,12 +338,18 @@ window.addEventListener('storage', (e) => {
 });
 window.addEventListener('pageshow', syncPaused);
 
+// The storage generation and the model that the in-memory index was loaded for.
 let indexStorage = -1,
     indexModel: ModelKey | null = null;
+/**
+ * Fills the in-memory index from storage, once for each storage backend and model. Entries of
+ * another model or another index version are ignored, so the next pass replaces them.
+ */
 async function loadIndex(key: ModelKey) {
     const storage = db.storageGeneration();
     if (indexStorage === storage && indexModel === key) return;
     const entries = await db.allSides<Entry>('vec');
+    // The storage backend changed during the read. These entries belong to the old backend.
     if (storage !== db.storageGeneration()) return loadIndex(key);
     index.clear();
     for (const e of entries) if (e?.model === key && e.v === indexVersion(key)) index.set(e.id, e);
@@ -298,7 +357,14 @@ async function loadIndex(key: ModelKey) {
     indexModel = key;
 }
 
-// Embeds documents whose text changed since they were indexed; one run at a time.
+/**
+ * Embeds documents whose text changed since they were indexed; one run at a time.
+ *
+ * Does nothing when smart search is off or paused. A call during a run queues one more run and
+ * returns the promise of the current one. The promise never rejects: a failure becomes the
+ * `error` status. A run drops entries of deleted documents, skips documents that were deleted
+ * since it started, and stops at a pause or a generation change.
+ */
 export function reindex() {
     const key = enabledModel();
     if (!key) return Promise.resolve();
@@ -346,12 +412,15 @@ export function reindex() {
                 const chunks = indexChunks((await db.getText(n.id)) ?? '');
                 const vectors: Float32Array[] = [];
                 for (let j = 0; j < chunks.length; j += 8)
+                    // One worker call embeds at most eight passages.
                     vectors.push(
                         ...(await embed(
                             key,
                             chunks.slice(j, j + 8).map((c) => passageInput(MODELS[key], n.name, c)),
                         )),
                     );
+                // The storage backend changed during the embedding. Write nothing to the new
+                // backend from this pass, and run again against it.
                 if (storage !== db.storageGeneration()) {
                     queued = true;
                     return;
@@ -384,7 +453,12 @@ export function reindex() {
     return indexing;
 }
 
-// The best-matching passage of each document, best first.
+/**
+ * The best-matching passage of each document, best first.
+ * Returns at most `limit` documents whose score reaches the minimum of the model, and an empty
+ * list when smart search is off. Loads the model when needed, also during a pause. Rejects when
+ * the model cannot load or the worker fails.
+ */
 export async function search(query: string, limit = 6): Promise<Hit[]> {
     const key = enabledModel();
     if (!key) return [];
@@ -397,9 +471,10 @@ export async function search(query: string, limit = 6): Promise<Hit[]> {
 // ---- Downloaded models ----
 // Transformers.js keeps model files in Cache Storage, keyed by their Hugging Face URL.
 const MODEL_CACHE = 'transformers-cache';
+/** The model that a cached file URL belongs to, by its repository id in the path. */
 const modelOf = (url: string) => (Object.keys(MODELS) as ModelKey[]).find((k) => url.includes(`/${MODELS[k].id}/`));
 
-// Bytes of each downloaded model in the browser cache.
+/** Bytes of each downloaded model in the browser cache. A model without cached files has no key. */
 export async function modelUsage() {
     const out: Partial<Record<ModelKey, number>> = {};
     if (!('caches' in globalThis)) return out;
@@ -414,8 +489,10 @@ export async function modelUsage() {
     return out;
 }
 
-// Whether the weights this browser would load for a model are in the cache. Cache Storage
-// holds whole files only, so the weights file plus most of the expected size means done.
+/**
+ * Whether the weights this browser would load for a model are in the cache. Cache Storage
+ * holds whole files only, so the weights file plus most of the expected size means done.
+ */
 export async function isDownloaded(key: ModelKey) {
     const p = await placementOf(key);
     if (!p || !('caches' in globalThis)) return false;
@@ -424,6 +501,7 @@ export async function isDownloaded(key: ModelKey) {
     return urls.some((u) => u.endsWith(weights)) && ((await modelUsage())[key] ?? 0) >= p.bytes * 0.9;
 }
 
+/** Deletes the cached files of one model. The next load downloads them again. */
 export async function removeModel(key: ModelKey) {
     if (!('caches' in globalThis)) return;
     const cache = await caches.open(MODEL_CACHE);
@@ -431,7 +509,12 @@ export async function removeModel(key: ModelKey) {
 }
 
 // ---- Settings ----
-// `force` rebuilds the index even when the model stays the same.
+/**
+ * Turns smart search on with a model and starts a pass.
+ * `force` rebuilds the index even when the model stays the same.
+ * A model change or a rebuild waits for the running pass to stop and then deletes every stored
+ * entry. The pause state stays as it is.
+ */
 export async function enable(key: ModelKey, force = false) {
     const previous = enabledModel();
     try {
@@ -448,7 +531,10 @@ export async function enable(key: ModelKey, force = false) {
     reindex();
 }
 
-// Turns smart search off and removes the index and every downloaded model.
+/**
+ * Turns smart search off and removes the index and every downloaded model.
+ * Also clears the pause, ends the worker, and rejects its open requests.
+ */
 export async function disable() {
     try {
         localStorage.removeItem(SETTING_KEY);
@@ -471,6 +557,8 @@ export async function disable() {
     for (const key of Object.keys(MODELS) as ModelKey[]) await removeModel(key);
 }
 
+// Tree changes schedule one pass, 2 seconds after the last change to a document timestamp or
+// name. `scheduledDocs` is the document state that the pending pass was scheduled for.
 let timer: ReturnType<typeof setTimeout> | undefined;
 let scheduledDocs = new Map<string, { at: number; name: string }>();
 app.onChange(() => {

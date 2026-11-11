@@ -1,4 +1,10 @@
 // Export (.md, .zip, a folder on disk) and import (.md files, folders, .zip exports).
+//
+// Owns downloads, the ZIP layout, and the import of files, folders, ZIP archives, and drops.
+// Trust: an imported file or ZIP entry is untrusted. Its content becomes document text only.
+// An entry path only supplies folder names for the tree and is never used as a file-system path.
+// A readable export holds documents only. Connection keys leave the browser only in the
+// optional password-protected recovery file that `sync.exportRecovery` builds.
 import { strToU8, strFromU8, unzipSync, zipSync, type Zippable } from 'fflate';
 import * as app from '../app.ts';
 import * as search from '../search/embed.ts';
@@ -12,9 +18,18 @@ import * as sync from '../sync/index.ts';
 import { SyncDialog } from '../sync/dialog.ts';
 import * as db from '../store/db.ts';
 
+// Extensions of the files that an import reads. Other files are skipped and counted.
 const SOURCE_FILES_RE = /\.(md|markdown|mdx|txt|html?)$/i;
+// The current UTC date as YYYY-MM-DD, for the name of a complete export.
 const today = () => new Date().toISOString().slice(0, 10);
 
+/**
+ * Downloads one document as a `.md` file. Another kind of node has no effect.
+ * `frozen` supplies a name and a text that the caller captured earlier. Without it, the open
+ * document downloads its export snapshot from the viewer.
+ * Resolves to true when a file was downloaded and to false when the reader cancelled or the
+ * download failed.
+ */
 export async function downloadDoc(id: string, frozen?: { name: string; text: string }) {
     const n = app.node(id);
     if (n?.kind !== 'doc') return;
@@ -28,6 +43,10 @@ export async function downloadDoc(id: string, frozen?: { name: string; text: str
         true,
     );
 }
+// Downloads `files` under `name`: one Markdown file when `markdown` is set, a ZIP otherwise.
+// When `ids` include a node with an active connection, a dialog offers an encrypted connection
+// backup with a password of 12 or more characters. A download with a backup is always a ZIP.
+// Returns true when a file was downloaded. A failure shows a toast and returns false.
 async function downloadSelection(
     name: string,
     files: { id: string; path: string; text: string | null; frozen?: boolean }[],
@@ -81,6 +100,8 @@ async function downloadSelection(
         else {
             const zip: Zippable = {},
                 backup = include ? await sync.exportRecovery(ids, password) : null;
+            // A null text is an empty folder. With a backup, a document uses the projection that
+            // `exportRecovery` returned for it. A frozen text stays as it is.
             for (const file of files) {
                 zip[file.path] =
                     file.text === null
@@ -95,6 +116,7 @@ async function downloadSelection(
         if (!ui || ui.open) toast(`Downloaded ${name}`);
         return !ui || ui.open;
     } catch (error) {
+        // A fixed error code (lower-case words with hyphens) is not display text.
         const message = (error as Error).message;
         toast(
             /^[a-z]+(?:-[a-z]+)+$/.test(message)
@@ -108,6 +130,8 @@ async function downloadSelection(
 }
 
 // Every document under `rootId` (null: everything) keyed by its relative export path.
+// A folder without children becomes a `path/` entry with a null text. Pending edits of the
+// open document are saved first when the selection contains it.
 async function collect(rootId: string | null) {
     if (!rootId || descendants(app.state.nodes, rootId).some((node) => node.id === app.state.currentId)) await flush();
     const paths = exportPaths(app.state.nodes, rootId);
@@ -125,6 +149,10 @@ async function collect(rootId: string | null) {
 const rootName = (rootId: string | null) =>
     rootId ? fileSafe(app.node(rootId)?.name ?? 'Folder') : `MARS documents ${today()}`;
 
+/**
+ * Downloads a folder, or the complete library for null, as a ZIP of Markdown files.
+ * A selection without documents shows a toast and downloads nothing.
+ */
 export async function exportZip(rootId: string | null) {
     const files = await collect(rootId);
     if (!files.some((f) => f.text !== null)) {
@@ -140,7 +168,11 @@ export async function exportZip(rootId: string | null) {
     );
 }
 
-// Chromium only: writes the folder as real files into a directory the user picks.
+/**
+ * Chromium only: writes the folder as real files into a directory the user picks.
+ * It creates a subfolder with the name of the root and replaces files of the same name.
+ * A cancelled picker has no effect. The files hold documents only, without connection data.
+ */
 export async function exportToDirectory(rootId: string | null) {
     let dir: FileSystemDirectoryHandle;
     try {
@@ -168,15 +200,20 @@ export async function exportToDirectory(rootId: string | null) {
 }
 
 // ---- Import ----
+// One document of an import: the folder names above it, its name, and its text.
 type Incoming = { path: string[]; name: string; text: string };
 
+/** The document name for an imported file: see `sourceName` for the order of the sources. */
 export const docName = (file: string, text: string) => readSource(text, { fileName: file }).name;
 
+// Turns one picked or dropped file into documents. A ZIP gives each source file inside it,
+// and another source file gives one document. `relPath` supplies the folder names.
 async function expand(file: File, relPath: string): Promise<Incoming[]> {
     const segments = relPath.split('/').filter(Boolean);
     const folders = segments.slice(0, -1);
     if (/\.zip$/i.test(file.name)) {
         const entries = unzipSync(new Uint8Array(await file.arrayBuffer()), {
+            // Skip macOS resource entries and every path with a segment that starts with a dot.
             filter: (f) => SOURCE_FILES_RE.test(f.name) && !/(^|\/)(__MACOSX|\.)/.test(f.name),
         });
         return Object.entries(entries).map(([path, bytes]) => {
@@ -191,6 +228,8 @@ async function expand(file: File, relPath: string): Promise<Incoming[]> {
     return [{ path: folders, name: source.name, text: source.text }];
 }
 
+// Creates the folders and the documents of an import below `parentId`. The documents do not
+// open, except a single one. Each document keeps its text as the `opened` source.
 async function importIncoming(items: Incoming[], parentId: string | null, skipped: number, input: InputOperation) {
     if (!items.length) {
         toast(skipped ? 'Only Markdown, HTML, and ZIP files can be imported' : 'Nothing to import');
@@ -257,6 +296,16 @@ async function importIncoming(items: Incoming[], parentId: string | null, skippe
     );
 }
 
+/**
+ * Imports picked files below `parentId`. Three cases:
+ * - One ZIP that holds a MARS recovery file: the reader chooses documents only or a restore
+ *   of the connections (`sync.restoreRecovery`). Not offered in a temporary session.
+ * - One source file outside a picked folder: it goes through `receiveFile`. It can therefore
+ *   update a document that is already in the library.
+ * - Everything else: each source file becomes a new document.
+ * A failure shows a toast, unless the operation was superseded. A call with a superseded
+ * `input` throws `AbortError`.
+ */
 export async function importFiles(
     files: File[],
     parentId: string | null = app.state.folderId,
@@ -264,6 +313,7 @@ export async function importFiles(
 ) {
     input.check();
     try {
+        // Look only for the recovery file. Its uncompressed size limit is 512 MiB.
         if (files.length === 1 && /\.zip$/i.test(files[0].name) && !db.isTemporaryStorage()) {
             const recovery = unzipSync(new Uint8Array(await files[0].arrayBuffer()), {
                 filter: (entry) =>
@@ -322,10 +372,15 @@ export async function importFiles(
     }
 }
 
-// Drops can carry whole folders; walk them with the (Baseline) FileSystemEntry API.
+/**
+ * Imports a drop below `parentId`.
+ * Drops can carry whole folders; walk them with the (Baseline) FileSystemEntry API.
+ * Call it synchronously in the `drop` handler. It starts an input operation and never rejects.
+ */
 export async function importDataTransfer(dt: DataTransfer, parentId: string | null) {
     const input = beginInput();
     try {
+        // Read the entries before the first wait. The browser empties `dt.items` when the event ends.
         const entries = [...dt.items].map((i) => i.webkitGetAsEntry?.()).filter((e): e is FileSystemEntry => !!e);
         if (!entries.length) {
             await importFiles([...dt.files], parentId, input);
@@ -339,10 +394,12 @@ export async function importDataTransfer(dt: DataTransfer, parentId: string | nu
                     (entry as FileSystemFileEntry).file(resolve, reject),
                 );
                 input.check();
+                // A dropped file has no relative path. Define one, so the import rebuilds the folders.
                 files.push(Object.defineProperty(file, 'webkitRelativePath', { value: `${prefix}${file.name}` }));
                 return;
             }
             const reader = (entry as FileSystemDirectoryEntry).createReader();
+            // `readEntries` returns a directory in batches. An empty batch ends it.
             for (;;) {
                 const batch = await new Promise<FileSystemEntry[]>((resolve, reject) =>
                     reader.readEntries(resolve, reject),

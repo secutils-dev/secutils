@@ -1,5 +1,14 @@
 // Documents sidebar: a docked, hideable tree of folders and documents (EuiCollapsibleNav +
 // EuiTreeView look). Drag rows to move or reorder them; drop files to import them.
+//
+// This module owns the tree DOM, the search result list, row menus, rename, and drag and drop.
+// It does not own the tree data: every change goes through `app`, `sync`, `share`, or `io`, and
+// `app.onChange` renders the tree again.
+// - Rows are built as HTML strings. Document and folder names, file names, and service labels
+//   can come from another person, and each one passes `esc()`. Node identifiers are random
+//   UUIDs that this browser generates, and they enter attributes and selectors as they are.
+// - A document row is a real link to `#doc=<id>`. The action button and the rename input stay
+//   outside the anchor.
 import * as app from '../app.ts';
 import { ancestors, canMove, childrenOf, descendants, textBytes, type TreeNode } from '../tree/model.ts';
 import { icon, folderIcon } from '../ui/icons.ts';
@@ -15,13 +24,19 @@ import { incomingFolder } from '../io/destination.ts';
 
 const tree = $('tree');
 const filterInput = $<HTMLInputElement>('sbFilter');
+/** At this width or less the sidebar is an overlay with a backdrop, and it starts collapsed. */
 const NARROW = matchMedia('(max-width: 900px)');
+/** `localStorage` key: '1' when the reader collapsed the docked sidebar. */
 const COLLAPSED_KEY = 'mars.sidebarCollapsed';
+/** `localStorage` key: the sidebar width in CSS pixels. */
 const WIDTH_KEY = 'mars.sidebarWidth';
+// The node whose row shows a rename input, or null.
 let renaming: string | null = null;
+// The row that keyboard navigation last reached. It keeps the tab stop across renders.
 let focusId: string | null = null;
 
 // ---- Collapse, overlay, and width ----
+/** Shows or hides the sidebar. The choice is saved only for the docked layout, never for the overlay. */
 function setCollapsed(collapsed: boolean, remember = true) {
     document.body.classList.toggle('sb-collapsed', collapsed);
     $('navToggle').setAttribute('aria-expanded', String(!collapsed));
@@ -32,7 +47,9 @@ function setCollapsed(collapsed: boolean, remember = true) {
         } catch {}
 }
 const isCollapsed = () => document.body.classList.contains('sb-collapsed');
+/** Shows the sidebar and saves that choice for the docked layout. */
 export const openSidebar = () => setCollapsed(false);
+/** Hides the overlay sidebar after an action that opens a document. The docked sidebar stays. */
 const closeOverlay = () => {
     if (NARROW.matches) setCollapsed(true, false);
 };
@@ -46,6 +63,7 @@ NARROW.addEventListener('change', () => setCollapsed(NARROW.matches || storedCol
 $('navToggle').addEventListener('click', () => setCollapsed(!isCollapsed()));
 $('sbBackdrop').addEventListener('click', () => setCollapsed(true, false));
 
+/** Applies a sidebar width, limited to 220 to 560 pixels and to half of the window. Returns the applied width. */
 const setWidth = (px: number) => {
     const w = Math.round(Math.min(Math.max(px, 220), Math.min(560, innerWidth * 0.5)));
     document.documentElement.style.setProperty('--sb-w', `${w}px`);
@@ -76,6 +94,7 @@ resizer.addEventListener('pointerup', () => {
 // ---- Rendering ----
 const filterText = () => filterInput.value.trim().toLowerCase();
 
+/** The tree rows in display order. Children of a closed folder are left out. */
 function visibleRows(): { n: TreeNode; depth: number }[] {
     const rows: { n: TreeNode; depth: number }[] = [];
     const walk = (parentId: string | null, depth: number) => {
@@ -106,13 +125,20 @@ const folderPath = (n: TreeNode) =>
 // With a query, the sidebar lists matching documents, best first: a match in the name or
 // folder, then in the text (with a snippet), then by meaning (smart search, marked with
 // sparkles). A document appears once, at its best rank.
+/** One search result row. `start` is the body offset of the matched passage, when the match has one. */
 interface Result {
     n: TreeNode;
     snippet?: string;
     start?: number;
     smart?: boolean;
 }
+// Text matches of the rendered query. `activate` reads it to decide whether to open Find.
 let textHits = new Map<string, { snippet: string; start?: number }>();
+/**
+ * Builds the ranked result list for a lowercase query. `note` reports a smart search that is
+ * still pending or that failed. The text matches appear at once, and `onUpdate` renders again
+ * when the matches by meaning arrive.
+ */
 function searchResults(q: string) {
     textHits = textMatches(q);
     const named: Result[] = [],
@@ -131,15 +157,18 @@ function searchResults(q: string) {
     return { rows: [...named, ...texted, ...meaning], note };
 }
 
+/** The connection badge of a row: a button that opens the Sync or Live details. */
 const connectionHtml = (n: TreeNode) =>
     n.connection
         ? `<button type="button" class="tree-connection" title="${esc(sync.label(n))}" data-connection="${n.id}" data-phase="${n.connection.phase ?? 'waiting'}" aria-label="${esc(n.connection.phase === 'ended' ? 'Local document' : n.connection.kind === 'live' ? 'Live document' : n.connection.liveShared ? 'Shared document' : 'Sync')}: ${esc(sync.label(n))}">${icon(n.connection.phase === 'ended' ? 'unlink' : n.connection.kind === 'live' || n.connection.liveShared ? 'link' : 'refresh')}</button>`
         : '';
+/** The folder that receives incoming documents: the chosen default, or the top-level shared folder. */
 const defaultFolder = () =>
     app.defaultIncomingFolder() ??
     app.state.nodes.find(
         (node) => node.kind === 'folder' && node.parentId === null && node.name === share.SHARED_FOLDER,
     );
+// The default folder at the last render, so each row compares against one lookup.
 let renderedDefaultFolder: string | undefined;
 const isDefaultFolder = (n: TreeNode) => n.kind === 'folder' && n.id === renderedDefaultFolder;
 const labelHtml = (n: TreeNode) =>
@@ -152,6 +181,8 @@ const moreHtml = (n: TreeNode) =>
     `<button type="button" class="tree-more" tabindex="-1" aria-label="Actions for ${esc(n.name)}" title="Actions">${icon('boxesVertical')}</button>`;
 // Local routes are real links, so the browser can open them in another tab/window.
 // Keep action buttons and rename inputs outside the anchor.
+// A temporary session keeps its documents in memory, where another tab cannot open them.
+// Its rows are buttons.
 const docLink = (n: TreeNode, content: string) =>
     db.isTemporaryStorage()
         ? `<button type="button" class="tree-link" tabindex="-1" draggable="false" aria-label="${esc(n.name)}">${content}</button>`
@@ -181,8 +212,15 @@ function resultHtml(r: Result) {
 // A render while a rename is in progress replaces the input; the typed name and the
 // selection carry over, and the focusout from removing the old input doesn't commit it.
 let rendering = false;
+// `linkGesture` is true from pointerdown on a document link until its click was delivered.
+// `renderPending` records a render that was skipped during that time.
 let linkGesture = false,
     renderPending = false;
+/**
+ * Rebuilds the sidebar from the app state and the search box: the tree, or the result list when
+ * a query is present. Keeps a rename draft, the keyboard focus, and the tab stop. During a
+ * pointer gesture on a document link the render waits until the gesture ends.
+ */
 export function render() {
     // A save must not replace the anchor between pointerdown and its native navigation.
     if (linkGesture) {
@@ -237,6 +275,7 @@ const rowEl = (id: string | null) => (id ? tree.querySelector<HTMLElement>(`.tre
 const focusTarget = (row: HTMLElement | null) => row?.querySelector<HTMLAnchorElement>('.tree-link') ?? row;
 const rowNode = (el: Element | null) => app.node((el?.closest('.tree-row') as HTMLElement | null)?.dataset.id ?? null);
 
+/** Renders the folder path of the open document as breadcrumb buttons. */
 function renderCrumbs() {
     const cur = app.current();
     const chain = cur ? ancestors(app.state.nodes, cur.id) : [];
@@ -257,6 +296,10 @@ $('crumbs').addEventListener('click', (e) => {
 });
 
 let usageTimer: ReturnType<typeof setTimeout> | undefined;
+/**
+ * Updates the document count and the total text size, 300 ms after the last render.
+ * A document without a cached `size` is read from storage once.
+ */
 function renderUsage() {
     clearTimeout(usageTimer);
     usageTimer = setTimeout(async () => {
@@ -272,6 +315,7 @@ function renderUsage() {
 }
 
 // ---- Actions ----
+/** Creates an empty document in `parentId`, switches to Source view, and hides the overlay sidebar. */
 async function newDoc(parentId: string | null = app.state.folderId) {
     const n = await app.createDoc({ name: app.uniqueName('Untitled', parentId), parentId });
     setViewMode('edit');
@@ -279,6 +323,7 @@ async function newDoc(parentId: string | null = app.state.folderId) {
     return n;
 }
 
+/** Creates a folder in `parentId`, selects it, and starts its rename. */
 async function newFolder(parentId: string | null = app.state.folderId) {
     const n = await app.createFolder(app.uniqueName('New folder', parentId), parentId);
     app.state.folderId = n.id;
@@ -290,6 +335,7 @@ function startRename(id: string) {
     render();
 }
 
+/** Ends the rename, saves the typed name when `commit` is true, and returns the focus to the row. */
 async function finishRename(commit: boolean) {
     const input = tree.querySelector<HTMLInputElement>('.tree-rename');
     const id = renaming;
@@ -302,7 +348,13 @@ async function finishRename(commit: boolean) {
     }
 }
 
+// Nodes with a delete confirmation or removal in progress. A second request for one is ignored.
 const deleting = new Set<string>();
+/**
+ * Asks for confirmation and deletes a document, or a folder with its contents. The dialog states
+ * what happens to synced copies, Live links, and short links. For a connected node, the Sync
+ * removal runs before the local removal. A failure keeps the local copy and offers a retry.
+ */
 async function deleteNode(n: TreeNode) {
     if (deleting.has(n.id)) return;
     const current = app.node(n.id);
@@ -363,6 +415,7 @@ async function deleteNode(n: TreeNode) {
         });
         if (!answer.value) return;
         if (connected) toast(`Deleting ${n.name}…`);
+        // Hand pending edits to storage before the removal.
         await viewer.flush();
         if (connected) await sync.remove(n.id, answer.value === 'remote');
         const undo = await app.remove(n.id);
@@ -380,6 +433,7 @@ async function deleteNode(n: TreeNode) {
 // A document tied to its source: a linked file, a recorded source text, or a file or URL origin.
 const linked = (n: TreeNode) => !!(n.handle || n.opened || /^(file|url):/.test(n.originId ?? ''));
 
+/** Detaches a document from its source after confirmation. A connected document uses the Sync flow. */
 async function unlinkDoc(n: TreeNode) {
     if (n.connection) {
         await sync.unlink(n.id);
@@ -398,6 +452,7 @@ async function unlinkDoc(n: TreeNode) {
     toast(`"${n.name}" is now an independent document`);
 }
 
+/** The action menu of a folder or a document. Items that the session or the permission forbids are disabled. */
 function menuFor(n: TreeNode): MenuEntry[] {
     const dirPicker = 'showDirectoryPicker' in window;
     const editable = !n.connection || ['owner', 'edit'].includes(n.connection.permission);
@@ -477,7 +532,10 @@ function menuFor(n: TreeNode): MenuEntry[] {
     ];
 }
 
-// A search result opens at its match: the passage found by meaning, or Find on the query.
+/**
+ * Opens a row. A folder toggles and becomes the target for new items.
+ * A search result opens at its match: the passage found by meaning, or Find on the query.
+ */
 async function activate(n: TreeNode, row?: HTMLElement | null) {
     focusId = n.id;
     if (n.kind === 'folder') {
@@ -537,6 +595,7 @@ tree.addEventListener('click', (e) => {
         return;
     }
     if (target.closest('.tree-link')) {
+        // A modified click on a link belongs to the browser: a new tab, a new window, a download.
         if (
             e.defaultPrevented ||
             e.button !== 0 ||
@@ -693,10 +752,17 @@ filterInput.addEventListener('keydown', (e) => {
 });
 
 // ---- Drag and drop: move rows, or import dropped files ----
+/** A drop position: the new parent, the sibling to insert before (null for the end), and the marked row. */
 type Drop = { parentId: string | null; beforeId: string | null; row: HTMLElement | null; cls: string };
+// The node of a row drag in progress. Null during a file drag from outside the page.
 let dragId: string | null = null;
 let lastDrop: Drop | null = null;
 
+/**
+ * Maps the pointer to a drop position. The middle half of a folder row drops into the folder.
+ * Otherwise the upper half of a row drops before it and the lower half after it. A point
+ * outside every row drops at the end of the top level.
+ */
 function dropTarget(e: DragEvent): Drop {
     const row = (e.target as HTMLElement).closest<HTMLElement>('.tree-row');
     const n = rowNode(row);
@@ -722,6 +788,7 @@ function clearDrop() {
 
 tree.addEventListener('dragstart', (e) => {
     const n = rowNode(e.target as HTMLElement);
+    // Search results have no tree position, so rows do not move while a query is present.
     if (!n || !e.dataTransfer || renaming || filterText()) {
         e.preventDefault();
         return;

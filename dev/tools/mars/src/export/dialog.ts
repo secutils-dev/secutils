@@ -1,3 +1,13 @@
+// The export dialog. It captures one document, renders it once, and shows the HTML or PDF output in
+// a sandboxed preview frame. It offers Copy, Download, Print, and the Markdown download.
+// - `value` is the captured snapshot. Every preview and download derives from it and from the
+//   draft settings, never from the live document. A changed document shows a notice with a
+//   Refresh action.
+// - The preview is the output. Download and Copy use the HTML string of the preview frame, and
+//   Print prints the paginated pages of the PDF frame.
+// - `draft` holds the settings of the open dialog. Only an output action stores them.
+// - After an await, an asynchronous step checks `generation` (one preview preparation) or
+//   `session` (one opening of the dialog). A slow step then does not update a newer state.
 import * as app from '../app.ts';
 import * as viewer from '../doc/viewer.js';
 import * as db from '../store/db.ts';
@@ -31,23 +41,35 @@ const checkboxes = {
     source: $<HTMLInputElement>('exportSource'),
 };
 const containers = { html: $('exportHtmlPreview'), pdf: $('exportPdfPreview') };
+/**
+ * One prepared preview. `key` is the settings key that it was built for, and `html` is the complete
+ * document in the frame. `ready` turns true when the frame reported success.
+ */
 interface Output {
     key: string;
     html: string;
     prepared: PreparedFrame;
     ready: boolean;
 }
+// The prepared preview of each format. A format switch back reuses it while the settings match.
 let outputs: Partial<Record<ExportFormat, Output>> = {};
 let value: ExportSnapshot | null = null;
 let draft: ExportSettings;
 let format: ExportFormat = 'html';
+// `generation` changes with each preview preparation and `session` with each opening or closing
+// of the dialog.
 let generation = 0,
     session = 0;
 let renderAbort: AbortController | null = null;
+// The export-safe render of the captured body. Both formats and every settings change share it.
 let rendered: { key: string; promise: Promise<string> } | null = null;
+// The last valid custom reading width, in pixels.
 let lastCustom = 800;
+// True while the custom width field holds an invalid value. HTML output is blocked meanwhile.
 let invalidWidth = false;
+// True while Copy or the Markdown download runs. The output buttons are disabled meanwhile.
 let actionBusy = false;
+// The document that the dialog was opened for. Retry captures it again after a failed capture.
 let requestedId: string | null = null;
 
 const disposeOutputs = () => {
@@ -55,6 +77,8 @@ const disposeOutputs = () => {
     outputs = {};
 };
 const currentOutput = () => outputs[format];
+// The HTML document embeds the PDF settings for its own PDF button, so it depends on the whole
+// draft. The print document depends on the PDF settings only.
 const settingsKey = () => (format === 'html' ? JSON.stringify(draft) : JSON.stringify(draft.pdf));
 const setStatus = (message = '') => {
     status.textContent = message;
@@ -65,12 +89,17 @@ const previewReady = () => {
     containers[format].removeAttribute('aria-busy');
     actions(true);
 };
+/**
+ * Updates the disabled state of the output buttons. Copy, Download, and Print need a ready
+ * preview of the current format. The Markdown download needs only the snapshot.
+ */
 function actions(ready = false) {
     ready = ready && !!currentOutput()?.ready;
     copy.disabled = htmlDownload.disabled = !ready || actionBusy || invalidWidth;
     print.disabled = !ready || actionBusy;
     markdown.disabled = !value || actionBusy;
 }
+/** Writes the draft settings to the form fields and clears a width error. */
 function syncFields() {
     width.value =
         draft.html.readingWidth === 'full'
@@ -88,6 +117,7 @@ function syncFields() {
     customWidth.setAttribute('aria-invalid', 'false');
     $('exportWidthError').hidden = true;
 }
+/** Shows the tab, the settings panel, the preview container, and the buttons of the current format. */
 function syncFormat() {
     for (const [name, tab] of [
         ['html', htmlTab],
@@ -103,6 +133,11 @@ function syncFormat() {
     copy.hidden = htmlDownload.hidden = format !== 'html';
     print.hidden = format !== 'pdf';
 }
+/**
+ * Builds the preview of the current format for the current draft settings, or reuses the
+ * prepared one when its settings key matches. A later call supersedes this one: its status and
+ * button updates are then skipped. A failure shows the message and a Retry action.
+ */
 async function prepare() {
     const operationGeneration = ++generation;
     actions();
@@ -137,6 +172,7 @@ async function prepare() {
         }
         const content = await rendered.promise;
         if (operationGeneration !== generation || !dialog.open || captured !== value) return;
+        // A fresh identifier for each frame: a message from an earlier frame cannot match.
         const operation = crypto.randomUUID();
         const html =
             activeFormat === 'html'
@@ -170,6 +206,7 @@ async function prepare() {
         if (operationGeneration === generation && dialog.open) failure(error);
     }
 }
+/** Shows a preparation failure for the current format and offers Retry. */
 function failure(error: unknown) {
     setStatus(`Could not prepare ${format.toUpperCase()} preview: ${(error as Error).message ?? error}`);
     retry.hidden = false;
@@ -317,6 +354,12 @@ dialog.addEventListener('close', () => {
     dialog.returnValue = '';
 });
 
+/**
+ * Captures the snapshot of a document. The open document comes from the viewer, with its
+ * pending edits. Another document comes from storage.
+ *
+ * @throws Error when the document no longer exists.
+ */
 async function capture(id: string | null) {
     if (!id || id === app.state.currentId) return viewer.captureExportSnapshot();
     const node = app.node(id);
@@ -326,6 +369,12 @@ async function capture(id: string | null) {
     return snapshot(id, node.name, text, viewer.exportReadingWidth());
 }
 
+/**
+ * Opens the export dialog for a document (the open document by default) on the given format.
+ * With the dialog already open, it only switches the format. Leaves fullscreen first, loads the
+ * stored settings as the draft, and starts the capture and the preview. An empty document closes
+ * the dialog with a toast. A capture failure shows in the dialog with a Retry action.
+ */
 export async function openExport(id: string | null = app.state.currentId, initialFormat: ExportFormat = 'html') {
     if (dialog.open) {
         switchFormat(initialFormat);
@@ -366,6 +415,7 @@ export async function openExport(id: string | null = app.state.currentId, initia
     }
 }
 $('exportBtn').addEventListener('click', () => openExport());
+// Ctrl/Cmd+P opens the PDF export in place of the print dialog of the browser for the app page.
 document.addEventListener('keydown', (event) => {
     if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'p') return;
     if (dialog.open) {

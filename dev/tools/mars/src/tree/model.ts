@@ -1,24 +1,38 @@
 // Pure tree helpers over the flat node list stored in IndexedDB.
+//
+// Owns the `TreeNode` record and the rules for order, ancestry, moves, and export paths.
+// No function reads storage or the DOM. Only `moveNode` changes the nodes that it receives.
+// The list can hold a node whose parent is gone, so each walk tolerates a missing parent.
 import type { ReadingWidth } from '../export/settings.ts';
 import type { SyncBinding } from '../sync/protocol.ts';
 
+/**
+ * One folder or document of the library, as stored in the `nodes` store. The document text
+ * lives in the `docs` store under the same id.
+ */
 export interface TreeNode {
     id: string;
+    // Null for a top-level node.
     parentId: string | null;
     kind: 'folder' | 'doc';
     name: string;
+    // Position among the siblings, ascending. `moveNode` renumbers it from 0.
     order: number;
+    // Milliseconds since the epoch.
     createdAt: number;
     updatedAt: number;
     // Stable across shares, so a copy that comes back can merge with the original.
     originId?: string;
+    // Folder only: expanded in the sidebar.
     open?: boolean;
     // Linked file (Chromium File System Access): handle, its lastModified at the last
     // read/write, and whether browser edits are newer than the file.
     handle?: FileSystemFileHandle;
     stamp?: number;
     dirty?: boolean;
+    // Automatic writes to the linked file are off. Set for a connected document.
     manualFileSave?: boolean;
+    // Number of open (unresolved) review threads, for the sidebar.
     threads?: number;
     // The text changed from outside (a shared copy or the linked file) since the last review.
     pending?: true;
@@ -28,30 +42,44 @@ export interface TreeNode {
     size?: number;
     // Shared document layout, separate from the reader's browser-wide preference.
     readingWidth?: ReadingWidth;
+    // The width that this reader chose for a connected document. It wins over `readingWidth` on this device.
     localReadingWidth?: ReadingWidth;
+    // The Sync or Live binding of a connected node. `phase` is display state of this tab; only
+    // `ended` is meaningful in a stored node.
     connection?: SyncBinding & { phase?: 'waiting' | 'working' | 'current' | 'offline' | 'attention' | 'ended' };
 }
 
+/** A random UUID. Node ids and new origin ids use it. */
 export const newId = () => crypto.randomUUID();
 const utf8 = new TextEncoder();
+/** The UTF-8 size of `text` in bytes. */
 export const textBytes = (text: string) => utf8.encode(text).length;
 
+// Sibling order: `order` first, then folders before documents, then the name.
 const byOrder = (a: TreeNode, b: TreeNode) =>
     a.order - b.order || (a.kind === b.kind ? 0 : a.kind === 'folder' ? -1 : 1) || a.name.localeCompare(b.name);
 
-// Nodes whose parent is gone (deleted in another tab, say) show at the top level.
+/**
+ * The sorted children of `parentId`. Null selects the top level.
+ * Nodes whose parent is gone (deleted in another tab, say) show at the top level.
+ */
 export function childrenOf(nodes: TreeNode[], parentId: string | null) {
     if (parentId !== null) return nodes.filter((n) => n.parentId === parentId).sort(byOrder);
     const ids = new Set(nodes.map((n) => n.id));
     return nodes.filter((n) => n.parentId === null || !ids.has(n.parentId)).sort(byOrder);
 }
 
+/** Every node below `id`, each parent before its children. The folder itself is not included. */
 export function descendants(nodes: TreeNode[], id: string): TreeNode[] {
     const out: TreeNode[] = [];
     for (const child of nodes.filter((n) => n.parentId === id)) out.push(child, ...descendants(nodes, child.id));
     return out;
 }
 
+/**
+ * The folders above `id`, from the top level down to the parent. The node itself is not included.
+ * The walk stops at a missing parent and at a repeated parent, so a damaged list cannot loop.
+ */
 export function ancestors(nodes: TreeNode[], id: string | null): TreeNode[] {
     const byId = new Map(nodes.map((n) => [n.id, n]));
     const out: TreeNode[] = [];
@@ -63,12 +91,16 @@ export function ancestors(nodes: TreeNode[], id: string | null): TreeNode[] {
     return out;
 }
 
-// A folder cannot move into itself or one of its descendants.
+/** A folder cannot move into itself or one of its descendants. The top level accepts every node. */
 export const canMove = (nodes: TreeNode[], id: string, parentId: string | null) =>
     parentId === null || (parentId !== id && !descendants(nodes, id).some((n) => n.id === parentId));
 
-// Moves `id` under `parentId`, before `beforeId` (or last). Returns the nodes whose
-// parent or order changed; sibling orders are renumbered 0..n.
+/**
+ * Moves `id` under `parentId`, before `beforeId` (or last). Returns the nodes whose
+ * parent or order changed; sibling orders are renumbered 0..n.
+ * It changes those nodes in place and does not save them. An unknown id and a forbidden target
+ * return an empty list.
+ */
 export function moveNode(
     nodes: TreeNode[],
     id: string,
@@ -92,15 +124,22 @@ export function moveNode(
     return changed;
 }
 
+/** The `order` value that places a new node after the last child of `parentId`. */
 export const nextOrder = (nodes: TreeNode[], parentId: string | null) =>
     Math.max(-1, ...nodes.filter((n) => n.parentId === parentId).map((n) => n.order)) + 1;
 
-// File-system path segments for export, with sibling names made unique ("a", "a (2)").
+/**
+ * File-system path segments for export, with sibling names made unique ("a", "a (2)").
+ * Maps each node id below `rootId` (null: the whole tree) to a path relative to that root.
+ * A document path ends in `.md`. A folder path has no trailing slash.
+ */
 export function exportPaths(nodes: TreeNode[], rootId: string | null): Map<string, string> {
     const out = new Map<string, string>();
     const walk = (parentId: string | null, prefix: string) => {
         const used = new Set<string>();
         for (const n of childrenOf(nodes, parentId)) {
+            // A name becomes a file name that common file systems accept. It has no reserved or control
+            // characters, no leading or trailing dot or space, and at most 120 characters.
             const base =
                 n.name
                     .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '-')
@@ -109,6 +148,7 @@ export function exportPaths(nodes: TreeNode[], rootId: string | null): Map<strin
             const ext = n.kind === 'doc' ? '.md' : '';
             let name = base,
                 i = 2;
+            // Compare without case, because some file systems do not distinguish it.
             while (used.has(`${name}${ext}`.toLowerCase())) name = `${base} (${i++})`;
             used.add(`${name}${ext}`.toLowerCase());
             out.set(n.id, `${prefix}${name}${ext}`);
