@@ -229,6 +229,12 @@ The existing `mars-stats` storage totals remain the source for actual stored byt
 The dashboard shows sync allocation separately from actual stored bytes.
 Scheduled samples also run bounded checkpoint cleanup. Missing sync telemetry does not replace storage measurements with zero.
 
+### Read-only storage sizing
+
+The [operator storage audit](storage-audit.md) measures actual entries and value bytes by record type.
+Its Sync-only estimate preserves complete Live-bearing collections and all snapshots.
+It does not delete data or decrypt document content.
+
 ## Recovery formats
 
 Small packages retain the version 1 JSON format and its 16 MiB file limit.

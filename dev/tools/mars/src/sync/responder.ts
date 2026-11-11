@@ -44,6 +44,7 @@ import {
     type SignedCheckpoint,
     type SignedGrant,
 } from './protocol.ts';
+import { auditStoragePage } from './storage-audit.ts';
 
 /** One row of a `Kv.list` page. */
 interface Entry {
@@ -500,7 +501,7 @@ export async function handle(context: Context, runtime: Runtime) {
             return json(200, { approved: true, ...member, owner: collection.owner, root: collection.root });
         }
         // ---- Operator actions: authorized by the operator secret of the responder. ----
-        if (action === 'telemetry' || action === 'maintenance') {
+        if (action === 'telemetry' || action === 'maintenance' || action === 'storage-audit') {
             const secret = context.secrets?.MARS_STATS_API_KEY ?? context.params?.secrets?.MARS_STATS_API_KEY;
             const token = context.headers?.authorization?.replace(/^Bearer /, '');
             if (!secret) return fail('sync-telemetry-not-configured', 503);
@@ -510,6 +511,7 @@ export async function handle(context: Context, runtime: Runtime) {
                     (await runtime.crypto.sha256(encode(new TextEncoder().encode(secret))))
             )
                 return fail('forbidden', 403);
+            if (action === 'storage-audit') return json(200, await auditStoragePage(request, runtime));
             const prefix = `${NS}budget/all/`;
             if (action === 'telemetry') {
                 let after: string | undefined,
