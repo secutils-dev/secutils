@@ -26,7 +26,7 @@ let liveBundle = '';
 let syncBundle = '';
 test.beforeAll(async () => {
   const result = await build({
-    entryPoints: [resolve(process.cwd(), '../dev/tools/mars/src/sync/preview-safety.ts')],
+    entryPoints: [resolve(process.cwd(), '../dev/tools/mars/src/doc/preview-safety.ts')],
     bundle: true,
     format: 'iife',
     globalName: 'MARS_SYNC_SAFETY',

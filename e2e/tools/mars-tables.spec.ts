@@ -755,12 +755,12 @@ test.describe('table editing', () => {
     expect(await download(page, 'Markdown')).toBe(text);
   });
 
-  test('header HTML that changes the rendered grid cannot expose an unsavable resize', async ({ page }) => {
+  test('header HTML cannot change the rendered grid, and the source keeps its bytes', async ({ page }) => {
+    // The preview sanitizes raw HTML, so a table tag inside a cell adds no cell to the grid.
     const text = DOC.replace('Name', '<th>Name</th>');
     await boot(page, text);
-    await expect(table(page).getByRole('separator')).toHaveCount(0);
-    await cell(page, 0, 0).click();
-    await expect(tools(page)).toBeHidden();
+    await expect(table(page).locator('tr').first().locator('th')).toHaveCount(2);
+    await expect(cell(page, 0, 0)).toHaveText('Name');
     await exportDialog(page);
     expect(await download(page, 'Markdown')).toBe(text);
   });

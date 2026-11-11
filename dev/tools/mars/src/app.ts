@@ -238,7 +238,8 @@ const notified = new Map<string, number>(); // doc id -> file stamp already anno
 let polling = false;
 setInterval(async () => {
     const n = current();
-    if (!n?.handle || n.connection || document.hidden || polling) return;
+    // `flush()` commits an open block or cell editor, so the poll waits until the reader finishes the edit.
+    if (!n?.handle || n.connection || document.hidden || polling || viewer.isEditing()) return;
     polling = true;
     try {
         await viewer.flush();
@@ -280,6 +281,21 @@ export async function setReadingWidth(width: ReadingWidth) {
     if (db.isTemporaryStorage()) await setRoute(n.id);
 }
 
+// Another tab saved the open document. Without this step, the next save of this tab writes its
+// stale text over that change. A connected document gets its updates from `sync.refresh`.
+const staleNotified = new Set<string>();
+export async function adoptRemoteChange(ids: string[]) {
+    const n = current();
+    if (!n || n.kind !== 'doc' || n.connection || !ids.includes(n.id) || db.isTemporaryStorage()) return;
+    const text = (await db.getText(n.id)) ?? '';
+    if (n !== current() || (text === viewer.currentText() && n.name === viewer.currentName())) return;
+    if (viewer.applyConnectionProjection({ text, name: n.name })) { staleNotified.delete(n.id); return; }
+    // This tab has an unsaved edit or an open editor. Keep it, and tell the reader once.
+    if (staleNotified.has(n.id)) return;
+    staleNotified.add(n.id);
+    viewer.toast('This document changed in another tab. Your next save here replaces that change. Reload this tab to get it.');
+}
+
 type PersistedDoc = { text: string; name: string; handle: FileSystemFileHandle | null; stamp: number; dirty: boolean };
 let persistQueue: Promise<void> = Promise.resolve();
 export function serializePersistence<T>(run: () => Promise<T>) {
@@ -302,8 +318,8 @@ export function persist(doc: PersistedDoc) {
 async function persistOne(doc: PersistedDoc) {
     let n = current();
     if (!n) {
-        await createDoc({ name: doc.name, text: doc.text, handle: doc.handle ?? undefined, stamp: doc.stamp, open: false });
-        n = state.nodes.at(-1)!;
+        // Use the returned node: an import or a duplicate can push another node while this save waits.
+        n = await createDoc({ name: doc.name, text: doc.text, handle: doc.handle ?? undefined, stamp: doc.stamp, open: false });
         state.currentId = n.id;
         await setRoute(n.id);
         emit();

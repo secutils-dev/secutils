@@ -53,7 +53,8 @@ async function tx<T>(stores: string[], mode: IDBTransactionMode, run: (t: IDBTra
     const t = (await db()).transaction(stores, mode);
     const done = new Promise<void>((resolve, reject) => {
         t.oncomplete = () => resolve();
-        t.onerror = () => reject(t.error);
+        // A failed request bubbles here before the transaction aborts, while `t.error` is still null.
+        t.onerror = (event) => reject((event.target as IDBRequest | null)?.error ?? t.error ?? new Error('Storage request failed'));
         t.onabort = () => reject(t.error ?? new Error('Storage transaction aborted'));
     });
     try {

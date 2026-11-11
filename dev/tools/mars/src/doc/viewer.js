@@ -15,10 +15,10 @@ import { applyTableLayouts, tableMetadataHtml } from './table-layout.ts';
 import { createTableEditor } from './table-editor.ts';
 import { readTable, tableCellRange } from './table.ts';
 import { download } from '../ui/ui.ts';
-import { safeRawHtml, safeRenderedHtml } from '../sync/preview-safety.ts';
+import { safeRawHtml, safeRenderedHtml } from './preview-safety.ts';
 
 let host = {};
-let connectionApplying = false, connectionComposing = false, connectionSafety = false;
+let connectionApplying = false, connectionComposing = false;
 let connectionDraftBlocked = false;
 const connectionEditable = () => !host.connection?.() || ['edit', 'owner'].includes(host.connection().permission);
 const connectionReviewEditable = () => !host.connection?.() || host.connection().permission !== 'view';
@@ -309,6 +309,17 @@ marked.use({
 
 const escHTML = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+// marked emits the text inside a raw inline block (<code>, <kbd>, <pre>, <script>) unescaped.
+// A renderer that escapes or sanitizes raw HTML tags must escape that text too. Otherwise
+// `<code><img onerror=...></code>` reaches innerHTML as markup.
+function escapeRawBlockText(renderer) {
+    const text = renderer.text;
+    renderer.text = function (token) {
+        return token.escaped && !token.tokens ? escHTML(token.text) : text.call(this, token);
+    };
+    return renderer;
+}
+
 const HTML_VOID_TAGS = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
 function escapeUnmatchedInlineHtml(value) {
     if (!value || typeof value !== 'object') return;
@@ -596,7 +607,8 @@ let meshParseCache, modelWorkerSourcePromise;
 const modelJobs = new Set();
 async function modelWorkerSource() {
     modelWorkerSourcePromise ??= (async () => {
-        const el = $('su-bundle-three-mf');
+        // Select the script element itself: a heading can produce the same id in the preview.
+        const el = document.querySelector('script[data-su-bundle="three-mf"]');
         if (!el.textContent) throw new Error('The 3MF importer bundle is not loaded.');
         let source = el.textContent.trim();
         if (el.dataset.suBundleEncoding === 'gzip-base64') {
@@ -1046,8 +1058,13 @@ async function render(md, forExport = true, comment = false, signal) {
     } else {
         let sourceCursor = 0;
         const renderer = new marked.Renderer();
+        // MARS-only: every document can come from another person (a link, a URL, Sync, or a Live link),
+        // and the page holds the library and its connection keys. Raw HTML is always sanitized.
+        // The source-mapped preview wraps each block, so only inline tags stay open across tokens there.
+        const mapped = !(forExport || md.length > 10000000 || md.includes('\r'));
         if (comment) renderer.html = ({ text }) => escHTML(text);
-        else if (connectionSafety || host.connection?.()) renderer.html = ({ text }) => tableMetadataHtml(text) ?? safeRawHtml(text);
+        else renderer.html = ({ text, block }) => tableMetadataHtml(text) ?? safeRawHtml(text, !block || !mapped);
+        escapeRawBlockText(renderer);
         const defaultCode = renderer.code;
         renderer.code = function (token) {
             if (!/^(?:stl|su-mesh)(?:\s|$)/i.test(token.lang ?? '')) return defaultCode.call(this, token);
@@ -1062,12 +1079,11 @@ async function render(md, forExport = true, comment = false, signal) {
             return `<pre><code class="language-${token.lang.split(/\s/)[0].toLowerCase()}" data-model-info="${escHTML(token.lang).replace(/"/g, '&quot;')}"${range}>${escHTML(token.text)}</code></pre>`;
         };
         // marked normalizes CRLF, so source offsets only hold for LF text (see loadDocument).
-        const renderedHtml = forExport || md.length > 10000000 || md.includes('\r')
-            ? marked.parse(md, { renderer })
-            : renderSourceBlocks(md, renderer);
-        el.innerHTML = connectionSafety || host.connection?.() ? safeRenderedHtml(renderedHtml) : renderedHtml;
+        const renderedHtml = mapped ? renderSourceBlocks(md, renderer) : marked.parse(md, { renderer });
+        el.innerHTML = safeRenderedHtml(renderedHtml);
         for (const code of el.querySelectorAll('code[data-model-range]')) {
-            code.__suSourceRange = JSON.parse(code.dataset.modelRange); delete code.dataset.modelRange;
+            try { code.__suSourceRange = JSON.parse(code.dataset.modelRange); } catch {}
+            delete code.dataset.modelRange;
         }
     }
     if (forExport && !comment) {
@@ -1078,7 +1094,8 @@ async function render(md, forExport = true, comment = false, signal) {
         for (const node of el.querySelectorAll('*')) {
             for (const attribute of [...node.attributes]) {
                 if (/^on/i.test(attribute.name) || /^data-(?:start|end|check|depth|model-range|table-start|table-end)$/.test(attribute.name)
-                    || (['href', 'src', 'xlink:href'].includes(attribute.name) && /^\s*javascript:/i.test(attribute.value))) node.removeAttribute(attribute.name);
+                    || (['href', 'src', 'xlink:href', 'action', 'formaction'].includes(attribute.name)
+                        && /^javascript:/i.test(attribute.value.replace(/[\u0000-\u0020]/g, '')))) node.removeAttribute(attribute.name);
             }
             if (performance.now() >= deadline) { signal?.throwIfAborted(); await yieldToMain(); deadline = performance.now() + 50; }
         }
@@ -2142,7 +2159,7 @@ const RESOLVE_SVG = ICON('<path d="M20 6 9 17l-5-5"/>');
 const REOPEN_SVG = ICON('<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>');
 const WIDEN_SVG = ICON('<path class="i-widen" d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/><path class="i-narrow" d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/>');
 const TRASH_SVG = ICON('<path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>');
-const commentRenderer = new marked.Renderer();
+const commentRenderer = escapeRawBlockText(new marked.Renderer());
 commentRenderer.html = ({ text }) => escHTML(text);
 const relativeTime = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
 const escAttr = (s) => escHTML(String(s)).replace(/"/g, '&quot;');
@@ -2332,7 +2349,7 @@ function fillCommentBody(body, md) {
         initDiagrams(body);
         initMermaids(body);
     } else {
-        body.innerHTML = marked.parse(md, { renderer: commentRenderer });
+        body.innerHTML = safeRenderedHtml(marked.parse(md, { renderer: commentRenderer }));
         for (const code of body.querySelectorAll('pre code')) { try { hljs.highlightElement(code); } catch {} }
         const pending = cached ?? render(md, true, true).then((html) => { renderedComments.set(md, html); return html; });
         renderedComments.set(md, pending);
@@ -3242,14 +3259,9 @@ export function refreshConnection() {
     for (const box of els.previewArticle.querySelectorAll('li[data-check] input[type="checkbox"]')) box.disabled = !connectionEditable();
     $('setSharedReadingWidth').hidden = !host.connection?.() || host.connection().ended || !connectionEditable();
 }
-export function enableConnectionSafety() {
-    if (connectionSafety) return;
-    connectionSafety = true;
-    for (const fig of els.previewArticle.querySelectorAll('.su-diagram, .su-mermaid')) fig.__suDispose?.();
-    els.previewArticle.replaceChildren();
-    scheduleRender();
-}
 export const hasConnectionDraftConflict = () => connectionDraftBlocked;
+// True while a block or table-cell editor is open. `flush()` commits that editor.
+export const isEditing = () => !!blockEditor || tableEditor.editing();
 export function connectionDraft() {
     let start, end, text;
     const cell = tableEditor.draft();

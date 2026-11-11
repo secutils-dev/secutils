@@ -1331,6 +1331,17 @@ marked.use({
 
 const escHTML = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+// marked emits the text inside a raw inline block (<code>, <kbd>, <pre>, <script>) unescaped.
+// A renderer that escapes or sanitizes raw HTML tags must escape that text too. Otherwise
+// `<code><img onerror=...></code>` reaches innerHTML as markup.
+function escapeRawBlockText(renderer) {
+    const text = renderer.text;
+    renderer.text = function (token) {
+        return token.escaped && !token.tokens ? escHTML(token.text) : text.call(this, token);
+    };
+    return renderer;
+}
+
 const HTML_VOID_TAGS = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
 function escapeUnmatchedInlineHtml(value) {
     if (!value || typeof value !== 'object') return;
@@ -1618,7 +1629,8 @@ let meshParseCache, modelWorkerSourcePromise;
 const modelJobs = new Set();
 async function modelWorkerSource() {
     modelWorkerSourcePromise ??= (async () => {
-        const el = $('su-bundle-three-mf');
+        // Select the script element itself: a heading can produce the same id in the preview.
+        const el = document.querySelector('script[data-su-bundle="three-mf"]');
         if (!el.textContent) throw new Error('The 3MF importer bundle is not loaded.');
         let source = el.textContent.trim();
         if (el.dataset.suBundleEncoding === 'gzip-base64') {
@@ -2376,7 +2388,7 @@ async function render(md, forExport = true, comment = false) {
     } else {
         let sourceCursor = 0;
         const renderer = new marked.Renderer();
-        if (comment) renderer.html = ({ text }) => escHTML(text);
+        if (comment) { renderer.html = ({ text }) => escHTML(text); escapeRawBlockText(renderer); }
         const defaultCode = renderer.code;
         renderer.code = function (token) {
             if (!/^(?:stl|su-mesh)(?:\s|$)/i.test(token.lang ?? '')) return defaultCode.call(this, token);
@@ -3430,7 +3442,7 @@ const RESOLVE_SVG = ICON('<path d="M20 6 9 17l-5-5"/>');
 const REOPEN_SVG = ICON('<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>');
 const WIDEN_SVG = ICON('<path class="i-widen" d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/><path class="i-narrow" d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/>');
 const TRASH_SVG = ICON('<path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>');
-const commentRenderer = new marked.Renderer();
+const commentRenderer = escapeRawBlockText(new marked.Renderer());
 commentRenderer.html = ({ text }) => escHTML(text);
 const relativeTime = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
 const escAttr = (s) => escHTML(String(s)).replace(/"/g, '&quot;');

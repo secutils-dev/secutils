@@ -1,6 +1,7 @@
 // Bundled independently and inlined into the opaque print frame. No MARS imports.
 export {};
-const config = JSON.parse(document.getElementById('mars-print-config')!.textContent!);
+// Select the script element itself: a document heading can produce the same id.
+const config = JSON.parse(document.querySelector('script#mars-print-config')!.textContent!);
 const send = (type: string, extra = {}) => parent.postMessage({ kind: 'mars-export', operation: config.operation, type, ...extra }, '*');
 let ready = false;
 const print = () => {

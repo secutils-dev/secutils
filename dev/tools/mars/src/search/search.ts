@@ -23,8 +23,9 @@ function refreshTexts() {
         const docs = app.state.nodes.filter((n) => n.kind === 'doc');
         for (const n of docs) {
             if (texts.get(n.id)?.at === n.updatedAt) continue;
+            const at = n.updatedAt; // Before the read, so a save during it refreshes the entry later.
             const text = (await db.getText(n.id)) ?? '', body = searchBody(text);
-            texts.set(n.id, { at: n.updatedAt, body, threads: threadChunks(text, body) });
+            texts.set(n.id, { at, body, threads: threadChunks(text, body) });
         }
         for (const id of texts.keys()) if (!app.node(id)) texts.delete(id);
     })().finally(() => { loadingTexts = null; notify(); });

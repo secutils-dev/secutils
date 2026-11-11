@@ -47,6 +47,18 @@ export class SyncError extends Error {
     constructor(code: string, status = 400) { super(code); this.name = 'SyncError'; this.code = code; this.status = status; }
 }
 export const fail = (code: string, status = 400): never => { throw new SyncError(code, status); };
+/**
+ * A downloaded checkpoint that failed local verification: a bad signature, undecryptable or
+ * malformed content, or an operation that its author may not perform. The service cannot inspect
+ * ciphertext, so any participant with write access can upload one. A receiver skips that one
+ * checkpoint and keeps the connection. It is not a service failure.
+ */
+export class RejectedPacket extends SyncError {
+    constructor(cause: unknown) {
+        super(cause instanceof SyncError ? cause.code : 'invalid-checkpoint', 422);
+        this.name = 'RejectedPacket';
+    }
+}
 export const validId = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(value);
 export const validHash = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 export const validBase64 = (value: unknown, max: number): value is string => typeof value === 'string' && value.length <= max && value.length % 4 !== 1 && /^[A-Za-z0-9_-]+$/.test(value);

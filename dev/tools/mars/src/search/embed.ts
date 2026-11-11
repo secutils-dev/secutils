@@ -216,12 +216,15 @@ export function reindex() {
                 if (paused) { status(PAUSED); return; }
                 if (!app.node(n.id)) continue;
                 status({ state: 'index', label: `Indexing ${i + 1}/${stale.length}`, text: `Indexing ${i + 1} of ${stale.length}…` });
+                // Read the timestamp before the text. A save during the awaits then leaves the entry
+                // stale, and the next pass embeds the new text.
+                const at = n.updatedAt;
                 const chunks = indexChunks((await db.getText(n.id)) ?? '');
                 const vectors: Float32Array[] = [];
                 for (let j = 0; j < chunks.length; j += 8) vectors.push(...(await embed(key, chunks.slice(j, j + 8).map((c) => passageInput(MODELS[key], n.name, c)))));
                 if (storage !== db.storageGeneration()) { queued = true; return; }
                 if (gen !== generation || !app.node(n.id)) continue;
-                const entry: Entry = { id: n.id, model: key, v: indexVersion(key), at: n.updatedAt, chunks: chunks.map((c, j) => ({ start: c.start, text: c.text.slice(0, 220), v: vectors[j] })) };
+                const entry: Entry = { id: n.id, model: key, v: indexVersion(key), at, chunks: chunks.map((c, j) => ({ start: c.start, text: c.text.slice(0, 220), v: vectors[j] })) };
                 index.set(n.id, entry);
                 changed = true;
                 await db.putSide('vec', n.id, entry);

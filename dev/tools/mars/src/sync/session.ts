@@ -4,7 +4,7 @@ import * as Y from 'yjs';
 import { BodyReplica, sourceChange } from './replica.ts';
 import { ReviewReplica, signReview, type SignedReview, type ReviewOperation } from './reviews.ts';
 import { commentKey, joinComments, splitComments, type Thread } from '../share/merge.ts';
-import { decode, encode, fail, jsonBytes, canonical, permitted, type SyncBinding, type SignedCheckpoint, type SignedGrant, type Stream } from './protocol.ts';
+import { decode, encode, fail, jsonBytes, canonical, permitted, RejectedPacket, SyncError, type SyncBinding, type SignedCheckpoint, type SignedGrant, type Stream } from './protocol.ts';
 import { checkpointDigest, hash, openCheckpoint, sealCheckpoint, verifyGrant, type Identity } from './crypto.ts';
 
 export interface PendingPacket { operation: string; sequence: number; stream: Stream; bytes: string; envelope: SignedCheckpoint | null }
@@ -19,6 +19,17 @@ export interface SessionRecord {
 }
 export interface SessionRepository { get(): Promise<SessionRecord | undefined>; commit(expected: number | null, value: SessionRecord, remote?: boolean): Promise<void> }
 export interface ManifestNode { id: string; kind: 'doc' | 'folder'; parent: string | null; name: string; order: number; key?: string; origin?: string; epoch?: number }
+/**
+ * A client can download its own older review checkpoint, for example after a lost acknowledgement
+ * or a race with another tab. That echo must not replace newer local operations that still wait
+ * in the outbox, so the local operations that the echo lacks stay in the list.
+ */
+function mergeOwnOperations(record: SessionRecord, author: SignedGrant, received: SignedReview[]) {
+    if (author.grant.member !== record.member.grant.member) return received;
+    const echoed = new Set(received.map((signed) => signed.operation.id));
+    const local = record.reviews[author.grant.member]?.operations ?? [];
+    return [...received, ...local.filter((signed) => !echoed.has(signed.operation.id))];
+}
 // Incoming replicas stay private until their entire folder can be committed.
 export function stagedSession(initial: SessionRecord) {
     let record = structuredClone(initial);
@@ -242,14 +253,17 @@ export class Session {
     async receive(envelope: SignedCheckpoint, author: SignedGrant) {
         return this.serial(async () => {
             const record = await this.latest(), c = envelope.checkpoint;
-            if (c.document !== record.binding.document || c.collection !== record.binding.collection || c.epoch > record.binding.epoch
-                || !permitted(author.grant, c.document, c.stream) || !await verifyGrant(author, record.owner.grant)) return fail('invalid-checkpoint-author', 403);
+            if (c.document !== record.binding.document || c.collection !== record.binding.collection || c.epoch > record.binding.epoch) return fail('invalid-checkpoint-author', 403);
+            // From here to the commit, a failure describes this one checkpoint, not the connection.
+            if (!permitted(author.grant, c.document, c.stream) || !await verifyGrant(author, record.owner.grant)) throw new RejectedPacket(new SyncError('invalid-checkpoint-author', 403));
             const cursor = `${c.member}/${c.stream}`;
             if ((record.progress[cursor] ?? 0) >= c.sequence) return record.projection;
             const key = record.keys?.[String(c.epoch)] ?? (c.epoch === record.binding.epoch ? record.key : undefined);
             if (!key) return fail('key-epoch-unavailable', 409);
-            const bytes = await openCheckpoint(envelope, decode(key), author.grant), replica = new BodyReplica(decode(record.body));
+            const replica = new BodyReplica(decode(record.body));
             try {
+                try {
+                const bytes = await openCheckpoint(envelope, decode(key), author.grant);
                 if (c.stream === 'body' || c.stream === 'tree') {
                     replica.apply(bytes);
                     const historical = replica.doc.getMap('meta').get('oldKeys');
@@ -273,9 +287,10 @@ export class Session {
                         if (operation?.operation?.actor !== author.grant.member) return fail('review-author-mismatch', 403);
                         await verifier.apply(operation, author.grant);
                     }
-                    record.reviews[author.grant.member] = { grant: author, operations: payload.operations };
+                    record.reviews[author.grant.member] = { grant: author, operations: mergeOwnOperations(record, author, payload.operations) };
                 }
                 record.body = encode(replica.checkpoint()); record.projection = await this.projected(record, replica);
+                } catch (error) { throw new RejectedPacket(error); }
                 record.progress[cursor] = c.sequence; record.revision++;
                 await this.repository.commit(record.revision - 1, record, true);
                 this.replica.apply(replica.checkpoint()); this.record = structuredClone(record); return record.projection;

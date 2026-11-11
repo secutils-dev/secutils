@@ -34,11 +34,11 @@ export interface ViewerHost {
 export function setHost(host: ViewerHost): void;
 export function openDocument(doc?: Partial<ViewerDoc>): void;
 export function refreshConnection(): void;
-export function enableConnectionSafety(): void;
 export function connectionDraft(): { start: number; end: number; text: string } | null;
 export function setConnectionDraftConflict(recover: (() => void) | null): void;
 export function discardConnectionDraft(): void;
 export function hasConnectionDraftConflict(): boolean;
+export function isEditing(): boolean;
 export function canApplyConnection(): boolean;
 export function canPublishConnection(): boolean;
 export function applyConnectionProjection(doc: Pick<ViewerDoc, 'text' | 'name'> & { readingWidth?: ReadingWidth }): boolean;

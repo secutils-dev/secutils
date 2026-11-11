@@ -42,10 +42,24 @@ const deletedKey = (collection: string, document: string) => `${NS}c/${collectio
 const epochsPrefix = (collection: string, document: string) => `${NS}c/${collection}/epochs/${document}/`;
 const inviteKey = (id: string) => `${NS}invitations/${id}`;
 const revokedInviteKey = (collection: string, id: string) => `${NS}c/${collection}/revoked-invitations/${id}`;
-async function liveKeyUpdate(kv: Kv, id: string, collection: string, document: string) {
+/** Key writes per request. The client sends 25 for each request; each write costs up to six KV operations. */
+const MAX_KEY_WRITES = 25;
+/** base64url limits for small sealed values: an encrypted device name and an encrypted Live key update. */
+const MAX_LABEL_CHARS = 1024, MAX_LIVE_KEY_CHARS = 512;
+/** `touch` renews wrapped device keys only below this number of stream heads, to stay inside the KV operation budget. */
+const KEY_RENEWAL_HEAD_LIMIT = 100;
+const exactKeys = (value: unknown, keys: string[]): value is Record<string, any> => !!value && typeof value === 'object' && !Array.isArray(value)
+    && Object.keys(value).sort().join(',') === keys.join(',');
+/** An AES-GCM envelope as `sealJson` produces it: a 12-byte nonce and a bounded ciphertext. */
+const validSealed = (value: unknown, maxChars: number) => exactKeys(value, ['ciphertext', 'nonce'])
+    && validBase64(value.nonce, 16) && value.nonce.length === 16 && validBase64(value.ciphertext, maxChars) && value.ciphertext.length >= 22;
+/** The current key epoch of a document. A document without a rotation is at epoch 1. */
+async function currentEpoch(kv: Kv, collection: string, document: string) {
     const epochs = await kv.list({ prefix: epochsPrefix(collection, document), limit: 1, valuesIncluded: true });
-    const epoch = epochs.entries[0]?.value ? parse<{ epoch: number }>(epochs.entries[0].value).epoch : 1;
-    return read(kv, `${inviteKey(id)}/keys/${reverseSequence(epoch)}`);
+    return epochs.entries[0]?.value ? parse<{ epoch: number }>(epochs.entries[0].value).epoch : 1;
+}
+async function liveKeyUpdate(kv: Kv, id: string, collection: string, document: string) {
+    return read(kv, `${inviteKey(id)}/keys/${reverseSequence(await currentEpoch(kv, collection, document))}`);
 }
 const signedByOwner = (signed: SignedGrant, owner: SignedGrant) => signed.issuer
     ? delegatedGrant(signed, owner.grant) && signatureValid(signed.issuer.invitation, signed.issuer.signature, owner.grant.publicKey)
@@ -129,7 +143,9 @@ async function reserve(kv: Kv, collection: string, operation: string, bytes: num
             owned.push(key);
         }
         if (owned.length !== wanted) return fail('sync-storage-full', 507);
-        result.push(...owned);
+        // A retry finds its slots through the reference listing, in another order than the first
+        // attempt acquired them. Sort, so both attempts store the identical checkpoint record.
+        result.push(...owned.sort());
     }
     return result;
 }
@@ -206,7 +222,10 @@ export async function handle(context: Context, runtime: Runtime) {
                     || candidate.grant.permission !== 'edit' || candidate.grant.document !== null
                     || candidate.grant.participant !== p.participant || candidate.grant.expires !== 0
                     || !signatureValid(candidate.grant, candidate.signature, candidate.grant.publicKey)) return fail('invalid-pair-request');
-                await first(kv, pendingKey, b64json({ candidate, label: request.label ?? null }), Math.max(1, p.expires - clock()));
+                // The label is the encrypted device name. Bound it: this endpoint needs no grant.
+                const label = request.label ?? null;
+                if (label !== null && !validSealed(label, MAX_LABEL_CHARS)) return fail('invalid-pair-request');
+                await first(kv, pendingKey, b64json({ candidate, label }), Math.max(1, p.expires - clock()));
                 return json(202, { requested: true });
             }
             const approved = await read<{ member: string }>(kv, `${inviteKey(p.id)}/approved`);
@@ -303,7 +322,14 @@ export async function handle(context: Context, runtime: Runtime) {
             || !signedByOwner(member.signed, collection.owner) || await kv.get(member.slot) !== b64json(request.member)) return fail('access-ended', 403);
         const grant = member.signed.grant;
         if (grant.expires && grant.expires <= clock()) return fail('access-expired', 403);
-        if (member.signed.issuer && !(await kv.get(inviteKey(member.signed.issuer.invitation.id)))) return fail('live-link-ended', 403);
+        if (member.signed.issuer) {
+            // Invitation ids share one namespace across collections. Require the record of exactly
+            // this invitation, and no revocation fence: another collection can create a record
+            // with a revoked id, which must not restore the access of this member.
+            const invitation = member.signed.issuer.invitation.id, invite = await read<InviteRecord>(kv, inviteKey(invitation));
+            if (!invite || canonical(invite.policy) !== canonical(member.signed.issuer)
+                || await kv.get(revokedInviteKey(request.collection, invitation))) return fail('live-link-ended', 403);
+        }
         const scope = (id: unknown) => {
             if (!validId(id) || (grant.document !== null && grant.document !== id)) return fail('forbidden-document', 403);
             return id;
@@ -337,18 +363,23 @@ export async function handle(context: Context, runtime: Runtime) {
         }
         if (action === 'key-write') {
             owner(); const values = request.values;
-            if (!Array.isArray(values) || values.length > LIMITS.members + LIMITS.liveGrants) return fail('invalid-key-update');
-            const written: string[] = [];
+            if (!Array.isArray(values) || values.length > MAX_KEY_WRITES) return fail('invalid-key-update');
+            const written: string[] = [], members = new Map<string, boolean>();
             for (const value of values) {
-                if (!validWrappedKey(value.wrapped) || value.wrapped.collection !== grant.collection || value.wrapped.sender !== collection.owner.grant.boxKey
+                // Exact shape: an extra field would store unmetered bytes beside the small envelope.
+                if (!exactKeys(value, ['signature', 'wrapped']) || !validBase64(value.signature, 86)
+                    || !validWrappedKey(value.wrapped) || value.wrapped.collection !== grant.collection || value.wrapped.sender !== collection.owner.grant.boxKey
                     || !signatureValid(value.wrapped, value.signature, collection.owner.grant.publicKey)) return fail('invalid-key-signature', 403);
+                // A key for a member without a grant has no reader. Skip it, so key records stay
+                // bounded by the membership. An expired member in a saved rotation plan is not an error.
+                const target = value.wrapped.member;
+                if (!members.has(target)) members.set(target, !!await kv.get(grantKey(grant.collection, target)));
+                if (!members.get(target)) continue;
                 const key = `${NS}c/${grant.collection}/keys/${value.wrapped.member}/${value.wrapped.document}/${reverseSequence(value.wrapped.epoch)}`;
                 await first(kv, key, b64json(value));
                 written.push(key);
-                if (values.length <= 25) {
-                    const older = await kv.list({ prefix: key.slice(0, key.lastIndexOf('/') + 1), after: key, limit: 3, valuesIncluded: false });
-                    for (const entry of older.entries.slice(1)) await kv.delete(entry.key);
-                }
+                const older = await kv.list({ prefix: key.slice(0, key.lastIndexOf('/') + 1), after: key, limit: 3, valuesIncluded: false });
+                for (const entry of older.entries.slice(1)) await kv.delete(entry.key);
             }
             if (collection.root?.kind === 'doc' && await kv.get(deletedKey(grant.collection, collection.root.document))) {
                 for (const key of written) await kv.delete(key);
@@ -379,8 +410,11 @@ export async function handle(context: Context, runtime: Runtime) {
             const invite = await read<InviteRecord>(kv, inviteKey(request.invitation));
             if (!invite || invite.policy.invitation.collection !== grant.collection || invite.policy.invitation.mode !== 'live') return fail('forbidden-invitation', 403);
             const value = request.value;
-            if (!value || value.document !== invite.policy.invitation.document || !signatureValid(value, request.signature, collection.owner.grant.publicKey)) return fail('invalid-key-signature', 403);
-            if (!Number.isSafeInteger(value.epoch) || value.epoch < 1) return fail('invalid-key-epoch');
+            if (!exactKeys(value, ['ciphertext', 'document', 'epoch', 'nonce']) || !validSealed({ nonce: value.nonce, ciphertext: value.ciphertext }, MAX_LIVE_KEY_CHARS)
+                || !validBase64(request.signature, 86) || value.document !== invite.policy.invitation.document
+                || !signatureValid(value, request.signature, collection.owner.grant.publicKey)) return fail('invalid-key-signature', 403);
+            // A key update exists for the current epoch or for the next one, which a rotation activates afterwards.
+            if (!Number.isSafeInteger(value.epoch) || value.epoch < 1 || value.epoch > await currentEpoch(kv, grant.collection, value.document) + 1) return fail('invalid-key-epoch');
             const key = `${inviteKey(request.invitation)}/keys/${reverseSequence(value.epoch)}`;
             await first(kv, key, b64json({ value, signature: request.signature }), Math.max(1, invite.policy.invitation.expires - clock()));
             if (await kv.get(deletedKey(grant.collection, value.document))) { await kv.delete(key); return fail('document-deleted', 410); }
@@ -404,6 +438,10 @@ export async function handle(context: Context, runtime: Runtime) {
             if (bootstrap !== undefined && (!bootstrap || typeof bootstrap !== 'object'
                 || Object.keys(bootstrap).sort().join(',') !== 'ciphertext,nonce' || !validBase64(bootstrap.nonce, 16) || bootstrap.nonce.length !== 16
                 || !validBase64(bootstrap.ciphertext, 16384) || bootstrap.ciphertext.length < 22)) return fail('invalid-live-bootstrap');
+            // Invitation ids share one namespace. Refuse an id that holds a different invitation before
+            // a slot points at it: cleanup of this collection follows its slots.
+            const existing = await read<InviteRecord>(kv, inviteKey(p.id));
+            if (existing && canonical(existing.policy) !== canonical(policy)) return fail('immutable-record-conflict', 409);
             await allocate(kv, `${NS}c/${grant.collection}/invitation-slots/`, p.id, LIMITS.liveGrants, Math.max(1, p.expires - clock()));
             await first(kv, inviteKey(p.id), b64json({ policy, tokenHash: request.tokenHash, inviter: grant.member, ...(bootstrap ? { bootstrap } : {}) }), Math.max(1, p.expires - clock()));
             return json(201, { invitation: p.id });
@@ -437,7 +475,9 @@ export async function handle(context: Context, runtime: Runtime) {
         if (action === 'directory') return json(200, await readDirectory());
         if (action === 'delete-document') {
             owner(); const id = scope(request.document);
-            await first(kv, deletedKey(grant.collection, id), b64json({ deleted: true }), null);
+            // The fence never expires. Write it only for a registered document, so requests with
+            // random ids cannot add permanent records.
+            if (await kv.get(docKey(grant.collection, id)) || await kv.get(deletedKey(grant.collection, id))) await first(kv, deletedKey(grant.collection, id), b64json({ deleted: true }), null);
             return json(200, { deleted: id });
         }
         if (action === 'purge-live-document') {
@@ -474,7 +514,11 @@ export async function handle(context: Context, runtime: Runtime) {
             }
             if (invitations.entries.length) {
                 const slot = invitations.entries[0], invitation = slot.value ? parse<string>(slot.value) : null;
-                const entries = invitation ? await kv.list({ prefix: inviteKey(invitation), limit: 16 }) : { entries: [] };
+                // A slot can name an id that another collection holds. Delete only the records of an
+                // invitation of this collection, or the leftovers of one whose main record is gone.
+                const record = invitation ? await read<InviteRecord>(kv, inviteKey(invitation)) : null;
+                const owned = !record || record.policy.invitation.collection === grant.collection;
+                const entries = invitation && owned ? await kv.list({ prefix: inviteKey(invitation), limit: 16 }) : { entries: [] };
                 for (const entry of entries.entries) await kv.delete(entry.key);
                 if (entries.entries.length < 16) await kv.delete(slot.key);
                 return json(200, { complete: false });
@@ -514,9 +558,15 @@ export async function handle(context: Context, runtime: Runtime) {
             if (!validId(request.target) || request.target === collection.owner.grant.member) return fail('invalid-revocation');
             // An immutable fence prevents a late activity request from restoring access.
             // Keep this small, opaque identity fence until maintenance proves all grants expired.
+            // The fence never expires. Write it only for a member that has, or had, a grant here, so
+            // requests with random ids cannot add permanent records.
+            const target = await read<Member>(kv, grantKey(grant.collection, request.target));
+            if (!target && !await kv.get(revokedKey(grant.collection, request.target))) return json(200, { revoked: request.target });
             await kv.set(revokedKey(grant.collection, request.target), b64json({ at: clock() }), { ifAbsent: true });
             if ((await kv.getEntry(revokedKey(grant.collection, request.target))).expiresAt !== null) return fail('persistent-revocation-unavailable', 503);
             await kv.delete(grantKey(grant.collection, request.target));
+            // Free the slot. A revoked Live member otherwise holds one of the collection's slots until its grant expires.
+            if (target && await kv.get(target.slot) === b64json(request.target)) await kv.delete(target.slot);
             return json(200, { revoked: request.target });
         }
         if (action === 'document') {
@@ -679,13 +729,23 @@ export async function handle(context: Context, runtime: Runtime) {
             await kv.set(document.slot, b64json(id), { ttlSec });
             await kv.set(docKey(grant.collection, id), b64json(document), { ttlSec });
             await kv.set(collectionKey(grant.collection), b64json(collection), { ttlSec: LIMITS.inactiveSeconds });
+            // The key epoch must live as long as the document. Without its marker the epoch reads as 1
+            // again, and every append at the real epoch fails with `key-epoch-changed`.
+            const epochMarker = (await kv.list({ prefix: epochsPrefix(grant.collection, id), limit: 1, valuesIncluded: true })).entries[0];
+            if (epochMarker?.value) await kv.set(epochMarker.key, epochMarker.value, { ttlSec: LIMITS.inactiveSeconds });
             if (!grant.expires) {
+                // A device that stays offline for longer than the lease still needs its wrapped key for
+                // the current epoch. Renew those keys while the request has operations to spare.
+                const renewKeys = heads.size <= KEY_RENEWAL_HEAD_LIMIT;
                 const peers = await kv.list({ prefix: `${NS}c/${grant.collection}/member-slots/`, limit: LIMITS.members, valuesIncluded: true });
                 for (const entry of peers.entries) if (entry.value) {
-                    const id = parse<string>(entry.value), peerKey = grantKey(grant.collection, id), peer = await kv.get(peerKey);
-                    if (!peer || await kv.get(revokedKey(grant.collection, id))) continue;
+                    const peerId = parse<string>(entry.value), peerKey = grantKey(grant.collection, peerId), peer = await kv.get(peerKey);
+                    if (!peer || await kv.get(revokedKey(grant.collection, peerId))) continue;
                     await kv.set(peerKey, peer, { ttlSec: LIMITS.inactiveSeconds });
                     await kv.set(entry.key, entry.value, { ttlSec: LIMITS.inactiveSeconds });
+                    if (!renewKeys) continue;
+                    const wrapped = (await kv.list({ prefix: `${NS}c/${grant.collection}/keys/${peerId}/${id}/`, limit: 1, valuesIncluded: true })).entries[0];
+                    if (wrapped?.value) await kv.set(wrapped.key, wrapped.value, { ttlSec: LIMITS.inactiveSeconds });
                 }
             }
             return json(200, { expires });

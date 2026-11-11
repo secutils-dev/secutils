@@ -33,8 +33,8 @@ class TestKv implements Kv {
     }
 }
 const id = () => crypto.randomUUID();
-async function fixture(root: boolean | 'folder' = false) {
-    const kv = new TestKv(), who = await identity(), token = randomSecret();
+async function fixture(root: boolean | 'folder' = false, kv = new TestKv()) {
+    const who = await identity(), token = randomSecret();
     const owner: Grant = { v: 1, collection: id(), member: id(), participant: id(), permission: 'owner', document: null,
         publicKey: who.publicKey, boxKey: who.boxKey, tokenHash: await tokenHash(token), expires: 0 };
     const signed = await signGrant(owner, who), document = id(), dataKey = keyBytes();
@@ -434,4 +434,137 @@ test('large checkpoints defer compaction to bounded maintenance without losing t
     const index = await f.request('index');
     assert.equal(index.body.entries.length, 2);
     assert.equal((await f.request('get', { key: index.body.entries[0].key })).body.envelope.checkpoint.sequence, 3);
+});
+
+// ---- Hardening regressions ----
+// Each case below is an attack or a failure that the responder accepted before its fix.
+type Party = Awaited<ReturnType<typeof fixture>>;
+async function liveInvite(p: Party, invitationId = id(), secret = randomSecret(), permission: 'view' | 'comment' | 'edit' = 'view') {
+    const delegate = await identity();
+    const invitation = { v: 1 as const, id: invitationId, collection: p.owner.collection, document: p.document, mode: 'live' as const,
+        permission, publicKey: delegate.publicKey, participant: null, expires: p.kv.time + 7 * 86400 };
+    const policy = { invitation, signature: await sign(invitation, p.who) };
+    const result = await p.request('invite', { policy, tokenHash: await tokenHash(secret), bootstrap: { nonce: encode(new Uint8Array(12)), ciphertext: encode(new Uint8Array(32)) } });
+    return { result, policy, secret, delegate, invitation };
+}
+async function liveJoin(p: Party, link: Awaited<ReturnType<typeof liveInvite>>) {
+    const who = await identity(), token = randomSecret(), member = id();
+    const grant: Grant = { v: 1, collection: p.owner.collection, member, participant: member, permission: link.invitation.permission, document: p.document,
+        publicKey: who.publicKey, boxKey: who.boxKey, tokenHash: await tokenHash(token), expires: link.invitation.expires };
+    const signed = { ...(await signGrant(grant, link.delegate)), issuer: link.policy };
+    const result = await p.request('live-join', { invitation: link.invitation.id, signed }, link.secret);
+    return { result, token, member };
+}
+
+test('a revoked Live link stays revoked when another collection creates an invitation with the same id', async () => {
+    const kv = new TestKv(), victim = await fixture(true, kv), other = await fixture(true, kv);
+    const link = await liveInvite(victim), guest = await liveJoin(victim, link);
+    assert.equal(guest.result.status, 201);
+    assert.equal((await victim.request('index', { member: guest.member }, guest.token)).status, 200);
+    assert.equal((await victim.request('invite-revoke', { invitation: link.invitation.id })).status, 200);
+    assert.equal((await victim.request('index', { member: guest.member }, guest.token)).status, 403);
+    // The id is free again in the shared namespace, so another collection can take it.
+    assert.equal((await liveInvite(other, link.invitation.id)).result.status, 201);
+    const again = await victim.request('index', { member: guest.member }, guest.token);
+    assert.equal(again.status, 403); assert.equal(again.body.error, 'live-link-ended');
+});
+
+test('cleanup of one collection never deletes an invitation of another collection', async () => {
+    const kv = new TestKv(), victim = await fixture(true, kv), other = await fixture(true, kv);
+    const link = await liveInvite(victim), guest = await liveJoin(victim, link);
+    // The colliding id is refused, and it leaves no slot that cleanup would follow.
+    const collision = await liveInvite(other, link.invitation.id);
+    assert.equal(collision.result.status, 409);
+    assert.equal([...kv.values.keys()].some((key) => key.includes(`/c/${other.owner.collection}/invitation-slots/`)), false);
+    // Even with a slot that names the foreign id, cleanup leaves the foreign records alone.
+    await kv.set(`sync/v1/c/${other.owner.collection}/invitation-slots/000`, encode(new TextEncoder().encode(JSON.stringify(link.invitation.id))));
+    for (let pass = 0; pass < 20; pass++) {
+        const purge = await other.request('purge-live-document', { document: other.document });
+        assert.equal(purge.status, 200);
+        if (purge.body.complete) break;
+    }
+    assert.ok(await kv.get(`sync/v1/invitations/${link.invitation.id}`));
+    assert.equal((await victim.request('index', { member: guest.member }, guest.token)).status, 200);
+});
+
+test('an append that lost its receipt succeeds on retry, also for a checkpoint with several capacity slots', async () => {
+    const f = await fixture();
+    for (let attempt = 1; attempt <= 12; attempt++) {
+        const envelope = await f.checkpoint(attempt, id(), 'body', new Uint8Array(200 * 1024));
+        let lose = true;
+        f.kv.hook = async (method, key) => { if (lose && method === 'set' && key.includes('/receipts/')) throw new Error('lost'); };
+        assert.equal((await f.request('append', { envelope })).status, 503);
+        lose = false; f.kv.hook = null;
+        assert.equal((await f.request('append', { envelope })).status, 200, `retry ${attempt}`);
+    }
+});
+
+test('a rotated key epoch lives as long as its document, and device keys are renewed with it', async (t) => {
+    let now = Math.floor(Date.now() / 1000);
+    t.mock.method(Date, 'now', () => now * 1000);
+    const f = await fixture(); f.kv.time = now;
+    assert.equal((await f.request('append', { envelope: await f.checkpoint(1) })).status, 200);
+    const wrapped = { v: 1 as const, collection: f.owner.collection, document: f.document, epoch: 2, member: f.owner.member, sender: f.who.boxKey,
+        nonce: encode(new Uint8Array(12)), ciphertext: encode(new Uint8Array(48)) };
+    assert.equal((await f.request('key-write', { values: [{ wrapped, signature: await sign(wrapped, f.who) }] })).status, 200);
+    assert.equal((await f.request('rotate-document', { document: f.document, epoch: 2 })).status, 200);
+    const atEpoch2 = (sequence: number) => sealCheckpoint({ v: 1, collection: f.owner.collection, document: f.document, member: f.owner.member,
+        stream: 'body', sequence, operation: id(), epoch: 2 }, new Uint8Array([1]), f.dataKey, f.who);
+    // The document stays active for 60 days: an append and a renewal every ten days.
+    for (let day = 10; day <= 60; day += 10) {
+        now += 10 * 86400; f.kv.time = now;
+        assert.equal((await f.request('append', { envelope: await atEpoch2(day) })).status, 200, `append on day ${day}`);
+        for (const entry of (await f.request('index', { document: f.document })).body.entries) await f.request('touch-record', { document: f.document, key: entry.key });
+        assert.equal((await f.request('touch', { document: f.document })).status, 200);
+        assert.equal((await f.request('epoch', { document: f.document })).body.epoch, 2);
+        assert.equal((await f.request('key-read', { document: f.document })).body.values.length, 1, `device key on day ${day}`);
+    }
+});
+
+test('owner writes without a quota reservation are bounded in size, shape, and target', async () => {
+    const f = await fixture(true), before = f.kv.values.size;
+    const wrapped = { v: 1 as const, collection: f.owner.collection, document: f.document, epoch: 2, member: f.owner.member, sender: f.who.boxKey,
+        nonce: encode(new Uint8Array(12)), ciphertext: encode(new Uint8Array(48)) };
+    // An extra field would ride along into storage.
+    assert.equal((await f.request('key-write', { values: [{ wrapped, signature: await sign(wrapped, f.who), junk: 'A'.repeat(4096) }] })).status, 403);
+    // A key for a member without a grant has no reader: accepted, not stored.
+    const strangers = await Promise.all(Array.from({ length: 25 }, async () => { const value = { ...wrapped, member: id() }; return { wrapped: value, signature: await sign(value, f.who) }; }));
+    assert.equal((await f.request('key-write', { values: strangers })).status, 200);
+    assert.equal((await f.request('key-write', { values: [...strangers, strangers[0]] })).status, 400);
+    // Permanent fences exist only for real members and registered documents.
+    for (let i = 0; i < 5; i++) {
+        assert.equal((await f.request('revoke', { target: id() })).status, 200);
+        assert.equal((await f.request('delete-document', { document: id() })).status, 200);
+    }
+    assert.equal(f.kv.values.size, before);
+    const link = await liveInvite(f);
+    const sealed = { nonce: encode(new Uint8Array(12)), ciphertext: encode(new Uint8Array(96)) };
+    const write = async (value: Record<string, unknown>) => (await f.request('live-key-write', { invitation: link.invitation.id, value, signature: await sign(value, f.who) })).status;
+    assert.equal(await write({ document: f.document, epoch: 1, ...sealed }), 200);
+    assert.equal(await write({ document: f.document, epoch: 2, ...sealed }), 200);
+    assert.equal(await write({ document: f.document, epoch: 900, ...sealed }), 400);
+    assert.equal(await write({ document: f.document, epoch: 1, ...sealed, junk: 'J'.repeat(4096) }), 403);
+    assert.equal(await write({ document: f.document, epoch: 1, nonce: sealed.nonce, ciphertext: encode(new Uint8Array(4096)) }), 403);
+});
+
+test('a pairing request carries only a bounded encrypted device name', async () => {
+    const f = await fixture('folder'), who = await identity(), secret = randomSecret();
+    const invitation = { v: 1 as const, id: id(), collection: f.owner.collection, document: null, mode: 'pair' as const, permission: 'edit' as const,
+        publicKey: f.who.publicKey, participant: f.owner.participant, expires: f.kv.time + 600 };
+    assert.equal((await f.request('invite', { policy: { invitation, signature: await sign(invitation, f.who) }, tokenHash: await tokenHash(secret) })).status, 201);
+    const candidate = await signGrant({ ...f.owner, member: id(), permission: 'edit', publicKey: who.publicKey, boxKey: who.boxKey, tokenHash: await tokenHash(randomSecret()) }, who);
+    assert.equal((await f.request('pair-request', { invitation: invitation.id, candidate, label: 'L'.repeat(4096) }, secret)).status, 400);
+    assert.equal((await f.request('pair-request', { invitation: invitation.id, candidate, label: { nonce: encode(new Uint8Array(12)), ciphertext: encode(new Uint8Array(4096)) } }, secret)).status, 400);
+    assert.equal((await f.request('pair-request', { invitation: invitation.id, candidate, label: await sealJson({ name: 'Laptop' }, keyBytes(), { invitation: invitation.id }) }, secret)).status, 202);
+});
+
+test('revoking a Live member frees its slot for the next recipient', async () => {
+    const f = await fixture(true), link = await liveInvite(f);
+    const guests = [];
+    for (let i = 0; i < LIMITS.liveGrants; i++) guests.push(await liveJoin(f, link));
+    assert.equal(guests.at(-1)!.result.status, 201);
+    assert.equal((await liveJoin(f, link)).result.status, 507);
+    assert.equal((await f.request('revoke', { target: guests[0].member })).status, 200);
+    assert.equal((await liveJoin(f, link)).result.status, 201);
+    assert.equal((await f.request('index', { member: guests[0].member }, guests[0].token)).status, 403);
 });

@@ -490,6 +490,78 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     await expect(row(page, 'Shared with me')).toHaveCount(0);
   });
 
+  test('HTML in a shared document, its comments, and its previous text never runs as script', async ({ page }) => {
+    // Each payload sets a marker when its handler runs. `<code>` and `<kbd>` wrap raw text that
+    // the Markdown parser passes through unescaped.
+    const mark = (n: number) => `(window.__marsScript ??= []).push(${n})`;
+    const body = (revision: string) =>
+      [
+        '# Hostile',
+        '',
+        `Quoted target text. <img src="x:" onerror="${mark(1)}">`,
+        '',
+        `<code><img/src="x:"/onerror="${mark(2)}"></code> and <kbd><img/src="x:"/onerror="${mark(3)}"></kbd>`,
+        '',
+        `<div class="su-block" data-start="0" data-end="99999" style="position:fixed;inset:0">Forged block ${revision}</div>`,
+        '',
+        `H<sub>2</sub>O and [a link](java&#9;script:${mark(4)}).`,
+        '',
+      ].join('\n');
+    const thread = {
+      id: '1f3a9c2e',
+      quote: 'Quoted target text.',
+      comments: [
+        {
+          id: 'a1b2c3d4',
+          author: '<img src="x:" onerror="alert(1)">',
+          at: '2026-10-21T09:41:00.000Z',
+          body: `Note <code><img/src="x:"/onerror="${mark(5)}"></code> end.`,
+        },
+      ],
+    };
+    const text = (revision: string) => `${body(revision)}\n<!-- su-comments\n${JSON.stringify([thread])}\n-->\n`;
+    const origin = `file:/tmp/hostile-${Date.now()}.md`;
+    const check = async () => {
+      await expect(page.locator('#previewArticle h1')).toHaveText(/^Hostile/);
+      await expect(page.locator('.cm-card .cm-comment')).toHaveCount(1);
+      await expect(page.locator('.cm-card')).toContainText('<img/src="x:"/onerror=');
+      const facts = await page.evaluate(() => {
+        const article = document.querySelector('#previewArticle')!;
+        // The innermost element: the renderer wraps each block in its own `su-block` element.
+        const forged = [...article.querySelectorAll('div')].find(
+          (node) => node.textContent?.startsWith('Forged block') && !node.querySelector('div'),
+        );
+        return {
+          ran: (window as { __marsScript?: number[] }).__marsScript ?? [],
+          handlers: document.querySelectorAll('[onerror]').length,
+          forged: forged ? [...forged.attributes].map((attribute) => attribute.name) : null,
+          subscript: article.querySelector('sub')?.textContent,
+          scriptLinks: [...article.querySelectorAll('a')].filter((a) => /script:/i.test(a.getAttribute('href') ?? '')).length,
+        };
+      });
+      expect(facts).toEqual({ ran: [], handlers: 0, forged: [], subscript: '2', scriptLinks: 0 });
+    };
+    // A fragment-only navigation does not reload the page, so each step starts from a blank page.
+    const open = async (url: string) => {
+      await page.goto('about:blank');
+      await page.goto(url);
+    };
+    await open(fileLink(text('one'), origin, 'Hostile'));
+    await check();
+    // The same link in a temporary session uses the same policy.
+    await open(`${fileLink(text('one'), `${origin}-temporary`, 'Hostile')}&t=1`);
+    await expect(page.locator('#temporarySession')).toBeVisible();
+    await check();
+    // A second copy with new text makes the first copy the review baseline, which Review changes renders.
+    await open(fileLink(text('two').replace('Quoted target text.', 'Quoted target text, revised.'), origin, 'Hostile'));
+    await expect(page.locator('#changesBar')).toBeVisible();
+    await page.getByRole('button', { name: 'Next change' }).click();
+    await page.getByRole('button', { name: 'Show before' }).click();
+    await expect(page.locator('#diffBefore')).toContainText(/Quoted target text\.|Forged block one/);
+    expect(await page.evaluate(() => (window as { __marsScript?: number[] }).__marsScript ?? [])).toEqual([]);
+    expect(await page.locator('#diffBefore [onerror], #diffBefore [style*="fixed"]').count()).toBe(0);
+  });
+
   test('a folder short link carries every document', async ({ page, context, browser }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
     await page.goto(tool.path);

@@ -9,7 +9,8 @@ import { $ } from '../ui/ui.ts';
 import { diffBlocks, diffWords } from './diff.ts';
 import * as viewer from './viewer.js';
 import { tableReviewBlocks } from './table.ts';
-import { applyTableLayouts } from './table-layout.ts';
+import { applyTableLayouts, tableMetadataHtml } from './table-layout.ts';
+import { safeRawHtml, safeRenderedHtml } from './preview-safety.ts';
 
 const FRONTMATTER_RE = /^---\r?\n[\s\S]*?\r?\n---\r?\n/;
 // Rendered widgets whose text doesn't line up with their source get the block bar only.
@@ -46,7 +47,17 @@ function parseBase(id: string, mode: Mode, text: string): Base {
     return { id, mode, raws, texts: new Map(), comments: new Set(threads.flatMap((t) => t.comments.map(commentKey))) };
 }
 
-const oldHtml = (i: number) => marked.parse(base!.raws[i], { async: false });
+// The baseline is document text from another person, like the preview. Render it with the same
+// HTML policy: sanitized raw HTML, escaped raw-block text, and a final pass over the output.
+const baselineRenderer = new marked.Renderer();
+baselineRenderer.html = ({ text }) => tableMetadataHtml(text) ?? safeRawHtml(text, true);
+const renderBaselineText = baselineRenderer.text;
+baselineRenderer.text = function (token) {
+    return 'escaped' in token && token.escaped && !('tokens' in token && token.tokens)
+        ? token.text.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
+        : renderBaselineText.call(this, token);
+};
+const oldHtml = (i: number) => safeRenderedHtml(marked.parse(base!.raws[i], { async: false, renderer: baselineRenderer }));
 function oldText(i: number) {
     let text = base!.texts.get(i);
     if (text === undefined) {

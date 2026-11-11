@@ -47,7 +47,7 @@ async function readyPdf(page: Page) {
 
 test.describe('export workspace', () => {
   test.setTimeout(90000);
-  test('documents the HTML boundary and removes supplied executable embeds while retaining inline styling', async ({
+  test('documents the HTML boundary and removes supplied executable embeds, styling, and forged attributes', async ({
     page,
   }) => {
     const text = `# Export boundary
@@ -60,34 +60,46 @@ test.describe('export workspace', () => {
 <base id="supplied-base" href="#ignored">
 <meta id="supplied-meta" name="example" content="metadata">
 <link id="supplied-link" rel="stylesheet" href="data:text/css,.supplied-rule{}">
-<div id="kept-inline" style="color:purple" onclick="return false" data-start="1" data-end="2">Styled HTML remains.</div>
-<a id="unsafe-link" href="javascript:void(0)">Link text remains.</a>
+<div id="supplied-inline" style="color:purple" onclick="return false" data-start="1" data-end="2">Plain HTML remains.</div>
+<div><template shadowrootmode="open"><script>void 0;</script><p>Shadow content</p></template></div>
+<a href="javascript:void(0)">Script link text remains.</a>
+[Entity link text remains.](java&#9;script:void(0))
+H<sub>2</sub>O keeps <kbd>inline</kbd> tags.
 `;
     await openDoc(page, text, 'Export boundary.md');
     await openExport(page);
     await dlg(page).getByText('HTML export restrictions', { exact: true }).click();
-    await expect(dlg(page).getByText('This cleanup is not a complete HTML sanitizer.', { exact: false })).toBeVisible();
+    await expect(
+      dlg(page).getByText('An export contains the same sanitized HTML as the preview.', { exact: false }),
+    ).toBeVisible();
     const output = await htmlDownload(page);
     const facts = await page.evaluate((html) => {
       const doc = new DOMParser().parseFromString(html, 'text/html');
+      const article = doc.querySelector('.preview-article') ?? doc.body;
+      const plain = [...article.querySelectorAll('div')].find((node) => node.textContent === 'Plain HTML remains.');
+      const links = [...article.querySelectorAll('a')].filter((node) => /link text remains/.test(node.textContent ?? ''));
       return {
         supplied: doc.querySelectorAll('[id^="supplied-"]').length,
-        inlineStyle: doc.getElementById('kept-inline')?.getAttribute('style'),
-        handler: doc.getElementById('kept-inline')?.getAttribute('onclick'),
-        range: doc.getElementById('kept-inline')?.getAttribute('data-start'),
-        href: doc.getElementById('unsafe-link')?.getAttribute('href'),
-        runtime: !!doc.getElementById('mars-reader-config'),
+        attributes: plain ? [...plain.attributes].map((attribute) => attribute.name) : null,
+        templates: article.querySelectorAll('template').length,
+        scriptLinks: links.filter((node) => node.hasAttribute('href')).length,
+        linkTexts: links.length,
+        subscript: article.querySelector('sub')?.textContent,
+        keyboard: article.querySelector('kbd')?.textContent,
+        runtime: !!doc.querySelector('script#mars-reader-config'),
       };
     }, output.text);
     expect(facts).toEqual({
       supplied: 0,
-      inlineStyle: 'color:purple',
-      handler: null,
-      range: null,
-      href: null,
+      attributes: [],
+      templates: 0,
+      scriptLinks: 0,
+      linkTexts: 2,
+      subscript: '2',
+      keyboard: 'inline',
       runtime: true,
     });
-    await expect(htmlFrame(page).getByText('Styled HTML remains.')).toHaveCSS('color', 'rgb(128, 0, 128)');
+    await expect(htmlFrame(page).getByText('Plain HTML remains.')).not.toHaveCSS('color', 'rgb(128, 0, 128)');
   });
 
   test('standalone reader lazily prepares PDF with the committed paper settings', async ({ page }) => {

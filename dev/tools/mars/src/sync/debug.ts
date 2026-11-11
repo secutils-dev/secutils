@@ -15,7 +15,7 @@ const ERRORS = new Set(['Error', 'ReplicaConflict', 'SyncSetupError', 'SyncError
 const ACTIONS = new Set(['create', 'document', 'append', 'index', 'get', 'directory', 'document-info', 'touch', 'touch-record', 'touch-folder', 'invite', 'invite-read', 'pair-request', 'pair-status', 'pair-approve', 'members', 'epoch', 'key-read', 'key-write', 'live-key-read', 'live-key-write', 'delete-document']);
 const STATES = new Set(['waiting', 'working', 'current', 'offline', 'attention', 'ended']);
 const FIELDS = new Set(['name', 'parentId', 'order', 'originId', 'updatedAt', 'readingWidth']);
-const NUMBERS = new Set(['items', 'documents', 'folders', 'connected', 'storedConnected', 'orphanRecords', 'item', 'status', 'duration', 'changed', 'line', 'column', 'downloads']);
+const NUMBERS = new Set(['items', 'documents', 'folders', 'connected', 'storedConnected', 'orphanRecords', 'item', 'status', 'duration', 'changed', 'line', 'column', 'downloads', 'rejected']);
 const FLAGS = new Set(['temporary', 'hidden', 'online']);
 export function safeError(error: unknown) {
     const value = error as { name?: unknown; code?: unknown; reason?: unknown; message?: unknown; stack?: unknown; status?: unknown } | null;

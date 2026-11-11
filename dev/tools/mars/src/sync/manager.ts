@@ -7,7 +7,7 @@ import { mergeDocuments, openThreads, splitComments } from '../share/merge.ts';
 import { matchScore } from '../share/match.ts';
 import { encodeState, decodeState } from '../share/codec.ts';
 import { identity, keyBytes, randomSecret, tokenHash, sign, signGrant, wrapKey, unwrapKey, verify, verifyGrant, pairingPhrase, sealJson, openJson, openCheckpoint, encryptRecovery, decryptRecovery, hash, MAX_RECOVERY_FILE_BYTES } from './crypto.ts';
-import { encode, decode, LIMITS, SyncError, validId, validGrant, validInvitation, validWrappedKey, checkpointKey, type SignedGrant, type SignedInvitation, type WrappedKey, type SyncBinding, type SyncDirectory } from './protocol.ts';
+import { encode, decode, canonical, jsonBytes, LIMITS, RejectedPacket, SyncError, validId, validGrant, validCheckpoint, validInvitation, validWrappedKey, checkpointKey, type SignedGrant, type SignedInvitation, type WrappedKey, type SyncBinding, type SyncDirectory } from './protocol.ts';
 import { Session, stagedSession, type SessionRecord, type ManifestNode } from './session.ts';
 import { materializable, materializationVersion } from './materialization.ts';
 import { Transport, type ConnectionStatus } from './transport.ts';
@@ -192,7 +192,8 @@ function start(scope: Scope) {
                 const anchor = staged.anchor(draft.start, draft.end);
                 try {
                     const key = session.record.keys?.[String(envelope.checkpoint.epoch)] ?? session.record.key;
-                    staged.apply(await openCheckpoint(envelope, decode(key), author.grant));
+                    try { staged.apply(await openCheckpoint(envelope, decode(key), author.grant)); }
+                    catch (error) { throw new RejectedPacket(error); }
                     if (!staged.unchanged(anchor)) viewer.setConnectionDraftConflict(() => { void recoverDraft(id, session, envelope, author); });
                 } finally { staged.destroy(); }
                 return null;
@@ -203,7 +204,9 @@ function start(scope: Scope) {
             const meta = session.metadata(), node = app.node(id)!;
             if (typeof meta.name === 'string') node.name = meta.name;
             if (meta.readingWidth === 'full' || typeof meta.readingWidth === 'number') node.readingWidth = meta.readingWidth;
-            if (session.folder()) await materialize(scope, session, signal, { directory });
+            // Any editor can write `meta.kind` in the shared replica. Only the root of a folder scope
+            // carries a manifest, so decide from the local binding, not from received content.
+            if (scope.kind === 'folder' && session.record.binding.document === scope.root && session.folder()) await materialize(scope, session, signal, { directory });
             await persistProjection(id, text); return text;
         }, cycle: async (signal, directory) => {
             if (scope.kind === 'folder') {
@@ -369,7 +372,6 @@ async function enrollSelection(id: string, personalSync = true, previous?: db.Un
     if (selected.length > LIMITS.documents) throw new Error('selection-too-large');
     if (orphanRecords && !previous) throw new db.ReplicaConflict('orphan-replica');
     if (previous && !canRestartUnfinished(previous, id)) throw new Error('unfinished-setup-unavailable');
-    viewer.enableConnectionSafety(); await db.setMeta('sync:safety', true);
     const who = await identity(), token = randomSecret(), root = newId(), key = encode(keyBytes()), collection = newId();
     const grant = { v: 1 as const, collection, member: newId(), participant: newId(), permission: 'owner' as const, document: null,
         publicKey: who.publicKey, boxKey: who.boxKey, tokenHash: await tokenHash(token), expires: 0 };
@@ -438,8 +440,12 @@ async function loadPackets(scope: Scope, session: Session, signal?: AbortSignal,
     keys.sort((a, b) => priority(a) - priority(b));
     for (const key of keys) {
         const packet = await scoped(scope, 'get', { key }, signal);
+        // The service response is untrusted input. A malformed or unverifiable checkpoint is skipped,
+        // so one bad upload from another participant cannot block a join.
+        if (!validCheckpoint(packet.envelope) || !validGrant(packet.author)) continue;
         if (packet.envelope.checkpoint.epoch > session.record.binding.epoch) await refreshKey(scope, session, packet.envelope.checkpoint.epoch, signal, staged);
-        await session.receive(packet.envelope, packet.author);
+        try { await session.receive(packet.envelope, packet.author); }
+        catch (error) { if (!(error instanceof RejectedPacket)) throw error; }
     }
     session.present(session.record.projection);
 }
@@ -489,7 +495,7 @@ async function materialize(scope: Scope, rootSession: Session, signal?: AbortSig
         await app.serializePersistence(async () => {
             signal?.throwIfAborted();
             const root = bootstrap ?? app.node(scope.localRoot); if (!root?.connection) throw new db.ReplicaConflict('missing-node');
-            await db.materializeConnected(root, body, entries, bootstrap ? { record: rootSession.record, metadata: { [scopeId(scope)]: scope, 'sync:safety': true } } : undefined);
+            await db.materializeConnected(root, body, entries, bootstrap ? { record: rootSession.record, metadata: { [scopeId(scope)]: scope } } : undefined);
             await app.load();
         });
         materializedViews.set(scopeId(scope), version);
@@ -714,7 +720,9 @@ async function stopHere(id: string) {
 }
 async function accessPanel(scope: Scope, ui: SyncDialog) {
     while (ui.open) {
-        const members = (await scoped(scope, 'members')).members as SignedGrant[];
+        // The member list is a service response. Keep only well-formed grants: their ids reach HTML attributes.
+        const listed = (await scoped(scope, 'members')).members;
+        const members = (Array.isArray(listed) ? listed : []).filter(validGrant);
         const revoked = await db.getMeta<RevokedAccess>(revokedAccessKey(scope)) ?? { members: [], invitations: [] };
         const devices = members.filter((member) => member.grant.member !== scope.member.grant.member && member.grant.document === null && !member.issuer && !revoked.members.includes(member.grant.member));
         const title = app.node(scope.localRoot)?.name ?? 'this document';
@@ -743,7 +751,7 @@ export async function liveLinks(id: string) {
         const pending = !!scope.cleanup || !!await rotationRepository(scope).get();
         const revoked = await db.getMeta<RevokedAccess>(revokedAccessKey(scope)) ?? { members: [], invitations: [] };
         const links = (await db.getMeta<OwnedLink[]>(`sync:links:${scopeId(scope)}`) ?? []).filter(link => link.document === node.connection!.document && !revoked.invitations.includes(link.id));
-        const rows = links.map((link, index) => `<div class="sync-access-item"><span>${esc(link.label ?? `${node.name} - Link ${index + 1}`)}<small>Can ${link.permission ?? 'view'} · ${link.expires > Date.now() / 1000 ? 'Expires' : 'Expired'} ${new Date(link.expires * 1000).toLocaleDateString()}</small></span><button class="icon-btn icon-btn-s" type="button" aria-label="Disable link ${index + 1}" data-tooltip="Disable Live link" data-sync-action="link:${link.id}">${icon('unlink')}</button></div>`).join('');
+        const rows = links.map((link, index) => `<div class="sync-access-item"><span>${esc(link.label ?? `${node.name} - Link ${index + 1}`)}<small>Can ${esc(link.permission ?? 'view')} · ${link.expires > Date.now() / 1000 ? 'Expires' : 'Expired'} ${new Date(link.expires * 1000).toLocaleDateString()}</small></span><button class="icon-btn icon-btn-s" type="button" aria-label="Disable link ${index + 1}" data-tooltip="Disable Live link" data-sync-action="link:${link.id}">${icon('unlink')}</button></div>`).join('');
         const answer = await ui.screen({ title: 'Live links', html: `<p>Links sharing <strong>${esc(node.name)}</strong>.</p><div class="sync-access-list">${rows || '<p>No active Live links.</p>'}</div><p class="sync-fineprint">Disabling a link stops access through that link. Local copies remain. If this document only uses Live links, removing its last link also deletes the remote copy.</p>${pending ? '<p>A sharing change needs to finish. Try again to continue.</p>' : ''}${problem ? `<p role="alert">${esc(problem)}</p>` : ''}`, buttons: pending ? [{ label: 'Try again', value: 'retry', primary: true }] : [...(links.length ? [{ label: 'Stop sharing', value: 'stop', empty: true, left: true }] : []), { label: 'Copy link', value: 'create', primary: true }] });
         problem = ''; if (answer.value === 'close') break;
         try {
@@ -851,6 +859,18 @@ async function stopSharing(scope: Scope, node: TreeNode, ui: SyncDialog) {
     for (const link of links) { await revoke(scope, { link }); if (await rotationRepository(scope).get()) throw new Error('revocation-pending'); }
     await finishSharing(scope, node.connection!.document, ui.signal);
 }
+/** The longest device name that a pairing request carries. */
+const MAX_DEVICE_NAME = 64;
+/**
+ * Authenticated data for the encrypted device name of a pairing request. It binds the requested
+ * grant to the link key, which the service never receives.
+ */
+const pairLabelContext = async (invitation: string, grant: SignedGrant['grant']) => ({ invitation, grant: await hash(jsonBytes(grant)) });
+/** True when `owner` is a well-formed, self-signed owner grant for the owner key of a link. */
+async function ownerMatchesLink(owner: unknown, ownerKey: string): Promise<boolean> {
+    return validGrant(owner) && !owner.issuer && owner.grant.permission === 'owner' && owner.grant.publicKey === ownerKey
+        && verify(owner.grant, owner.signature, ownerKey);
+}
 async function syncLinkPanel(scope: Scope, ui: SyncDialog) {
     if (!ui.open) return;
     if (scope.selection) { await ui.screen({ title: 'Connect a device', back: true, html: '<p>Open the original synced folder to connect another device. This recovery contains selected documents only.</p>' }); return; }
@@ -880,8 +900,23 @@ async function syncLinkPanel(scope: Scope, ui: SyncDialog) {
         const result = await screen; controller.abort(); await waiting;
         if (result.value === 'error' && ui.open) { await ui.screen({ title: 'Sync link', back: true, html: `<p role="alert">${esc(problem)}</p>` }); return; }
         if (result.value !== 'candidate' || !pending?.candidate || !ui.open) return;
-        const candidate = pending.candidate as SignedGrant, phrase = await pairingPhrase(policy, candidate.grant);
-        const label = pending.label ? await openJson<{ name: string }>(pending.label as { nonce: string; ciphertext: string }, access.key, { invitation: invitation.id }) : { name: 'Recipient' };
+        // The request arrives through the service, so it is untrusted until two checks pass. The grant
+        // must be exactly what a Sync link permits. The device name must decrypt under the link key
+        // with this grant as authenticated data: the service never sees that key, so it cannot swap
+        // in a grant of its own. The code that both screens show is the final check by the user.
+        const candidate = pending.candidate as SignedGrant;
+        let label: { name: string };
+        try {
+            if (!validGrant(candidate) || candidate.issuer || candidate.grant.collection !== scope.collection || candidate.grant.permission !== 'edit'
+                || candidate.grant.document !== null || candidate.grant.participant !== invitation.participant || candidate.grant.expires !== 0
+                || !await verify(candidate.grant, candidate.signature, candidate.grant.publicKey)) throw new Error('invalid-pair-request');
+            label = await openJson<{ name: string }>(pending.label as { nonce: string; ciphertext: string }, access.key, await pairLabelContext(invitation.id, candidate.grant));
+            if (typeof label?.name !== 'string') throw new Error('invalid-pair-request');
+        } catch {
+            await ui.screen({ title: 'Sync link', back: true, html: '<p role="alert">The request from the other device is not valid. Reload MARS on both devices, then create a new Sync link.</p>' });
+            return;
+        }
+        const phrase = await pairingPhrase(policy, candidate.grant);
         const answer = await ui.screen({ title: 'Check the code', back: true, html: `<p><strong>${esc(label.name)}</strong> is ready to connect.</p><p>Does your other device show this same code?</p>${confirmationCode(phrase)}`,
             buttons: [{ label: 'Codes match', value: 'yes', primary: true }] });
         if (answer.value !== 'yes') return;
@@ -909,15 +944,15 @@ export async function receiveLocation(address: string) {
             const decoded = await decodeState(encoded); if (!decoded) throw new Error('Invalid Sync link');
             link = JSON.parse(decoded); linkWrappingKey(link); incoming = await request('invite-read', { invitation: link.id }, link.secret);
         }
-        if (!validInvitation(incoming.policy) || !validGrant(incoming.owner) || incoming.owner.grant.publicKey !== link.ownerKey
+        if (!validInvitation(incoming.policy) || !await ownerMatchesLink(incoming.owner, link.ownerKey)
             || !await verify(incoming.policy.invitation, incoming.policy.signature, link.ownerKey)) throw new Error('Invalid Sync link');
         const answer = await modal({ title: 'Sync', html: '<p>Connect this device to your synced document or folder. Your other documents stay separate.</p><p>Give this device a name so you can recognize it later.</p>', field: { label: 'Name', value: 'My device' },
             buttons: [{ label: 'Cancel', value: '' }, { label: 'Connect', value: 'yes', primary: true }] });
         if (answer.value !== 'yes') return true;
-        viewer.enableConnectionSafety(); await db.setMeta('sync:safety', true);
         const who = await identity(), token = randomSecret(), g = { v: 1 as const, collection: incoming.policy.invitation.collection, member: newId(), participant: incoming.policy.invitation.participant,
             permission: 'edit' as const, document: null, publicKey: who.publicKey, boxKey: who.boxKey, tokenHash: await tokenHash(token), expires: 0 };
-        const candidate = await signGrant(g, who), encryptedName = await sealJson({ name: answer.text }, linkWrappingKey(link), { invitation: link.id });
+        const candidate = await signGrant(g, who);
+        const encryptedName = await sealJson({ name: answer.text.trim().slice(0, MAX_DEVICE_NAME) || 'My device' }, linkWrappingKey(link), await pairLabelContext(link.id, g));
         await request('pair-request', { invitation: link.id, candidate, label: encryptedName }, link.secret);
         const phrase = await pairingPhrase(incoming.policy, candidate.grant), controller = new AbortController();
         const waiting = modal({ title: 'Sync', html: `<p>Check that your other device shows this same code:</p>${confirmationCode(phrase)}<p role="status">Confirm the code there to finish connecting.</p>`, buttons: [{ label: 'Cancel', value: '' }] });
@@ -936,7 +971,13 @@ export async function receiveLocation(address: string) {
             if (total) { meter.max = total; meter.value = completed; }
             status.textContent = total ? `${completed} of ${total} ${total === 1 ? 'document' : 'documents'} downloaded${completed === total ? '. Saving folder…' : '…'}` : 'Saving folder hierarchy…';
         };
-        if (!await verifyGrant(result.signed, result.owner.grant) || result.signed.grant.member !== g.member) throw new Error('Invalid approval');
+        // The approval also arrives through the service. Accept it only when the owner key from the
+        // link signed exactly the grant that this device requested, and wrapped the root key itself.
+        const wrapped = Array.isArray(result.keys) ? result.keys[0] : undefined;
+        if (!await ownerMatchesLink(result.owner, link.ownerKey) || !validGrant(result.signed) || result.signed.issuer
+            || canonical(result.signed.grant) !== canonical(g) || !await verifyGrant(result.signed, result.owner.grant)
+            || !validWrappedKey(wrapped) || wrapped.sender !== result.owner.grant.boxKey || wrapped.collection !== g.collection || wrapped.member !== g.member
+            || !validId(result.root?.document) || wrapped.document !== result.root.document || !['doc', 'folder'].includes(result.root.kind)) throw new Error('Invalid approval');
         const rootKey = await unwrapKey(result.keys[0], who), root = result.root;
         const local = newId(), node: TreeNode = { id: local, parentId: null, kind: root.kind, name: 'Sync', order: nextOrder(app.state.nodes, null), createdAt: Date.now(), updatedAt: Date.now() };
         const scope: Scope = { collection: g.collection, root: root.document, localRoot: local, kind: root.kind, token, key: encode(rootKey), owner: result.owner, member: result.signed, identity: who, exclusions: [] };
@@ -958,7 +999,7 @@ export async function receiveLocation(address: string) {
                     ...(meta.readingWidth === 'full' || typeof meta.readingWidth === 'number' ? { readingWidth: meta.readingWidth } : {}) });
                 await app.serializePersistence(async () => {
                     ui.signal.throwIfAborted();
-                    await db.materializeConnected(node, session.record.body, [], { record: session.record, metadata: { [scopeId(scope)]: scope, 'sync:safety': true } });
+                    await db.materializeConnected(node, session.record.body, [], { record: session.record, metadata: { [scopeId(scope)]: scope } });
                     await app.load();
                 });
                 scopes.set(scopeId(scope), scope);
@@ -1131,7 +1172,7 @@ async function receiveLive(address: string, encoded: string) {
             const raw = await decodeState(encoded); if (!raw) throw new Error('Invalid live link');
             link = JSON.parse(raw); linkWrappingKey(link); incoming = await request('invite-read', { invitation: link.id }, link.secret);
         }
-        if (!validInvitation(incoming.policy) || !validGrant(incoming.owner) || incoming.owner.grant.publicKey !== link.ownerKey
+        if (!validInvitation(incoming.policy) || !await ownerMatchesLink(incoming.owner, link.ownerKey)
             || incoming.policy.invitation.mode !== 'live' || !await verify(incoming.policy.invitation, incoming.policy.signature, link.ownerKey)) throw new Error('Invalid live-link signature');
         const policy: SignedInvitation = incoming.policy, who = await identity(), token = randomSecret(), memberId = newId();
         const updated = incoming.keyUpdate ? await readLiveKey(incoming.keyUpdate, link, incoming.owner) : { epoch: link.epoch ?? 1, key: link.key };
@@ -1140,7 +1181,6 @@ async function receiveLive(address: string, encoded: string) {
             tokenHash: await tokenHash(token), expires: policy.invitation.expires };
         const signed = await signGrant(grant, { signing: link.signing, box: {}, publicKey: policy.invitation.publicKey, boxKey: '' }); signed.issuer = policy;
         await request('live-join', { invitation: link.id, signed }, link.secret);
-        viewer.enableConnectionSafety();
         const id = newId(), node: TreeNode = { id, parentId: null, kind: 'doc', name: 'Live document', order: 0, createdAt: Date.now(), updatedAt: Date.now() };
         app.state.nodes.push(node);
         const scope: Scope = { collection: grant.collection, root: grant.document!, localRoot: id, kind: 'doc', key: updated.key, token,
@@ -1164,7 +1204,7 @@ export async function saveLive(id: string) {
     if (answer.value !== 'yes') return;
     const record = await db.getSide<SessionRecord>('sync', id); if (!record) return;
     try {
-        await db.promoteConnected(node, record.projection, record, { [scopeId(scope)]: scope, 'sync:safety': true, lastDoc: id });
+        await db.promoteConnected(node, record.projection, record, { [scopeId(scope)]: scope, lastDoc: id });
         await app.load(); await initialize(true); history.replaceState(history.state, '', `${location.pathname}#doc=${id}`); app.notify(); viewer.toast('Live document saved to library');
     } catch (error) { viewer.toast(`The live session is still temporary: ${errorText(error)}. Download pending work before closing.`); }
 }
@@ -1358,7 +1398,7 @@ export async function restoreRecovery(selectedFile?: File) {
                 || values.some(value => !Array.isArray(value?.nodes) || value.nodes.length > LIMITS.documents || !Array.isArray(value.records))) throw new Error('Invalid recovery contents');
             const allOriginal = [...values.flatMap(value => value.nodes), ...local.map(value => value.node)];
             if (new Set(allOriginal.map(node => node.id)).size !== allOriginal.length) throw new Error('Duplicate recovery document');
-            const ids = new Map(allOriginal.map(node => [node.id, newId()])), allNodes: TreeNode[] = [], allRecords: Record<string, SessionRecord> = {}, metadata: Record<string, unknown> = { 'sync:safety': true }, scopesSeen = new Set<string>();
+            const ids = new Map(allOriginal.map(node => [node.id, newId()])), allNodes: TreeNode[] = [], allRecords: Record<string, SessionRecord> = {}, metadata: Record<string, unknown> = {}, scopesSeen = new Set<string>();
             for (const value of values) {
             const scope = value?.scope;
             if (scope?.live) linkWrappingKey(scope.live);
@@ -1397,6 +1437,9 @@ export async function restoreRecovery(selectedFile?: File) {
             const links = value.links ?? [];
             if (!Array.isArray(links) || links.length > LIMITS.liveGrants || links.some((link) => !validId(link.id) || !validId(link.document)
                 || !Number.isSafeInteger(link.expires) || !validLinkWrappingKey(link)
+                // A recovery file is untrusted input. These two fields reach dialog markup.
+                || (link.permission !== undefined && !['view', 'comment', 'edit'].includes(link.permission))
+                || (link.label !== undefined && (typeof link.label !== 'string' || link.label.length > 200))
                 || !value.nodes.some((node) => node.connection?.document === link.document))) throw new Error('Invalid recovered links');
             if (value.rotation) await validateRotationLinks(value.rotation, links);
             for (const node of value.nodes) {
@@ -1446,7 +1489,7 @@ export async function restoreRecovery(selectedFile?: File) {
                 metadata[index] = [...(metadata[index] as db.UnfinishedSetupBackup[] ?? []), { key, at: saved.at, records: Object.keys(saved.snapshot.records).length }];
             }
             await db.restoreConnected(allNodes, allRecords, metadata, Object.fromEntries(local.filter(item => item.node.kind === 'doc').map(item => [ids.get(item.node.id)!, item.text as string])));
-            viewer.enableConnectionSafety(); await app.load(); await initialize(true);
+            await app.load(); await initialize(true);
             viewer.toast('Backup restored. Your documents and unsent changes are saved here.');
         } catch { viewer.toast('Could not restore this backup. Check the file and password. Your library has not changed.'); }
     };

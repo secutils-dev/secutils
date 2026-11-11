@@ -1,7 +1,7 @@
 // Short, scoped polls. Visibility aborts reads, not an upload already in progress.
 // Credentials travel only in Authorization headers. Correctness does not use pagehide.
 import { verify } from './crypto.ts';
-import { LIMITS, SyncError, validCheckpoint, validGrant, validId, type SignedCheckpoint } from './protocol.ts';
+import { LIMITS, RejectedPacket, SyncError, validCheckpoint, validGrant, validId, type SignedCheckpoint } from './protocol.ts';
 import { syncDebug, safeError } from './debug.ts';
 import type { Grant, SignedGrant, Stream, SyncBinding, SyncDirectory } from './protocol.ts';
 
@@ -164,7 +164,7 @@ export class Transport {
             await this.upload();
             let after: string | undefined;
             let directory: SyncDirectory | undefined;
-            let downloads = 0;
+            let downloads = 0, rejected = 0;
             const visited = new Set<string>();
             do {
                 if (!current()) return;
@@ -191,7 +191,16 @@ export class Transport {
                     if (!current()) return;
                     if (!validGrant(stored.author) || !validCheckpoint(stored.envelope)
                         || !(await (this.options.authorValid ? this.options.authorValid(stored.author) : verify(stored.author.grant, stored.author.signature, this.options.ownerPublicKey)))) throw new SyncError('invalid-author-grant', 403);
-                    const text = await (this.options.receive ? this.options.receive(stored.envelope, stored.author, reads.signal, directory) : this.options.replica.receive(stored.envelope, stored.author.grant));
+                    let text: string | null;
+                    try {
+                        text = await (this.options.receive ? this.options.receive(stored.envelope, stored.author, reads.signal, directory) : this.options.replica.receive(stored.envelope, stored.author.grant));
+                    } catch (error) {
+                        if (!(error instanceof RejectedPacket)) throw error;
+                        // Any writer can upload a checkpoint that fails verification here. Skip it for
+                        // this session, without progress, so one bad checkpoint cannot stop the connection.
+                        this.seen.add(entry.key); rejected++;
+                        continue;
+                    }
                     if (!current()) return;
                     if (text === null) continue;
                     await this.options.projection(text);
@@ -203,7 +212,7 @@ export class Transport {
             } while (current());
             this.seen = new Set([...this.seen].filter((key) => visited.has(key)));
             if (current()) await this.options.cycle?.(reads.signal, directory);
-            if (current()) syncDebug.record('poll.finished', { items: visited.size, downloads });
+            if (current()) syncDebug.record('poll.finished', { items: visited.size, downloads, rejected });
             this.failures = 0;
         } catch (error) { this.failure(error); }
         finally {

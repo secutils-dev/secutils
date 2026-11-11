@@ -38,9 +38,32 @@ export async function encodeStateBytes(text: string) {
     return out;
 }
 
-export async function decodeStateBytes(bytes: Uint8Array) {
+// The largest text that a link, a snapshot, or a bundle can expand to. DEFLATE reaches about
+// 1000:1, so an unbounded read lets a small link fill memory and storage.
+export const MAX_STATE_BYTES = 64 * 1024 * 1024;
+
+async function inflate(bytes: Uint8Array, limit: number) {
+    const reader = new Blob([bytes as BlobPart]).stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.length;
+        if (total > limit) { await reader.cancel(); throw new Error('State is too large'); }
+        chunks.push(value);
+    }
+    const out = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) { out.set(chunk, offset); offset += chunk.length; }
+    return out;
+}
+
+export async function decodeStateBytes(bytes: Uint8Array, limit = MAX_STATE_BYTES) {
     if (bytes.length < 4) throw new Error('Truncated state');
-    return dec.decode(await pipe(bytes.subarray(4), new DecompressionStream('deflate-raw')));
+    // The prefix is the declared size. Reject an oversized claim early, and bound the actual output too.
+    if (new DataView(bytes.buffer, bytes.byteOffset, 4).getUint32(0, true) > limit) throw new Error('State is too large');
+    return dec.decode(await inflate(bytes.subarray(4), limit));
 }
 
 export const encodeState = async (text: string) => toBase64Url(await encodeStateBytes(text));

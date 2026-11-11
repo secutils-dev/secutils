@@ -2,7 +2,8 @@
 import { initDiagrams } from '../doc/diagrams.js';
 import { prepareFrame, printDocument, type PreparedFrame } from './pdf.ts';
 
-const config = JSON.parse(document.getElementById('mars-reader-config')!.textContent!);
+// Select the script element itself: a document heading can produce the same id.
+const config = JSON.parse(document.querySelector('script#mars-reader-config')!.textContent!);
 const root = document.documentElement;
 const article = document.querySelector('article')!;
 // Capture before reader navigation/find/copy decorations can change the print input.

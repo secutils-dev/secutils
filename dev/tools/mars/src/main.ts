@@ -117,25 +117,38 @@ try {
     viewer.toast('Browser storage is unavailable. Opened a temporary session instead.');
 }
 renderTemporary();
-if (await db.getMeta<boolean>('sync:safety')) viewer.enableConnectionSafety();
-if (app.state.nodes.some((n) => n.connection)) await sync.initialize();
+// From here on a failure must not reach the page loader: it replaces the whole page with an error,
+// and the reader then has no route to the library or to an export.
+const startupError = (action: string) => (error: unknown) => {
+    viewer.toast(`${action}: ${(error as Error)?.message ?? error}. Your documents are still in this browser.`);
+};
+if (app.state.nodes.some((n) => n.connection)) await sync.initialize().catch(startupError('Sync could not start'));
 document.documentElement.classList.remove('mars-boot');
 installTooltips();
 const request = new URL(location.href);
 const last = await db.getMeta<string>(LAST_DOC_KEY).catch(() => undefined);
-// A failed ?url= load retains the previous document, just like the URL form.
-if (!request.hash && request.searchParams.has('url') && last && app.node(last)) await app.openDoc(last);
 // Generation guards make address-bar navigation safe while an initial fetch is pending.
-window.addEventListener('hashchange', async () => { if (!await sync.receiveLocation(location.href)) await share.openFromLocation(); });
-if (db.isTemporaryStorage() && request.searchParams.get('new') === '1' && !request.hash && !request.searchParams.has('url')) {
-    await app.createDoc();
-    viewer.setViewMode('edit');
-} else if (!(sync.isConnectionLocation(request.href) ? await sync.receiveLocation(request.href) : await share.openFromLocation(request.href))) {
-    if (last && app.node(last)) await app.openDoc(last);
-    else viewer.endLoading();
+window.addEventListener('hashchange', async () => {
+    try {
+        if (!await sync.receiveLocation(location.href)) await share.openFromLocation();
+    } catch (error) { startupError('Could not open this link')(error); }
+});
+try {
+    // A failed ?url= load retains the previous document, just like the URL form.
+    if (!request.hash && request.searchParams.has('url') && last && app.node(last)) await app.openDoc(last);
+    if (db.isTemporaryStorage() && request.searchParams.get('new') === '1' && !request.hash && !request.searchParams.has('url')) {
+        await app.createDoc();
+        viewer.setViewMode('edit');
+    } else if (!(sync.isConnectionLocation(request.href) ? await sync.receiveLocation(request.href) : await share.openFromLocation(request.href))) {
+        if (last && app.node(last)) await app.openDoc(last);
+        else viewer.endLoading();
+    }
+} catch (error) {
+    startupError('Could not open the document')(error);
+    viewer.endLoading();
 }
 db.onRemoteChange((ids) => { void app.serializePersistence(async () => {
-    if (await db.getMeta<boolean>('sync:safety')) viewer.enableConnectionSafety();
     await app.load();
+    await app.adoptRemoteChange(ids);
     if (app.state.nodes.some((node) => node.connection)) await sync.refresh(ids);
 }).catch((error) => viewer.toast(`Could not refresh this library: ${error.message}. Local edits are retained.`)); });
