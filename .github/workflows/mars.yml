@@ -65,7 +65,7 @@ jobs:
           node --test ../../../scripts/tools-shared.test.ts ../../../scripts/tools-layout.test.ts
           node --test ../../../scripts/mars-test-scopes.test.ts
 
-      # Best quality (EmbeddingGemma 2, about 200 MB) is checked locally; see README.md#evaluation.
+      # Best quality (EmbeddingGemma 2, about 200 MB) is checked locally; see src/search/README.md#evaluation.
       - name: Cache the Best speed model
         uses: actions/cache@v6.1.0
         with:

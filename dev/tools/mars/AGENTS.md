@@ -1,170 +1,217 @@
-# MARS (`index.html`)
+# MARS (`dev/tools/mars/`)
 
 Read before changing MARS. Paths in this guide are relative to `dev/tools/mars/`.
-The app's HTML, skill, source, assets, tests, and evaluation live in this directory.
 
-MARS (Markdown Annotation & Review System) is the review app extracted from `../md/index.html`. It is the one own-host app
-([platform.md](../shared/guides/platform.md#hosts-tools_host-mars_host)): served at `/` of `{{MARS_HOST}}` (`mars.secutils.dev`, a
-prefix-match `_MARS` responder) with its SKILL.md at `/llms.txt` (an exact-match `_MARS_MD` responder).
-It is promoted like any tool, linked by that host. In-app URLs derive from `location.pathname`, so the page works on any host.
+MARS (Markdown Annotation & Review System) is the one own-host tool app ([platform.md](../shared/guides/platform.md#hosts-tools_host-mars_host)).
+The prefix-match `_MARS` responder serves it at `/` of `{{MARS_HOST}}` (`mars.secutils.dev`).
+The exact-match `_MARS_MD` responder serves `SKILL.md` at `/llms.txt`.
+In-app URLs derive from `location.pathname`, so the page works on any host.
+[README.md](README.md) describes user-visible behavior and the source layout.
 
-## How it differs from the other tools
+## Guides
 
-- **Source layout**: `index.html` is a thin shell (SEO head, static DOM, the `@su:responder-script`, favicons) plus two
-  `gzip-base64` bundles: `mars` (this app, built by esbuild) and `three-mf` in `../shared/libs/three-mf/`
-  (shared with `../md/index.html`). The shell imports the `mars` bundle at startup; `html.mars-boot` hides the body until the
-  bundle has injected its CSS.
-- **Look**: EUI-styled (Borealis tokens, EUI icons, a header with a docked sidebar like the Web UI), instead of the
-  legacy tools chrome: Privacy and Credits sit in the sidebar, and there is no CTA banner or footer.
-  Reusable primitives and glyphs live in `../shared/` ([design-system.md](../shared/guides/design-system.md)).
-  The brand ramp (`--mars-*`, `--brand*`) follows the logo.
-  Its tokens live in `../shared/themes/mars.css`, shared with Observatory.
-  The logo artwork lives in `assets/`. The header mark and data-URI favicons in `index.html` are copies of it.
-- **Sidebar links**: documents and search results contain real anchors to `#doc=<id>`. Ordinary right-click opens MARS
-  actions. Shift + right-click exposes the browser link menu. Modified clicks retain browser navigation.
-  The action button and rename input stay outside the anchor. The link is the document's keyboard focus target.
-  Pointer navigation flushes pending edits and defers tree replacement until the gesture finishes.
-  Links require the same browser profile. Private-window storage and native split-view availability belong to the browser.
-- **Viewer**: `src/doc/viewer.js` is a copy of `../md/index.html`'s live script, without its output UI or fragment autosave.
-  `viewer.d.ts` is its host API. Maps and models now use `src/doc/diagrams.js`, shared with standalone export runtimes.
-  A fix to rendering, block editing, formatting, or comments in
-  either file lands in both: after porting, diff the shared sections of the two scripts. The "Review changes hooks"
-  section of `viewer.js` (`onRendered`, `setThreadHooks`, `blockText`, `requote`, and the few call sites in
-  `updatePreview`, `anchorThreads`, and the thread cards) is MARS-only and stays out of `../md/index.html`.
-- **Tables**: `src/doc/table*.ts` owns source operations, proportional layout, and Preview controls.
-  Table resizing and structural editing are MARS-only by user decision, so these hooks stay out of `../md/index.html`.
-  The shared block mapper retains byte-parity apart from the explicit table hook calls.
-  Advance table ranges past source-mapped code/HTML tokens, including inline list fences, before searching for a table.
-  Store proportions in an adjacent `su-table` comment, not IndexedDB side data or a new link format.
-  Keep metadata with whole-table block moves/deletion, and preserve cell Markdown and alignment during column moves.
-  Cell edits splice only the selected content. Alignment edits change only divider colons.
-  Preview selection formatting uses the selected cell's source range, not the complete table or a header URL.
-  Apply cell drafts before view changes, sharing, or export. Discard stale drafts after outside source changes.
-  Preview and export rendering use the same layout helper. Add controls only after the live Preview renders.
+Read each guide whose trigger matches the change.
+
+| Trigger | Read |
+|---------|------|
+| Grants, invitations, key epochs, the outbox, the responder, recovery packages, `#sync=` or `#live=` links | [src/sync/README.md](src/sync/README.md) |
+| `src/search/`, `eval/`, a model, a dtype, or a Transformers.js upgrade | [src/search/README.md](src/search/README.md) |
+| A privacy claim, analytics, or a new network request | [README: Privacy and analytics](README.md#privacy-and-analytics) and the Privacy dialog in `index.html` |
+| Full links, bundles, short links, the `<state>` encoding | [url-state.md](../shared/guides/url-state.md#short-links-mdindexhtml-mars) |
+| The `@su:responder-script` in `index.html`, hosts, bundles | [platform.md](../shared/guides/platform.md) |
+| Shared tokens, primitives, glyphs, buttons | [design-system.md](../shared/guides/design-system.md) |
+| A failure that a document export cannot reproduce | [README: Developer flags and diagnostics](README.md#developer-flags-and-diagnostics) |
+| A browser test that writes to the service | [README: Isolated browser-test data](README.md#isolated-browser-test-data) |
+
+## Code conventions
+
+- **Format** with Prettier: `npm run format`. CI runs `npm run format:check`.
+  `.prettierignore` excludes `src/doc/viewer.js`, because its shared sections stay byte-identical to Markdown Preview.
+- **Module header**: each source file starts with a comment that states what the module owns and the invariants that callers depend on.
+- **Doc comments**: each exported function, class, and type has a JSDoc comment that states its contract: units, failure behavior, and side effects.
+  A comment explains a reason or an invariant. The code states the mechanics.
+- **Named constants**: limits, time-to-live values, sizes, and storage keys are module-level constants with their unit in the name or the comment.
+- **Errors**: user-visible failures carry a fixed code and a plain sentence. Diagnostics take allowlisted fields only.
+- **Dependencies**: `package.json` pins exact versions. A bundled dependency needs a Credits entry in `index.html` and its license notice in the build.
+
+## Invariants
+
+### Source layout and build
+
+- `index.html` is a thin shell: SEO head, static DOM, favicons, the `@su:responder-script`, and two `gzip-base64` bundles.
+  The bundles are `mars` (this app, built by esbuild) and `three-mf` (`../shared/libs/three-mf/`, shared with `../md/index.html`).
+- The shell imports the `mars` bundle at startup. `html.mars-boot` hides the body until the bundle injects its CSS.
+- `sync-assets.ts` assembles the responder script for local preview, deployment, and the sandbox test. Keep one assembly function.
+- CodeMirror builds into one embedded module graph and loads lazily from a Blob URL. Mermaid and Paged.js load on demand from a CDN.
+- The page is cross-origin isolated (COOP `same-origin`, COEP `credentialless`) so that model threads work.
+  A new cross-origin embed must load without credentials.
+
+### Viewer parity with Markdown Preview
+
+- `src/doc/viewer.js` is a copy of the live script in `../md/index.html`, without its output UI and fragment autosave.
+  `viewer.d.ts` is its host API.
+- A fix to rendering, block editing, formatting, or comments lands in both files.
+  After the port, diff the shared sections. `test/viewer-parity.test.ts` compares several of them byte for byte.
+- MARS-only code stays out of `../md/index.html`: the "Review changes hooks" section
+  (`onRendered`, `setThreadHooks`, `blockText`, `requote`), the table hooks, the sync hooks, and the sanitizer calls.
+- `src/doc/diagrams.js` supplies maps and models to the viewer and to the standalone export runtimes.
+
+### Storage
+
+- Documents live in IndexedDB database `mars` with stores `nodes`, `docs`, and `meta`.
+- Per-document side data lives in `docs` under `<kind>:<id>` (`db.getSide`): `base` (review baseline), `opened` (source text as received),
+  `vec` (search index), and `sync` (replica, outbox, keys, progress). A new kind needs no new store.
+- Open the database without a requested version. Some browsers hold version 2 from a withdrawn feature.
+  Keep unknown stores. Never downgrade or delete the database.
+- Every document has an `originId` that survives sharing. A link for a known `originId` merges threads by comment `id`, or by `author` plus `at`.
+- The fragment is a route (`#doc=<id>`) or an incoming share. Client preferences live in `localStorage` under `mars.*` keys.
+
+### Incoming documents
+
+- Open, drops, imports, Load URL, and `?url=` share `src/io/source.ts` for source extraction and naming.
+  An explicit name wins over a frontmatter title, a Markdown heading, and the file name.
+- `src/io/input.ts` owns input generations and abort signals. Pass the current operation through each receive and navigation step.
+  Check it after each asynchronous read and before you select or change a document.
+- `share.updateExisting` matches an incoming copy by origin, by file handle (`isSameEntry`), or by content after the reader confirms (`share/match.ts`).
+  It decides the text against `opened`: source changed takes it, stored copy changed keeps it, both changed asks (default **Save as a copy**).
+- An outside change keeps the previous text as the `base` side record (`app.rebase`) until **Mark reviewed**.
+- Converted HTML never keeps a writable file handle. Unchanged Markdown and review blocks keep their original bytes on download.
+- Load URL and `?url=` both call `share.receiveUrl()`. The browser fetches the source directly, without a proxy.
+- PDF Extractor hands over Text and Markdown through a full link with an explicit name.
+  The exact text stays in the fragment. No PDF bytes leave the browser.
+- Linked files exist in Chromium only (File System Access pickers). Plan no Firefox or Safari port of the 2-second poll.
+
+### Links
+
+- Full links are Markdown Preview-compatible: `#name=&md=`, plus `&o=<originId>` and optional `&w=<width>`.
+  Folders use `#b=<state of a JSON bundle>` with `readingWidth` on each document.
+- Short links use the Markdown Preview scheme with a different plaintext, in the MARS key-value store.
+  MARS and Markdown Preview short links are not interchangeable.
+- `t=1` in the fragment or `?temporary=1` selects the memory backend before the database opens.
+  Denied storage and quota failures select it too. A temporary session never reads or writes the library or its preferences.
+- `share/temporary.ts` keeps only the current document in the fragment, with generation guards and size limits.
+  Temporary short-link deletion tokens stay in memory, and automatic file writes stay off.
+  Keep the mode and a recovery failure visible in the header and the banner.
+- A link carries the reading width: `w` in a full link, `readingWidth` in a bundle document.
+  A received document stores it on its tree node, separate from the browser preference. An invalid width keeps the preference.
+- **Copy for GitHub** links `/badge.svg` and `/badge-dark.svg`, which the responder script draws inline.
+  `textLength` fixes the width across fonts. The `#s=` key of the link never reaches the server.
+
+### Sync and Live links
+
+- `src/sync/` owns Sync and Live links. Its hooks stay out of Markdown Preview.
+  `index.ts` is the light entry. It loads `manager.ts`, a facade over the modules in `manager/`, only for connected content.
+  The modules share state through `manager/state.ts`. Keep top-level code in them free of calls into sibling modules: they import each other in cycles.
+- `db.commitReplica` saves the Markdown projection, replica state, outbox, and received progress in one transaction.
+- A protocol-only commit keeps the document timestamp and the search index entry.
+  Library promotion moves the vector record of the selected document and leaves other index entries valid.
+- Connection metadata is scoped by collection and member. A Live grant stays separate from the private connection of the owner in the same profile.
+- Sync and Live links need a wrapping key that differs from the bearer token. Reject a link without one before any request.
+- Treat each service response as untrusted input. Validate its shape, and verify it against the owner key from the link, before use.
+- A downloaded checkpoint that fails local verification throws `RejectedPacket`. The receiver skips that checkpoint and keeps the connection.
+- A live fragment selects memory storage before IndexedDB opens. **Save live document to library** is one atomic promotion.
+- Transport keys, credentials, and outbox records never enter Markdown, HTML, PDF, ZIP, or agent handoffs.
+  Only the optional encrypted recovery file carries them.
+- Remote edits never write to a linked file. A connected document needs an explicit disk **Save**.
+
+### HTML safety
+
+Every document, comment, and review baseline can come from another person, and the page holds the library and its connection keys.
+
+- Document-derived HTML reaches `innerHTML` only through `src/doc/preview-safety.ts`:
+  `safeRawHtml` for each raw HTML token, then `safeRenderedHtml` for the complete renderer output. This applies to the preview, comments, the review-changes baseline, and exports.
+- `safeRawHtml` removes `class`, `id`, and `data-*`, so a document cannot forge the attributes that the renderer adds afterwards (source ranges, block markers, table layout).
+- A renderer that escapes or sanitizes raw HTML also escapes raw-block text (`escapeRawBlockText` in `viewer.js`).
+  marked emits the text inside `<code>`, `<kbd>`, `<pre>`, and `<script>` tags unescaped.
+- Dialog markup escapes each interpolated value with `esc()`, including values from the service and from a recovery file.
+- Look up an app element by a selector that a heading id cannot match, for example `script[data-su-bundle="three-mf"]`.
+  Generated heading ids are document content.
+
+### Tables
+
+- `src/doc/table*.ts` owns source operations, proportional layout, and Preview controls. Table editing is MARS-only by user decision.
+- Column proportions live in an adjacent `su-table` comment. Use no side record and no new link format for them.
+- A cell edit splices only the selected content. An alignment edit changes only the divider colons.
+  Selection formatting in Preview uses the source range of the selected cell.
+- The shared block mapper keeps byte parity with Markdown Preview apart from the explicit table hook calls.
+  Advance table ranges past source-mapped code and HTML tokens, inline list fences included, before the search for a table.
+- A whole-table move or deletion takes the `su-table` comment with it. A column move keeps cell Markdown, alignment, and saved widths.
+- Apply a cell draft before a view change, a share, or an export. Discard a stale draft after an outside source change.
+- Preview and export use the same layout helper. Add controls only after the live Preview renders.
   Cancel pointer gestures on source changes, navigation, Source mode, and export capture.
-  Read [the package table section](README.md#table-editing) for the format and lifecycle.
-- **Export**: `src/export/` owns the HTML/PDF workspace. It captures one immutable document and shares export-safe rendering
-  across formats. HTML previews and downloads use the same output. PDF preview and printing use the same prepared pages.
-  Settings drafts remain separate from document state and commit to `mars.exportSettings` after an output action.
-  Reader and print runtimes compile separately to inline source strings. Paged.js loads only for PDF pagination.
-  Preview frames use opaque origins, with source-window and operation checks on messages.
-  Keep print-only CSS compatible with the Paged.js parser: expand heading selectors instead of using comma lists in `:is()`.
-  Add screen preview scaling after pagination, so Paged.js does not rewrite its media rules.
-  Read [the package export section](README.md#export-workspace) for lifecycle and network contracts.
-- **Source input**: `src/io/source.ts` extracts embedded Markdown without changing viewer state.
-  Open, drops, imports, Load URL, and `?url=` share source extraction and naming.
-  Explicit incoming names precede frontmatter titles, Markdown headings, and filename fallbacks.
-  Converted HTML never retains a writable file handle. HTML without embedded source stays raw HTML.
-  `src/io/input.ts` owns input generations and abort signals. Pass the current operation through receiving and navigation.
-  Check it after asynchronous reads and before selecting or changing a document.
-  Both URL entry points use `share.receiveUrl()`, with browser-side fetches and the existing incoming-copy decisions.
-  Unchanged Markdown and review blocks retain their original bytes on download.
-  PDF Extractor sends Text and Markdown through a full link with an explicit source name.
-  Keep the handoff browser-side, with exact text in the fragment and no PDF bytes.
-- **Incoming copies** (`share.updateExisting`): a link, a `mars` re-open, or a file from Open or a drop that matches a
-  stored document by origin, by file handle (`isSameEntry`), or, after the reader confirms, by content
-  (`share/match.ts`). The text is decided against `opened`: only the source changed takes it, only the stored copy
-  changed keeps it, and both changed asks (default **Save as a copy**). **Make independent** removes the source and gives the
-  document a fresh origin.
-- **Review changes**: an outside change to a document's text keeps the previous text as a baseline (`app.rebase`).
-  `doc/changes.ts` diffs it against the preview (`doc/diff.ts`) until **Mark reviewed**; **Show changes since opened**
-  diffs against `opened` instead.
-- **Linked files** need the File System Access pickers, so they exist in Chromium only. Mozilla's position on them is
-  negative and WebKit opposes them, so plan no Firefox port of the poll. The 2-second poll of the open linked file only
-  offers a reload unless the reader turns on **Reload linked files automatically** (`mars.liveFiles`). The one route to
-  live updates in Firefox is outside the browser APIs: a `mars --watch` helper serving the file on `localhost`.
-- **Search** (`search/`): the sidebar filter matches names and text. Smart search is opt-in: Transformers.js runs an
-  embedding model in a module worker, both lazy-loaded from jsDelivr and Hugging Face. The chosen model sits in
-  `mars.smartSearch`, and the suggestion to turn it on sits in `mars.smartNudge`. The page is cross-origin isolated
-  (COOP `same-origin`, COEP `credentialless`) so models get CPU threads; a new cross-origin embed must load under
-  `credentialless` (no credentials) or it breaks.
-- **Storage**: documents live in IndexedDB (database `mars`: `nodes`, `docs`, `meta`). Per-document side data sits
-  in `docs` under `<kind>:<id>` (`db.getSide`), so it needs no new store: `base` (review baseline, flagged by `pending`
-  on the node), `opened` (the source text as last received, flagged by `opened`), and `vec` (smart-search index). The fragment is a route
-  (`#doc=<id>`) or an incoming share in persistent sessions. Every document carries an `originId` that survives sharing;
-  opening a link for a known `originId` merges its review threads (by comment `id`, or `author` plus `at`).
-  Open existing databases without a requested version. Some browsers retain version 2 from the deferred review-rounds feature.
-  Preserve extra stores during rollback. Never downgrade or delete the database to restore the previous UI.
-- **Connections**: `src/sync/` owns responder-only sync and live links. `sync:<id>` side records store replicas, outboxes, keys, and received progress.
-  `db.commitReplica` atomically saves their Markdown projection and progress. Existing stores and database versions remain unchanged.
-  Collection/member-scoped metadata keeps live grants separate from an owner's private connection in the same profile.
-  Read [the sync contracts](src/sync/README.md) before changing grants, key epochs, or the outbox.
-  MARS-specific sync hooks stay out of Markdown Preview. Source-mapping parity tests remove only explicit hook lines.
-  Local preview and deployment use `sync-assets.ts` to assemble the same sandbox script.
-  A live fragment selects memory storage before IndexedDB bootstrap. Explicit library saving uses an atomic promotion.
-  New device-pairing links use short `#sync=` fragments with encrypted bootstraps. Long `#sync=` and `#invite=` links require independent wrapping keys.
-  Sync manages personal devices. Live links manages source-side sharing, and Live document manages a recipient's retained copy.
-  The common Copy link dialog handles document/folder snapshot formats and document-only Live sharing. Keep link-security explanations in Privacy.
-  It defaults to Snapshot and Full. Expiring links offer 1/7/14/30 days without calendar dates.
-  Source Live-link management sits in this dialog's footer. The generated URL replaces a clear action instruction without changing the result area's height.
-  The Share menu's Copy link item keeps a short label and exposes its helper text as an accessible description.
-  Recipients forward an active owner's URL through Copy link → Live, with fixed access and expiry. Ended links offer snapshots only.
-  Folder activity renewal includes nested folder metadata as well as document replicas.
-  Download and Export all offer optional encrypted connection recovery. Normal exports remain credential-free.
-  Live-only teardown purges encrypted data and releases capacity after the last link is disabled. Personal Sync remains separate.
-  Protocol-only commits retain document timestamps and existing smart-search indexes.
-  New Live links use encrypted KV bootstraps and a short fragment secret. Full links require independent wrapping keys.
-  Library promotion transfers the selected vector record and reloads the persistent index without invalidating unchanged documents.
-- **Temporary sessions**: `t=1` in the fragment or `?temporary=1` selects the in-memory backend before database bootstrap.
-  Denied storage and write-quota failures also select it. Keep the persistent database unchanged, including its last-document metadata.
-  `share/temporary.ts` stores only the current document in the standard compressed fragment, with generation guards and recovery-size limits.
-  Other temporary documents require export before closing. Temporary short-link tokens stay in memory, and automatic file writes stay disabled.
-  **Save current to library** reloads the portable document into the normal persistence path.
-  Keep the mode and recovery failure visible. Verify library isolation, cross-profile URL recovery, quota fallback, and export behavior.
-- **GitHub badge**: Share > **Copy for GitHub** copies a one-line `<picture>` link to the document's short link, with
-  `/badge.svg` and `/badge-dark.svg` for GitHub's light and dark themes. The responder script draws both inline, with
-  `textLength` fixing the width across fonts; GitHub fetches them through its image proxy, and the link's `#s=` key
-  never reaches the server. **Copy threads for GitHub** copies the open threads as Markdown instead.
-- **Link preview**: `og:image` is `https://{{MARS_HOST}}/og.jpg`, served by the responder script from the JPEG that
-  `make tools-og ARGS="-g mars"` renders ([seo-og.md](../shared/guides/seo-og.md#og-image-generation)). Re-render it after changing the
-  logo or the registry description, then deploy.
-- **Links**: full links are Markdown Preview-compatible (`#name=&md=`, plus `&o=<originId>`); folders use
-  `#b=<state of a JSON bundle>`. Short links use the Markdown Preview scheme ([url-state.md](../shared/guides/url-state.md#short-links-mdindexhtml-mars))
-  with a different plaintext (`encodeState` bytes of the bundle JSON), in MARS's own KV, so Markdown Preview and MARS short
-  links are not interchangeable. Client state: `localStorage["mars.shortLinks"]` and `["mars.shortTtl"]`.
-  Share links also carry each document's reading width: `w` in full-link fragments and `readingWidth` in bundle documents.
-  Received documents retain this width on their tree node, separate from the browser-wide preference.
-  An explicit `w` fragment hint also supplies layout for legacy links. Invalid widths retain the recipient's preference.
-  Verify actual text wrapping at the same viewport, plus reload and document switching, rather than only column ratios.
+
+### Export
+
+- `src/export/` captures one immutable document and uses one export-safe render for HTML and PDF.
+  The HTML preview and the download are the same output. The PDF preview and the print job are the same prepared pages.
+- The reader and print runtimes compile separately into inline source strings. Paged.js loads only for PDF pagination.
+- Draft settings stay separate from document state. An output action commits them to `mars.exportSettings`.
+- Preview frames have opaque origins. The message bridge checks the source window and the operation identifier.
+- Keep print CSS compatible with the Paged.js parser: expand heading selectors, with no comma lists inside `:is()`.
+  Add screen preview scaling after pagination.
+
+### Analytics and diagnostics
+
+- MARS bundles the Plausible tracker with URL redaction in `src/platform/analytics.ts`. Keep redaction in the browser.
+  Keep the legacy `/js/script.js` tracker out of the shell.
+- A debug report takes allowlisted fields: setup stages and fixed codes.
+  It excludes document content, identifiers, URLs, credentials, and raw errors.
+- Register flags and report providers with `src/platform/`. Diagnostic controls live in **Developer tools**, not in feature dialogs.
+
+### UI
+
+- MARS uses the EUI look: Borealis tokens, EUI icons, and a header with a docked sidebar.
+  Privacy and Credits sit in the sidebar. MARS has no CTA banner and no footer.
+- The brand tokens (`--mars-*`, `--brand*`) live in `../shared/themes/mars.css` and follow the logo in `assets/`.
+  The header mark and the data-URI favicons in `index.html` are copies of that artwork.
+- Sidebar documents are real anchors to `#doc=<id>`. The action button and the rename input stay outside the anchor.
+  Pointer navigation flushes pending edits and defers tree replacement until the gesture ends.
+- **Copy link** is the one dialog for snapshot and Live links. It defaults to Snapshot and Full.
+  Expiry choices are 1, 7, 14, and 30 days, without calendar dates. Source-side **Live links** management sits in the dialog footer.
+  The generated URL replaces the action instruction without a change to the height of the result area.
+- The Privacy and Credits dialogs use the 960px information-dialog cap. Link-security explanations belong in Privacy.
+- The link preview image is `/og.jpg`, served by the responder script. After a logo or description change,
+  render it again with `make tools-og ARGS="-g mars"`, then deploy.
 
 ## Verify a change
 
-For failures that a document export cannot reproduce, use [developer flags and diagnostics](README.md#developer-flags-and-diagnostics).
-Keep its fields allowlisted. Report setup stages and fixed codes without document content, identifiers, URLs, credentials, or raw errors.
-Register feature flags and report providers with the generic platform modules. Keep diagnostic controls in Developer tools, not feature dialogs.
+1. Run `npm run format:check`, `npm run typecheck`, and `npm test`.
+2. For a change in `src/search/`, run `npm --prefix eval run eval -- --check`.
+3. Run `npm run serve`. It serves the deploy-equivalent page at `http://localhost:7373/`.
+4. From the repository root, run the browser specs that cover the change:
+   `MARS_BASE_URL=http://localhost:7373 make e2e-tools-test ARGS="--project=chromium <specs>"`.
 
-Privacy and Credits use the app's 960px information-dialog cap. The shared viewport and height caps still apply on phones.
-MARS bundles Plausible with URL redaction before transmission. Keep the legacy analytics script out of its HTML shell.
-Read [Privacy and analytics](README.md#privacy-and-analytics) before changing analytics or privacy claims.
+   | Change | Specs |
+   |--------|-------|
+   | Any | `mars.spec.ts` |
+   | Export | `mars-export.spec.ts`, `mars-models.spec.ts` |
+   | Imports, source naming | `mars-import.spec.ts` |
+   | Tables | `mars-tables.spec.ts` |
+   | Temporary sessions | `mars-temporary.spec.ts` |
+   | Share dialog, Privacy dialog, analytics | `mars-sharing.spec.ts` |
+   | Sync, Live links, responder | `mars-sync.spec.ts`, `mars-sync-ux.spec.ts`, `mars-sync-followup.spec.ts`, `mars-cleanup.spec.ts` |
+   | Review markers | `mars-review-markers.spec.ts` |
+   | Smart search | `mars-smart.spec.ts` (downloads each model once. No other spec downloads a model.) |
+   | Viewer | The affected `md.spec.ts` cases |
+   | PDF Extractor handoff | `pdf.spec.ts` |
 
-1. In `dev/tools/mars/`: `npm test` (codec, tree, merge, diff, match, and search logic) and `npm run typecheck`. `mars.spec.ts`
-   never downloads a smart-search model. After changing `search/`, also run the search-quality evaluation
-   (`npm --prefix eval run eval -- --check`, steps in the [MARS README](README.md#evaluation)) and
-   `MARS_BASE_URL=http://localhost:7373 make e2e-tools-test ARGS=mars-smart.spec.ts` (the built page with each model,
-   cached in a local browser profile).
-2. `npm run serve` builds the deploy-equivalent page and serves it at `http://localhost:7373/` and `/llms.txt`, with the
-   responder script on an in-memory KV.
-3. From the root: `MARS_BASE_URL=http://localhost:7373 make e2e-tools-test ARGS="mars.spec.ts mars-export.spec.ts mars-import.spec.ts mars-models.spec.ts mars-tables.spec.ts"`.
-    After handoff changes, run `pdf.spec.ts` against the changed PDF Extractor page.
-    Mutation specs use `_mars_test.ts` for authenticated isolation and automatic teardown, including manually created browser contexts.
-    Production checks require an operator key in the Node process. Never send that key to the synthetic browser.
-    Use [the cleanup commands](README.md#isolated-browser-test-data) for interrupted runs. Never clear user namespaces as test teardown.
-4. Run steps 2, 4, and 5 of "Change a tool" in [`../AGENTS.md`](../AGENTS.md); for a viewer change, also the affected
-   `md.spec.ts` cases.
-5. After a deploy, `make e2e-tools-test ARGS=mars.spec.ts` (`MARS_BASE_URL` defaults to `https://mars.secutils.dev`).
+5. For a selection, toolbar, or table-handle change, run the same specs with `--project=firefox` and `--project=webkit`.
+6. Run steps 2, 4, and 5 of "Change a tool" in [`../AGENTS.md`](../AGENTS.md).
+7. After a deploy, run `make e2e-tools-test ARGS=mars.spec.ts` (`MARS_BASE_URL` defaults to `https://mars.secutils.dev`).
 
-Completion: steps 1-4 pass, step 5 passes after a deploy, and a viewer fix is present in both `viewer.js` and `../md/index.html`.
+Completion: steps 1-6 pass, step 7 passes after a deploy, a viewer fix is present in both `viewer.js` and `../md/index.html`,
+and README.md, SKILL.md, and the Privacy dialog describe the changed behavior.
+Report each step that you did not run as unverified.
 
-## Native verification coverage
+Mutation specs use `_mars_test.ts` for isolated test scopes. A production run needs the operator key in the Node process only.
+Never send that key to the browser, and never clear user namespaces as test teardown.
 
-The completed parity and temporary-reading plans are retained in Git history, not as active plans.
-On 2026-11-07, normal Safari saved an A4 portrait PDF and exact Markdown. Native keyboard Save and cancellation/focus-return checks passed.
-Normal Edge saved A4 and Letter PDFs in both orientations, plus exact Markdown through its file picker.
-These native PDFs contained readable document text without application chrome.
+## Verification gaps
 
-Native menu/split-view coverage and full rich-print combinations (Mermaid and colored models in every browser/settings combination) remain incomplete.
-On 2026-11-08, two fresh native Firefox 159.0.1 profiles passed pairing, bidirectional Sync edits, reload, and private-library retention.
-These checks used the native source editor and did not read existing Firefox profiles or share their credentials.
-The user explicitly skipped the remaining VoiceOver checks on 2026-11-07. Engine assertions do not replace actual spoken-output checks.
-For Android-specific selection changes, verify native Android Firefox selection in addition to emulated touch tests.
-For shared table-selection defects, use desktop Firefox, Chromium, and WebKit, with touch toolbar checks.
+Browser engines in Playwright do not cover these checks. Do them by hand when a change touches the area:
+
+- Native print dialogs and saved PDF files, for each paper size and orientation.
+- Native browser link menus and split view for sidebar documents.
+- Rich print combinations: Mermaid and colored models in every browser.
+- Screen-reader output (VoiceOver). Engine assertions do not replace it.
+- Text selection in native Android Firefox, for selection changes.

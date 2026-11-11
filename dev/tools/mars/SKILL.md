@@ -3,240 +3,86 @@ name: mars-review
 description: >-
   MARS (Markdown Annotation & Review System) at https://{{MARS_HOST}}/: open
   Markdown for review with `#name=<name>&md=<state>&o=<origin>` or
-  `?url=<public-md>`. Read or edit Markdown, export standalone HTML or PDF,
-  and write review threads anchored to its text.
-  Reply to or address the review threads in a file's trailing `su-comments`
-  block. Trigger on "review this markdown", "open in MARS", "add review
-  comments to the doc", "address the review comments", "export Markdown in MARS",
-  "preview Markdown in MARS", "resize Markdown table columns", or mars.secutils.dev.
+  `?url=<public-md>`. Write review threads anchored to rendered text, or
+  address the threads in a file's trailing `su-comments` block. Guide a user
+  through sharing, Sync, Live links, and HTML/PDF export. Trigger on "review
+  this markdown", "open in MARS", "add review comments to the doc", "address
+  the review comments", "resize Markdown table columns", "export Markdown in
+  MARS", or mars.secutils.dev.
 ---
 
 # MARS: Markdown Annotation & Review System (Secutils.dev)
 
-MARS renders GitHub-flavored Markdown with Mermaid, KaTeX math, GeoJSON/TopoJSON
-maps, STL/3MF models, and GitHub alerts. Readers select text to start a review
-thread, then reply, resolve, and share. Documents live in the reader's browser
-(IndexedDB) by default. Short snapshots, Sync, and Live links use end-to-end-encrypted remote storage. Threads travel inside
-the Markdown file as one trailing HTML comment that GitHub and other renderers
-hide, so an agent reads and writes them with ordinary file edits. The format is
-shared with the Secutils.dev Markdown Preview tool.
+MARS renders GitHub-flavored Markdown with Mermaid, KaTeX math, GeoJSON/TopoJSON maps, STL/3MF models, and GitHub alerts.
+A reader selects rendered text to start a review thread, then replies, resolves, and shares.
+Documents stay in the reader's browser (IndexedDB) unless the reader shares or syncs them.
+Review threads travel inside the Markdown file as one trailing HTML comment that other renderers hide.
+An agent reads and writes threads with ordinary file edits.
+The thread format is the same as in the Secutils.dev Markdown Preview tool.
 
-## Read and edit
+Pick the section for the task:
 
-1. Open a Markdown file, a shared document, or a public URL in MARS.
-2. Use **Preview** for rendered text, diagrams, math, maps, and models.
-3. Use **Source** for Markdown edits, or double-click a text block in Preview.
-4. Select rendered text to add a review comment.
-5. Use **Export…** for standalone HTML, PDF, or Markdown output.
+| Task | Section |
+|------|---------|
+| Give the user a link that opens a document | [Open a document](#open-a-document) |
+| Add margin notes to Markdown that you wrote | [Write a document with threads](#write-a-document-with-threads) |
+| Answer review comments in a file | [Address review threads](#address-review-threads) |
+| Set table column widths in Markdown | [Table column widths](#table-column-widths) |
+| Tell the user how to share, sync, or export | [Guide the user in the app](#guide-the-user-in-the-app) |
 
-Completion: the document stays in the browser library, and the header shows **Saved** after an edit.
-PDF Extractor's **Export > Open in MARS** opens its Text or Markdown output under the original document name.
-The handoff preserves exact text through the URL fragment and uploads no PDF bytes.
+## Open a document
 
-## Temporary sessions
+| Link | Result |
+|------|--------|
+| `https://{{MARS_HOST}}/#name=<name>&md=<state>` | Adds a new document. The fragment does not reach the server. |
+| `...&o=<id>` | Gives the document a stable origin. A second link with the same `o` updates the same document and merges its threads. |
+| `...&w=<width>` | Sets the reading width: `800`, `1100`, `full`, or an integer from 320 to 2400. |
+| `...&t=1` | Opens the document in a temporary session, without library storage. |
+| `https://{{MARS_HOST}}/?url=<public-md-url>` | Fetches a public, CORS-enabled file in the browser (for example from `raw.githubusercontent.com`). |
+| `https://{{MARS_HOST}}/?temporary=1` | Opens an empty temporary session. Add `&url=<public-md-url>` to load a file into it. |
+| `#s=<secret>`, `#live=<secret>`, `#sync=<secret>` | Short snapshot, Live, and Sync links. Only the app creates them. Do not construct or edit them. |
 
-1. Use **New temporary document** from the sidebar New menu for a session without library storage.
-2. Use **Document options > Read temporarily** for an existing document.
-3. Use **Save current to library** only when you want persistent storage.
-4. Export other temporary documents before closing the session.
+`<state>` is the wire format that every Secutils.dev tool uses:
+UTF-8 text (threads block included) → raw DEFLATE → a 4-byte little-endian u32 prefix with the uncompressed length → base64url without padding.
 
-Completion: the header displays **Temporary**, and the banner states that the session is not saved in the library.
-Browser storage denial and quota failures select this mode automatically.
-Editing, comments, tables, sharing, Markdown downloads, and HTML/PDF output remain available.
-Opening a file temporarily does not enable autosave to that file.
+This shell function opens a local file. It uses the absolute path as the origin, so a second run merges into the same review.
+To print the URL without opening it, run only the `node -e` command (Node ≥ 18).
 
-The current document stays in the URL fragment and returns after reload, including its name, reading width, and review metadata.
-Other session documents and folders require ZIP export. Oversized or unavailable recovery URLs produce a download warning.
-Temporary mode is not private browsing. Browser history can retain the document fragment, and browser preferences can still persist.
-Temporary short-link deletion tokens stay in the tab and disappear on reload.
-
-Use `?temporary=1` for an empty temporary session.
-Append `&t=1` to a full or short fragment to open a shared document temporarily.
-Use `?temporary=1&url=<public-md>` for a temporary URL load.
-
-## Table editing
-
-1. In Preview, click or tap a table cell to display its row and column handles.
-2. Drag a column boundary in the header to resize the two adjacent columns.
-3. Click or tap **Row actions** or **Column actions** to open its action panel.
-4. Use the insert and remove buttons for the selected row or column.
-5. Drag the row handle vertically or the column handle horizontally to reorder.
-6. Use the move buttons or the focused handle's arrow keys for keyboard reordering.
-7. Use Left/Right arrow keys on a resize handle to adjust its width.
-8. Use **Reset column widths** in Column actions to restore automatic sizing.
-9. Use `Ctrl/Cmd+Z` to undo an edit.
-10. Press Escape to close an action panel or cancel an unfinished drag.
-
-To edit one cell, double-click it in Preview. With a cell focused, Enter also opens its editor.
-The editor contains only that cell's Markdown. The rest of the table stays visible.
-Use Escape or `Ctrl/Cmd+Enter` to apply the edit, as with block editing. There are no separate Apply/Cancel buttons.
-Use Enter for a line break. MARS stores line breaks as `<br>` and escapes literal pipes.
-Clicking outside, sharing, exporting, and switching views apply the current cell edit.
-
-In **Column actions**, use the EUI alignment icons. Their accessible names and tooltips are **Align column left**, **Align column center**, and **Align column right**.
-The selected alignment applies to the whole column, including its header.
-Arrow keys switch the focused alignment control. Cell edits and alignment changes support `Ctrl/Cmd+Z`.
-
-Completion: the header shows **Saved**, and the table layout returns after reopening the file or link.
-The header row stays above the body rows, and the table retains at least one column.
-Mouse and touch use the same dedicated handles. Table content remains selectable and scrollable.
-Handles and action panels follow the visible selection instead of the table's header.
-The compact grips align with the selected cell's left and top borders. Hover or focus reveals their action/drag glyph.
-Row heights remain automatic.
-
-Column proportions live in a one-line comment directly before the Markdown table:
-
-```markdown
-<!-- su-table {"v":1,"cols":[0.25,0.75]} -->
-| Name | Status |
-| --- | --- |
-| Alice | Ready |
+```bash
+mars() {
+  local url
+  url=$(node -e '
+    const fs = require("node:fs"), path = require("node:path"), zlib = require("node:zlib");
+    const file = path.resolve(process.argv[1]);
+    const utf8 = fs.readFileSync(file);
+    const out = Buffer.concat([Buffer.alloc(4), zlib.deflateRawSync(utf8)]);
+    out.writeUInt32LE(utf8.length, 0);
+    const params = new URLSearchParams({ name: path.basename(file).replace(/\.md$/, ""), md: out.toString("base64url"), o: "file:" + file });
+    console.log("https://{{MARS_HOST}}/#" + params);
+  ' "${1:?usage: mars <file.md>}") || return 1
+  case "$(uname)" in
+    Darwin) open "$url" ;;
+    Linux)  xdg-open "$url" ;;
+    *)      start "" "$url" ;;
+  esac
+}
 ```
 
-The positive column weights normalize to the table width.
-The weight count must match the header column count.
-Invalid metadata falls back to automatic sizing without changing the source.
-Row and column actions update the ordinary Markdown cells and alignment markers.
-Column moves also move their saved widths.
-The comment stays with the table during whole-block moves and deletion.
+Rules that MARS applies to an incoming document:
 
-Files, full links, short links, HTML, and PDF retain the column proportions.
-HTML and PDF contain no editing controls.
-Embedded Markdown source retains the layout comment for reopening.
-Raw HTML tables and tables without reliable source ranges remain read-only in Preview.
-This feature is MARS-only. Markdown Preview does not read the layout comment.
+- **Destination**: a new document goes to the profile's default folder, or to **Shared with me** if none is set.
+  The folder action **Use as default** changes the default folder.
+- **Name**: the `name` parameter wins. Then come the frontmatter title, the first Markdown heading, and the file name.
+  MARS removes `.md` and `.html` extensions from names.
+- **Known origin, new text**: if the reader did not edit their copy, MARS takes the new text and marks the changes.
+  If both copies changed, MARS asks the reader.
+- **New origin, matching content**: MARS offers to update the stored document. Then the origin follows the new link.
+- **Exported HTML**: an HTML file that MARS exported with embedded source opens as editable Markdown.
+  Other HTML stays raw HTML.
+- **Failed `?url=` load**: the previous document stays open, and MARS shows an error.
 
-## HTML, PDF, and Markdown output
-
-1. Open the document in MARS.
-2. Click **Export…** beside **Share**.
-3. For standalone reading output, select **HTML**.
-4. Use **Download HTML** or **Copy HTML** after the preview is ready.
-5. For PDF output, select **PDF** or press `Ctrl/Cmd+P`.
-6. Select A4 or Letter, with Portrait or Landscape orientation.
-7. Click **Print / Save PDF** after pagination is complete.
-8. In the browser print dialog, select Save as PDF or a printer.
-
-MARS does not download PDF bytes or detect whether the reader saved a file.
-**Download Markdown** in the export dialog retains frontmatter, line endings, and review threads.
-The Share menu keeps review handoffs and links.
-Document action menus use **Download** for exact Markdown output without changing the current selection.
-Advanced HTML/PDF output is available from the document view, not its action menu.
-Dragging moves a document to the top level.
-
-## Connected documents
-
-Use **Sync** in document/folder actions to enroll selected content in encrypted remote storage.
-Use **Sync link** inside the Sync dialog to connect another device. Both devices must show the same code before approval.
-Keep the original window open only while you approve that code. Later synchronization does not need that window to stay open.
-On the target browser, keep the download dialog open until **Sync connected** appears. The progress bar counts completed documents.
-**Cancel** stops the initial download. The folder appears only with its complete hierarchy.
-Sync connects your own devices with the same review identity. Use **Share → Live** for another person's separate access.
-The local library remains the default. Unselected content stays local.
-Each IP address can create 50 new Sync collections per hour. The 100-item selection limit includes documents and folders.
-Failed initial setup leaves the selected local documents unchanged. Folder setup preserves existing search indexes.
-An incomplete folder from an older release offers **Restart setup**. Local documents remain, but connected devices need a new Sync link.
-For saved replicas without tree connections, **Restart setup** first requires confirmation and preserves the previous setup in a local backup.
-Full-folder encrypted connection backups include the preserved replicas, credentials, pending work, and saved local text through the existing download option.
-Restore keeps old Sync content and newer local text separate, without replacing existing documents.
-For diagnostics, use `https://{{MARS_HOST}}/?flags=debug:sync`. Use `?flags=debug,experimental` for global categories or scoped forms such as `experimental:live_links`.
-Flags apply to the profile and update other tabs. `?flags=off` clears all flags. `?debug=off` and `?experimental=off` clear their categories.
-Use the sidebar's **Developer tools** for reports and Off controls, not Sync or Share dialogs.
-Console APIs: `marsFlags.set(...)`, `marsFlags.disable('debug')`, `marsFlags.disable('experimental')`, `marsFlags.clear()`, and `marsDebug.report()`.
-Reports exclude document text, names, identifiers, URLs, and credentials. Reports stay local until the user explicitly copies or downloads them.
-
-Share offers **Snapshot** and **Live**. A live link grants **Can view**, **Can comment**, or **Can edit** access to one document.
-Live recipients start in temporary memory storage. **Save live document to library** is the explicit persistence action.
-New Live links use `#live=<secret>`, with a 22-character base64url secret. Choose 1, 7, 14, or 30 days. The default is 7 days.
-The responder stores an encrypted bootstrap. Its encryption key stays in the fragment and can remain in browser history.
-Full Live links require independent wrapping keys. The application creates both grants and short links.
-Library saving retains the selected document and unsent changes without rebuilding unchanged library search entries.
-**Can edit** permits comment and thread deletion. Comment editing still requires authorship.
-Undo restores a deleted comment or thread without changing its author. It cancels only the deleting device's own operation.
-**Can comment** permits deletion of the participant's own comments, not other participants' comments or threads with their replies.
-Anyone with the Live link gets its chosen access until expiry or disabling. Copies they save remain available.
-Do not print or log Sync link fragments, scoped credentials, private keys, or outbox records.
-
-Local edits save before upload. **Up to date** means service acknowledgement, not recipient review.
-Unsent temporary edits require download before closing. Reload restores only acknowledged live content.
-Connected documents require explicit disk Save. Remote edits do not write to a linked file automatically.
-**Sync** manages personal-device enrollment on both source and paired devices.
-**Live links** manages document sharing on the source. Recipients use **Live document** for their access and expiry.
-**View only**, **Can comment**, and **Can edit** badges describe a Live recipient's current access. View/comment modes omit body-editing handles.
-Opening a synced folder renews every enrolled document and nested folder. Individual files do not require separate opens.
-**Disconnect this device** retains an independent local copy. Other devices and active Live links remain connected.
-**Keep as local copy** makes a recipient's Live document independent without disabling the owner's link.
-**Stop sharing** disables every Live link for the selected document.
-Disabling the final link on a Live-only document also deletes its remote copy and reclaims storage capacity.
-Personal Sync stays active when it remains in use. Recipients retain a disconnected local copy and unsent work.
-**Try again** also resumes an unfinished key rotation from its saved key updates.
-Encrypted recovery includes scoped credentials and pending work. Large packages use the `.mars-recovery` format instead of JSON.
-Download and Export all offer **Include connections and pending changes** when the selection contains connected documents.
-The option requires a separate password and produces one ZIP with readable document files and encrypted recovery data.
-The default download contains documents only. A selection without connections downloads immediately.
-On ZIP import, choose **Documents only** or **Restore connections**. The latter requires the backup password.
-Restore preserves existing library documents. It cannot restore access that expired or was revoked.
-Advanced Markdown downloads preserve their captured document text. Their optional connection backup contains the latest saved connection state.
-**Devices** in Sync lists personal devices. **Live links** in Copy link lists source-side sharing links.
-Disconnect and disable icons appear beside individual items, not for an empty list.
-Disconnecting a device leaves its saved documents and pending edits there.
-Close MARS on the previous device before restoring its credentials in another profile.
-
-Every document and folder deletion requires confirmation.
-The dialog counts known active Live links and short snapshot links. Expired links do not add warnings.
-**Delete local copy** leaves other devices and shared links active.
-Owner-only **Delete from collection** ends Sync and Live access. Saved copies on other devices remain.
-Short snapshots remain available until expiry after either deletion choice. Use Share to delete these links first.
-Ended connections offer local deletion only. Failed deletion retains the local copy and shows **Try again**.
-Undo restores an independent local copy, not remote access.
-
-Sync and live links use separate routes from snapshot links. Their fragments are not interchangeable with the documented snapshot encoding.
-Use the application to create Sync links. New `#sync=` links contain a 22-character setup secret and expire after ten minutes.
-Long `#sync=` and `#invite=` links require independent wrapping keys.
-Do not construct or edit grants by hand.
-
-Share and document/folder menus use one **Copy link** dialog. Snapshot and Full are selected by default, with Full first.
-Short snapshots and all Live links offer 1, 7, 14, or 30 days. The choices omit calendar dates.
-**Copy link** creates and copies the URL. The read-only URL appears after creation, including when clipboard access fails.
-Sources manage existing **Live links** from the bottom-left action in this dialog, not from the item or Share menu.
-Full snapshots do not expire. Folder links support snapshots only. Creating Live links requires the sharing source.
-Active recipients use **Copy link → Live** to forward the owner's original link. Access, expiry, and link format stay unchanged.
-Expired or disabled Live links offer snapshots only. The Live document panel has no separate link-copy action.
-
-The HTML tab lists reading width, table of contents, in-page find, a PDF action, and embedded Markdown source together.
-Export width remains separate from the MARS reading width.
-The PDF action in exported HTML uses the paper settings from the PDF tab.
-Embedded source is readable document-body text, without frontmatter or review threads.
-It is not a full backup.
-
-HTML and PDF exclude review threads and review marks.
-Both retain complete Mermaid SVGs and saved model views from fence metadata.
-HTML maps and models remain interactive without an external renderer.
-PDF uses vector text and static color images for WebGL models.
-PDF pages always use a light theme, independently of the MARS theme.
-Temporary viewer navigation does not change the saved model view.
-
-Paged.js loads only when PDF pagination is needed.
-HTML preview and Markdown download do not fetch it.
-Images, fonts, math styles, basemap tiles, and PDF pagination can require network access.
-An unavailable PDF dependency leaves HTML and Markdown downloads available.
-
-Export settings commit after an output action.
-Closing the dialog discards later draft changes.
-A document reload shows **Refresh preview**, while the current preview retains its captured version.
-The PDF preview centers its pages. Only the dialog footer contains **Print / Save PDF**.
-The status appears during preparation or after a failure, and disappears when the preview is ready.
-
-## HTML export restrictions
-
-Exports remove document-supplied `script`, `style`, `iframe`, `object`, `embed`, `base`, `meta`, and `link` elements.
-Event-handler attributes and `javascript:` URLs are removed. Internal source-range attributes are removed too.
-The exported body excludes frontmatter and review metadata. Markdown downloads retain both.
-
-Ordinary HTML content and inline styling remain. Images, media, links, fonts, and inline CSS can still require network access.
-MARS adds its own reader, diagram, map, and model runtimes after this cleanup.
-Arbitrary iframe widgets and executable webpage exports are outside this contract.
-The cleanup is not a complete HTML sanitizer. Controlled third-party embeds require a separate design and are not necessary for current workflows.
+Full links are limited by URL length (about 8 KB in chat apps).
+For a larger document, give the user the `mars` command, or tell the user to create a short link from **Share**.
 
 ## Review threads
 
@@ -263,48 +109,63 @@ The cache needs a TTL before launch.
 
 | Field | Rule |
 |-------|------|
-| `id` (thread and comment) | 8 random lowercase hex characters, unique in the file. Keep existing ids exactly: shared copies merge threads by thread `id` and comments by comment `id` (or by `author` plus `at` when a comment has none). |
+| `id` (thread and comment) | 8 random lowercase hex characters, unique in the file. Keep each existing id exactly. Shared copies merge threads by thread `id` and comments by comment `id` (or by `author` plus `at` when a comment has no `id`). |
 | `quote` | The anchor: a verbatim run of **rendered** text (see the quote rules). |
-| `prefix`, `suffix` | Optional. Up to 32 characters of rendered text just before and after the quote. They pick the occurrence when the quote repeats. |
-| `resolved` | Optional `true`. The reviewer resolves threads in MARS; a file's `resolved` value does not override the reviewer's copy. |
-| `comments[]` | At least one. `author` is a display name (use your own name as an agent), `at` is ISO 8601 UTC, `body` is Markdown (code, tables, math, Mermaid render). `edited` is an optional ISO timestamp of the last edit. |
+| `prefix`, `suffix` | Optional. Up to 32 characters of rendered text directly before and after the quote. They select the occurrence when the quote repeats. |
+| `resolved` | Optional `true`. The reviewer resolves threads in MARS. A `resolved` value in a file does not override the copy of the reviewer. |
+| `comments[]` | At least one. `author` is a display name (as an agent, use your own name). `at` is ISO 8601 UTC. `body` is Markdown (code, tables, math, and Mermaid render). `edited` is an optional ISO timestamp of the last edit. |
 
 Quote rules:
 
 - The quote is rendered text: `**bold**` renders as `bold`, `[text](url)` as `text`, `` `x` `` as `x`, and `## Title` as `Title`.
-- It sits inside one line of one paragraph, list item, heading, table cell, or code block. Diagrams and math have no quotable text.
-- Inside the JSON, `<` and `>` are written as `\u003c` and `\u003e`, so `-->` never ends the comment early.
+- The quote stays inside one line of one paragraph, list item, heading, table cell, or code block.
+  Diagrams and math have no text that you can quote.
+- Inside the JSON, write `<` and `>` as `<` and `>`. Then `-->` cannot end the comment early.
 
 ## Write a document with threads
 
-Use threads to put margin notes on your own Markdown: the evidence behind a claim, an assumption, an open question for the reader, or a to-do for the reviewer.
+Use threads as margin notes on your own Markdown: the evidence for a claim, an assumption, a question for the reader, or a to-do for the reviewer.
 
 1. Write the Markdown body.
-2. For each note, pick a quote by the quote rules. Add `prefix` and `suffix` when the quote occurs more than once.
-3. Build one thread per note: a new `id`, the quote, and one comment with a new `id`, your name as `author`, the current time as `at`, and the note as `body`.
+2. For each note, select a quote that obeys the quote rules. If the quote occurs more than once, add `prefix` and `suffix`.
+3. Build one thread for each note: a new `id`, the quote, and one comment.
+   The comment has a new `id`, your name as `author`, the current time as `at`, and the note as `body`.
 4. Append the block as the last thing in the file.
-5. Run the check below.
+5. Run [the check](#check-the-block).
 
 Completion: the check prints `ok` for every thread.
 
 ## Address review threads
 
-The threads come from the file's `su-comments` block, or from text pasted out of MARS with **Share > Copy for agent**. That text names the file and carries the open threads as a ready block.
+The threads come from the `su-comments` block of the file, or from text that the user pasted from **Share > Copy for agent**.
+The pasted text names the file and contains the open threads as a block that is ready to use.
 
-1. Read every thread. Threads with `"resolved": true` are settled; leave them as they are.
+1. Read every thread. Threads with `"resolved": true` are closed. Do not change them.
 2. For each open thread, edit the document to resolve it, or decide that the text stays.
-3. Append one comment to that thread: a new `id`, your name as `author`, the current time as `at`, and a `body` that states what you changed, or why the text stays. Keep the thread `id` and its earlier comments byte-identical.
-4. When your edit rewrote the quoted words, set the thread's `quote`, `prefix`, and `suffix` to the new rendered text, so the thread stays attached.
-5. Write the block back as the last thing in the file. When the file has no block, append the pasted block with your replies.
-6. Run the check below.
-7. Tell the user to reopen the file in MARS (`mars <file>`, below). MARS merges your replies into their threads and marks what changed.
+3. Append one comment to that thread: a new `id`, your name as `author`, the current time as `at`, and a `body`.
+   The `body` states what you changed, or why the text stays.
+   Keep the thread `id` and the earlier comments byte-identical.
+4. If your edit changed the quoted words, set `quote`, `prefix`, and `suffix` to the new rendered text.
+   Then the thread stays attached.
+5. Write the block as the last thing in the file. If the file has no block, append the pasted block with your replies.
+6. Run [the check](#check-the-block).
+7. Tell the user to open the file in MARS again (`mars <file>`).
+   MARS merges your replies into the threads of the user and marks the changes.
 
-Completion: every open thread ends with your reply, newer than its last reviewer comment, and the check prints `ok` for every thread.
+Completion: every open thread ends with your reply, your reply is newer than the last reviewer comment, and the check prints `ok` for every thread.
+
+What the reviewer sees after the file opens again:
+
+- **Review changes** marks added and edited blocks, highlights inserted words, and shows the old text on request.
+- A thread with rewritten words and an old quote moves to the inserted words and gets a "changed" label.
+  A thread with an updated quote stays attached exactly.
+- Your replies have a **New** tag until the reviewer clicks **Mark reviewed**.
+- In Chromium, a file that the reviewer opened with **Open** or a drop offers a reload a few seconds after you save it.
 
 ## Check the block
 
-Checks that the block parses and that each quote occurs in the body. The body is
-approximated by dropping emphasis, inline-code, highlight, and link syntax.
+The check makes sure that the block parses and that each quote occurs in the body.
+It approximates the rendered body: it removes emphasis, inline-code, highlight, and link syntax.
 
 ```bash
 node -e '
@@ -326,109 +187,73 @@ process.exit(bad ? 1 : 0);
 ' review.md
 ```
 
-## Open in MARS
+## Table column widths
 
-- **Fragment**: `https://{{MARS_HOST}}/#name=<name>&md=<state>` adds a new document to the profile's default destination, or **Shared with me** if none is set. The fragment never reaches the server.
-- **Origin**: add `&o=<id>` for a stable identity. Opening another link with the same `o` merges its threads into the existing copy instead of adding a duplicate. When the text differs, MARS takes the new text and marks the changes if the reader hasn't edited their copy since, and asks otherwise. A link with a new `o` (a moved file) whose threads or text match a stored document offers to update that document, and its origin then follows.
-- **Remote URL**: `https://{{MARS_HOST}}/?url=<public-md-url>` fetches a public, CORS-enabled file (for example from `raw.githubusercontent.com`).
-- **Short links**: `#s=<secret>` links come from the Share menu only.
+MARS stores column proportions in a one-line comment directly before a Markdown table:
 
-Open, file drops, library imports, Load URL, and `?url=` use the same source extraction and naming rules.
-An explicit incoming name takes priority over a frontmatter title, a Markdown heading, and the filename fallback.
-Filename fallbacks and explicit names lose Markdown and HTML extensions.
-Ordinary Markdown imports and unchanged downloads retain CRLF and their original review-block formatting.
-
-An exported HTML file with embedded source opens as editable Markdown.
-The source contains only the exported document body, without omitted frontmatter or review threads.
-HTML without embedded source remains raw HTML.
-MARS does not infer Markdown from rendered HTML or overwrite the original HTML file with Markdown.
-
-The URL form and `?url=` use the same receive path and stable source identity.
-Reopening a known source retains the existing incoming-copy decisions.
-A new file, document, or URL supersedes a pending load.
-Network and CORS failures retain the previous document and display an error.
-
-To choose a destination for new files, links, URLs, and `mars` CLI links, use the folder action **Use as default**.
-The choice persists in that browser profile and updates its other tabs. New documents in a synced destination sync automatically.
-Existing source matches update in place. Explicit import targets override the default.
-A star marks the default folder in both open and closed states. Without an override, **Shared with me** has this marker.
-To switch back, select **Shared with me** with **Use as default**. Temporary sessions keep their own documents separate from this preference.
-
-This shell function opens a local file, using its absolute path as the origin, so
-reopening an updated file merges into the same review. Run the `node -e` command
-alone to print the URL instead of opening it (Node ≥ 18).
-
-```bash
-mars() {
-  local url
-  url=$(node -e '
-    const fs = require("node:fs"), path = require("node:path"), zlib = require("node:zlib");
-    const file = path.resolve(process.argv[1]);
-    const utf8 = fs.readFileSync(file);
-    const out = Buffer.concat([Buffer.alloc(4), zlib.deflateRawSync(utf8)]);
-    out.writeUInt32LE(utf8.length, 0);
-    const params = new URLSearchParams({ name: path.basename(file).replace(/\.md$/, ""), md: out.toString("base64url"), o: "file:" + file });
-    console.log("https://{{MARS_HOST}}/#" + params);
-  ' "${1:?usage: mars <file.md>}") || return 1
-  case "$(uname)" in
-    Darwin) open "$url" ;;
-    Linux)  xdg-open "$url" ;;
-    *)      start "" "$url" ;;
-  esac
-}
+```markdown
+<!-- su-table {"v":1,"cols":[0.25,0.75]} -->
+| Name | Status |
+| --- | --- |
+| Alice | Ready |
 ```
 
-Wire format of `<state>`, shared by every Secutils.dev tool: the UTF-8 text
-(threads block included) → raw DEFLATE → prefixed with its uncompressed length
-as a 4-byte little-endian u32 → base64url without padding.
+- The weights are positive numbers. MARS normalizes them to the table width.
+- The number of weights must equal the number of header columns. If the metadata is invalid, MARS uses automatic widths.
+- Keep the comment directly before its table when you move or delete the table.
+- Files, full links, short links, HTML exports, and PDF exports keep the proportions. Row heights stay automatic.
+- The comment is MARS-only. Markdown Preview does not read it.
 
-## Shared reading layout
+In the app, the user edits tables in Preview: click a cell for the row and column handles, double-click a cell to edit its Markdown,
+and drag a header boundary to resize two adjacent columns. `Ctrl/Cmd+Z` reverts an edit.
+Raw HTML tables are read-only in Preview.
 
-Full and short links from Share retain the document reading width as well as column proportions.
-The received document retains this width after reload, without changing the reader's saved browser preference.
-A narrower viewport can still wrap text because table columns remain proportional.
+## Guide the user in the app
 
-Full links carry an optional `w` fragment parameter: `800`, `1100`, `full`, or a custom integer from 320 to 2400.
-Encrypted bundle documents carry the same value in an optional `readingWidth` field.
-Invalid or absent values retain the reader's preference.
-An explicit `w` fragment parameter also supplies a reading width for older short links.
-For example, `#s=<secret>&w=1100` opens an older shared document at the wide reading width.
+Use this reference when the user asks how to do a task in MARS. Each row is one task.
 
-## What the reviewer sees
+| Task | Where | Facts |
+|------|-------|-------|
+| Read and edit | **Preview**, **Source**, or double-click a block in Preview | The header shows **Saved** after an edit. |
+| Comment | Select rendered text in Preview | Threads stay in the file. |
+| Share a copy | **Share > Copy link > Snapshot** | **Full** puts the unencrypted document in the link and does not expire. **Short** uploads an encrypted copy that expires after 1, 7, 14, or 30 days. |
+| Share live access | **Share > Copy link > Live** | One document. **Can view**, **Can comment**, or **Can edit**. Expires after 1, 7, 14, or 30 days (default 7). Folders support snapshots only. |
+| Stop live access | **Copy link > Live links** (bottom left) | **Stop sharing** disables every Live link of the document. Copies that recipients saved stay with them. |
+| Sync own devices | Document or folder menu > **Sync**, then **Sync link** | The Sync link expires after 10 minutes. Both devices must show the same code before approval. |
+| Disconnect a device | **Sync > Disconnect this device** | The local copy stays. Other devices and Live links stay connected. |
+| Keep a received Live document | **Save live document to library** | Live recipients start in a temporary session. **Keep as local copy** stops updates without an effect on the link of the owner. |
+| Work without storage | **New > New temporary document**, or **Document options > Read temporarily** | The header shows **Temporary**. Only the current document returns after a reload. |
+| Export | **Export…** beside **Share**, or `Ctrl/Cmd+P` for PDF | HTML, PDF (A4 or Letter), or Markdown. HTML and PDF exclude review threads. |
+| Back up everything | Sidebar > **Export all** | A ZIP with readable Markdown. **Include connections and pending changes** adds an encrypted recovery file with a separate password. |
+| Delete | Document or folder menu > **Delete** | **Delete local copy** keeps other devices and shared links active. The owner-only **Delete from collection** ends Sync and Live access. |
+| Send threads to an agent or GitHub | **Share > Copy for agent**, **Copy for GitHub**, **Copy threads for GitHub** | **Copy for GitHub** needs a short link. |
 
-- Right-click a document in the sidebar for MARS actions. **Shift + right-click** its name or icon for browser actions.
-- Ctrl/Cmd + click, middle-click, and Shift + click retain native browser navigation, including in document search results.
-- Sidebar links open the stored document in the same browser profile. Use Share for another profile or a private window.
-- The `⋮` button always opens MARS actions. Native split-view commands depend on the browser.
-- Document links in Preview open in a new tab. Fragment links still scroll within the document.
-- Mermaid diagrams support zoom and pan in the preview and fullscreen. **Fit** restores the complete diagram.
-- Readers can drag, scroll, or swipe to pan. Ctrl/⌘ + scroll and trackpad pinch zoom at the pointer.
-- The focused diagram supports arrow keys for pan, `+` and `-` for zoom, and `0` for fit.
-- The percentage button shows the diagram at actual size. View changes do not alter the Markdown or shared links.
-- Unchanged Mermaid diagrams retain their views after unrelated block or Source edits. Changed diagrams start in Fit mode.
-- Diagram views last until the reader opens a document or reloads the page. Shared links do not store these views.
-- **Pause indexing** survives reloads and pauses all MARS tabs in the same browser. **Resume indexing** resumes those tabs. Search still uses the stored index while paused.
-- Selection formatting works across wrapped lines within one list paragraph and preserves source indentation.
-- **Bold**, **Italic**, **Strikethrough**, **Highlight**, and **Inline code** work in GitHub alert bodies, including nested blockquotes.
-  Formatting preserves alert directives and quote prefixes. Generated alert titles offer **Comment** only.
-- Block controls stay in a separate left gutter at every reading width. Hovering over left-side block whitespace also shows them.
-- The reading width in **Options** persists across reloads and new tabs, including full and custom widths.
-- Between-item gaps keep the adjacent item's controls active, including in nested lists.
-- List items can move past multiline siblings. Ordered-list moves renumber the source and preserve the starting number, marker style, and nested content.
-- **Mark done** applies only to headings and existing task checkboxes. Regular list items support manual strikethrough through the selection toolbar.
-- When a document they reviewed comes back with new text, **Review changes** marks added and edited blocks, highlights inserted words, and shows the old text on request.
-- A thread whose quoted words you rewrote, without re-quoting it, follows them to the inserted words of the edited block and is labeled as changed. A thread you re-quoted stays attached exactly.
-- Your replies carry a **New** tag until they click **Mark reviewed**.
-- In Chromium, a file linked to MARS (opened with **Open** or dropped on the preview) offers a reload within seconds of your save, or reloads by itself when the reader turned that on.
+Limits and behavior that users ask about:
+
+- **Up to date** means that the service acknowledged the upload. It does not mean that another person read the document.
+- Local edits save in the browser before upload. Sync continues after the original window closes.
+- One IP address can create 50 Sync collections each hour. One Sync selection holds at most 100 documents and folders.
+- Connected content expires after 30 days without activity. When the user opens it, the period starts again.
+- **Can edit** permits deletion of comments and threads. Only the author can edit a comment.
+  **Can comment** permits deletion of the participant's own comments only.
+- Remote edits never write to a linked file on disk. A connected document needs an explicit **Save**.
+- HTML and PDF exports contain the same sanitized HTML as the preview: no document-supplied scripts, styles, forms, iframes,
+  event-handler attributes, or `javascript:` URLs. Images and links in an export can still load from the network.
+- Embedded Markdown source in an HTML export contains the document body only, without frontmatter or review threads.
+  **Download Markdown** keeps both.
+- Restore of an encrypted backup keeps existing library documents. It cannot restore access that expired or that the owner revoked.
+- For Sync diagnostics, open `https://{{MARS_HOST}}/?flags=debug:sync`, then use **Developer tools** in the sidebar.
+  `?flags=off` clears all flags. Reports exclude document text, names, identifiers, URLs, and credentials.
 
 ## Caveats
 
-- Short snapshots, Sync, and Live links encrypt content in the browser. The storage service has no master decryption key.
-- Sync and Live links require independent wrapping keys. MARS rejects older links that omit them or reuse server-visible access tokens.
-- Full snapshot links contain compressed, unencrypted content. Anyone with the complete link can read it.
-- Treat complete shared links as secrets. Browser history and services where you paste them can retain their contents and decryption secrets.
-- The local library and ordinary document exports are not encrypted by MARS. Optional connection recovery encrypts credentials, not the ZIP's document files.
-- Encryption requires trusted browser code. MARS and loaded scripts can access decrypted content and keys.
-- Self-hosted Plausible receives redacted root URLs and referral origins, without document content, queries, fragments, or link secrets.
-- Full links are bounded by URL limits (about 8 KB in chat apps). For a larger document, hand over the `mars` command, or tell the user to share a short link from the Share menu.
-- MARS renders embedded HTML. Keep `<script>` and other untrusted HTML out of documents you hand over.
+- Treat every complete shared link as a secret. Browser history and services where the user pastes a link can keep its content and keys.
+  Do not print or log `#s=`, `#live=`, `#sync=`, or `#invite=` fragments.
+- A full snapshot link contains compressed, unencrypted content. Anyone with the complete link can read it.
+- Short snapshots, Sync, and Live links encrypt content in the browser. The storage service has no decryption key.
+- The local library and ordinary exports are not encrypted. Connection recovery encrypts credentials, not the document files in the ZIP.
+- Encryption depends on trusted browser code. MARS and the scripts that it loads can read decrypted content and keys.
+- Temporary mode is not private browsing. Browser history can keep the document fragment.
+- MARS sanitizes embedded HTML in every preview and export. It removes scripts, styles, forms, iframes, inline SVG, and `style`, `class`, and `id` attributes.
+  Use Markdown for structure. Plain tags such as `<sub>`, `<kbd>`, `<details>`, and `<img>` stay.
+- Self-hosted Plausible analytics receive the site root URL and the referrer origin only.

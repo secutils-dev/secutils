@@ -1,20 +1,30 @@
-# Responder-only sync
+# Sync and Live links
 
-Status: release checks passed on 2026-11-08. Deployment is approved.
-The normal MARS entry loads the connection manager for enrollment or connected content.
+Read before changing grants, invitations, key epochs, the outbox, the responder, or recovery packages.
+Sync and Live links use one replication engine. The service side is the MARS webhook responder: it has a key-value store and SHA-256, and no other backend.
+The MARS entry loads the connection manager only for enrollment or connected content.
 Local preview and deployment assemble the same responder through `dev/tools/mars/sync-assets.ts`.
 
-## Implemented foundations
+## Modules
 
 - `replica.ts` isolates Yjs body operations, local undo, and relative anchors.
 - `session.ts` keeps the displayed editor's CRDT separate from received state. Typing during a remote transaction preserves both edits.
-- `manager.ts` owns enrollment, pairing, folder manifests, live sessions, connection details, recovery, and disconnection.
+- `manager.ts` is the facade that `index.ts` loads on demand. Its modules live in `manager/`:
+  - `state.ts`: scopes, sessions, transports, and the request helpers that the other modules share.
+  - `engine.ts`: transport start, checkpoint receipt, projection, folder materialization, and lease renewal.
+  - `enrollment.ts`: collection setup from a local selection, and restart of an unfinished setup.
+  - `pairing.ts`: Sync links, the code confirmation on both devices, and matches with existing local documents.
+  - `live-links.ts`: Live link creation, receipt, forwarding, library promotion, and Live-only teardown.
+  - `access.ts`: disconnection, revocation with key rotation, deletion, and moves.
+  - `recovery.ts`: encrypted connection backups.
+  - `dialogs.ts`: the Sync dialog screens.
 - `reviews.ts` separates signed review operations from body state. Concurrent comment versions remain visible.
 - `crypto.ts` uses native P-256 signing/key exchange, HKDF-SHA256, and AES-256-GCM.
-- `durable.ts` saves local operations before encryption. It saves the exact ciphertext before upload.
+- `session.ts` saves local operations before encryption, and the exact ciphertext before upload.
+  `durable.ts` is the body-only form of that outbox. Only the transport tests use it.
 - `transport.ts` uses short polls, header credentials, bounded responses, backoff, and explicit Retry.
 - `responder.ts` provides account-free scopes, grants, immutable checkpoints, acknowledgement, inactivity renewal, and revocation fences.
-- `preview-safety.ts` supplies the connected library's raw-HTML policy. Source bytes remain unchanged.
+- `../doc/preview-safety.ts` supplies the HTML policy for every preview and export. Source bytes remain unchanged.
 - `rotation.ts` saves exact key updates before revocation. Retry resumes the saved plan after reload or a lost acknowledgement.
 - `recovery-archive.ts` supplies authenticated binary chunks for large encrypted backups.
 - `db.commitReplica` atomically saves projection, replica state, outbox, and received progress in existing stores.
@@ -89,6 +99,12 @@ It returns the script's string result on stdout. A runtime error produces a nonz
 
 ## KV rules
 
+Invitation records share one namespace across collections (`invitations/<id>`).
+A delegated member is valid only while the record of exactly its invitation exists and its collection holds no revocation fence for it.
+`invite` refuses an id that holds a different invitation, and cleanup deletes only invitation records of its own collection.
+The key-epoch marker of a document and the newest wrapped key of each device renew with the document lease in `touch`.
+Owner writes without a quota reservation have an exact shape and a size limit. Persistent fences exist only for known members and registered documents.
+
 Each writer stores full encrypted CRDT checkpoints under immutable, newest-first sequence keys.
 A newer checkpoint contains that writer's earlier operations. It is not a whole-text last-writer-wins replacement.
 The responder stores ciphertext separately from its small signed header. The index exposes the header only after the ciphertext survives a read-back check.
@@ -133,6 +149,23 @@ The encrypted payload contains the invitation ID, access token, owner public key
 Its authenticated-data purpose is `mars-sync-bootstrap-v1`. Pair labels use the wrapping key, never the request token.
 The invitation expires after ten minutes. Matching-code approval remains mandatory. Long Sync links also require an independent wrapping key.
 
+Both pairing messages travel through the service, so each side authenticates the other with the link:
+
+- The joining device seals its device name under the wrapping key. The authenticated data is `{invitation, grant: SHA-256(canonical grant)}`.
+  The owner opens the label with the grant that it received. A grant that the service replaced fails this check, whatever code the screens show.
+- The owner accepts only an `edit` grant for the whole collection, with its own participant and no expiry.
+- The joining device accepts an approval only when the owner key from the link signed the owner grant and exactly the requested grant,
+  and when the wrapped root key names that owner as its sender.
+
+## Untrusted input on the client
+
+The service stores ciphertext that it cannot inspect, so a client verifies each response before use.
+A downloaded checkpoint that fails verification throws `RejectedPacket`: a bad signature, undecryptable content, a malformed payload, or an operation that its author may not perform.
+The transport skips that checkpoint for the session, without saved progress, and continues with the next one.
+A service error (an HTTP status) still stops or ends the connection as before.
+A client that downloads its own older review checkpoint keeps the newer local operations that the checkpoint lacks.
+Only the root of a folder scope carries a manifest. The client decides this from its local binding, not from `meta.kind` in shared content.
+
 Edit-access deletions carry the deleting actor's signature. Comment versions still require author ownership, including for editors.
 Comment-only participants cannot delete another author's comment or a thread with known replies from other authors.
 Concurrent replies to a deleted thread retain the existing recovery behavior.
@@ -167,11 +200,11 @@ Opening an enrolled folder renews its complete subtree, including folders withou
 `touch-folder` requires full-folder rights and a renewed root lease. Its lease cannot outlive that root.
 Already-expanded folders also renew when their page becomes visible. Renewal aborts on hidden tabs and pagehide.
 
-## Telemetry contract
+## Operator endpoints
 
-### Operator-only test scopes
+### Test scopes
 
-The existing responder also accepts `POST /sync/testing` with the operator credential from `MARS_STATS_API_KEY`.
+The responder accepts `POST /sync/testing` with the operator credential from `MARS_STATS_API_KEY`.
 It can open, list, or close exact test scopes. Scope creation records the run/test identity and a capability hash.
 Closing a scope requires its exact scope, run, and test IDs. User records cannot qualify as test scopes.
 
@@ -186,24 +219,15 @@ Completed audit metadata expires after 14 days. Interrupted cleanup remains reco
 The registry exposes no operator credential, capability, document content, or participant credential.
 See [the test cleanup commands](../../README.md#isolated-browser-test-data).
 
-The operator-only endpoint uses the existing `MARS_STATS_API_KEY` secret.
-It returns reserved capacity, the reservation unit, the maximum capacity, and the number of collections with reservations.
+### Telemetry and maintenance
+
+`POST /sync/telemetry` and `POST /sync/maintenance` use the same `MARS_STATS_API_KEY` secret.
+Telemetry returns reserved capacity, the reservation unit, the maximum capacity, and the number of collections with reservations.
 It returns no document names, content, credentials, or participant identifiers.
 Reserved capacity includes prepared writes. It is not a measurement of actual stored bytes or active readers.
 The existing `mars-stats` storage totals remain the source for actual stored bytes.
 The dashboard shows sync allocation separately from actual stored bytes.
 Scheduled samples also run bounded checkpoint cleanup. Missing sync telemetry does not replace storage measurements with zero.
-
-## Release checks
-
-The affected all-browser regression passed 492 cases with 14 expected skips.
-Six additional marker checks passed in Chromium, Firefox, and WebKit, including the unchanged Markdown Preview surface.
-Unit, type, lint, native-limit, snapshot-responder, and artifact-assembly checks passed.
-The marketing-page check remains disabled because `SECUTILS_TOOLS_PROMO_HOME_INDEX` is unset. No promotion metadata changed.
-
-Chromium checks passed for interrupted key distribution, live-key updates, and epoch activation after the service committed but its acknowledgement was lost.
-Each check retained local edits and another authorized live link after reload and Retry.
-Large encrypted recovery also passed a browser restore with an existing private library.
 
 ## Recovery formats
 
@@ -231,10 +255,3 @@ Authenticated data binds the header, the chunk index, and the format purpose.
 Missing, changed, or reordered chunks fail before any library write.
 
 Close the previous client before restoring its credentials in another profile.
-
-Pairing, offline work, draft recovery, unlink, deletion, failed storage, encrypted recovery, and library promotion passed focused engine checks.
-Populated libraries passed both choices: separate copies, or a confirmed match with the original local ID and an independent backup.
-The linked-file check used a real Chromium file handle. Remote edits did not write the file before explicit Save.
-Native Firefox 159.0.1 passed pairing, bidirectional edits, reload, and private-library retention in two fresh profiles.
-
-Live verification follows deployment. Follow `dev/plans/mars-sync-and-live-links.md` for the approved boundary.
