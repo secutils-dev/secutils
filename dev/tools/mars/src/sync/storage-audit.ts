@@ -1,7 +1,7 @@
 // Read-only operator inventory. Ciphertexts are measured, never decrypted or returned.
 // Small pages and sequential value reads bound both the KV budget and the sandbox heap.
 import { decode, encode, fail, validId } from './protocol.ts';
-import type { Runtime } from './responder.ts';
+import type { Runtime } from './responder/types.ts';
 
 const PAGE_ENTRIES = 32;
 const CURSOR_MAX_CHARS = 4096;

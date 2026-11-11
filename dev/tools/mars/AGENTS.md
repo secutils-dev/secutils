@@ -15,6 +15,7 @@ Read each guide whose trigger matches the change.
 | Trigger | Read |
 |---------|------|
 | Grants, invitations, key epochs, the outbox, the responder, recovery packages, `#sync=` or `#live=` links | [src/sync/README.md](src/sync/README.md) |
+| The operator storage audit or its report | [src/sync/storage-audit.md](src/sync/storage-audit.md) |
 | `src/search/`, `eval/`, a model, a dtype, or a Transformers.js upgrade | [src/search/README.md](src/search/README.md) |
 | A privacy claim, analytics, or a new network request | [README: Privacy and analytics](README.md#privacy-and-analytics) and the Privacy dialog in `index.html` |
 | Full links, bundles, short links, the `<state>` encoding | [url-state.md](../shared/guides/url-state.md#short-links-mdindexhtml-mars) |
@@ -108,6 +109,10 @@ Read each guide whose trigger matches the change.
 - Connection metadata is scoped by collection and member. A Live grant stays separate from the private connection of the owner in the same profile.
 - Sync and Live links need a wrapping key that differs from the bearer token. Reject a link without one before any request.
 - Treat each service response as untrusted input. Validate its shape, and verify it against the owner key from the link, before use.
+- The service side is `src/sync/responder.ts` with its modules in `responder/`. A new action needs a handler in the module of its concern
+  and a row in the action table of the entry. A member action takes its authorization from `authenticate` in `responder/session.ts`:
+  call `owner()` for an owner-only action, and pass each document id through `scope()`.
+- A responder write needs a validated shape, a size limit, and a bound on the number of records. One request has 200 KV operations and a 10 MiB heap.
 - A downloaded checkpoint that fails local verification throws `RejectedPacket`. The receiver skips that checkpoint and keeps the connection.
 - A live fragment selects memory storage before IndexedDB opens. **Save live document to library** is one atomic promotion.
 - Transport keys, credentials, and outbox records never enter Markdown, HTML, PDF, ZIP, or agent handoffs.

@@ -23,7 +23,13 @@ Local preview and deployment assemble the same responder through `dev/tools/mars
 - `session.ts` saves local operations before encryption, and the exact ciphertext before upload.
   `durable.ts` is the body-only form of that outbox. Only the transport tests use it.
 - `transport.ts` uses short polls, header credentials, bounded responses, backoff, and explicit Retry.
-- `responder.ts` provides account-free scopes, grants, immutable checkpoints, acknowledgement, inactivity renewal, and revocation fences.
+- `responder.ts` is the entry of the service side. It checks the request, selects the authorization for the action, and maps errors to responses.
+  Its modules live in `responder/`:
+  - `invitations.ts`, `operator.ts`, `collections.ts`: actions with their own authorization (invitation token, operator secret, self-signed owner grant).
+  - `session.ts`: authentication of a member request. Every member action receives its result.
+  - `membership.ts`, `keys.ts`, `documents.ts`, `checkpoints.ts`, `renewal.ts`: member actions.
+  - `store.ts`, `quota.ts`, `types.ts`: record keys and immutable writes, capacity accounting, and types.
+- `storage-audit.ts` is the read-only operator inventory behind the `storage-audit` action.
 - `../doc/preview-safety.ts` supplies the HTML policy for every preview and export. Source bytes remain unchanged.
 - `rotation.ts` saves exact key updates before revocation. Retry resumes the saved plan after reload or a lost acknowledgement.
 - `recovery-archive.ts` supplies authenticated binary chunks for large encrypted backups.

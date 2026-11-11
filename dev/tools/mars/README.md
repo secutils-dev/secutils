@@ -207,7 +207,7 @@ so short links, Sync, and Live links work offline.
 | `src/doc/` | Renderer, HTML sanitizer, block and table editing, review changes, diagrams |
 | `src/share/`, `src/io/` | Links, incoming copies, imports, and downloads |
 | `src/store/`, `src/tree/` | IndexedDB or memory storage, and the tree model |
-| `src/sync/` | Sync and Live links: client engine, cryptography, and the responder. `manager/` holds the connection manager. |
+| `src/sync/` | Sync and Live links: client engine, cryptography, and the service side. `manager/` holds the client connection manager, and `responder/` the service actions. |
 | `src/search/`, `eval/` | Sidebar search, smart search, and the search-quality evaluation |
 | `src/export/` | HTML and PDF export |
 | `src/platform/`, `src/ui/` | Analytics, feature flags, diagnostics, and UI primitives |

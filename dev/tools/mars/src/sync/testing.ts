@@ -4,7 +4,7 @@
 // The operator credential manages scopes. A capability token for each scope selects one.
 // A failed check returns an error. It never falls back to user storage.
 import { canonical, decode, encode, fail, SyncError, validHash, validId } from './protocol.ts';
-import type { Context, Kv, Runtime } from './responder.ts';
+import type { Context, Kv, Runtime } from './responder/types.ts';
 
 /**
  * Registry record of one test scope. `tokenHash` is the SHA-256 of its capability token. Times are Unix seconds.
