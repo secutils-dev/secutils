@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { formatDeploySize } from '../dev/tools/deploy.ts';
+import { formatDeploySize } from '../dev/tools/shared/deploy.ts';
 
 test('bundled pages distinguish source, body, embedded payloads, and separate responder scripts', () => {
   const report = formatDeploySize({

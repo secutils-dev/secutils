@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<!-- @su:responder-script
+// =============================================================================
+// RESPONDER SCRIPT - paired with echo.html, auto-deployed to the responder's
+// `script` setting by dev/tools/shared/deploy.ts. This HTML comment is stripped from
+// the served body by html-minifier-terser (`removeComments: true`).
+// See dev/tools/shared/guides/platform.md → "Responder Script (`@su:responder-script`)".
+//
+// Wire format (after base64url-decode):
+//   | 4 bytes ulen (LE u32) | N bytes raw-deflate(JSON.stringify(state)) |
+// =============================================================================
+(() => {
+  const encoded = context.query.c;
+  if (!encoded) {
+    // No config - fall through to the default body (the configurator HTML).
+    return null;
+  }
+
+  // Pure-JS base64url decoder (no atob in the Deno sandbox).
+  const fromBase64Url = (input) => {
+    const C = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    const stripped = input.replace(/-/g, '+').replace(/_/g, '/').replace(/=+$/, '');
+    const out = [];
+    for (let i = 0; i < stripped.length; i += 4) {
+      const a = C.indexOf(stripped[i]);
+      const b = C.indexOf(stripped[i + 1]);
+      const c = C.indexOf(stripped[i + 2]);
+      const d = C.indexOf(stripped[i + 3]);
+      out.push((a << 2) | (b >> 4));
+      if (c >= 0) out.push(((b & 15) << 4) | (c >> 2));
+      if (d >= 0) out.push(((c & 3) << 6) | d);
+    }
+    return new Uint8Array(out);
+  };
+
+  // ----------------------------------------------------------------------
+  // Vendored: tiny-inflate@1.0.3 (Devon Govett, MIT) - pure-JS raw DEFLATE
+  // inflater (~1 KB minified). Source: https://github.com/foliojs/tiny-inflate
+  // The Deno sandbox has no DecompressionStream so we ship our own.
+  //
+  // Local hardening: tiny-inflate does not bounds-check the source stream, so
+  // adversarial input (e.g. a hand-typed ?c=) can spin in an infinite loop
+  // reading undefined bytes. The Data ctor below throws as soon as the source
+  // pointer runs past `source.length + 4` (small slack for the bit buffer's
+  // 24-bit refill window), turning hangs into a clean catch-able 'Data error'.
+  // ----------------------------------------------------------------------
+  const tinf_uncompress = (() => {
+    const TINF_OK = 0, TINF_DATA_ERROR = -3;
+    function Tree() { this.table = new Uint16Array(16); this.trans = new Uint16Array(288); }
+    function Data(source, dest) {
+      this.tag = 0; this.bitcount = 0;
+      this.dest = dest; this.destLen = 0;
+      this.ltree = new Tree(); this.dtree = new Tree();
+      // Bounds-checking source proxy: every out-of-range read throws.
+      this.source = source;
+      const max = source.length;
+      let idx = 0;
+      Object.defineProperty(this, 'sourceIndex', {
+        get() { return idx; },
+        set(v) {
+          if (v > max + 4) throw new Error('Data error');
+          idx = v;
+        },
+      });
+    }
+    const sltree = new Tree(), sdtree = new Tree();
+    const length_bits = new Uint8Array(30), length_base = new Uint16Array(30);
+    const dist_bits = new Uint8Array(30), dist_base = new Uint16Array(30);
+    const clcidx = new Uint8Array([16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15]);
+    const code_tree = new Tree();
+    const lengths = new Uint8Array(288 + 32);
+    const offs = new Uint16Array(16);
+    const buildBitsBase = (bits, base, delta, first) => {
+      let i, sum;
+      for (i = 0; i < delta; ++i) bits[i] = 0;
+      for (i = 0; i < 30 - delta; ++i) bits[i + delta] = i / delta | 0;
+      for (sum = first, i = 0; i < 30; ++i) { base[i] = sum; sum += 1 << bits[i]; }
+    };
+    const buildFixedTrees = (lt, dt) => {
+      let i;
+      for (i = 0; i < 7; ++i) lt.table[i] = 0;
+      lt.table[7] = 24; lt.table[8] = 152; lt.table[9] = 112;
+      for (i = 0; i < 24; ++i) lt.trans[i] = 256 + i;
+      for (i = 0; i < 144; ++i) lt.trans[24 + i] = i;
+      for (i = 0; i < 8; ++i) lt.trans[24 + 144 + i] = 280 + i;
+      for (i = 0; i < 112; ++i) lt.trans[24 + 144 + 8 + i] = 144 + i;
+      for (i = 0; i < 5; ++i) dt.table[i] = 0;
+      dt.table[5] = 32;
+      for (i = 0; i < 32; ++i) dt.trans[i] = i;
+    };
+    const buildTree = (t, lengths, off, num) => {
+      let i, sum;
+      for (i = 0; i < 16; ++i) t.table[i] = 0;
+      for (i = 0; i < num; ++i) t.table[lengths[off + i]]++;
+      t.table[0] = 0;
+      for (sum = 0, i = 0; i < 16; ++i) { offs[i] = sum; sum += t.table[i]; }
+      for (i = 0; i < num; ++i) { if (lengths[off + i]) t.trans[offs[lengths[off + i]]++] = i; }
+    };
+    const getbit = (d) => {
+      if (!d.bitcount--) { d.tag = d.source[d.sourceIndex++]; d.bitcount = 7; }
+      const bit = d.tag & 1; d.tag >>>= 1; return bit;
+    };
+    const readBits = (d, num, base) => {
+      if (!num) return base;
+      while (d.bitcount < 24) { d.tag |= d.source[d.sourceIndex++] << d.bitcount; d.bitcount += 8; }
+      const val = d.tag & (0xffff >>> (16 - num));
+      d.tag >>>= num; d.bitcount -= num; return val + base;
+    };
+    const decodeSymbol = (d, t) => {
+      while (d.bitcount < 24) { d.tag |= d.source[d.sourceIndex++] << d.bitcount; d.bitcount += 8; }
+      let sum = 0, cur = 0, len = 0; let tag = d.tag;
+      do {
+        cur = 2 * cur + (tag & 1); tag >>>= 1; ++len;
+        sum += t.table[len]; cur -= t.table[len];
+      } while (cur >= 0);
+      d.tag = tag; d.bitcount -= len;
+      return t.trans[sum + cur];
+    };
+    const decodeTrees = (d, lt, dt) => {
+      const hlit = readBits(d, 5, 257);
+      const hdist = readBits(d, 5, 1);
+      const hclen = readBits(d, 4, 4);
+      let i, num, length;
+      for (i = 0; i < 19; ++i) lengths[i] = 0;
+      for (i = 0; i < hclen; ++i) { const clen = readBits(d, 3, 0); lengths[clcidx[i]] = clen; }
+      buildTree(code_tree, lengths, 0, 19);
+      for (num = 0; num < hlit + hdist;) {
+        const sym = decodeSymbol(d, code_tree);
+        switch (sym) {
+          case 16: { const prev = lengths[num - 1]; for (length = readBits(d, 2, 3); length; --length) lengths[num++] = prev; break; }
+          case 17: for (length = readBits(d, 3, 3); length; --length) lengths[num++] = 0; break;
+          case 18: for (length = readBits(d, 7, 11); length; --length) lengths[num++] = 0; break;
+          default: lengths[num++] = sym; break;
+        }
+      }
+      buildTree(lt, lengths, 0, hlit);
+      buildTree(dt, lengths, hlit, hdist);
+    };
+    const inflateBlockData = (d, lt, dt) => {
+      while (1) {
+        let sym = decodeSymbol(d, lt);
+        if (sym === 256) return TINF_OK;
+        if (sym < 256) { d.dest[d.destLen++] = sym; }
+        else {
+          let length, dist, offs2, i;
+          sym -= 257;
+          length = readBits(d, length_bits[sym], length_base[sym]);
+          dist = decodeSymbol(d, dt);
+          offs2 = d.destLen - readBits(d, dist_bits[dist], dist_base[dist]);
+          for (i = offs2; i < offs2 + length; ++i) d.dest[d.destLen++] = d.dest[i];
+        }
+      }
+    };
+    const inflateUncompressedBlock = (d) => {
+      let length, invlength, i;
+      while (d.bitcount > 8) { d.sourceIndex--; d.bitcount -= 8; }
+      length = d.source[d.sourceIndex + 1]; length = 256 * length + d.source[d.sourceIndex];
+      invlength = d.source[d.sourceIndex + 3]; invlength = 256 * invlength + d.source[d.sourceIndex + 2];
+      if (length !== (~invlength & 0x0000ffff)) return TINF_DATA_ERROR;
+      d.sourceIndex += 4;
+      for (i = length; i; --i) d.dest[d.destLen++] = d.source[d.sourceIndex++];
+      d.bitcount = 0;
+      return TINF_OK;
+    };
+    buildFixedTrees(sltree, sdtree);
+    buildBitsBase(length_bits, length_base, 4, 3);
+    buildBitsBase(dist_bits, dist_base, 2, 1);
+    length_bits[28] = 0; length_base[28] = 258;
+    return (source, dest) => {
+      const d = new Data(source, dest);
+      let bfinal, btype, res;
+      do {
+        bfinal = getbit(d);
+        btype = readBits(d, 2, 0);
+        switch (btype) {
+          case 0: res = inflateUncompressedBlock(d); break;
+          case 1: res = inflateBlockData(d, sltree, sdtree); break;
+          case 2: decodeTrees(d, d.ltree, d.dtree); res = inflateBlockData(d, d.ltree, d.dtree); break;
+          default: res = TINF_DATA_ERROR;
+        }
+        if (res !== TINF_OK) throw new Error('Data error');
+      } while (!bfinal);
+      return d.destLen < d.dest.length ? d.dest.subarray(0, d.destLen) : d.dest;
+    };
+  })();
+
+  try {
+    const bytes = fromBase64Url(encoded);
+    if (bytes.length < 4) throw new Error('payload too small');
+    const ulen = (bytes[0] | (bytes[1] << 8) | (bytes[2] << 16) | (bytes[3] << 24)) >>> 0;
+    // Defensive caps: reject obviously bogus headers before allocating or inflating.
+    // 1 MiB inflated is far beyond any plausible mock-response config.
+    if (ulen === 0 || ulen > 1 << 20) throw new Error('payload too large');
+    const inflated = new Uint8Array(ulen);
+    tinf_uncompress(bytes.subarray(4), inflated);
+    const cfg = JSON.parse(Deno.core.decode(inflated));
+    const headers = {};
+    for (const pair of (Array.isArray(cfg.h) ? cfg.h : [])) {
+      if (Array.isArray(pair) && pair[0]) {
+        headers[String(pair[0])] = String(pair[1] ?? '');
+      }
+    }
+    if (!Object.keys(headers).some((h) => h.toLowerCase() === 'content-type')) {
+      headers['Content-Type'] = 'text/plain; charset=utf-8';
+    }
+    return {
+      statusCode: Number.isInteger(cfg.s) ? cfg.s : 200,
+      headers,
+      body: typeof cfg.b === 'string' ? cfg.b : '',
+    };
+  } catch (e) {
+    return {
+      statusCode: 400,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      body: 'Invalid configuration in ?c=: ' + (e.message || String(e)),
+    };
+  }
+})();
+-->
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTTP Echo / Mock Response Builder | Secutils.dev</title>
+    <meta name="description" content="Free HTTP echo and mock response builder. Configure status code, headers, and body, then serve as a shareable URL. Browser-only, state in URL, no signup.">
+    <meta name="robots" content="index, follow, max-image-preview:large">
+    <link rel="canonical" href="https://{{TOOLS_HOST}}/echo">
+    <meta name="su-tool-path" content="/echo">
+    <meta name="su-tool-name" content="HTTP Echo / Mock Response">
+    <meta name="su-tool-description" content="Build a fully customizable mock HTTP response (status, headers, body) and serve it as a shareable URL. State in URL, no signup.">
+    <meta name="su-tool-promote" content="true">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Secutils.dev">
+    <meta property="og:title" content="HTTP Echo &amp; Mock Response Builder">
+    <meta property="og:description" content="Free HTTP echo and mock response builder. Configure status code, headers, and body. Serve as a shareable URL. Browser-only.">
+    <meta property="og:url" content="https://{{TOOLS_HOST}}/echo">
+    <meta property="og:image" content="https://secutils.dev/docs/img/og/og-echo.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="HTTP Echo / Mock Response Builder on Secutils.dev.">
+    <meta property="og:locale" content="en_US">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="HTTP Echo &amp; Mock Response Builder">
+    <meta name="twitter:description" content="Free HTTP echo and mock response builder. Configure status, headers, body. Serve as a shareable URL. No signup.">
+    <meta name="twitter:image" content="https://secutils.dev/docs/img/og/og-echo.png">
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"HTTP Echo / Mock Response","url":"https://{{TOOLS_HOST}}/echo","applicationCategory":"DeveloperApplication","operatingSystem":"Any","browserRequirements":"Requires JavaScript","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"publisher":{"@type":"Organization","name":"Secutils.dev","url":"https://secutils.dev"},"sameAs":"https://github.com/secutils-dev/secutils/blob/main/dev/tools/echo/index.html","description":"Free HTTP echo and mock response builder. Configure status code, headers, and body, then serve as a shareable URL. Browser-only, state in URL, no signup."}</script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=Roboto+Mono:wght@400..700&display=swap" rel="stylesheet">
+    <!-- Privacy-friendly analytics by Plausible -->
+    <script defer src="https://tools.secutils.dev/js/script.js" fetchpriority="low"></script>
+    <script>
+        window.plausible = window.plausible || function () { (plausible.q = plausible.q || []).push(arguments) };
+        plausible.init = plausible.init || function (i) { plausible.o = i || {} };
+        plausible.init();
+    </script>
+    <script>
+        // Restore the theme before CSS paints, as in MARS.
+        try {
+            const saved = localStorage.getItem('su-tool-theme');
+            document.documentElement.dataset.theme = saved === 'light' || saved === 'dark'
+                ? saved : (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        } catch {}
+    </script>
+    <link rel="stylesheet" href="../shared/tokens.css" data-su-style="tokens">
+    <link rel="stylesheet" href="../shared/components.css" data-su-style="components">
+    <style>
+/* ECHO layout only. Shared controls and Borealis tokens live in shared/. */
+body { min-height: 100vh; }
+.su-header { position: sticky; top: 0; padding-inline: 16px; }
+main { flex: 1; padding: 32px 16px 48px; max-width: 760px; margin: 0 auto; width: 100%; }
+.page-title { margin-bottom: 6px; }
+.page-subtitle { color: var(--text-muted); margin-bottom: 24px; text-wrap: pretty; }
+.page-subtitle code, .empty code { font-family: var(--mono); font-size: .85em; padding: 1px 6px; border-radius: var(--radius-s); background: var(--surface-hover); color: var(--text); }
+.card { margin-bottom: 16px; }
+.label-hint { font-size: 12px; font-weight: 400; color: var(--text-muted); margin-left: 6px; }
+.input-status { width: 120px; font-family: var(--mono); }
+.textarea { min-height: 160px; }
+.textarea-sm { min-height: 64px; font-family: var(--font); }
+.row-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+.row-head .field-label { margin: 0; }
+table { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0 6px; }
+td { padding-right: 8px; vertical-align: middle; }
+td:first-child { width: 36%; }
+td:last-child { padding-right: 0; width: 28px; }
+.empty { color: var(--text-muted); font-size: 13px; padding-top: 6px; overflow-wrap: anywhere; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; align-items: center; }
+.actions .spacer { flex: 1; }
+@media (max-width: 640px) {
+    .su-header { padding-inline: 12px; }
+    .skill-link span:last-child { display: none; }
+    .skill-link { padding-inline: 10px; }
+    main { padding: 20px 12px 32px; }
+    .label-hint { display: block; margin-left: 0; }
+    td:first-child { width: 40%; }
+}
+    </style>
+</head>
+<body>
+    <noscript>
+        <p class="su-noscript"><strong>HTTP Echo / Mock Response</strong> &mdash; Build a fully customizable HTTP response (status code, headers, body) and serve it as a shareable URL. Configuration stays in the URL fragment. Requires JavaScript; please enable it. Source on <a href="https://github.com/secutils-dev/secutils/blob/main/dev/tools/echo/index.html">GitHub</a>.</p>
+    </noscript>
+    <header class="su-header">
+        <a class="su-app-brand" href="https://secutils.dev" target="_blank" rel="noopener" aria-label="ECHO by Secutils.dev (opens in new tab)">
+            <img class="su-app-icon" src="./assets/echo-app-icon.svg" data-su-app-icon="echo" width="32" height="32" alt="">
+            <span class="su-app-brand-copy">
+                <span class="su-app-name">ECHO</span>
+                <span class="su-app-publisher">Secutils.dev</span>
+            </span>
+        </a>
+        <div class="su-header-section">
+            <a id="skillLink" class="skill-link" href="#" target="_blank" rel="noopener"
+               title="View AI agent skill (skill.md, opens in new tab)"
+               aria-label="View AI agent skill (opens in new tab)">
+                <span data-icon="sparkles"></span>
+                <span>Skill</span>
+            </a>
+            <button class="su-header-btn theme-toggle" id="themeToggle" type="button" aria-label="Toggle theme">
+                <span class="icon-sun" data-icon="sun"></span>
+                <span class="icon-moon" data-icon="moon"></span>
+            </button>
+        </div>
+    </header>
+
+    <main>
+        <h1 class="page-title">HTTP echo response</h1>
+        <p class="page-subtitle">Build a mock HTTP response. Your edits are encoded in the URL fragment as you type, then served when this responder is hit with <code>?c=&hellip;</code>.</p>
+
+        <section class="su-panel card">
+            <label class="field-label" for="description">Description <span class="label-hint">(saved in URL, not sent in response)</span></label>
+            <textarea id="description" class="textarea textarea-sm" placeholder="What is this mock for? Notes for whoever opens the share link."></textarea>
+        </section>
+
+        <section class="su-panel card">
+            <label class="field-label" for="status">Status code</label>
+            <input id="status" class="input input-status" type="number" min="100" max="599" value="200">
+        </section>
+
+        <section class="su-panel card" aria-labelledby="headersLabel">
+            <div class="row-head">
+                <h2 id="headersLabel" class="field-label">Headers</h2>
+                <button id="add" type="button" class="btn btn-sm"><span data-icon="plus"></span>Add header</button>
+            </div>
+            <table id="headers"><tbody></tbody></table>
+            <div id="empty" class="empty" hidden>No headers. <code>Content-Type: text/plain; charset=utf-8</code> will be added automatically.</div>
+        </section>
+
+        <section class="su-panel card">
+            <label class="field-label" for="body">Body</label>
+            <textarea id="body" class="textarea" placeholder="Response body (text)"></textarea>
+        </section>
+
+        <section class="su-panel card">
+            <label class="field-label" for="preview">Mock URL</label>
+            <input id="preview" class="input input-mono" readonly>
+            <div class="actions">
+                <button id="open" type="button" class="btn btn-primary"><span data-icon="external"></span>Open mock response</button>
+                <button id="copy" type="button" class="btn" title="Copy the mock URL to your clipboard">
+                    <span data-icon="copy"></span>
+                    <span class="btn-label">Copy URL</span>
+                </button>
+                <span class="spacer"></span>
+                <button id="reset" type="button" class="btn btn-empty"><span data-icon="refresh"></span>Reset</button>
+            </div>
+        </section>
+
+        <aside class="su-more-tools" aria-label="More free tools">
+            <p>Other free, no-signup Secutils.dev tools for JWT, SAML, certificates, Markdown, and more - <a href="https://{{TOOLS_HOST}}/">Browse all tools &rarr;</a></p>
+        </aside>
+    </main>
+
+    <footer class="su-footer">
+        <p>Build a fully customizable HTTP response and serve it as a shareable URL.</p>
+        <p class="su-footer-fineprint"><button type="button" class="su-footer-link" id="privacyOpen">Privacy</button></p>
+    </footer>
+
+    <dialog id="privacyDialog" class="su-dialog" closedby="any" aria-labelledby="privacyDialogTitle">
+        <header class="su-dialog-header">
+            <h2 id="privacyDialogTitle">Privacy</h2>
+            <button type="button" class="su-dialog-close" id="privacyClose" aria-label="Close">
+                <span data-icon="cross"></span>
+            </button>
+        </header>
+        <div class="su-dialog-body">
+            <p><strong>Your data stays in your browser.</strong> These tools run entirely client-side. Tokens, PEMs, SAML payloads, Markdown source, and mock-response bodies are never sent to the Secutils.dev server. State that needs to survive a reload (or be shared) lives in the URL fragment (<code>#&hellip;</code>), which browsers never transmit to the server.</p>
+            <p><strong>Anonymous usage analytics.</strong> We use <a href="https://plausible.io/" target="_blank" rel="noopener noreferrer">Plausible Analytics</a>, a privacy-first, GDPR-compliant tool, to collect aggregate usage data. No cookies, no personal data, no individual tracking. The data is limited to top pages, referral sources, visit duration, and device-class metadata (device type, OS, country, browser). Full details in the <a href="https://plausible.io/data-policy" target="_blank" rel="noopener noreferrer">Plausible Data Policy</a>.</p>
+            <p class="su-dialog-fineprint">See the full <a href="https://secutils.dev/privacy" target="_blank" rel="noopener noreferrer">Secutils.dev privacy policy</a> for details on the wider service.</p>
+        </div>
+    </dialog>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" style="display:none">
+        <span id="toastMsg"></span>
+    </div>
+
+<script type="module">
+import { icon, hydrateIcons } from '../shared/icons.js';
+hydrateIcons();
+const $ = (id) => document.getElementById(id);
+
+const els = Object.freeze({
+    description: $('description'),
+    status: $('status'),
+    headers: $('headers').querySelector('tbody'),
+    empty: $('empty'),
+    body: $('body'),
+    preview: $('preview'),
+    add: $('add'),
+    open: $('open'),
+    copy: $('copy'),
+    reset: $('reset'),
+    themeToggle: $('themeToggle'),
+    toast: $('toast'),
+    toastMsg: $('toastMsg'),
+});
+
+// Curated response-header suggestions surfaced via native <datalist> dropdowns.
+// Names shown verbatim; values looked up case-insensitively (key = lowercased name).
+// Names without an entry in HEADER_PRESETS still autocomplete the name, but offer
+// no value suggestions - same for any custom (non-listed) header typed by the user.
+const HEADER_NAMES = [
+    'Access-Control-Allow-Credentials', 'Access-Control-Allow-Headers',
+    'Access-Control-Allow-Methods', 'Access-Control-Allow-Origin',
+    'Cache-Control', 'Content-Disposition', 'Content-Encoding', 'Content-Length',
+    'Content-Security-Policy', 'Content-Type', 'Date', 'ETag', 'Last-Modified',
+    'Location', 'Server', 'Set-Cookie', 'Strict-Transport-Security', 'Vary',
+    'WWW-Authenticate', 'X-Content-Type-Options', 'X-Frame-Options',
+];
+const HEADER_PRESETS = Object.freeze({
+    'content-type': ['application/json; charset=utf-8', 'text/html; charset=utf-8', 'text/plain', 'application/xml', 'text/css', 'application/javascript', 'image/png', 'image/jpeg', 'application/octet-stream'],
+    'cache-control': ['no-cache', 'no-store', 'max-age=0', 'max-age=3600', 'public, max-age=86400', 'private', 'must-revalidate'],
+    'content-encoding': ['gzip', 'br', 'deflate', 'identity'],
+    'server': ['nginx', 'Apache', 'cloudflare', 'Microsoft-IIS/10.0'],
+    'access-control-allow-origin': ['*', 'https://example.com', 'null'],
+    'access-control-allow-methods': ['GET, POST, PUT, DELETE, OPTIONS', 'GET, HEAD, OPTIONS'],
+    'access-control-allow-headers': ['Content-Type, Authorization', '*'],
+    'access-control-allow-credentials': ['true', 'false'],
+    'vary': ['Accept-Encoding', 'Origin', 'Accept, Accept-Encoding', 'User-Agent'],
+    'content-disposition': ['inline', 'attachment', 'attachment; filename="file.pdf"'],
+    'strict-transport-security': ['max-age=31536000', 'max-age=31536000; includeSubDomains', 'max-age=63072000; includeSubDomains; preload'],
+    'x-frame-options': ['DENY', 'SAMEORIGIN'],
+    'x-content-type-options': ['nosniff'],
+    'www-authenticate': ['Bearer', 'Bearer realm="api"', 'Bearer error="invalid_token"', 'Basic realm="api"'],
+    'content-security-policy': [`default-src 'self'`, `default-src 'self'; script-src 'self' 'unsafe-inline'`, `frame-ancestors 'none'`],
+});
+
+// `d` is a free-text description that round-trips through the URL fragment so it's
+// preserved across reloads and shared links, but the responder script ignores it
+// (only `s`/`h`/`b` are sent to clients). Useful for documenting what a mock is for.
+const defaultState = () => ({ d: '', s: 200, h: [['Content-Type', 'application/json']], b: '' });
+let state = defaultState();
+
+const utf8Enc = new TextEncoder();
+const utf8Dec = new TextDecoder();
+
+const toBase64Url = (bytes) => {
+    let s = '';
+    for (const b of bytes) s += String.fromCharCode(b);
+    return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+};
+const fromBase64Url = (str) => {
+    const b64 = str.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '==='.slice(0, (4 - b64.length % 4) % 4);
+    const bin = atob(padded);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+};
+
+// Wire format (see dev/tools/shared/guides/url-state.md → "URL state encoding"):
+// [4-byte LE u32 ulen][raw deflate bytes]. ulen lets the responder's pure-JS
+// inflater (tiny-inflate) pre-allocate the output buffer in one go.
+const encodeState = async (text) => {
+    const bytes = utf8Enc.encode(text);
+    const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+    const deflated = new Uint8Array(await new Response(stream).arrayBuffer());
+    const out = new Uint8Array(4 + deflated.length);
+    new DataView(out.buffer).setUint32(0, bytes.length, true);
+    out.set(deflated, 4);
+    return toBase64Url(out);
+};
+
+const decodeState = async (str) => {
+    try {
+        const bytes = fromBase64Url(str);
+        if (bytes.length < 4) return null;
+        const stream = new Blob([bytes.subarray(4)]).stream()
+            .pipeThrough(new DecompressionStream('deflate-raw'));
+        const inflated = new Uint8Array(await new Response(stream).arrayBuffer());
+        return utf8Dec.decode(inflated);
+    } catch { return null; }
+};
+
+let syncSeq = 0;
+const syncURL = async () => {
+    const mySeq = ++syncSeq;
+    const enc = await encodeState(JSON.stringify(state));
+    if (mySeq !== syncSeq) return;
+    history.replaceState(null, '', `#${enc}`);
+    // Echo is the one tool whose share URL must be `?c=` instead of `#`: a shared
+    // link is hit by the responder, which reads `context.query.c`. The fragment
+    // (`#`) stays browser-side for the live configurator only.
+    els.preview.value = `${location.origin}${location.pathname}?c=${enc}`;
+};
+
+// Shared <datalist> of response-header names - created once and reused across all
+// name inputs (all rows link to the same `list="hdr-names"` target).
+const namesDatalist = document.createElement('datalist');
+namesDatalist.id = 'hdr-names';
+for (const name of HEADER_NAMES) {
+    const opt = document.createElement('option');
+    opt.value = name;
+    namesDatalist.appendChild(opt);
+}
+document.body.appendChild(namesDatalist);
+
+// Populate a per-row value <datalist> from HEADER_PRESETS keyed by the lowercased
+// header name, and toggle the value input's `list` attribute so rows without
+// presets don't render an empty dropdown indicator.
+const applyValuePresets = (valueInput, valueDatalist, headerName) => {
+    const presets = HEADER_PRESETS[headerName.trim().toLowerCase()];
+    valueDatalist.replaceChildren();
+    if (presets) {
+        for (const v of presets) {
+            const opt = document.createElement('option');
+            opt.value = v;
+            valueDatalist.appendChild(opt);
+        }
+        valueInput.setAttribute('list', valueDatalist.id);
+    } else {
+        valueInput.removeAttribute('list');
+    }
+};
+
+const renderHeaders = () => {
+    els.headers.replaceChildren();
+    state.h.forEach((row, i) => {
+        const tr = document.createElement('tr');
+
+        const nameInput = document.createElement('input');
+        nameInput.className = 'input input-mono';
+        nameInput.placeholder = 'Header name';
+        nameInput.setAttribute('aria-label', 'Header name');
+        nameInput.value = row[0];
+        nameInput.setAttribute('list', 'hdr-names');
+
+        const valueInput = document.createElement('input');
+        valueInput.className = 'input input-mono';
+        valueInput.placeholder = 'Header value';
+        valueInput.setAttribute('aria-label', 'Header value');
+        valueInput.value = row[1];
+
+        const valueDatalist = document.createElement('datalist');
+        valueDatalist.id = `hdr-vals-${i}`;
+        applyValuePresets(valueInput, valueDatalist, row[0]);
+
+        nameInput.addEventListener('input', (e) => {
+            state.h[i][0] = e.target.value;
+            applyValuePresets(valueInput, valueDatalist, e.target.value);
+            syncURL();
+        });
+        valueInput.addEventListener('input', (e) => {
+            state.h[i][1] = e.target.value;
+            syncURL();
+        });
+
+        const tdK = document.createElement('td'); tdK.appendChild(nameInput);
+        const tdV = document.createElement('td');
+        tdV.append(valueInput, valueDatalist);
+        const tdRm = document.createElement('td');
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'icon-btn';
+        btn.title = 'Remove header';
+        btn.setAttribute('aria-label', 'Remove header');
+        btn.innerHTML = icon('cross');
+        btn.addEventListener('click', () => {
+            state.h.splice(i, 1);
+            renderHeaders();
+            syncURL();
+        });
+        tdRm.appendChild(btn);
+        tr.append(tdK, tdV, tdRm);
+        els.headers.appendChild(tr);
+    });
+    els.empty.hidden = state.h.length > 0;
+};
+
+const render = () => {
+    els.description.value = state.d;
+    els.status.value = state.s;
+    els.body.value = state.b;
+    renderHeaders();
+    syncURL();
+};
+
+els.description.addEventListener('input', (e) => { state.d = e.target.value; syncURL(); });
+els.status.addEventListener('input', (e) => {
+    const n = parseInt(e.target.value, 10);
+    state.s = Number.isNaN(n) ? 200 : Math.max(100, Math.min(599, n));
+    syncURL();
+});
+els.body.addEventListener('input', (e) => { state.b = e.target.value; syncURL(); });
+els.add.addEventListener('click', () => {
+    state.h.push(['', '']);
+    renderHeaders();
+    syncURL();
+});
+els.open.addEventListener('click', () => {
+    // Preview is kept in sync after every edit, so reuse it instead of re-encoding.
+    // This keeps the popup-from-click heuristic happy across browsers (no async gap).
+    const url = els.preview.value || `${location.origin}${location.pathname}`;
+    window.open(url, '_blank');
+});
+let toastTimer;
+function toast(msg) {
+    els.toastMsg.textContent = msg;
+    els.toast.style.display = 'flex';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { els.toast.style.display = 'none'; }, 2000);
+}
+
+els.copy.addEventListener('click', async () => {
+    try {
+        await navigator.clipboard.writeText(els.preview.value);
+        toast('Copied to clipboard');
+    } catch {
+        toast('Failed to copy');
+    }
+});
+els.reset.addEventListener('click', () => {
+    state = defaultState();
+    history.replaceState(null, '', location.pathname);
+    render();
+});
+
+(async () => {
+    if (location.hash.length > 1) {
+        const raw = await decodeState(location.hash.slice(1));
+        if (raw) {
+            try {
+                const initial = JSON.parse(raw);
+                state = {
+                    d: typeof initial.d === 'string' ? initial.d : '',
+                    s: Number.isInteger(initial.s) ? initial.s : 200,
+                    h: Array.isArray(initial.h)
+                        ? initial.h.filter(Array.isArray).map((p) => [String(p[0] ?? ''), String(p[1] ?? '')])
+                        : [],
+                    b: typeof initial.b === 'string' ? initial.b : '',
+                };
+            } catch {}
+        }
+    }
+    render();
+})();
+
+// Skill link href: derive '<path>.md' from current URL. Index ('/') has no
+// skill .md and falls back to the aggregate llms.txt; everything else maps
+// `/<slug>` -> `/<slug>.md`.
+{
+    const skillLinkEl = document.getElementById('skillLink');
+    if (skillLinkEl) {
+        const p = location.pathname;
+        skillLinkEl.href = (p === '/' || p === '') ? '/llms.txt' : p.replace(/\/$/, '') + '.md';
+    }
+}
+
+(() => {
+    const root = document.documentElement;
+    const setTheme = (t) => {
+        root.setAttribute('data-theme', t);
+        try { localStorage.setItem('su-tool-theme', t); } catch {}
+    };
+    els.themeToggle.addEventListener('click', () => {
+        setTheme(root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+    });
+    try {
+        const saved = localStorage.getItem('su-tool-theme');
+        if (saved) setTheme(saved);
+        else if (window.matchMedia('(prefers-color-scheme: light)').matches) setTheme('light');
+    } catch {}
+})();
+
+// Mirror :user-invalid into aria-invalid on blur so screen readers announce
+// the same error state the CSS reveals. See dev/tools/shared/guides/components.md → "Form validation feedback".
+for (const i of document.querySelectorAll('input[required], input[type=number], input[type=email]')) {
+    i.addEventListener('blur', () => i.setAttribute('aria-invalid', String(!i.matches(':valid'))));
+}
+
+(() => {
+    const dlg = document.getElementById('privacyDialog');
+    document.getElementById('privacyOpen').addEventListener('click', () => dlg.showModal());
+    document.getElementById('privacyClose').addEventListener('click', () => dlg.close());
+})();
+
+// Safari fallback for closedby="any" (Newly Baseline elsewhere; limited in Safari as of Q2 2026).
+if (!('closedBy' in HTMLDialogElement.prototype)) {
+    for (const dlg of document.querySelectorAll('dialog.su-dialog')) {
+        dlg.addEventListener('click', (e) => {
+            if (e.target !== dlg) return;
+            const r = dlg.getBoundingClientRect();
+            if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) dlg.close();
+        });
+    }
+}
+</script>
+</body>
+</html>

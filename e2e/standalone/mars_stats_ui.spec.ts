@@ -65,9 +65,9 @@ test.beforeAll(() => {
     input: `
       import { readFileSync } from 'node:fs';
       import { minify } from 'html-minifier-terser';
-      import { MINIFY_OPTIONS } from './dev/tools/deploy.ts';
-      import { inlineSharedAssets } from './dev/tools/shared-assets.ts';
-      const source = readFileSync('dev/tools/mars-stats.html', 'utf8')
+      import { MINIFY_OPTIONS } from './dev/tools/shared/deploy.ts';
+      import { inlineSharedAssets } from './dev/tools/shared/assets.ts';
+      const source = readFileSync('dev/tools/mars-stats/index.html', 'utf8')
         .replaceAll('{{TOOLS_HOST}}', 'tools.secutils.dev').replaceAll('{{MARS_HOST}}', 'mars.secutils.dev');
       process.stdout.write(await minify(inlineSharedAssets(source), MINIFY_OPTIONS));
     `,

@@ -1,6 +1,6 @@
 /**
  * Structural smoke test for the `@su:responder-script` short-link block shared by
- * `md.html` and `mars.html` (MARS keeps its own copy, in its own responder KV).
+ * `md/index.html` and `mars/index.html` (MARS keeps its own copy, in its own responder KV).
  *
  * Extracts the responder script from each file in `dev/tools/`, runs it under `node:vm` with
  * stubbed `Deno.core` + `globalThis.secutils` (an in-memory KV store and a real SHA-256),
@@ -101,7 +101,7 @@ const post = (blob: string, extra: Partial<ScriptContext> = {}, query: Record<st
   ...extra,
 });
 
-for (const file of ['md.html', 'mars.html'])
+for (const file of ['md/index.html', 'mars/index.html'])
   test.describe(`${file} @su:responder-script`, () => {
     const html = readFileSync(join(TOOLS_DIR, file), 'utf8');
     const script = html.match(/<!--\s*@su:responder-script\s*([\s\S]*?)-->/)![1];

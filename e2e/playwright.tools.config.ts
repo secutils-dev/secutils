@@ -7,7 +7,7 @@ process.env.MARS_TEST_RUN_ID ??= randomUUID();
 // Playwright config for the `e2e/tools/` suite. Two responsibilities:
 //
 //  1. `og.spec.ts`        - local-only, captures 1200x630 PNGs from
-//                           `dev/tools/og-template.html` (no app stack required).
+//                           `dev/tools/shared/og-template.html` (no app stack required).
 //  2. `<slug>.spec.ts`,
 //     `registry.spec.ts`  - hit the deployed `tools.secutils.dev` (env-overridable
 //                           via `BASE_URL`) for SEO + functional + skill assertions.

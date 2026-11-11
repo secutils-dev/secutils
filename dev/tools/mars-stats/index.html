@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<!-- @su:responder-script
+// MARS telemetry lives in this responder, never in MARS's short-link store.
+// deploy.ts substitutes identifiers and the view-token hash in this script only.
+// GET ?action=stats | history: dashboard Bearer token. POST ?action=sample: account API key.
+(async () => {
+  const action = context.query?.action;
+  if (!action && (context.method || 'GET') === 'GET') return null;
+  const json = (statusCode, body) => ({
+    statusCode, body: JSON.stringify(body), skipRequest: true,
+    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex, nofollow' },
+  });
+  const encode = (text) => {
+    const a = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+    const bytes = Deno.core.encode(text);
+    let out = '';
+    for (let i = 0; i < bytes.length; i += 3) {
+      const n = (bytes[i] << 16) | ((bytes[i + 1] || 0) << 8) | (bytes[i + 2] || 0);
+      out += a[n >>> 18] + a[(n >>> 12) & 63];
+      if (i + 1 < bytes.length) out += a[(n >>> 6) & 63];
+      if (i + 2 < bytes.length) out += a[n & 63];
+    }
+    return out;
+  };
+  const decode = (text) => {
+    const a = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+    const bytes = new Uint8Array(Math.floor(text.length * 3 / 4));
+    for (let i = 0, j = 0; i < text.length; i += 4) {
+      const n = (a.indexOf(text[i]) << 18) | (a.indexOf(text[i + 1]) << 12)
+        | ((a.indexOf(text[i + 2]) & 63) << 6) | (a.indexOf(text[i + 3]) & 63);
+      if (j < bytes.length) bytes[j++] = (n >>> 16) & 255;
+      if (j < bytes.length) bytes[j++] = (n >>> 8) & 255;
+      if (j < bytes.length) bytes[j++] = n & 255;
+    }
+    return JSON.parse(Deno.core.decode(bytes));
+  };
+  const keyFor = (at) => `h/${String(at).padStart(12, '0')}`;
+  const columns = ['at', 'entries', 'totalBytes', 'maxEntries', 'maxTotalBytes', 'oldestCreatedAt',
+    'nextExpiresAt', 'settingsSize', 'requestCount', 'lastRequestedAt', 'updatedAt', 'syncReservedBytes', 'syncCapacityBytes', 'syncCollections'];
+  let authenticated = false;
+  let stage = 'authentication';
+  const failure = (code, failedStage, retryable = true) => ({ code, stage: failedStage, retryable });
+  try {
+    if (!['stats', 'history', 'sample'].includes(action)) return json(400, { error: 'Unknown action.' });
+    const method = (context.method || 'GET').toUpperCase();
+    if (method !== (action === 'sample' ? 'POST' : 'GET')) return json(405, { error: 'Method not allowed.' });
+    const token = (context.headers?.authorization || '').replace(/^Bearer /, '');
+    const apiKey = context.secrets?.MARS_STATS_API_KEY;
+    if (action === 'sample') {
+      if (!apiKey || token !== apiKey) return json(401, { error: 'Collector authentication required.' });
+    } else if (!/^[A-Za-z0-9_-]{43}$/.test(token)
+      || await secutils.crypto.sha256(token) !== '{{MARS_STATS_VIEW_TOKEN_HASH}}') {
+      return json(401, { error: 'Open your private dashboard link to view statistics.' });
+    }
+    authenticated = true;
+    const now = Math.floor(Date.now() / 1000);
+    const retentionSec = 30 * 86400;
+    const intervalSec = 1800;
+    if (action === 'history') {
+      stage = 'history-read';
+      const rawSince = context.query?.since;
+      const after = context.query?.after;
+      if ((rawSince !== undefined && !/^\d{1,12}$/.test(rawSince)) || (after && !/^h\/\d{12}$/.test(after))) {
+        return json(400, { error: 'Invalid history range or cursor.' });
+      }
+      const since = Math.max(now - retentionSec, Math.min(now, Number(rawSince ?? now - 7 * 86400)));
+      const page = await secutils.kv.list({ prefix: 'h/', after: after && after > keyFor(since - 1) ? after : keyFor(since - 1), limit: 1000 });
+      return json(200, { columns, points: page.entries.map((e) => decode(e.value)),
+        cursor: page.entries.length === 1000 ? page.cursor : null, retentionSec, intervalSec });
+    }
+    if (action === 'stats') {
+      stage = 'cache-read';
+      const cached = await secutils.kv.get('latest');
+      if (cached) {
+        const current = decode(cached);
+        if (current.intervalSec === intervalSec) return json(200, current);
+      }
+    }
+    stage = 'sample-read';
+    const bucketKey = keyFor(Math.floor(now / intervalSec) * intervalSec);
+    if (action === 'sample' && await secutils.kv.get(bucketKey)) return json(200, { sampled: false, bucket: bucketKey });
+    if (!apiKey) return json(503, { error: 'The responder needs access to the MARS_STATS_API_KEY secret.' });
+    const id = '{{MARS_RESPONDER_ID}}';
+    const get = async (path, endpoint, options = {}) => {
+      let response;
+      try {
+        response = await Deno.core.ops.op_proxy_request({ url: (options.origin || '{{SECUTILS_API_ORIGIN}}') + path,
+          method: options.method || 'GET', body: options.body,
+          headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json', ...(options.method === 'POST' ? { 'Content-Type': 'application/json' } : {}) }, timeout: 10000 });
+      } catch (error) {
+        // Classify failures without exposing raw URLs, response bodies, credentials, or error text.
+        const message = String(error?.message ?? '');
+        const code = /non-public address/.test(message) ? 'upstream-url-validation'
+          : /timed out|timeout/i.test(message) ? 'upstream-timeout' : 'upstream-network';
+        throw failure(code, endpoint);
+      }
+      if (response.statusCode !== 200) {
+        throw failure(`upstream-http-${response.statusCode}`, endpoint,
+          [408, 429, 500, 502, 503, 504].includes(response.statusCode));
+      }
+      try { return JSON.parse(Deno.core.decode(new Uint8Array(response.body))); }
+      catch { throw failure('upstream-invalid-json', endpoint, false); }
+    };
+    stage = 'upstream';
+    const [rawStorage, summary] = await Promise.all([
+      get(`/api/webhooks/responders/${id}/_storage`, 'storage-api'),
+      get(`/api/webhooks/responders?q=${id}&pageSize=1`, 'summary-api'),
+    ]);
+    let sync = null;
+    try {
+      const data = await get('/sync/telemetry', 'sync-api', { origin: 'https://{{MARS_HOST}}', method: 'POST', body: Deno.core.encode('{}') });
+      const fields = ['reservedBytes', 'maximumReservedBytes', 'collectionsWithReservations', 'reservedSlots', 'unitBytes'];
+      if (fields.every((key) => Number.isSafeInteger(data[key]) && data[key] >= 0)) sync = Object.fromEntries(fields.map((key) => [key, data[key]]));
+    } catch {}
+    if (action === 'sample' && sync) {
+      try {
+        const saved = await secutils.kv.get('sync-maintenance-cursor');
+        let after = saved ? decode(saved) : null;
+        for (let page = 0; page < 10; page++) {
+          const result = await get('/sync/maintenance', 'sync-maintenance', { origin: 'https://{{MARS_HOST}}', method: 'POST', body: Deno.core.encode(JSON.stringify({ after })) });
+          after = result.complete ? null : result.cursor;
+          if (result.complete) break;
+        }
+        await secutils.kv.set('sync-maintenance-cursor', encode(JSON.stringify(after)), { ttlSec: retentionSec });
+      } catch { sync.maintenanceUnavailable = true; }
+    }
+    stage = 'storage-response';
+    const s = {};
+    for (const name of ['entries', 'totalBytes', 'maxEntries', 'maxTotalBytes']) {
+      if (!Number.isSafeInteger(rawStorage[name]) || rawStorage[name] < 0) throw new Error('schema');
+      s[name] = rawStorage[name];
+    }
+    for (const name of ['oldestCreatedAt', 'nextExpiresAt']) {
+      if (rawStorage[name] != null && (!Number.isSafeInteger(rawStorage[name]) || rawStorage[name] < 0)) throw new Error('schema');
+      s[name] = rawStorage[name] ?? null;
+    }
+    stage = 'summary-response';
+    const r = summary.items?.find((item) => item.id === id);
+    if (!r || !Number.isSafeInteger(r.settingsSize) || !Number.isSafeInteger(r.stats?.requestCount)) throw new Error('schema');
+    const current = { at: now, storage: s, responder: { enabled: r.enabled, settingsSize: r.settingsSize,
+      requestsToTrack: r.settings.requestsToTrack, requestCount: r.stats.requestCount,
+      lastRequestedAt: r.stats.lastRequestedAt ?? null, updatedAt: r.updatedAt }, intervalSec, retentionSec, sync };
+    const point = [now, s.entries, s.totalBytes, s.maxEntries, s.maxTotalBytes, s.oldestCreatedAt, s.nextExpiresAt,
+      r.settingsSize, r.stats.requestCount, r.stats.lastRequestedAt ?? null, r.updatedAt,
+      sync?.reservedBytes ?? null, sync?.maximumReservedBytes ?? null, sync?.collectionsWithReservations ?? null];
+    // One immutable sample per thirty-minute bucket, with expiry, bounds history and avoids lost updates.
+    stage = 'snapshot-write';
+    await secutils.kv.set(bucketKey, encode(JSON.stringify(point)), { ifAbsent: true, ttlSec: retentionSec });
+    // Cache failure must not turn a successfully stored measurement into a failed collection.
+    try {
+      const cached = encode(JSON.stringify(current));
+      await Promise.all([
+        secutils.kv.set('latest', cached, { ttlSec: 60 }),
+        secutils.kv.set('last-good', cached, { ttlSec: retentionSec }),
+      ]);
+    } catch {}
+    return json(200, action === 'sample' ? { sampled: true, at: now } : current);
+  } catch (error) {
+    const known = ['upstream-url-validation', 'upstream-timeout', 'upstream-network', 'upstream-invalid-json'];
+    const detail = known.includes(error?.code) || /^upstream-http-\d{3}$/.test(error?.code ?? '')
+      ? error : failure(stage === 'snapshot-write' ? 'storage-write-failed' : 'statistics-read-failed', stage, false);
+    const body = { error: `Statistics are unavailable (${detail.stage}: ${detail.code}). Retry the request.`, ...detail };
+    if (action === 'stats' && authenticated) {
+      try {
+        const lastGood = await secutils.kv.get('last-good');
+        if (lastGood) return json(200, { ...decode(lastGood), stale: true, failure: detail });
+      } catch {}
+    }
+    // Collector requests never receive stale data as a successful sample: Retrack can retry the failure.
+    return json(stage === 'snapshot-write' ? 507 : 502, body);
+  }
+})();
+-->
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="dark light">
+    <meta name="referrer" content="no-referrer">
+    <title>MARS Observatory | Secutils.dev</title>
+    <meta name="description" content="A private MARS storage dashboard: live capacity, entry counts, expiration, and thirty days of usage history. API credentials stay server-side.">
+    <meta name="robots" content="noindex, nofollow">
+    <link rel="canonical" href="https://{{TOOLS_HOST}}/mars-stats">
+    <meta name="su-tool-path" content="/mars-stats">
+    <meta name="su-tool-name" content="MARS Observatory">
+    <meta name="su-tool-description" content="Private MARS storage statistics, capacity, expiration, and thirty days of usage history.">
+    <meta name="su-tool-promote" content="false">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Secutils.dev">
+    <meta property="og:title" content="MARS Observatory">
+    <meta property="og:description" content="Private storage telemetry for MARS. Every byte, in perspective.">
+    <meta property="og:url" content="https://{{TOOLS_HOST}}/mars-stats">
+    <meta property="og:image" content="https://secutils.dev/docs/img/og/og-mars-stats.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="MARS Observatory: private storage telemetry.">
+    <meta property="og:locale" content="en_US">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="MARS Observatory">
+    <meta name="twitter:description" content="Private storage telemetry for MARS.">
+    <meta name="twitter:image" content="https://secutils.dev/docs/img/og/og-mars-stats.png">
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"MARS Observatory","url":"https://{{TOOLS_HOST}}/mars-stats","applicationCategory":"DeveloperApplication","operatingSystem":"Any","browserRequirements":"Requires JavaScript","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"publisher":{"@type":"Organization","name":"Secutils.dev","url":"https://secutils.dev"},"sameAs":"https://github.com/secutils-dev/secutils/blob/main/dev/tools/mars-stats/index.html","description":"Private MARS storage statistics and time-series charts."}</script>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='16' fill='%23d43a32'/%3E%3Cpath d='M8 11h10M8 16h16M8 21h8' stroke='%23fffaf4' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E">
+    <meta name="theme-color" content="#0b1628">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=Roboto+Mono:wght@400..700&display=swap" rel="stylesheet">
+    <!-- This private dashboard deliberately runs no analytics or third-party JavaScript. -->
+    <script>
+        (() => {
+            try { document.documentElement.dataset.theme = localStorage.getItem('su-tool-theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'); } catch {}
+        })();
+    </script>
+    <link rel="stylesheet" href="../shared/tokens.css" data-su-style="tokens">
+    <link rel="stylesheet" href="../shared/components.css" data-su-style="components">
+    <link rel="stylesheet" href="../shared/themes/mars.css" data-su-style="mars">
+    <style>
+        body { min-height: 100dvh; }
+        .su-header { position: sticky; top: 0; }
+        .header-crumb { border-left: 1px solid var(--border); margin-left: 12px; padding-left: 16px; color: var(--text-muted); font-size: 12px; }
+        .private-badge, .health { display: inline-flex; align-items: center; gap: 7px; border-radius: 20px; padding: 4px 10px; font-size: 11px; font-weight: 600; background: var(--eui-lightest); color: var(--text-muted); }
+        .private-badge { margin-right: 12px; }
+        .layout { display: grid; grid-template-columns: 208px minmax(0, 1fr); flex: 1; }
+        .sidebar { padding: 26px 12px 16px; border-right: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; gap: 24px; }
+        .eyebrow { font-size: 10px; font-weight: 650; letter-spacing: .14em; text-transform: uppercase; color: var(--text-muted); }
+        .sidebar .eyebrow { padding: 0 12px; }
+        .side-nav { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; }
+        .side-nav .btn { justify-content: flex-start; font-size: 12px; height: 36px; gap: 10px; }
+        .side-nav .active { background: var(--brand-select); color: var(--brand-text); }
+        main { width: 100%; max-width: 1540px; margin: auto; padding: 32px clamp(16px, 3vw, 44px); }
+        h1 { margin: 8px 0; font-size: clamp(25px, 3vw, 34px); letter-spacing: -.04em; line-height: 1.2; color: var(--eui-heading); text-wrap: balance; }
+        h2 { font-size: 14px; color: var(--eui-heading); font-weight: 600; }
+        .hero { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px; margin-bottom: 28px; }
+        .hero p { font-size: 12px; color: var(--text-muted); }
+        .toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+        .toolbar .btn { font-size: 12px; }
+        .health { background: color-mix(in srgb, var(--success) 10%, var(--surface)); color: var(--success); }
+        .health::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+        .health[data-state="error"] { background: var(--eui-danger-bg); color: var(--danger); }
+        .health[data-state="paused"] { background: var(--eui-lightest); color: var(--text-muted); }
+        .health[data-state="stale"] { background: var(--eui-lightest); color: var(--text-muted); }
+        .health[data-state="stale"]::before { background: var(--eui-warning); }
+        .error { padding: 14px 16px; border-left: 3px solid var(--danger); border-radius: var(--radius); background: var(--eui-danger-bg); margin-bottom: 20px; font-size: 12px; }
+        .locked { max-width: 600px; margin: 60px auto; padding: 32px; }
+        .locked h2 { font-size: 22px; margin-bottom: 12px; }
+        .locked p { color: var(--text-muted); margin-bottom: 24px; font-size: 13px; }
+        .locked .input { margin-bottom: 12px; }
+        .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
+        .metric { position: relative; padding: 18px 20px; overflow: hidden; }
+        .metric::before { content: ''; position: absolute; width: 70px; height: 70px; border-radius: 50%; top: -40px; right: -20px; background: var(--brand); opacity: .08; }
+        .metric dt { color: var(--text-muted); font-size: 11px; margin-bottom: 14px; }
+        .metric dd { color: var(--eui-heading); font-size: clamp(22px, 2.5vw, 30px); font-weight: 600; line-height: 1.15; letter-spacing: -.035em; font-variant-numeric: tabular-nums; }
+        .metric small { display: block; font-size: 10px; font-weight: 400; letter-spacing: normal; line-height: 1.5; color: var(--text-muted); margin-top: 12px; }
+        .metric:nth-child(2)::before { background: var(--success); }
+        .two-col { display: grid; grid-template-columns: minmax(0, 2.1fr) minmax(260px, 1fr); gap: 18px; margin-bottom: 18px; }
+        .panel { padding: 22px 24px; min-width: 0; }
+        .panel-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
+        .panel-head p, .panel-note { font-size: 11px; color: var(--text-muted); margin-top: 5px; }
+        .select { width: auto; font-size: 11px; height: 28px; }
+        .range-switch { margin-bottom: 10px; }
+        .chart { width: 100%; height: 224px; display: block; overflow: visible; }
+        .chart text { fill: var(--text-muted); font: 11px var(--font); }
+        .chart .grid-line { stroke: var(--border); stroke-dasharray: 3 5; }
+        .chart .series { fill: none; stroke: var(--brand); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+        .chart .gap-bridge { fill: none; stroke: var(--brand); stroke-width: 2; stroke-dasharray: 5 5; }
+        .chart .gap-band { fill: var(--eui-lightest); opacity: .6; }
+        #entriesChart .series, #entriesChart .gap-bridge { stroke: var(--success); }
+        .chart-empty { fill: var(--text-muted); }
+        .chart-readout { min-height: 18px; font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; margin: 10px 0; }
+        .inspect { display: flex; align-items: center; gap: 10px; font-size: 10px; color: var(--text-muted); }
+        .inspect input { flex: 1; min-width: 0; }
+        .capacity-visual { display: flex; align-items: center; justify-content: center; position: relative; margin: 12px 0 18px; }
+        .capacity-ring { width: 168px; height: 168px; transform: rotate(-90deg); }
+        .ring-track { fill: none; stroke: var(--eui-lightest); stroke-width: 10; }
+        .ring-value { fill: none; stroke: var(--brand); stroke-width: 10; stroke-linecap: butt; }
+        .ring-label { position: absolute; text-align: center; }
+        .ring-label strong { display: block; font-size: 25px; font-weight: 600; letter-spacing: -.03em; color: var(--eui-heading); }
+        .ring-label span { color: var(--text-muted); font-size: 11px; }
+        .capacity-row { display: flex; justify-content: space-between; gap: 12px; font-size: 11px; margin: 10px 0; }
+        .capacity-row span { color: var(--text-muted); }
+        .capacity-row strong { font-weight: 500; font-variant-numeric: tabular-nums; }
+        .quota-bar { height: 4px; border-radius: 3px; background: var(--eui-lightest); overflow: hidden; margin: 12px 0; }
+        .quota-bar div { height: 100%; background: var(--success); }
+        .lifecycle { display: grid; gap: 18px; }
+        .lifecycle dt { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 11px; margin-bottom: 4px; }
+        .lifecycle dd { font-size: 13px; font-weight: 500; padding-left: 24px; font-variant-numeric: tabular-nums; }
+        .lifecycle small { display: block; color: var(--text-muted); font-size: 10px; margin-top: 3px; }
+        .note { font-size: 11px; color: var(--text-muted); line-height: 1.65; margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--border); }
+        .history-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
+        .table-wrap { overflow: auto; max-height: 420px; margin-top: 16px; }
+        table { width: 100%; border-collapse: collapse; font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+        caption { text-align: left; color: var(--text-muted); margin-bottom: 12px; }
+        th, td { padding: 10px 12px; text-align: right; border-bottom: 1px solid var(--border); }
+        th { font-weight: 500; color: var(--text-muted); }
+        th:first-child, td:first-child { text-align: left; }
+        tbody tr { content-visibility: auto; contain-intrinsic-size: auto 36px; }
+        summary { cursor: pointer; color: var(--brand-text); font-size: 12px; }
+        .bottom-note { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; font-size: 10px; color: var(--text-muted); margin: 20px 0; }
+        .skip-link { position: fixed; top: -80px; left: 16px; z-index: 250; padding: 10px 14px; background: var(--surface); color: var(--brand-text); }
+        .skip-link:focus { top: 8px; }
+        @media (max-width: 1100px) { .layout { grid-template-columns: 1fr; } .sidebar { display: none; } }
+        @media (max-width: 760px) { .two-col { grid-template-columns: 1fr; } .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .panel { padding: 18px; } .header-crumb { display: none; } main { padding-top: 24px; } }
+        @media (max-width: 420px) { .private-badge { display: none; } .metric { padding: 16px; } .metrics { gap: 10px; } }
+    </style>
+</head>
+<body>
+    <noscript><p class="su-noscript"><strong>MARS Observatory</strong> shows private MARS storage statistics. Enable JavaScript to view charts. <a href="https://secutils.dev">Secutils.dev</a></p></noscript>
+    <a class="skip-link" href="#main">Skip to statistics</a>
+    <header class="su-header">
+        <div class="su-header-section">
+            <a class="su-app-brand" href="https://{{MARS_HOST}}/">
+                <svg class="su-app-icon" viewBox="84 36 152 152" width="32" height="32" aria-hidden="true">
+                    <defs><linearGradient id="mars-mark-g" x1=".15" y1="0" x2=".8" y2="1"><stop offset="0" stop-color="#ff6240"/><stop offset=".55" stop-color="#d43a32"/><stop offset="1" stop-color="#8b202d"/></linearGradient><clipPath id="mars-mark-c"><circle cx="160" cy="112" r="76"/></clipPath></defs>
+                    <circle cx="160" cy="112" r="76" fill="url(#mars-mark-g)"/>
+                    <g fill="#fffaf4"><rect x="110" y="78" width="68" height="10" rx="5"/><rect x="110" y="102" width="96" height="10" rx="5"/><rect x="110" y="126" width="53" height="10" rx="5"/></g>
+                    <g clip-path="url(#mars-mark-c)"><path d="M158 187 C170 164 188 153 207 153 C225 153 237 168 242 188 L242 207 L145 207 Z" fill="#d84a38"/><ellipse cx="207" cy="177" rx="9" ry="13" transform="rotate(-25 207 177)" fill="#a92a30" opacity=".6"/><ellipse cx="178" cy="191" rx="5" ry="3.5" fill="#a92a30" opacity=".55"/></g>
+                </svg>
+                <span class="su-app-brand-copy"><span class="su-app-name">MARS</span><span class="su-app-publisher">Secutils.dev</span></span>
+            </a>
+            <span class="header-crumb">Observatory</span>
+        </div>
+        <div class="su-header-section">
+            <span class="private-badge"><span data-icon="lock"></span>Private</span>
+            <a id="skillLink" class="skill-link" href="#" target="_blank" rel="noopener" aria-label="View AI agent skill (opens in new tab)"><span data-icon="sparkles"></span><span>Skill</span></a>
+            <button class="su-header-btn theme-toggle" id="themeToggle" type="button" aria-label="Toggle theme"><span class="icon-sun" data-icon="sun"></span><span class="icon-moon" data-icon="moon"></span></button>
+        </div>
+    </header>
+    <div class="layout">
+        <aside class="sidebar" aria-label="Observatory">
+            <div><div class="eyebrow">Mission control</div><nav class="side-nav" aria-label="Statistics sections">
+                <button class="btn btn-empty active" type="button" data-section="overview"><span data-icon="home"></span>Overview</button>
+                <button class="btn btn-empty" type="button" data-section="trends"><span data-icon="chartLine"></span>Usage trends</button>
+                <button class="btn btn-empty" type="button" data-section="history"><span data-icon="clock"></span>Sample history</button>
+            </nav></div>
+        </aside>
+        <main id="main" tabindex="-1">
+            <section class="hero" id="overview">
+                <div><div class="eyebrow">Storage telemetry / MARS</div><h1>MARS, in perspective.</h1><p>Encrypted sharing storage. Every byte, every entry, over time.</p></div>
+                <div class="toolbar"><span class="health" id="health" data-state="paused">Not connected</span><button id="liveToggle" class="btn btn-sm" type="button" aria-pressed="true">Live updates</button><button id="refreshBtn" class="btn btn-primary btn-sm" type="button" disabled><span data-icon="refresh"></span>Refresh</button></div>
+            </section>
+            <p id="error" class="error" role="alert" hidden></p>
+            <section id="locked" class="locked su-panel">
+                <h2>Your private observatory</h2><p>Open the private link from your deployment settings, or enter its dashboard access token. This token is not your account API key.</p>
+                <form id="unlockForm"><label class="field-label" for="accessToken">Dashboard access token</label><input class="input input-mono" type="password" id="accessToken" required pattern="[A-Za-z0-9_-]{43}" autocomplete="off" spellcheck="false"><button class="btn btn-primary" type="submit"><span data-icon="lock"></span>Open observatory</button></form>
+            </section>
+            <div id="dashboard" hidden>
+                <dl class="metrics">
+                    <div class="metric su-panel"><dt>Stored bytes</dt><dd><span id="storedBytes">—</span><small id="storedExact">Live entry values only</small></dd></div>
+                    <div class="metric su-panel"><dt>Live entries</dt><dd><span id="entryCount">—</span><small id="entryQuota">Encrypted links and supporting keys</small></dd></div>
+                    <div class="metric su-panel"><dt>Average entry size</dt><dd><span id="averageBytes">—</span><small>All live entries, not just links</small></dd></div>
+                    <div class="metric su-panel"><dt>Deployment footprint</dt><dd><span id="deploymentBytes">—</span><small>Serialized settings, body, and script</small></dd></div>
+                </dl>
+                <section class="panel su-panel" id="syncCapacityPanel"><div class="panel-head"><div><h2>Sync capacity</h2><p>Encrypted sync and live-link allocation</p></div><span data-icon="refresh"></span></div>
+                    <div class="capacity-row"><span>Reserved sync capacity</span><strong id="syncReserved">—</strong></div>
+                    <div class="capacity-row"><span>Sync allocation limit</span><strong id="syncCapacity">—</strong></div>
+                    <div class="capacity-row"><span>Collections with reservations</span><strong id="syncCollections">—</strong></div>
+                    <p class="note" id="syncCapacityNote">Sync telemetry is not available yet.</p>
+                </section>
+                <div class="two-col" id="trends">
+                    <section class="panel su-panel">
+                        <div class="panel-head"><div><h2>Storage over time</h2><p id="storageSummary">History starts with the first sample.</p></div><label><span class="sr-only">Storage chart metric</span><select id="metric" class="select"><option value="totalBytes">Stored bytes</option><option value="averageBytes">Average entry size</option></select></label></div>
+                        <div class="view-switch range-switch" role="group" aria-label="History period"><button type="button" class="view-btn" data-hours="1" aria-pressed="false">1h</button><button type="button" class="view-btn" data-hours="24" aria-pressed="false">24h</button><button type="button" class="view-btn active" data-hours="168" aria-pressed="true">7d</button><button type="button" class="view-btn" data-hours="720" aria-pressed="false">30d</button></div>
+                        <figure><svg id="storageChart" class="chart" viewBox="0 0 680 224" role="img" aria-labelledby="storageChartTitle"><title id="storageChartTitle">Stored bytes over time</title></svg><figcaption class="panel-note">Thirty-minute snapshots. Dashed lines bridge missing samples. Shaded bands have no measurements.</figcaption></figure>
+                        <p id="readout" class="chart-readout">No samples yet.</p>
+                        <label class="inspect" for="sampleSlider">Inspect sample<input type="range" id="sampleSlider" min="0" max="0" value="0" disabled></label>
+                    </section>
+                    <section class="panel su-panel"><div class="panel-head"><div><h2>Room to grow</h2><p>Current storage capacity</p></div><span data-icon="storage"></span></div>
+                        <div class="capacity-visual"><svg class="capacity-ring" viewBox="0 0 180 180" aria-hidden="true"><circle class="ring-track" cx="90" cy="90" r="72"/><circle id="capacityArc" class="ring-value" cx="90" cy="90" r="72" pathLength="100" stroke-dasharray="0 100"/></svg><div class="ring-label"><strong id="usedPercent">—</strong><span>of byte capacity</span></div></div>
+                        <div class="capacity-row"><span>Used</span><strong id="capacityUsed">—</strong></div><div class="capacity-row"><span>Available</span><strong id="capacityFree">—</strong></div><div class="capacity-row"><span>Byte limit</span><strong id="capacityMax">—</strong></div>
+                        <div class="note"><div class="capacity-row"><span>Entry capacity used</span><strong id="entriesPercent">—</strong></div><div class="quota-bar"><div id="entryBar"></div></div><div class="capacity-row"><span>Entries available</span><strong id="entriesFree">—</strong></div></div>
+                    </section>
+                </div>
+                <div class="two-col">
+                    <section class="panel su-panel"><div class="panel-head"><div><h2>Live entry count</h2><p id="entrySummary">Every live key counts toward the quota.</p></div><span data-icon="chartLine"></span></div><figure><svg id="entriesChart" class="chart" viewBox="0 0 680 224" role="img" aria-labelledby="entriesChartTitle"><title id="entriesChartTitle">Live entry count over time</title></svg><figcaption class="panel-note">Includes link payloads, deletion-token hashes, and temporary rate-limit markers.</figcaption></figure></section>
+                    <section class="panel su-panel"><div class="panel-head"><div><h2>Storage lifecycle</h2><p>What stays, what expires</p></div></div><dl class="lifecycle">
+                        <div><dt><span data-icon="clock"></span>Oldest live entry</dt><dd id="oldestEntry">—</dd></div>
+                        <div><dt><span data-icon="calendar"></span>Next expiration</dt><dd id="nextExpiry">—</dd></div>
+                        <div><dt><span data-icon="documents"></span>Retained request history</dt><dd id="retainedRequests">—</dd></div>
+                        <div><dt><span data-icon="gear"></span>Last deployment update</dt><dd id="lastUpdated">—</dd></div>
+                    </dl><p class="note">Storage totals exclude expired entries immediately. Request history is retained history, not a lifetime request counter. Browser documents are not server storage.</p></section>
+                </div>
+                <section class="panel su-panel" id="history"><div class="history-heading"><div><h2>Behind the charts</h2><p class="panel-note" id="coverage">No history loaded.</p></div><div class="toolbar"><button type="button" class="btn btn-sm" id="exportCsv" disabled><span data-icon="download"></span>Export CSV</button><button type="button" class="btn btn-sm" id="exportJson" disabled><span data-icon="download"></span>Export JSON</button></div></div>
+                    <p class="panel-note" id="extremes"></p><details id="sampleDetails"><summary>View sample data</summary><div class="table-wrap"><table><caption>Latest 100 samples in the selected period. Exports include every loaded sample and quota.</caption><thead><tr><th scope="col">Sample time</th><th scope="col">Bytes</th><th scope="col">Entries</th><th scope="col">Average bytes</th><th scope="col">Byte usage</th><th scope="col">Entry usage</th></tr></thead><tbody id="sampleRows"></tbody></table></div></details>
+                    <p class="note">The storage API exposes entries, total bytes, both quotas, oldest entry, and next expiration. Sync reports reserved capacity separately. Neither source reports individual document sizes, runtime heap usage, or cumulative traffic.</p>
+                </section>
+                <div class="bottom-note"><span id="lastSample">Waiting for a sample.</span><span>Auto-refresh: 60 seconds · Samples: 30 minutes · Retention: 30 days</span></div>
+            </div>
+        </main>
+    </div>
+    <footer class="su-footer"><p>Private MARS telemetry. API credentials stay server-side.</p><p class="su-footer-fineprint"><button type="button" class="su-footer-link" id="privacyFooter">Privacy &amp; data</button></p></footer>
+    <dialog id="privacyDialog" class="su-dialog" closedby="any" aria-labelledby="privacyDialogTitle"><header class="su-dialog-header"><h2 id="privacyDialogTitle">Privacy &amp; data</h2><button type="button" class="su-dialog-close" id="privacyClose" aria-label="Close"><span data-icon="cross"></span></button></header><div class="su-dialog-body">
+        <p><strong>Owner-only statistics.</strong> The dashboard token grants read access to aggregate telemetry only. The token stays in this tab's session storage. The private link carries it in a URL fragment, which the page removes after opening. API requests send it in an Authorization header.</p>
+        <p><strong>Server-side credentials.</strong> MARS, this dashboard, and its sampling tracker can access the selected MARS_STATS_API_KEY secret. The account API key never appears in the page, exports, or history. Request tracking is disabled for this dashboard.</p>
+        <p><strong>Bounded history.</strong> A scheduled API tracker collects one snapshot every thirty minutes, even when this page is closed. Snapshots expire after thirty days. History contains counts, sizes, quotas, and timestamps, not documents, keys, link contents, or visitor identities.</p>
+        <p><strong>No analytics.</strong> This private dashboard runs no analytics and no third-party JavaScript. Fonts load from Google Fonts.</p><p class="su-dialog-fineprint"><a href="https://secutils.dev/privacy" target="_blank" rel="noopener noreferrer">Secutils.dev privacy policy</a></p>
+    </div></dialog>
+    <div id="toast" class="toast" role="status" hidden></div>
+    <script type="module">
+        import { hydrateIcons } from '../shared/icons.js';
+        hydrateIcons();
+        const $ = (id) => document.getElementById(id);
+        const els = Object.fromEntries(['health', 'liveToggle', 'refreshBtn', 'error', 'locked', 'dashboard', 'unlockForm', 'accessToken', 'metric', 'storageChart', 'entriesChart', 'sampleSlider', 'readout', 'exportCsv', 'exportJson', 'sampleDetails', 'sampleRows', 'toast'].map((id) => [id, $(id)]));
+        const root = document.documentElement;
+        const sessionKey = `mars.observatory.token:${location.pathname}`;
+        const integer = new Intl.NumberFormat();
+        const bytes = (n) => {
+            if (n == null) return '—';
+            if (n < 1024) return `${integer.format(Math.round(n))} B`;
+            const i = Math.min(3, Math.floor(Math.log(n) / Math.log(1024)));
+            return `${(n / 1024 ** i).toLocaleString(undefined, { maximumFractionDigits: 2 })} ${['B', 'KiB', 'MiB', 'GiB'][i]}`;
+        };
+        const percent = (n, limit) => limit > 0 ? `${(100 * n / limit).toLocaleString(undefined, { maximumFractionDigits: 4 })}%` : 'No capacity';
+        const date = (at) => at == null ? 'None' : new Date(at * 1000).toLocaleString();
+        const age = (sec) => {
+            const units = [[86400, 'day'], [3600, 'hour'], [60, 'minute'], [1, 'second']];
+            const [scale, unit] = units.find(([n]) => Math.abs(sec) >= n) ?? units.at(-1);
+            const value = Math.round(Math.abs(sec) / scale);
+            return `${value} ${unit}${value === 1 ? '' : 's'}`;
+        };
+        const average = (p) => p.entries ? p.totalBytes / p.entries : 0;
+        const escape = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+        let token = new URLSearchParams(location.hash.slice(1)).get('key') || '';
+        if (token) {
+            try { sessionStorage.setItem(sessionKey, token); } catch {}
+            history.replaceState(null, '', location.pathname + location.search);
+        } else {
+            try { token = sessionStorage.getItem(sessionKey) || ''; } catch {}
+        }
+        let current = null;
+        let points = [];
+        let hours = 168;
+        let enabled = true;
+        let controller = null;
+        let timer = null;
+        let toastTimer;
+        const setText = (id, value) => { $(id).textContent = value; };
+        $('skillLink').href = location.pathname.replace(/\/$/, '') + '.md';
+        $('themeToggle').addEventListener('click', () => {
+            root.dataset.theme = root.dataset.theme === 'dark' ? 'light' : 'dark';
+            try { localStorage.setItem('su-tool-theme', root.dataset.theme); } catch {}
+        });
+        const systemTheme = matchMedia('(prefers-color-scheme: light)');
+        systemTheme.addEventListener('change', (e) => {
+            try { if (localStorage.getItem('su-tool-theme')) return; } catch {}
+            root.dataset.theme = e.matches ? 'light' : 'dark';
+        });
+        $('privacyFooter').addEventListener('click', () => $('privacyDialog').showModal());
+        $('privacyClose').addEventListener('click', () => $('privacyDialog').close());
+        if (!('closedBy' in HTMLDialogElement.prototype)) {
+            $('privacyDialog').addEventListener('click', (e) => {
+                const dlg = $('privacyDialog');
+                if (e.target !== dlg) return;
+                const r = dlg.getBoundingClientRect();
+                if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) dlg.close();
+            });
+        }
+        for (const button of document.querySelectorAll('[data-section]')) button.addEventListener('click', () => {
+            const target = $(button.dataset.section);
+            if (target) target.scrollIntoView({ block: 'start' });
+            for (const b of document.querySelectorAll('[data-section]')) b.classList.toggle('active', b === button);
+        });
+        // Keep the skip link from replacing the credential fragment or adding a state route.
+        document.querySelector('.skip-link').addEventListener('click', (e) => { e.preventDefault(); $('main').focus(); });
+        els.accessToken.addEventListener('blur', () => els.accessToken.setAttribute('aria-invalid', String(!els.accessToken.validity.valid)));
+        const announce = (text) => {
+            els.toast.textContent = text;
+            els.toast.hidden = false;
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => { els.toast.hidden = true; }, 2500);
+        };
+        function reflectHealth(error = false) {
+            const paused = !enabled || document.hidden;
+            els.health.dataset.state = error ? 'error' : paused || !current ? 'paused' : current.stale ? 'stale' : 'live';
+            els.health.textContent = error ? 'Update failed' : !current ? 'Not connected' : paused ? 'Updates paused' : current.stale ? 'Stale data' : current.responder.enabled ? 'Connected' : 'MARS disabled';
+            els.liveToggle.setAttribute('aria-pressed', String(enabled));
+        }
+        function renderCurrent() {
+            const s = current.storage;
+            setText('storedBytes', bytes(s.totalBytes));
+            setText('storedExact', `${integer.format(s.totalBytes)} bytes · ${percent(s.totalBytes, s.maxTotalBytes)} used`);
+            setText('entryCount', integer.format(s.entries));
+            setText('entryQuota', `of ${integer.format(s.maxEntries)} entries · ${percent(s.entries, s.maxEntries)} used`);
+            setText('averageBytes', bytes(average(s)));
+            setText('deploymentBytes', bytes(current.responder.settingsSize));
+            setText('usedPercent', percent(s.totalBytes, s.maxTotalBytes));
+            const usage = s.maxTotalBytes ? Math.min(100, 100 * s.totalBytes / s.maxTotalBytes) : 0;
+            $('capacityArc').setAttribute('stroke-dasharray', `${usage} ${100 - usage}`);
+            // Exact proportions: no rounded cap exaggerates tiny or zero usage.
+            $('capacityArc').style.visibility = usage ? 'visible' : 'hidden';
+            setText('capacityUsed', bytes(s.totalBytes));
+            setText('capacityFree', bytes(Math.max(0, s.maxTotalBytes - s.totalBytes)));
+            setText('capacityMax', bytes(s.maxTotalBytes));
+            setText('entriesPercent', percent(s.entries, s.maxEntries));
+            setText('entriesFree', integer.format(Math.max(0, s.maxEntries - s.entries)));
+            $('entryBar').style.width = `${s.maxEntries ? Math.min(100, 100 * s.entries / s.maxEntries) : 0}%`;
+            setText('oldestEntry', s.oldestCreatedAt == null ? 'No live entries' : `${age(current.at - s.oldestCreatedAt)} old`);
+            $('oldestEntry').title = date(s.oldestCreatedAt);
+            setText('nextExpiry', s.nextExpiresAt == null ? 'No scheduled expiration' : s.nextExpiresAt > current.at ? `In ${age(s.nextExpiresAt - current.at)}` : 'Expiration due');
+            $('nextExpiry').title = date(s.nextExpiresAt);
+            setText('retainedRequests', `${integer.format(current.responder.requestCount)} of ${integer.format(current.responder.requestsToTrack)} retained`);
+            $('retainedRequests').title = `Last retained request: ${date(current.responder.lastRequestedAt)}`;
+            setText('lastUpdated', date(current.responder.updatedAt));
+            setText('lastSample', `Latest statistics: ${date(current.at)}`);
+            setText('syncReserved', current.sync ? bytes(current.sync.reservedBytes) : 'Unavailable');
+            setText('syncCapacity', current.sync ? bytes(current.sync.maximumReservedBytes) : 'Unavailable');
+            setText('syncCollections', current.sync ? integer.format(current.sync.collectionsWithReservations) : 'Unavailable');
+            setText('syncCapacityNote', current.sync ? `Allocation uses ${bytes(current.sync.unitBytes)} units and includes pending writes. It is not actual stored bytes or an active-reader count.${current.sync.maintenanceUnavailable ? ' Last scheduled cleanup failed.' : ' Samples perform bounded checkpoint cleanup.'}` : 'Sync telemetry is unavailable. Storage totals and their history remain available.');
+        }
+        const selectedPoints = () => points.filter((p) => p.at >= Math.floor(Date.now() / 1000) - hours * 3600);
+        const maxSampleGap = () => (current?.intervalSec ?? 1800) * 1.5;
+        const plotRange = (rows) => {
+            const end = Date.now() / 1000;
+            // A new observatory has minutes of history, not seven days. Keep real samples visible.
+            const start = Math.max(end - hours * 3600, Math.min(rows[0]?.at ?? end, end - 3600));
+            return [start, end];
+        };
+        const metricValue = (p, metric) => metric === 'averageBytes' ? average(p) : p[metric];
+        function drawChart(el, rows, metric, title) {
+            const [start, end] = plotRange(rows);
+            const max = Math.max(1, ...rows.map((p) => metricValue(p, metric)));
+            const power = 10 ** Math.floor(Math.log10(max));
+            const top = [1, 2, 5, 10].find((n) => n * power >= max) * power;
+            const x = (at) => 56 + 600 * (at - start) / (end - start);
+            const y = (value) => 178 - 150 * value / top;
+            const format = metric === 'entries' ? (v) => integer.format(Math.round(v)) : bytes;
+            let svg = `<title id="${el.id}Title">${escape(title)}</title><desc>${rows.length} samples. The data table and exports provide numeric values.</desc>`;
+            for (let i = 0; i < 4; i++) {
+                const value = top * i / 3;
+                svg += `<line class="grid-line" x1="56" x2="656" y1="${y(value)}" y2="${y(value)}"/><text x="46" y="${y(value) + 4}" text-anchor="end">${escape(format(value))}</text>`;
+            }
+            for (let i = 0; i < 4; i++) {
+                const at = start + (end - start) * i / 3;
+                const label = new Date(at * 1000).toLocaleString(undefined, end - start <= 86400
+                    ? { hour: '2-digit', minute: '2-digit' }
+                    : { month: 'short', day: 'numeric', ...(end - start <= 3 * 86400 ? { hour: '2-digit', minute: '2-digit' } : {}) });
+                svg += `<text x="${56 + 600 * i / 3}" y="211" text-anchor="${i === 0 ? 'start' : i === 3 ? 'end' : 'middle'}">${escape(label)}</text>`;
+            }
+            const color = metric === 'entries' ? 'var(--success)' : 'var(--brand)';
+            svg += `<defs><linearGradient id="${el.id}Fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${color}" stop-opacity=".22"/><stop offset="1" stop-color="${color}" stop-opacity=".01"/></linearGradient></defs>`;
+            const groups = [];
+            for (const p of rows) {
+                if (!groups.length || p.at - groups.at(-1).at(-1).at > maxSampleGap()) groups.push([]);
+                groups.at(-1).push(p);
+            }
+            for (let i = 1; i < groups.length; i++) {
+                const before = groups[i - 1].at(-1), after = groups[i][0];
+                const label = escape(`No measurements from ${date(before.at)} to ${date(after.at)}. Dashed line connects observed endpoints only.`);
+                svg += `<rect class="gap-band" x="${x(before.at)}" y="22" width="${x(after.at) - x(before.at)}" height="156"><title>${label}</title></rect>`;
+                svg += `<path class="gap-bridge" d="M${x(before.at)},${y(metricValue(before, metric))} L${x(after.at)},${y(metricValue(after, metric))}"><title>${label}</title></path>`;
+            }
+            for (const group of groups) {
+                const line = group.map((p, i) => `${i ? 'L' : 'M'}${x(p.at).toFixed(2)},${y(metricValue(p, metric)).toFixed(2)}`).join(' ');
+                if (group.length > 1) {
+                    svg += `<path d="${line} L${x(group.at(-1).at)},178 L${x(group[0].at)},178 Z" fill="url(#${el.id}Fill)"/><path class="series" d="${line}"/>`;
+                } else svg += `<circle cx="${x(group[0].at)}" cy="${y(metricValue(group[0], metric))}" r="3" fill="${color}"/>`;
+            }
+            if (!rows.length) svg += '<text x="356" y="98" text-anchor="middle">No samples in this period yet.</text>';
+            svg += `<line id="${el.id}Cursor" x1="0" x2="0" y1="22" y2="178" stroke="var(--text-muted)" stroke-dasharray="3 4" visibility="hidden"/>`;
+            el.innerHTML = svg;
+        }
+        function inspect(index) {
+            const rows = selectedPoints();
+            const p = rows[index];
+            if (!p) return;
+            els.sampleSlider.value = String(index);
+            els.readout.textContent = `${date(p.at)} · ${bytes(p.totalBytes)} · ${integer.format(p.entries)} entries · ${bytes(average(p))} average`;
+            for (const el of [els.storageChart, els.entriesChart]) {
+                const cursor = $(`${el.id}Cursor`);
+                const [start, end] = plotRange(rows);
+                const x = 56 + 600 * (p.at - start) / (end - start);
+                cursor.setAttribute('x1', String(x)); cursor.setAttribute('x2', String(x)); cursor.setAttribute('visibility', 'visible');
+            }
+        }
+        function renderTable() {
+            if (!els.sampleDetails.open) return;
+            els.sampleRows.innerHTML = selectedPoints().slice(-100).reverse().map((p) => `<tr><td>${escape(date(p.at))}</td><td>${integer.format(p.totalBytes)}</td><td>${integer.format(p.entries)}</td><td>${average(p).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td><td>${percent(p.totalBytes, p.maxTotalBytes)}</td><td>${percent(p.entries, p.maxEntries)}</td></tr>`).join('');
+        }
+        function renderHistory() {
+            const rows = selectedPoints();
+            drawChart(els.storageChart, rows, els.metric.value, els.metric.selectedOptions[0].textContent + ' over time');
+            drawChart(els.entriesChart, rows, 'entries', 'Live entry count over time');
+            els.sampleSlider.max = String(Math.max(0, rows.length - 1));
+            els.sampleSlider.disabled = !rows.length;
+            els.exportCsv.disabled = els.exportJson.disabled = !rows.length;
+            if (rows.length) inspect(rows.length - 1);
+            else els.readout.textContent = 'No samples in this period.';
+            const first = rows[0], last = rows.at(-1);
+            if (rows.length > 1) {
+                const delta = last.totalBytes - first.totalBytes;
+                setText('storageSummary', `${delta >= 0 ? '+' : '−'}${bytes(Math.abs(delta))} net change across observed samples`);
+                setText('entrySummary', `${last.entries - first.entries >= 0 ? '+' : ''}${integer.format(last.entries - first.entries)} net entries across observed samples`);
+            } else {
+                setText('storageSummary', 'History starts with the first sample. No earlier baseline exists.');
+                setText('entrySummary', 'Waiting for a second snapshot to show change.');
+            }
+            const gaps = rows.slice(1).filter((p, i) => p.at - rows[i].at > maxSampleGap()).length;
+            setText('coverage', `${integer.format(rows.length)} samples${first ? ` · ${date(first.at)} to ${date(last.at)}` : ''} · ${gaps} collection gaps${gaps ? ' (dashed bridges, not measurements)' : ''}`);
+            setText('extremes', rows.length ? `Observed storage: ${bytes(Math.min(...rows.map((p) => p.totalBytes)))} min / ${bytes(Math.max(...rows.map((p) => p.totalBytes)))} peak. Peak entries: ${integer.format(Math.max(...rows.map((p) => p.entries)))}.` : 'The collector cannot reconstruct usage before monitoring began.');
+            renderTable();
+        }
+        for (const el of [els.storageChart, els.entriesChart]) el.addEventListener('pointermove', (e) => {
+            const rows = selectedPoints();
+            if (!rows.length) return;
+            const r = el.getBoundingClientRect();
+            const [start, end] = plotRange(rows);
+            const at = start + ((e.clientX - r.left) * 680 / r.width - 56) / 600 * (end - start);
+            let nearest = 0;
+            for (let i = 1; i < rows.length; i++) if (Math.abs(rows[i].at - at) < Math.abs(rows[nearest].at - at)) nearest = i;
+            inspect(nearest);
+            const next = rows.findIndex((p) => p.at > at);
+            if (next > 0 && rows[next].at - rows[next - 1].at > maxSampleGap()) {
+                els.readout.textContent = `No measurements between ${date(rows[next - 1].at)} and ${date(rows[next].at)}. Dashed line connects observed endpoints only.`;
+            }
+        });
+        els.sampleSlider.addEventListener('input', () => inspect(Number(els.sampleSlider.value)));
+        els.metric.addEventListener('change', renderHistory);
+        els.sampleDetails.addEventListener('toggle', renderTable);
+        const stop = () => {
+            clearTimeout(timer); timer = null; controller?.abort(); controller = null;
+            els.refreshBtn.disabled = !token;
+            els.dashboard.setAttribute('aria-busy', 'false');
+        };
+        async function refresh() {
+            if (!token || document.hidden || controller) return;
+            clearTimeout(timer);
+            const request = new AbortController();
+            controller = request;
+            els.refreshBtn.disabled = true;
+            els.dashboard.setAttribute('aria-busy', 'true');
+            const signal = AbortSignal.any([request.signal, AbortSignal.timeout(20000)]);
+            const get = async (params) => {
+                const url = new URL(location.pathname, location.origin);
+                url.search = new URLSearchParams(params).toString();
+                const response = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }, cache: 'no-store', credentials: 'omit', signal });
+                const data = await response.json();
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        token = '';
+                        try { sessionStorage.removeItem(sessionKey); } catch {}
+                        current = null; points = [];
+                        els.locked.hidden = false; els.dashboard.hidden = true;
+                    }
+                    throw new Error(data.error || 'The statistics request failed.');
+                }
+                return data;
+            };
+            try {
+                let statsError = null;
+                try {
+                    const data = await get({ action: 'stats' });
+                    if (request.signal.aborted) return;
+                    current = data;
+                    renderCurrent();
+                } catch (error) {
+                    if (!token || request.signal.aborted) throw error;
+                    statsError = error;
+                }
+                if (request.signal.aborted) return;
+                const since = Math.floor(Date.now() / 1000) - hours * 3600;
+                let cursor;
+                const loaded = [];
+                const historySince = Math.max(since, points.at(-1)?.at - 1 || since);
+                for (let page = 0; page < 10; page++) {
+                    const history = await get({ action: 'history', since: String(historySince), ...(cursor ? { after: cursor } : {}) });
+                    loaded.push(...history.points.map((row) => Object.fromEntries(history.columns.map((key, i) => [key, row[i]]))));
+                    if (!history.cursor) break;
+                    if (history.cursor === cursor || page === 9) throw new Error('History pagination did not finish. Refresh to retry.');
+                    cursor = history.cursor;
+                }
+                if (request.signal.aborted) return;
+                points = [...new Map([...points, ...loaded].filter((p) => p.at >= since).map((p) => [p.at, p])).values()].sort((a, b) => a.at - b.at);
+                els.locked.hidden = true; els.dashboard.hidden = false;
+                renderHistory();
+                els.error.hidden = !statsError && !current?.stale;
+                if (statsError) els.error.textContent = `${statsError.message} Showing available measured history.`;
+                else if (current?.stale) els.error.textContent = `Live statistics are unavailable (${current.failure.stage}: ${current.failure.code}). Showing the last successful snapshot from ${date(current.at)}.`;
+                reflectHealth(Boolean(statsError));
+            } catch (e) {
+                if (!request.signal.aborted) {
+                    els.error.textContent = `${e.message} Existing charts show the last successful data.`;
+                    els.error.hidden = false;
+                    reflectHealth(true);
+                }
+            } finally {
+                if (controller === request) {
+                    controller = null;
+                    els.refreshBtn.disabled = !token;
+                    els.dashboard.setAttribute('aria-busy', 'false');
+                    if (enabled && token && !document.hidden) timer = setTimeout(refresh, 60000);
+                }
+            }
+        }
+        els.unlockForm.addEventListener('submit', (e) => {
+            e.preventDefault(); stop(); token = els.accessToken.value.trim(); els.accessToken.value = '';
+            try { sessionStorage.setItem(sessionKey, token); } catch {}
+            refresh();
+        });
+        els.refreshBtn.addEventListener('click', refresh);
+        els.liveToggle.addEventListener('click', () => { enabled = !enabled; stop(); reflectHealth(); if (enabled) refresh(); });
+        for (const b of document.querySelectorAll('[data-hours]')) b.addEventListener('click', () => {
+            stop(); hours = Number(b.dataset.hours); points = [];
+            for (const button of document.querySelectorAll('[data-hours]')) { button.classList.toggle('active', button === b); button.setAttribute('aria-pressed', String(button === b)); }
+            renderHistory(); refresh();
+        });
+        // Intent is preserved when hidden; requests abort, and resume from the last sample when visible.
+        document.addEventListener('visibilitychange', () => { if (document.hidden) stop(); else if (enabled) refresh(); reflectHealth(); });
+        window.addEventListener('pagehide', stop);
+        window.addEventListener('pageshow', () => { if (enabled) refresh(); });
+        const exportColumns = ['at', 'entries', 'totalBytes', 'maxEntries', 'maxTotalBytes', 'oldestCreatedAt', 'nextExpiresAt', 'settingsSize', 'requestCount', 'lastRequestedAt', 'updatedAt'];
+        function download(format) {
+            const rows = selectedPoints();
+            const text = format === 'json' ? JSON.stringify({ current, intervalSec: current?.intervalSec ?? 1800, retentionSec: 2592000, points: rows }, null, 2)
+                : exportColumns.join(',') + '\n' + rows.map((p) => exportColumns.map((key) => p[key] ?? '').join(',')).join('\n') + '\n';
+            const url = URL.createObjectURL(new Blob([text], { type: format === 'json' ? 'application/json' : 'text/csv;charset=utf-8' }));
+            const link = document.createElement('a'); link.href = url; link.download = `mars-storage-${new Date().toISOString().slice(0, 10)}.${format}`; link.click();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            announce(`Exported ${integer.format(rows.length)} samples`);
+        }
+        els.exportCsv.addEventListener('click', () => download('csv'));
+        els.exportJson.addEventListener('click', () => download('json'));
+        if (token) refresh();
+    </script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+{
+  "name": "@secutils-dev/liteparse-browser",
+  "version": "0.0.0",
+  "private": true,
+  "suBundle": "liteparse",
+  "type": "module",
+  "description": "Browser-compatible build of @llamaindex/liteparse, inlined into the dev/tools/pdf-extractor/index.html responder by dev/tools/shared/deploy.ts via data-su-bundle=\"liteparse\". Not published.",
+  "scripts": {
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@llamaindex/liteparse": "1.5.3",
+    "tesseract.js": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^6.0.3",
+    "vite": "^8.3.5"
+  }
+}

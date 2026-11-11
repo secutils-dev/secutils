@@ -8,7 +8,7 @@ import { expect, test } from '@playwright/test';
 
 const origin = 'https://tools.secutils.dev';
 const root = join(__dirname, '../..');
-const source = readFileSync(join(root, 'dev/tools/echo.html'), 'utf8');
+const source = readFileSync(join(root, 'dev/tools/echo/index.html'), 'utf8');
 const responder = source.match(/<!--\s*@su:responder-script\s*([\s\S]*?)-->/)![1];
 let html: string;
 
@@ -20,9 +20,9 @@ test.beforeAll(async () => {
     input: `
       import { readFileSync } from 'node:fs';
       import { minify } from 'html-minifier-terser';
-      import { MINIFY_OPTIONS } from './dev/tools/deploy.ts';
-      import { inlineSharedAssets } from './dev/tools/shared-assets.ts';
-      const source = readFileSync('dev/tools/echo.html', 'utf8').replace(/\\{\\{TOOLS_HOST\\}\\}/g, 'tools.secutils.dev');
+      import { MINIFY_OPTIONS } from './dev/tools/shared/deploy.ts';
+      import { inlineSharedAssets } from './dev/tools/shared/assets.ts';
+      const source = readFileSync('dev/tools/echo/index.html', 'utf8').replace(/\\{\\{TOOLS_HOST\\}\\}/g, 'tools.secutils.dev');
       process.stdout.write(await minify(inlineSharedAssets(source), MINIFY_OPTIONS));
     `,
   });
@@ -81,7 +81,7 @@ test('deployed ECHO is self-contained and keeps its state and served mock contra
 test('shared inline app icons preserve their viewport edges and internal clips', async ({ page }) => {
   await page.goto(`${origin}/echo`);
   await expect(page.getByLabel('Header name', { exact: true })).toBeVisible();
-  const mars = readFileSync(join(root, 'dev/tools/mars.html'), 'utf8');
+  const mars = readFileSync(join(root, 'dev/tools/mars/index.html'), 'utf8');
   const mark = mars.match(/<svg class="su-app-icon mars-logo-mark"[\s\S]*?<\/svg>/)![0];
   // Only the shared styles are loaded here, not MARS's app stylesheet.
   await page.locator('img.su-app-icon').evaluate((image, markup) => {

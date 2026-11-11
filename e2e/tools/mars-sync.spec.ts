@@ -16,7 +16,7 @@ const incomingAddress = (name: string, text: string, origin = crypto.randomUUID(
   return `${MARS_BASE_URL}/#${new URLSearchParams({ name, md: encoded.toString('base64url'), o: origin })}`;
 };
 test.use({ baseURL: MARS_BASE_URL });
-const require = createRequire(resolve(process.cwd(), '../dev/tools/js/mars/package.json'));
+const require = createRequire(resolve(process.cwd(), '../dev/tools/mars/package.json'));
 const { zipSync } = require('fflate') as { zipSync(files: Record<string, Uint8Array>): Uint8Array };
 const { build } = require('esbuild') as {
   build(options: Record<string, unknown>): Promise<{ outputFiles: { text: string }[] }>;
@@ -26,7 +26,7 @@ let liveBundle = '';
 let syncBundle = '';
 test.beforeAll(async () => {
   const result = await build({
-    entryPoints: [resolve(process.cwd(), '../dev/tools/js/mars/src/sync/preview-safety.ts')],
+    entryPoints: [resolve(process.cwd(), '../dev/tools/mars/src/sync/preview-safety.ts')],
     bundle: true,
     format: 'iife',
     globalName: 'MARS_SYNC_SAFETY',
@@ -35,7 +35,7 @@ test.beforeAll(async () => {
   safetyBundle = result.outputFiles[0].text;
   liveBundle = (
     await build({
-      entryPoints: [resolve(process.cwd(), '../dev/tools/js/mars/src/sync/live-link.ts')],
+      entryPoints: [resolve(process.cwd(), '../dev/tools/mars/src/sync/live-link.ts')],
       bundle: true,
       format: 'iife',
       globalName: 'MARS_LIVE_LINK',
@@ -44,7 +44,7 @@ test.beforeAll(async () => {
   ).outputFiles[0].text;
   syncBundle = (
     await build({
-      entryPoints: [resolve(process.cwd(), '../dev/tools/js/mars/src/sync/sync-link.ts')],
+      entryPoints: [resolve(process.cwd(), '../dev/tools/mars/src/sync/sync-link.ts')],
       bundle: true,
       format: 'iife',
       globalName: 'MARS_SYNC_LINK',

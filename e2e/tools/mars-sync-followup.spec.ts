@@ -8,7 +8,7 @@ import { test } from './_mars_test';
 
 const baseURL = process.env.MARS_BASE_URL ?? 'http://localhost:7373';
 test.use({ baseURL });
-const require = createRequire(resolve(process.cwd(), '../dev/tools/js/mars/package.json'));
+const require = createRequire(resolve(process.cwd(), '../dev/tools/mars/package.json'));
 const { unzipSync } = require('fflate') as { unzipSync(bytes: Uint8Array): Record<string, Uint8Array> };
 const { zipSync } = require('fflate') as { zipSync(files: Record<string, Uint8Array>): Uint8Array };
 async function clients(browser: Browser, count = 2) {

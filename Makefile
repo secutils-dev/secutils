@@ -262,17 +262,11 @@ perf-report: ## Open the HTML perf viewer. Load .perf/history.jsonl inside it.
 
 ## ---------- Tool Apps ----------
 
-deploy-tools: ## Deploy dev/tools HTML apps to responders (ARGS="jwt-debugger echo" to deploy specific tools; also handles *.skill.md and llms.txt). Bundles under dev/tools/js/ are rebuilt on demand by deploy.ts; use `make tools-bundles` to pre-build them.
-	node --env-file=.env dev/tools/deploy.ts $(ARGS)
+deploy-tools: ## Deploy tool apps and their skills to responders (ARGS="jwt-debugger echo" selects apps). Rebuilds bundles on demand and refreshes discovery indexes.
+	node --env-file=.env dev/tools/shared/deploy.ts $(ARGS)
 
-tools-bundles: ## Pre-build every dev/tools/js/<name>/ sub-package (Vite/Rollup). Idempotent: skips bundles whose dist/ is fresh relative to sources. Optional -- `make deploy-tools` builds on demand too.
-	@set -e; \
-	for d in dev/tools/js/*/; do \
-		name=$$(basename $$d); \
-		echo "tools-bundles: building $$name"; \
-		if [ ! -d $$d/node_modules ]; then npm --prefix $$d ci; fi; \
-		npm --prefix $$d run build; \
-	done
+tools-bundles: ## Pre-build app-local and shared bundle packages. Skips fresh outputs.
+	@node dev/tools/shared/build-bundles.ts
 
 tools-og: ## Regenerate the per-tool 1200x630 OG images (dark + light) into components/secutils-docs/static/img/og/.
 	cd e2e && npx playwright test --config=playwright.tools.config.ts og.spec.ts $(ARGS)
@@ -299,7 +293,7 @@ e2e-tools-test: ## Run the e2e/tools/ Playwright suite against $(BASE_URL) (defa
 tools-check: ## Validate that the promo home Free-tools section matches `<meta name="su-tool-promote">` in dev/tools/. Read-only, no browser.
 	@node scripts/tools-check.ts
 
-tools-verify: ## Pre-deploy checks for dev/tools HTML: inline scripts and responder script parse, minifier accepts the page (ARGS=files, default: all).
+tools-verify: ## Pre-deploy checks for dev/tools HTML: script syntax, minification, and safe inline-script embedding (ARGS=files, default: all).
 	@node scripts/tools-verify.ts $(ARGS)
 
 ## ---------- Docker Cleanup ----------

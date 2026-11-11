@@ -1,6 +1,6 @@
 // EUI icon glyphs (16x16), copied from @elastic/eui/lib/components/icon/svgs, the same
 // source dev/tools already inlines icons from (EUI license: SSPL v1 / Elastic License 2.0).
-// Add glyphs with the procedure in dev/tools/guides/design-system.md.
+// Add glyphs with the procedure in dev/tools/shared/guides/design-system.md.
 export const ICONS = Object.freeze({
     lock: '<path fill-rule="evenodd" d="M4 7V5a4 4 0 1 1 8 0v2h1a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h1Zm1-2a3 3 0 0 1 6 0v2H5V5Zm-2 9V8h10v6H3Z" clip-rule="evenodd"/>',
     chartLine: '<path d="M1 1v13a1 1 0 0 0 1 1h13v-1H2V1H1Z"/><path d="m9.5 9.207 4.854-4.853-.707-.708L9.5 7.793l-2-2-4.854 4.853.708.708L7.5 7.207l2 2Z"/>',

@@ -48,6 +48,13 @@ A handful of focused, no-signup, browser-only tools is hosted at [tools.secutils
 
 The aggregate index of all skills (including specialized ones not listed above) is published at [tools.secutils.dev/llms.txt](https://tools.secutils.dev/llms.txt) following the [llmstxt.org](https://llmstxt.org/) convention. Source HTML for every tool lives in [`dev/tools/`](dev/tools/) (see [`dev/tools/AGENTS.md`](dev/tools/AGENTS.md) for the deploy/SEO recipe).
 
+A tool with one source file uses `dev/tools/<app>.html`.
+An app with a skill, assets, source modules, or a build uses `dev/tools/<app>/index.html`, with its other files there.
+All current tool apps have a companion `SKILL.md`, so they use app directories. The tools index remains `dev/tools/index.html`.
+Shared guides, styles, glyphs, libraries, and deployment helpers live in `dev/tools/shared/`.
+The [source layout guide](dev/tools/shared/guides/platform.md#source-layout) describes discovery and bundle builds.
+Source paths do not change public URLs or responder IDs.
+
 MARS and Markdown Preview support Mermaid zoom and pan in the preview and fullscreen.
 Each diagram has zoom buttons, an actual-size percentage button, and **Fit**.
 Unchanged diagrams retain their views after unrelated block or Source edits in both apps.
@@ -80,14 +87,14 @@ JSON, Outline, and Screenshots do not offer this handoff.
 MARS processes documents locally. Short snapshots, Sync, and Live links use end-to-end-encrypted remote storage without a server-held master key.
 Full snapshot links contain compressed, unencrypted content. The local library and ordinary document exports remain readable.
 MARS keeps self-hosted Plausible analytics, with browser-side URL redaction that excludes queries, fragments, document content, and link secrets.
-The [privacy and analytics notes](dev/tools/js/mars/README.md#privacy-and-analytics) describe key handling and browser-code trust.
+The [privacy and analytics notes](dev/tools/mars/README.md#privacy-and-analytics) describe key handling and browser-code trust.
 
 MARS table controls resize columns proportionally and insert, remove, or reorder rows and columns with mouse, touch, or keyboard.
 Column widths travel in Markdown metadata and survive files, full/short links, HTML, and PDF exports.
 
 ## Private MARS telemetry
 
-`dev/tools/mars-stats.html` provides the owner-only **MARS Observatory** at `/mars-stats` on the tools host.
+`dev/tools/mars-stats/index.html` provides the owner-only **MARS Observatory** at `/mars-stats` on the tools host.
 It uses the MARS design system and shows storage capacity, entry counts, expiration, and usage charts.
 A separate responder stores thirty-minute snapshots for thirty days, so telemetry uses none of MARS's storage quota.
 A scheduled API tracker collects snapshots while the dashboard is closed.
@@ -98,9 +105,9 @@ The dashboard runs no analytics and is absent from public discovery indexes.
 
 The responder IDs, collector ID, and `SECUTILS_MARS_STATS_VIEW_TOKEN` live in `.env`.
 Run `make deploy-tools ARGS="mars-stats"` to publish the page and its companion skill.
-Collector settings come from `marsStatsCollectorSettings()` in `dev/tools/mars-stats-config.ts`.
+Collector settings come from `marsStatsCollectorSettings()` in `dev/tools/mars-stats/config.ts`.
 Open `https://tools.secutils.dev/mars-stats#key=<dashboard-token>` to view the dashboard.
-The [companion skill](dev/tools/mars-stats.skill.md) describes the statistics API and its measurement limits.
+The [companion skill](dev/tools/mars-stats/SKILL.md) describes the statistics API and its measurement limits.
 
 ## Prerequisites
 

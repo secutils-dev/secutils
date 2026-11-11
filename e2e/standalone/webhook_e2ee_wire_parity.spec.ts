@@ -3,7 +3,7 @@
  *
  * The server seals captured requests in Rust (`src/js_runtime/op_crypto_seal.rs`)
  * and the browser opens them with WebCrypto (`decryptSealed` in
- * `dev/tools/webhook.html`). Both sides must agree on one byte layout:
+ * `dev/tools/webhook/index.html`). Both sides must agree on one byte layout:
  *
  *   | 65B ephemeral SEC1 pubkey | 12B AES-GCM IV | N B ciphertext+tag |
  *
@@ -64,7 +64,7 @@ async function seal(recipientPubRawB64: string, plaintext: string): Promise<stri
   return b64url(sealed);
 }
 
-/** Browser side: mirrors `decryptSealed()` in dev/tools/webhook.html. */
+/** Browser side: mirrors `decryptSealed()` in dev/tools/webhook/index.html. */
 async function decryptSealed(privJwk: JsonWebKey, myPubRawB64: string, sealedB64: string): Promise<string> {
   const sealed = fromB64url(sealedB64);
   if (sealed.length < 65 + 12 + 16) {

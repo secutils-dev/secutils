@@ -16,7 +16,7 @@ mkdirSync(OG_DIR, { recursive: true });
 // Local-only template URL. The template is parameterless until the script
 // reads `?name=...&path=...&desc=...&accent=...&icon=...&theme=...`. We use
 // `file://` so this spec needs no server (no `make e2e-up`, no Docker).
-const TEMPLATE_FILE_URL = pathToFileURL(resolve(__dirname, '../../dev/tools/og-template.html')).toString();
+const TEMPLATE_FILE_URL = pathToFileURL(resolve(__dirname, '../../dev/tools/shared/og-template.html')).toString();
 
 function buildTemplateUrl(tool: Tool, theme: 'dark' | 'light'): string {
   const params = new URLSearchParams({
@@ -46,7 +46,7 @@ test.describe('OG image generation', () => {
       // `page.screenshot` to run waitForStableUiBeforeScreenshot before and
       // stabilizeScreenshot after, so re-runs converge byte-for-byte.
       await page.screenshot({ path, fullPage: false });
-      // An own-host app serves its preview image from its own host (dev/tools/deploy.ts
+      // An own-host app serves its preview image from its own host (dev/tools/shared/deploy.ts
       // embeds this JPEG in the responder script), so it needs no docs deploy.
       if (tool.host) await page.screenshot({ path: resolve(OG_DIR, `og-${tool.slug}.jpg`), type: 'jpeg', quality: 86 });
     });

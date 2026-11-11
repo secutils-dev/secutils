@@ -7,7 +7,7 @@ import { expect } from '@playwright/test';
 import { test } from './_mars_test';
 
 const baseURL = process.env.MARS_BASE_URL ?? 'https://mars.secutils.dev';
-const markdownPreview = readFileSync(resolve(__dirname, '../../dev/tools/md.html'), 'utf8').replaceAll(
+const markdownPreview = readFileSync(resolve(__dirname, '../../dev/tools/md/index.html'), 'utf8').replaceAll(
   '{{TOOLS_HOST}}',
   'tools.secutils.dev',
 );

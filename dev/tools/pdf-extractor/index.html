@@ -1,0 +1,3014 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Extractor: Spatial Text & JSON with Bounding Boxes | Secutils.dev</title>
+    <meta name="description" content="Free in-browser PDF extractor with grid-projected text and structured JSON (bounding boxes, per-page items). Optional OCR for scanned PDFs. No uploads, no signup.">
+    <meta name="robots" content="index, follow, max-image-preview:large">
+    <link rel="canonical" href="https://{{TOOLS_HOST}}/pdf">
+    <meta name="su-tool-path" content="/pdf">
+    <meta name="su-tool-name" content="PDF Extractor">
+    <meta name="su-tool-description" content="Extract spatial text and structured JSON (bounding boxes, per-page items) from PDFs in your browser. Optional OCR for scanned pages. Powered by liteparse, no uploads, no signup.">
+    <meta name="su-tool-promote" content="true">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Secutils.dev">
+    <meta property="og:title" content="PDF Extractor: Spatial Text &amp; JSON with Bounding Boxes">
+    <meta property="og:description" content="Free in-browser PDF extractor. Grid-projected text or structured JSON with bounding boxes. Optional OCR. No uploads.">
+    <meta property="og:url" content="https://{{TOOLS_HOST}}/pdf">
+    <meta property="og:image" content="https://secutils.dev/docs/img/og/og-pdf.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="PDF Extractor on Secutils.dev: spatial text and JSON with bounding boxes, in the browser.">
+    <meta property="og:locale" content="en_US">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="PDF Extractor: Spatial Text &amp; JSON with Bounding Boxes">
+    <meta name="twitter:description" content="Free in-browser PDF extractor. Grid-projected text or structured JSON with bounding boxes. Optional OCR.">
+    <meta name="twitter:image" content="https://secutils.dev/docs/img/og/og-pdf.png">
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"PDF Extractor","url":"https://{{TOOLS_HOST}}/pdf","applicationCategory":"DeveloperApplication","operatingSystem":"Any","browserRequirements":"Requires JavaScript","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"publisher":{"@type":"Organization","name":"Secutils.dev","url":"https://secutils.dev"},"sameAs":"https://github.com/secutils-dev/secutils/blob/main/dev/tools/pdf-extractor/index.html","description":"Free in-browser PDF extractor with grid-projected text and structured JSON output. Includes per-page items, bounding boxes, and optional Tesseract.js OCR for scanned PDFs. Powered by liteparse, runs entirely client-side."}</script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=Roboto+Mono:wght@400..700&display=swap" rel="stylesheet">
+    <!-- Privacy-friendly analytics by Plausible -->
+    <script defer src="https://tools.secutils.dev/js/script.js" fetchpriority="low"></script>
+    <script>
+        window.plausible = window.plausible || function () { (plausible.q = plausible.q || []).push(arguments) };
+        plausible.init = plausible.init || function (i) { plausible.o = i || {} };
+        plausible.init();
+    </script>
+    <style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root, [data-theme="dark"] {
+    --bg: #141519; --surface: #1d1e24; --surface-hover: #2c2d33;
+    --border: #343741; --text: #dfe5ef; --text-muted: #98a2b3;
+    --primary: #fed047; --primary-hover: #fdc615;
+    --primary-text: #642340;
+    --primary-glow: rgba(254,208,71,0.10);
+    --accent: #642340;
+    --badge-bg: #2B394F; --badge-text: #98A8C3;
+    --radius: 12px;
+    --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --mono: 'Roboto Mono', 'SF Mono', 'Fira Code', Consolas, monospace;
+    --code-bg: #16171c;
+    --danger: #e07b7b;
+    --success: #7bcf9f;
+}
+[data-theme="light"] {
+    --bg: #f5f7fa; --surface: #ffffff; --surface-hover: #f1f3f5;
+    --border: #d3dae6; --text: #343741; --text-muted: #69707d;
+    --primary: #fed047; --primary-hover: #fdc615;
+    --primary-text: #642340;
+    --primary-glow: rgba(254,208,71,0.15);
+    --accent: #642340;
+    --badge-bg: #E3E8F2; --badge-text: #505F79;
+    --code-bg: #f6f8fa;
+    --danger: #d04848;
+    --success: #2e8855;
+}
+/* `min-height: 100vh` is a floor, not a cap -- without a hard upper bound,
+   a column-flex container grows with its children, which means a tall JSON
+   <pre> deep inside .output-panel makes <body> grow, <main> follow (its
+   `flex: 1` happily fills whatever body became), and the inner
+   `overflow: hidden` chain never gets to clip anything. The desktop layout
+   wants a strict viewport-sized chrome with internal scroll in the result
+   pane, so cap body's height at 100vh in the wide breakpoint (see media
+   query below). Mobile (≤768px) keeps the default scroll-the-page behaviour
+   because the single-column stack puts the result pane below the dropzone
+   and the user is expected to scroll. */
+body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; transition: background .25s, color .25s; }
+header { display: flex; align-items: center; justify-content: space-between; padding: 0 16px; height: 48px; background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; transition: background .25s, border-color .25s; }
+.logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+.logo-svg { flex-shrink: 0; }
+.logo-svg .logo-text-fill { fill: var(--text); }
+.logo-badge { display: inline-flex; align-items: center; padding: 4px 16px; border-radius: 4px; border: none; background: var(--badge-bg); color: var(--badge-text); font-size: 12px; font-weight: 450; line-height: 16px; white-space: nowrap; }
+.header-right { display: flex; gap: 8px; align-items: center; }
+/* `height` is load-bearing: without an explicit pixel value, the yellow
+   `.btn-primary` variant renders 1-2 px taller than the outlined regular
+   variant because the heavier font-weight expands the line box's strut
+   metrics. Pinning `height` makes both weights resolve to the same outer
+   size so the primary buttons line up flush with the outlined regular
+   ones in the same row. See dev/tools/shared/guides/chrome.md -> "Buttons" / "Control
+   heights (load-bearing)". With box-sizing: border-box (global) padding +
+   border sit inside this height; `align-items: center` centres the label.
+
+   `font-weight: 500` on .btn-primary (down from the obvious-looking 600)
+   AND `border-color: var(--primary-text)` (the dark plum used for the
+   label, instead of matching the fill) together collapse the perceptual
+   size bump that a saturated yellow fill + bold label inflicts on the
+   eye -- two 24 px boxes look the same size when type weights are 400
+   vs 500 and both have a visible 1 px edge, but the 400-vs-600 +
+   edgeless-fill pairing reads as "Parse is bigger than Options" even
+   though both boxes are exactly the same pixel height. See dev/tools/shared/guides/chrome.md
+   -> "Buttons" for the full rationale (including why --primary-text
+   is the only palette token with enough contrast against yellow); do
+   not revert either change in isolation. */
+.btn { padding: 7px 14px; height: 29px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: 13px/1 var(--font); cursor: pointer; transition: all .15s; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.btn:hover:not(:disabled) { background: var(--surface-hover); border-color: var(--text-muted); }
+.btn:disabled { opacity: 0.55; cursor: default; }
+.btn-primary { background: var(--primary); border-color: var(--primary-text); color: var(--primary-text); font-weight: 500; }
+.btn-primary:hover:not(:disabled) { background: var(--primary-hover); border-color: var(--primary-hover); }
+.btn-sm { padding: 5px 10px; height: 24px; font-size: 12px; }
+.theme-toggle { width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); cursor: pointer; transition: all .2s; }
+.theme-toggle:hover { background: var(--surface-hover); color: var(--text); }
+.theme-toggle svg { width: 16px; height: 16px; fill: currentColor; }
+.theme-toggle .icon-sun { display: none; }
+.theme-toggle .icon-moon { display: block; }
+[data-theme="dark"] .theme-toggle .icon-sun { display: block; }
+[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+.skill-link { height: 36px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); color: var(--text-muted); font: 12px var(--font, system-ui), sans-serif; text-decoration: none; transition: all .15s; cursor: pointer; }
+.skill-link:hover { color: var(--text); border-color: var(--text-muted); background: var(--surface-hover); }
+.skill-link svg { width: 14px; height: 14px; fill: none; stroke: currentColor; }
+.su-more-tools { margin: 8px 0 0; padding: 12px 18px; text-align: center; border: 1px solid rgba(254, 208, 71, 0.35); border-radius: 12px; background: rgba(254, 208, 71, 0.06); font: 13px/1.55 var(--font); color: var(--text); transition: border-color .25s, background-color .25s, color .25s; }
+.su-more-tools p { margin: 0; }
+.su-more-tools a { color: var(--primary); font-weight: 700; text-decoration: none; white-space: nowrap; }
+.su-more-tools a:hover { color: var(--primary-hover); text-decoration: underline; }
+@media (max-width: 600px) { .su-more-tools { padding: 12px 14px; } .su-more-tools a { white-space: normal; } }
+.su-noscript { max-width: 720px; margin: 24px auto; padding: 16px; border: 1px solid var(--border); border-radius: 8px; font: 14px/1.5 var(--font, system-ui), sans-serif; background: var(--surface); color: var(--text); }
+
+/* Two-pane layout */
+/* `min-height: 0` is critical: <main> is a column-flex child of <body>, so its
+   default `min-height: auto` resolves to its min-content height -- i.e. the
+   full height of the tallest descendant, including a many-thousand-px JSON
+   <pre>. That defeats the inner `overflow: hidden` chain because <main>
+   itself silently grows past the viewport and drags <body> with it (body
+   uses `min-height: 100vh`, not a hard cap). With `min-height: 0`, <main>
+   strictly takes its `flex: 1` share of body's 100vh and the inner panels'
+   own scroll containers (.output-scroll, .output-textarea) clip + scroll. */
+main { flex: 1; min-height: 0; padding: 24px 16px; display: flex; flex-direction: column; overflow: hidden; }
+/* `minmax(0, 1fr)` lets each grid track shrink below its content's min-content
+   width. Without this, a long line in the JSON pane (white-space: pre on the
+   <pre>) would expand the right column past 1fr and squeeze the dropzone
+   column down to 0 width, hiding the entire left pane. */
+/* `grid-template-rows: minmax(0, 1fr)` mirrors the column trick: without
+   it, the implicit single row defaults to `auto` and sizes to the tallest
+   cell's min-content -- so a tall JSON <pre> would still blow the row
+   open even after we constrain columns and the outer chain. With this,
+   the row strictly takes its `flex: 1` share of <main> and the inner
+   .output-scroll handles its own overflow. */
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) 12px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 0; flex: 1; min-height: 0; }
+/* `min-width: 0` opts panels (flex containers) out of the default
+   `min-content` floor so the inner scroll container (.output-scroll) can
+   actually clip + scroll wide JSON instead of forcing the grid track wider. */
+.panel { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.panel-bar { display: flex; align-items: center; justify-content: space-between; padding: 0 0 8px; gap: 8px; height: 38px; box-sizing: content-box; flex-shrink: 0; }
+.panel-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.panel-label { font-size: 13px; font-weight: 600; color: var(--text); }
+.link-btn { border: none; background: none; font: 12px var(--font); color: var(--text-muted); cursor: pointer; padding: 2px 4px; transition: color .15s; }
+.link-btn:hover { color: var(--text); }
+.splitter { cursor: col-resize; background: transparent; position: relative; z-index: 1; }
+.splitter::after { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: var(--border); transition: width .15s, background .15s; transform: translateX(-50%); }
+.splitter:hover::after, .splitter.active::after { width: 3px; background: var(--primary); border-radius: 2px; }
+
+/* Drop zone (left pane) */
+.dropzone { flex: 1; min-height: 300px; border: 1px dashed var(--border); border-radius: var(--radius); background: var(--surface); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center; transition: border-color .15s, background .25s; cursor: pointer; }
+.dropzone.dragover, .dropzone:hover { border-color: var(--primary); background: var(--primary-glow); }
+/* Block click / hover / drop while a parse is in flight. `setParsingBusy()`
+   toggles this class; `pointer-events: none` short-circuits the JS click and
+   drag handlers (and `aria-busy="true"` on the same element surfaces the
+   state to assistive tech). The cursor reverts so users get visual feedback
+   that the upload affordance is temporarily inert. */
+.dropzone.is-busy { pointer-events: none; cursor: default; opacity: .85; }
+.dropzone.is-busy.dragover { border-color: var(--border); background: var(--surface); }
+.dropzone-icon { width: 64px; height: 64px; border-radius: 16px; background: var(--surface-hover); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; color: var(--text-muted); }
+.dropzone-icon svg { width: 28px; height: 28px; stroke: currentColor; fill: none; }
+.dropzone-title { font: 600 16px/1.3 var(--font); color: var(--text); }
+.dropzone-sub { font: 13px/1.5 var(--font); color: var(--text-muted); max-width: 360px; }
+.dropzone-formats { font: 11px var(--mono); color: var(--text-muted); opacity: 0.8; margin-top: 6px; }
+.dropzone-active { display: none; flex-direction: column; align-items: stretch; gap: 14px; width: 100%; max-width: 360px; }
+.dropzone.has-file .dropzone-prompt { display: none; }
+.dropzone.has-file .dropzone-active { display: flex; }
+.file-info { padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); text-align: left; font: 13px var(--font); display: flex; align-items: center; gap: 12px; }
+.file-info-icon { width: 28px; height: 28px; flex-shrink: 0; border-radius: 6px; background: var(--surface-hover); display: flex; align-items: center; justify-content: center; color: var(--text-muted); }
+.file-info-icon svg { width: 16px; height: 16px; stroke: currentColor; fill: none; }
+.file-info-name { flex: 1; min-width: 0; word-break: break-all; font-weight: 500; color: var(--text); }
+.file-info-meta { font-size: 11px; color: var(--text-muted); font-family: var(--mono); white-space: nowrap; }
+/* Post-parse stats line ("4 pages · 1339 bbox · 7579ms"). Lives under
+   .file-info so it sits next to the file the numbers describe rather
+   than competing for space with Share/Copy/Export in the right toolbar. */
+.parse-stats { font: 11px var(--mono); color: var(--text-muted); text-align: center; padding: 0 4px; line-height: 1.4; word-break: break-word; }
+.parse-stats[hidden] { display: none; }
+/* Render the shared-link pseudo-file in a slightly muted style so users
+   can tell at a glance that no PDF bytes are actually loaded. */
+.dropzone.from-shared-link .file-info { border-style: dashed; }
+.dropzone.from-shared-link .file-info-name { color: var(--text-muted); font-style: italic; font-weight: 400; }
+.dropzone-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+
+/* OCR options popover (re-used styling from the Markdown Preview tool) */
+.options-anchor { position: relative; display: inline-flex; }
+/* Fixed width (not just min-width) so opening/closing the language-
+   suggestions list inside the OCR popover doesn't reflow the popover
+   itself -- a few of the longer Tesseract entries (e.g. "Chinese --
+   Simplified (vertical)") otherwise nudged the box wider, and removing
+   them via the chip × then snapped it back. */
+/* [popover] is positioned in the top layer; the UA stylesheet applies
+   `position: fixed; inset: 0; margin: auto;` (centered). We override `margin`
+   to 0 and pin the popover next to its invoker from JS on the `toggle`
+   event (see positionPopover() below). `position-area` is Chromium-only at
+   time of writing so the manual positioning is the portable path. */
+.options-popover { margin: 0; width: 320px; max-width: calc(100vw - 24px); max-height: calc(100vh - 96px); overflow-y: auto; padding: 14px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.35); }
+.options-popover h4 { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .08em; margin: 0 0 10px; }
+.options-popover label { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; cursor: pointer; font-size: 13px; color: var(--text); line-height: 1.4; }
+.options-popover input[type="radio"], .options-popover input[type="checkbox"] { accent-color: var(--primary); cursor: pointer; margin-top: 2px; flex-shrink: 0; }
+.options-popover .opt-desc { display: block; font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.options-popover .opt-section + .opt-section { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+/* OCR language picker: chip row + searchable suggestions list, in place of
+   the previous free-text input. Codes still join with `+` when handed to
+   tesseract.js (see selectedOcrLangs.join('+') in getOcrOptions). */
+.lang-picker { display: flex; flex-direction: column; gap: 8px; padding: 4px 0 2px; }
+.lang-chips { display: flex; flex-wrap: wrap; gap: 4px; min-height: 28px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
+.lang-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 8px; background: var(--primary-glow); border: 1px solid var(--primary); color: var(--text); border-radius: 4px; font: 11px/1 var(--font); }
+.lang-chip-remove { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; padding: 0; background: none; border: none; color: var(--text-muted); cursor: pointer; font: 13px/1 var(--mono); border-radius: 3px; }
+.lang-chip-remove:hover { background: var(--surface-hover); color: var(--text); }
+.lang-chips-empty { color: var(--text-muted); font: italic 11px var(--font); padding: 4px; }
+.lang-search-wrap { position: relative; }
+.lang-search-wrap input { width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: 12px var(--mono); }
+.lang-search-wrap input:focus { outline: 2px solid var(--primary); outline-offset: -1px; border-color: var(--primary); }
+.lang-suggestions { max-height: 196px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); padding: 4px; }
+.lang-suggestions[hidden] { display: none; }
+.lang-suggestion { display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 8px; background: none; border: none; border-radius: 4px; cursor: pointer; text-align: left; color: var(--text); font: 12px var(--font); }
+.lang-suggestion:hover, .lang-suggestion.active { background: var(--surface-hover); }
+.lang-suggestion .lang-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lang-suggestion .lang-code { color: var(--text-muted); font-family: var(--mono); font-size: 11px; flex-shrink: 0; }
+.lang-suggestion .lang-check { display: inline-flex; align-items: center; justify-content: center; width: 14px; flex-shrink: 0; color: var(--primary); }
+.lang-suggestion .lang-check svg { width: 12px; height: 12px; }
+.lang-suggestion.is-selected { color: var(--text); }
+.lang-suggestion-empty { padding: 8px 10px; color: var(--text-muted); font: italic 11px var(--font); }
+/* Export dropdown menu: reuses the .options-popover positioning + shell
+   (anchor, drop shadow, z-index) but lays out clickable menu items rather
+   than form controls. The chevron next to the Export label tracks the
+   menu's open state via [aria-expanded]. */
+.export-menu { min-width: 260px; padding: 6px; }
+.export-menu-item { display: flex; align-items: flex-start; gap: 10px; width: 100%; padding: 8px 10px; background: none; border: none; border-radius: 6px; cursor: pointer; text-align: left; color: var(--text); font: inherit; transition: background-color .12s; }
+.export-menu-item:hover:not(:disabled) { background: var(--surface-hover); }
+.export-menu-item:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.export-menu-item:disabled { opacity: .45; cursor: not-allowed; }
+.export-menu-icon { flex-shrink: 0; margin-top: 2px; color: var(--text-muted); }
+.export-menu-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.export-menu-title { font-size: 13px; line-height: 1.3; color: var(--text); }
+.export-menu-desc { font-size: 11px; color: var(--text-muted); line-height: 1.3; }
+#exportBtn .export-caret { margin-left: 2px; opacity: .7; transition: transform .15s; }
+/* :popover-open wins in the native path; [aria-expanded] covers the no-popover JS fallback. */
+.options-anchor:has(#exportMenu:popover-open) .export-caret,
+#exportBtn[aria-expanded="true"] .export-caret { transform: rotate(180deg); }
+
+/* Result tabs (Text / JSON / Screenshots) */
+.view-tabs { display: inline-flex; gap: 2px; padding: 2px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; }
+.view-tab { padding: 3px 10px; border: none; background: transparent; color: var(--text-muted); font: 12px/1 var(--font); font-weight: 500; cursor: pointer; border-radius: 4px; transition: all .15s; }
+.view-tab:hover:not(:disabled) { color: var(--text); }
+.view-tab.active { background: var(--surface-hover); color: var(--text); font-weight: 600; }
+.view-tab:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.icon-btn { padding: 4px; border: none; background: none; color: var(--text-muted); cursor: pointer; border-radius: 4px; transition: all .15s; display: inline-flex; align-items: center; justify-content: center; }
+.icon-btn:hover { color: var(--text); background: var(--surface-hover); }
+.icon-btn svg { width: 16px; height: 16px; }
+
+#resultPane:fullscreen { background: var(--bg); padding: 16px; display: flex; flex-direction: column; overflow: hidden; }
+#resultPane:fullscreen .output-panel { flex: 1; min-height: 0; }
+
+/* Result pane */
+.output-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); display: flex; flex-direction: column; overflow: hidden; flex: 1; min-height: 300px; transition: background .25s, border-color .25s; position: relative; }
+/* `min-height: 0` opts the scroll container out of its default `min-content`
+   floor as a column-flex child, so tall JSON actually clips + scrolls inside
+   .output-panel instead of pushing the whole page taller. The textarea
+   variant doesn't need this because it has its own `height: 100%` and
+   native scroll. `min-width: 0` mirrors the same fix for very long JSON
+   lines on the horizontal axis (the .panel already does this for grid
+   tracks, but a row-flex parent further down the tree would still apply
+   the min-content floor without this). */
+.output-scroll { flex: 1; min-height: 0; min-width: 0; overflow: auto; padding: 14px 16px; }
+.output-textarea { width: 100%; height: 100%; min-height: 100%; padding: 14px 16px; font: 13px/1.55 var(--mono); background: var(--surface); color: var(--text); border: none; outline: none; resize: none; white-space: pre; tab-size: 4; }
+.output-pre { font: 12.5px/1.5 var(--mono); color: var(--text); white-space: pre; }
+
+/* Screenshots view. `#resultShotsWrap` is a column-flex inside the output
+   panel: a fixed-height sticky toolbar on top, then the scrollable grid.
+   Pages stream in one at a time as PDF.js renders them; each one is a
+   <figure> with the rendered <img>, an optional bbox + search overlay
+   canvas positioned over it, the page caption, and a per-page download
+   link. The canvas + image are siblings inside `.shots-img-wrap` so they
+   scale together when CSS resizes the figure. */
+#resultShotsWrap { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
+.shots-toolbar { display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-bottom: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
+.shots-search { flex: 1; display: flex; align-items: center; gap: 6px; padding: 4px 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; min-width: 0; }
+.shots-search:focus-within { border-color: var(--primary); }
+.shots-search svg { color: var(--text-muted); flex-shrink: 0; }
+.shots-search input { flex: 1; min-width: 0; background: transparent; border: none; outline: none; color: var(--text); font: 12px var(--font); padding: 2px 0; }
+.shots-search input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; background: var(--text-muted); -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M3 3l10 10M13 3L3 13' stroke-width='1.8' stroke='black' fill='none' stroke-linecap='round'/></svg>") center / contain no-repeat; mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M3 3l10 10M13 3L3 13' stroke-width='1.8' stroke='black' fill='none' stroke-linecap='round'/></svg>") center / contain no-repeat; cursor: pointer; flex-shrink: 0; }
+.shots-search-count { font: 11px var(--mono); color: var(--text-muted); white-space: nowrap; flex-shrink: 0; }
+.shots-search-count.has-matches { color: var(--text); }
+.shots-search-count.no-matches { color: var(--danger); }
+.shots-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; font: 12px var(--font); color: var(--text-muted); white-space: nowrap; flex-shrink: 0; user-select: none; transition: all .15s; }
+.shots-toggle:hover { color: var(--text); border-color: var(--text-muted); }
+.shots-toggle input { accent-color: var(--primary); margin: 0; cursor: pointer; }
+.shots-toggle:has(input:checked) { color: var(--text); background: var(--surface-hover); border-color: var(--text-muted); }
+.shots-grid { display: flex; flex-direction: column; gap: 16px; padding: 16px; align-items: center; flex: 1; min-height: 0; min-width: 0; overflow: auto; }
+/* `flex-shrink: 0` is critical: without it, the column-flex container would
+   distribute the (constrained) scroll-pane height across all figures and
+   squeeze each one into a thin band instead of letting them stack at their
+   natural image-determined heights. The parent .shots-grid has overflow:
+   auto from .output-scroll, so the column overflows into the scrollbar. */
+/* Skip rendering for off-screen page captures + outline branches; the browser
+   uses contain-intrinsic-size as a placeholder until the element scrolls
+   close to the viewport. See dev/tools/shared/guides/javascript.md → "Long tasks". */
+.shots-figure { width: 100%; max-width: 100%; flex-shrink: 0; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; content-visibility: auto; contain-intrinsic-size: auto 800px; }
+/* `.shots-img-wrap` is the canvas overlay's positioning context: the wrap
+   keeps `position: relative` so the canvas absolutely covers the image
+   pixel-for-pixel, and `line-height: 0` collapses the inline strut the
+   <img> would otherwise inject (which would push the canvas down by a few
+   pixels in some browsers and create a visible offset between bboxes and
+   the underlying glyphs). */
+.shots-img-wrap { position: relative; display: block; line-height: 0; background: #fff; }
+.shots-img { display: block; width: 100%; height: auto; background: #fff; }
+.shots-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; display: block; }
+.shots-caption { padding: 6px 12px; font: 11px var(--mono); color: var(--text-muted); border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.shots-caption a { color: var(--text-muted); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 4px; transition: all .15s; }
+.shots-caption a:hover { color: var(--text); background: var(--surface-hover); }
+.shots-caption a svg { width: 12px; height: 12px; stroke: currentColor; fill: none; }
+.shots-pending { padding: 14px 16px; font: 12px var(--mono); color: var(--text-muted); text-align: center; border: 1px dashed var(--border); border-radius: 8px; width: 100%; flex-shrink: 0; }
+.shots-error { padding: 14px 16px; font: 12px var(--font); color: var(--danger); text-align: center; border: 1px solid var(--danger); border-radius: 8px; width: 100%; flex-shrink: 0; }
+
+/* Outline tab: tree of bookmarks with click-to-jump. Children indent via
+   left padding, not nested <ul>, so deep nesting doesn't run out of
+   horizontal room. Each leaf is a button so it's keyboard-navigable
+   (Tab + Enter / Space). */
+.outline-tree { padding: 16px; }
+.outline-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 2px; }
+.outline-list .outline-list { padding-left: 18px; border-left: 1px dashed var(--border); margin-left: 6px; margin-top: 2px; content-visibility: auto; contain-intrinsic-size: auto 200px; }
+.outline-item { display: flex; align-items: baseline; gap: 8px; }
+.outline-item-row { flex: 1; display: flex; align-items: baseline; gap: 8px; padding: 4px 8px; background: transparent; border: none; color: var(--text); font: 13px/1.4 var(--font); text-align: left; cursor: pointer; border-radius: 4px; transition: background .15s; min-width: 0; }
+.outline-item-row:hover { background: var(--surface-hover); }
+.outline-item-row:disabled { color: var(--text-muted); cursor: default; }
+.outline-item-row:disabled:hover { background: transparent; }
+.outline-item-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.outline-item-page { font: 11px var(--mono); color: var(--text-muted); flex-shrink: 0; }
+.outline-item-page::before { content: 'p.'; opacity: .7; }
+.outline-item-row.level-0 .outline-item-title { font-weight: 600; }
+.outline-item-row.level-1 .outline-item-title { font-weight: 500; }
+
+/* Empty / progress / error states */
+.empty-state, .progress-state, .error-state { height: 100%; min-height: 240px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px; text-align: center; gap: 12px; }
+.empty-state, .progress-state { color: var(--text-muted); }
+.error-state { color: var(--danger); }
+.empty-state-icon, .progress-icon { width: 56px; height: 56px; border-radius: 14px; background: var(--surface-hover); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; color: var(--text-muted); }
+.empty-state-icon svg, .progress-icon svg, .error-state svg { width: 28px; height: 28px; stroke: currentColor; fill: none; }
+.empty-state-title, .progress-title, .error-title { font-size: 14px; font-weight: 600; color: var(--text); }
+.empty-state-sub, .progress-sub, .error-sub { font-size: 12px; max-width: 380px; }
+.error-sub { color: var(--text-muted); }
+.progress-spin { animation: su-spin 1s linear infinite; }
+@keyframes su-spin { to { transform: rotate(360deg); } }
+@keyframes su-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+.progress-state .progress-title { animation: su-pulse 1.8s ease-in-out infinite; }
+
+/* Toast */
+.toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface); color: var(--text); padding: 10px 18px; border-radius: 8px; border: 1px solid var(--border); font-size: 13px; z-index: 200; box-shadow: 0 4px 12px rgba(0,0,0,0.3); display: flex; align-items: center; gap: 8px; animation: toastIn .2s ease; }
+@keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+#fileInput { display: none; }
+
+.su-footer { text-align: center; padding: 16px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.8rem; transition: border-color .25s, color .25s; }
+.su-footer p { margin: 0; }
+.su-footer-fineprint { margin-top: 6px !important; font-size: 0.7rem; opacity: 0.75; }
+.su-footer-link { background: none; border: none; padding: 0; color: inherit; font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.su-footer-link:hover { color: var(--text); }
+.su-dialog { max-width: 560px; width: calc(100% - 32px); max-height: calc(100% - 32px); inset: 0; margin: auto; padding: 0; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); box-shadow: 0 20px 60px rgba(0,0,0,0.4); }
+.su-dialog::backdrop { background: rgba(0,0,0,0.45); backdrop-filter: blur(2px); }
+.su-dialog-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+.su-dialog-header h2 { font-size: 1rem; font-weight: 600; }
+.su-dialog-close { width: 28px; height: 28px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); cursor: pointer; transition: all .15s; }
+.su-dialog-close:hover { background: var(--surface-hover); color: var(--text); }
+.su-dialog-body { padding: 16px 18px; font-size: 0.875rem; line-height: 1.55; color: var(--text); }
+.su-dialog-body p { margin-bottom: 12px; }
+.su-dialog-body p:last-child { margin-bottom: 0; }
+.su-dialog-body code { font-family: var(--mono); background: var(--surface-hover); padding: 1px 5px; border-radius: 4px; font-size: 0.85em; }
+.su-dialog-body a { color: var(--primary); text-decoration: none; }
+.su-dialog-body a:hover { text-decoration: underline; }
+.su-dialog-fineprint { font-size: 0.8rem; color: var(--text-muted); }
+/* Typography polish (Baseline; selectors that don't exist in this tool are no-ops). See dev/tools/shared/guides/chrome.md → "Typography polish". */
+.page-title, .panel-label, .su-dialog-header h2, .card-header { text-wrap: balance; }
+.su-dialog-body p, .su-more-tools p, .tool-desc, .empty-state-sub, .progress-sub, .error-sub { text-wrap: pretty; }
+/* Respect prefers-reduced-motion. See dev/tools/shared/guides/chrome.md → "Reduced motion". */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
+.su-credits-list { margin: 0 0 12px; padding-left: 20px; }
+.su-credits-list li { margin-bottom: 6px; }
+.su-credits-list li:last-child { margin-bottom: 0; }
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--surface); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* Desktop: pin the page to viewport height so the tall-JSON chain has a
+   hard upper bound to clip against. See the body comment above for the
+   rationale. The mobile breakpoint (below 769px) leaves body uncapped so
+   the single-column stack scrolls naturally. */
+@media (min-width: 769px) {
+    body { height: 100vh; overflow: hidden; }
+}
+@media (max-width: 880px) {
+    #ocrBtn .opt-label { display: none; }
+    #ocrBtn { padding: 4px 8px; }
+    .panel-actions { gap: 6px; }
+}
+@media (max-width: 768px) {
+    main { padding: 16px 12px; }
+    .grid { grid-template-columns: minmax(0, 1fr); row-gap: 24px; }
+    .splitter { display: none; }
+    .dropzone { min-height: 220px; }
+    .output-panel { min-height: 320px; }
+    .panel-bar { flex-wrap: wrap; row-gap: 8px; padding-bottom: 10px; height: auto; min-height: 38px; }
+    .panel-actions { gap: 6px; flex-wrap: wrap; justify-content: flex-end; flex: 1 1 auto; }
+    .btn-sm { padding: 5px 9px; height: 23px; font-size: 11px; }
+    .options-popover { width: min(320px, calc(100vw - 24px)); }
+    #copyBtn .btn-label, #exportBtn .btn-label { display: none; }
+    #exportBtn { padding: 4px 9px; }
+    .export-menu { min-width: 220px; }
+}
+@media (max-width: 640px) {
+    header { padding: 0 12px; }
+    .logo-svg { height: 20px; }
+    .logo-badge { font-size: 11px; padding: 2px 7px; }
+    .btn { padding: 6px 10px; font-size: 12px; }
+    .view-tab { padding: 3px 8px; font-size: 11px; }
+}
+    </style>
+</head>
+<body>
+    <noscript>
+        <p class="su-noscript"><strong>PDF Extractor</strong> &mdash; Extract spatial text and structured JSON from PDFs in your browser, with optional OCR for scanned pages. Requires JavaScript; please enable it. Source on <a href="https://github.com/secutils-dev/secutils/blob/main/dev/tools/pdf-extractor/index.html">GitHub</a>.</p>
+    </noscript>
+    <header>
+        <a class="logo" href="https://secutils.dev" target="_blank" rel="noopener">
+            <svg class="logo-svg" height="24" role="img" viewBox="0 0 98 16" xmlns="http://www.w3.org/2000/svg">
+                <path d="m3 0h10c1.662 0 3 1.338 3 3v10c0 1.662-1.338 3-3 3h-10c-1.662 0-3-1.338-3-3v-10c0-1.662 1.338-3 3-3z" fill="#fed047"/>
+                <path aria-label="SU" d="m11.285 12q-1.12 0-1.728-0.608-0.608-0.61867-0.608-1.6747v-5.6107h1.152v5.6q0 0.59733 0.29867 0.93867 0.29867 0.34133 0.88534 0.34133 0.58667 0 0.88534-0.34133 0.29867-0.34134 0.29867-0.93867v-5.6h1.152v5.6107q0 1.0667-0.608 1.6747t-1.728 0.608zm-6.368 0q-1.152 0-1.8453-0.608-0.69334-0.608-0.69334-1.664h1.1307q0 0.58667 0.384 0.928 0.384 0.33067 1.024 0.33067 0.62934 0 0.992-0.34133 0.36267-0.34134 0.36267-0.90667 0-0.42667-0.23467-0.74667t-0.672-0.43733l-1.12-0.29867q-0.78934-0.21333-1.248-0.77867-0.448-0.56534-0.448-1.3547 0-0.64 0.27733-1.1093 0.288-0.48 0.81067-0.74667t1.216-0.26667 1.216 0.26667q0.53334 0.26667 0.82134 0.74667 0.29867 0.46933 0.29867 1.0987h-1.1307q0-0.50133-0.34133-0.8-0.33067-0.30933-0.864-0.30933t-0.864 0.30933q-0.32 0.29867-0.32 0.78934 0 0.39467 0.21333 0.66134 0.224 0.26667 0.61867 0.37333l1.152 0.30933q0.81067 0.21333 1.28 0.832t0.46933 1.4613q0 0.69334-0.30933 1.2053-0.30933 0.50133-0.864 0.77867-0.55467 0.27733-1.312 0.27733z" fill="#642340"/>
+                <path class="logo-text-fill" aria-label="SECUTILS.DEV" d="m93.158 12.117-1.9733-7.7867h1.1733l1.2587 5.184q0.11733 0.46933 0.20267 0.91734 0.08533 0.448 0.128 0.69334 0.04267-0.24533 0.128-0.69334 0.096-0.45867 0.21333-0.928l1.2053-5.1733h1.184l-1.984 7.7867zm-7.8294 0v-7.7867h4.576v1.024h-3.4453v2.2187h3.072v0.992h-3.072v2.528h3.4453v1.024zm-6.5174 0v-7.7867h2.176q0.768 0 1.3333 0.29867 0.56534 0.288 0.87467 0.832 0.32 0.53334 0.32 1.248v3.008q0 0.736-0.32 1.2693-0.30933 0.53334-0.87467 0.832-0.56534 0.29867-1.3333 0.29867zm1.152-1.0347h1.024q0.62934 0 1.0027-0.36267 0.37333-0.36267 0.37333-1.0027v-3.008q0-0.61867-0.37333-0.98134-0.37334-0.37333-1.0027-0.37333h-1.024zm-5.2374 1.1413q-0.416 0-0.68267-0.24533-0.256-0.256-0.256-0.672 0-0.416 0.256-0.672 0.26667-0.26667 0.68267-0.26667 0.416 0 0.672 0.26667 0.26667 0.256 0.26667 0.672 0 0.416-0.26667 0.672-0.256 0.24533-0.672 0.24533zm-6.368 0q-1.152 0-1.8453-0.608-0.69334-0.608-0.69334-1.664h1.1307q0 0.58667 0.384 0.928 0.384 0.33067 1.024 0.33067 0.62934 0 0.992-0.34133 0.36267-0.34134 0.36267-0.90667 0-0.42667-0.23467-0.74667t-0.672-0.43733l-1.12-0.29867q-0.78934-0.21333-1.248-0.77867-0.448-0.56534-0.448-1.3547 0-0.64 0.27733-1.1093 0.288-0.48 0.81067-0.74667 0.52267-0.26667 1.216-0.26667 0.69334 0 1.216 0.26667 0.53334 0.26667 0.82134 0.74667 0.29867 0.46933 0.29867 1.0987h-1.1307q0-0.50134-0.34133-0.8-0.33067-0.30933-0.864-0.30933t-0.864 0.30933q-0.32 0.29867-0.32 0.78934 0 0.39467 0.21333 0.66134 0.224 0.26667 0.61867 0.37333l1.152 0.30933q0.81067 0.21333 1.28 0.832 0.46934 0.61867 0.46934 1.4613 0 0.69334-0.30934 1.2053-0.30933 0.50134-0.864 0.77867-0.55467 0.27733-1.312 0.27733zm-8.288-0.10667v-7.7867h1.152v6.7414h3.4027v1.0453zm-6.6987 0v-1.0453h1.568v-5.696h-1.568v-1.0453h4.32v1.0453h-1.5787v5.696h1.5787v1.0453zm-4.8214 0v-6.7414h-2.08v-1.0453h5.3227v1.0453h-2.0907v6.7414zm-5.824 0.10667q-1.12 0-1.728-0.608-0.608-0.61867-0.608-1.6747v-5.6107h1.152v5.6q0 0.59733 0.29867 0.93867 0.29867 0.34133 0.88534 0.34133 0.58667 0 0.88534-0.34133 0.29867-0.34134 0.29867-0.93867v-5.6h1.152v5.6107q0 1.0667-0.608 1.6747t-1.728 0.608zm-6.3147 0q-1.0987 0-1.7493-0.608-0.64-0.61867-0.64-1.664v-3.456q0-1.056 0.64-1.664 0.65067-0.608 1.7493-0.608 1.088 0 1.728 0.61867 0.65067 0.608 0.65067 1.6533h-1.152q0-0.608-0.33067-0.928-0.32-0.32-0.896-0.32-0.58667 0-0.91734 0.32-0.32 0.32-0.32 0.928v3.456q0 0.608 0.32 0.928 0.33067 0.32 0.91734 0.32 0.576 0 0.896-0.32 0.33067-0.32 0.33067-0.928h1.152q0 1.0453-0.65067 1.664-0.64 0.608-1.728 0.608zm-8.6827-0.10667v-7.7867h4.576v1.024h-3.4453v2.2187h3.072v0.992h-3.072v2.528h3.4453v1.024zm-4.1707 0.10667q-1.152 0-1.8453-0.608-0.69334-0.608-0.69334-1.664h1.1307q0 0.58667 0.384 0.928 0.384 0.33067 1.024 0.33067 0.62934 0 0.992-0.34133 0.36267-0.34134 0.36267-0.90667 0-0.42667-0.23467-0.74667-0.23467-0.32-0.672-0.43733l-1.12-0.29867q-0.78934-0.21333-1.248-0.77867-0.448-0.56534-0.448-1.3547 0-0.64 0.27733-1.1093 0.288-0.48 0.81067-0.74667 0.52267-0.26667 1.216-0.26667 0.69334 0 1.216 0.26667 0.53334 0.26667 0.82134 0.74667 0.29867 0.46933 0.29867 1.0987h-1.1307q0-0.50134-0.34134-0.8-0.33067-0.30933-0.864-0.30933t-0.864 0.30933q-0.32 0.29867-0.32 0.78934 0 0.39467 0.21333 0.66134 0.224 0.26667 0.61867 0.37333l1.152 0.30933q0.81067 0.21333 1.28 0.832 0.46934 0.61867 0.46934 1.4613 0 0.69334-0.30934 1.2053-0.30933 0.50134-0.864 0.77867-0.55467 0.27733-1.312 0.27733z"/>
+            </svg>
+            <span class="logo-badge">PDF &rarr; Text / JSON</span>
+        </a>
+        <div class="header-right">
+            <a id="skillLink" class="skill-link" href="#" target="_blank" rel="noopener"
+               title="View AI agent skill (skill.md, opens in new tab)"
+               aria-label="View AI agent skill (opens in new tab)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .962L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>
+                    <path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/>
+                </svg>
+                <span>Skill</span>
+            </a>
+            <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+                <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M8.5 15h-1v-2h1v2Zm-3.674-3.107-1.414 1.414-.707-.707 1.414-1.415.707.708Zm8.479.707-.707.707-1.414-1.414.707-.708 1.414 1.415Z"/><path fill-rule="evenodd" d="M8 4a4 4 0 1 1 0 8 4 4 0 0 1 0-8Zm0 1a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" clip-rule="evenodd"/><path d="M3.005 8.505h-2v-1h2v1Zm12 0h-2v-1h2v1ZM4.82 4.114l-.708.707-1.414-1.414.707-.707L4.82 4.114Zm8.492-.707-1.414 1.414-.708-.707L12.605 2.7l.707.707ZM8.5 3h-1V1h1v2Z"/></svg>
+                <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M4.05 12.95A6.982 6.982 0 0 1 2 8c0-1.79.684-3.583 2.05-4.95A6.982 6.982 0 0 1 9 1a1 1 0 0 1 .708 1.707 4.982 4.982 0 0 0-1.465 3.536 4.98 4.98 0 0 0 1.465 3.535 4.98 4.98 0 0 0 3.535 1.465 1 1 0 0 1 .707 1.707A6.981 6.981 0 0 1 9 15a6.983 6.983 0 0 1-4.95-2.05Zm.708-.707A5.983 5.983 0 0 0 9 14c1.535 0 3.07-.586 4.242-1.757a5.98 5.98 0 0 1-4.018-1.545L9 10.485a5.982 5.982 0 0 1-1.758-4.242A5.986 5.986 0 0 1 9 2a5.983 5.983 0 0 0-4.243 1.757A5.98 5.98 0 0 0 3 8l.006.288a5.978 5.978 0 0 0 1.75 3.955Z"/></svg>
+            </button>
+        </div>
+    </header>
+
+    <main>
+        <div class="grid">
+            <div class="panel">
+                <div class="panel-bar">
+                    <span class="panel-label">PDF</span>
+                    <div class="panel-actions">
+                        <button class="link-btn" id="clearBtn" disabled>Clear</button>
+                        <div class="options-anchor">
+                            <button id="ocrBtn" class="btn btn-sm" commandfor="ocrPopover" command="toggle-popover" aria-haspopup="true" title="OCR &amp; parse options">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+                                <span class="opt-label">Options</span>
+                            </button>
+                            <div id="ocrPopover" popover class="options-popover" role="dialog" aria-label="Parse options">
+                                <div class="opt-section">
+                                    <h4>OCR for scanned pages</h4>
+                                    <label>
+                                        <input type="radio" name="ocrMode" value="auto" checked>
+                                        <span>Auto
+                                            <span class="opt-desc">Run OCR only on pages with very little embedded text. Recommended.</span>
+                                        </span>
+                                    </label>
+                                    <label>
+                                        <input type="radio" name="ocrMode" value="always">
+                                        <span>Always
+                                            <span class="opt-desc">Run OCR on every page even if it already has text. Slow.</span>
+                                        </span>
+                                    </label>
+                                    <label>
+                                        <input type="radio" name="ocrMode" value="never">
+                                        <span>Never
+                                            <span class="opt-desc">Use embedded text only. Fastest. Scanned PDFs will appear empty.</span>
+                                        </span>
+                                    </label>
+                                </div>
+                                <div class="opt-section">
+                                    <h4>OCR languages</h4>
+                                    <div class="lang-picker">
+                                        <div id="langChips" class="lang-chips" role="list" aria-label="Selected OCR languages"></div>
+                                        <div class="lang-search-wrap">
+                                            <input id="langSearch" type="text" placeholder="Search or pick a language..." autocomplete="off" spellcheck="false"
+                                                aria-controls="langSuggestions" aria-expanded="false" role="combobox" aria-haspopup="listbox">
+                                        </div>
+                                        <div id="langSuggestions" class="lang-suggestions" role="listbox" aria-label="Available OCR languages" hidden></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <button id="parseBtn" class="btn btn-primary btn-sm" disabled title="Parse the loaded PDF (Cmd/Ctrl+Enter)">Parse</button>
+                    </div>
+                </div>
+                <div id="dropzone" class="dropzone" role="button" tabindex="0" aria-label="Drop a PDF here or click to upload">
+                    <div class="dropzone-prompt" style="display:flex;flex-direction:column;align-items:center;gap:12px;">
+                        <div class="dropzone-icon">
+                            <svg viewBox="0 0 24 24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                <path d="M14 2v6h6"/>
+                                <path d="M12 18v-6"/>
+                                <path d="M9 15l3-3 3 3"/>
+                            </svg>
+                        </div>
+                        <div class="dropzone-title">Drop a PDF here, or click to choose</div>
+                        <div class="dropzone-sub">Parsing happens entirely in your browser. Nothing is uploaded.</div>
+                        <div class="dropzone-formats">Accepts <code>.pdf</code> (any size, pages render at 150 DPI).</div>
+                    </div>
+                    <div class="dropzone-active">
+                        <div class="file-info">
+                            <div class="file-info-icon">
+                                <svg viewBox="0 0 24 24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                    <path d="M14 2v6h6"/>
+                                </svg>
+                            </div>
+                            <span id="fileName" class="file-info-name"></span>
+                            <span id="fileMeta" class="file-info-meta"></span>
+                        </div>
+                        <div id="parseStats" class="parse-stats" hidden></div>
+                        <div class="dropzone-actions">
+                            <button class="btn btn-sm" id="replaceBtn">Replace</button>
+                            <button class="btn btn-primary btn-sm" id="parseBtn2">Parse</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="splitter" id="splitter"></div>
+
+            <div id="resultPane" class="panel">
+                <div class="panel-bar">
+                    <div class="view-tabs" role="tablist" aria-label="Result view">
+                        <button id="tabText" class="view-tab active" role="tab" aria-selected="true" aria-controls="resultText" title="Spatial text (liteparse grid projection)">Text</button>
+                        <button id="tabJson" class="view-tab" role="tab" aria-selected="false" aria-controls="resultJson" title="Structured JSON with per-page items and bounding boxes">JSON</button>
+                        <button id="tabMd" class="view-tab" role="tab" aria-selected="false" aria-controls="resultMd" title="Heuristic Markdown reconstruction (headings, lists, tables, links)">Markdown</button>
+                        <button id="tabOutline" class="view-tab" role="tab" aria-selected="false" aria-controls="resultOutline" title="PDF outline / bookmarks tree (Table of Contents)">Outline</button>
+                        <button id="tabShots" class="view-tab" role="tab" aria-selected="false" aria-controls="resultShots" title="Per-page PNG renders with optional bbox overlay and full-text search">Screenshots</button>
+                    </div>
+                    <div class="panel-actions">
+                        <button id="shareBtn" class="btn btn-primary btn-sm" disabled title="Copy a shareable link with the result encoded in the URL">Share</button>
+                        <button id="copyBtn" class="btn btn-sm" disabled title="Copy the current result to your clipboard">
+                            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="9" height="10" rx="1.5"/><path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H10"/></svg>
+                            <span class="btn-label">Copy</span>
+                        </button>
+                        <div class="options-anchor">
+                            <button id="exportBtn" class="btn btn-sm" commandfor="exportMenu" command="toggle-popover" aria-haspopup="true" disabled title="Export the current result">
+                                <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v9"/><path d="M4.5 7.5 8 11l3.5-3.5"/><path d="M3 13.5h10"/></svg>
+                                <span class="btn-label">Export</span>
+                                <svg class="export-caret" viewBox="0 0 10 6" width="8" height="6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 1l4 4 4-4"/></svg>
+                            </button>
+                            <div id="exportMenu" popover class="options-popover export-menu" role="menu" aria-label="Export options">
+                                <button id="exportDownload" class="export-menu-item" role="menuitem" type="button">
+                                    <svg class="export-menu-icon" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v9"/><path d="M4.5 7.5 8 11l3.5-3.5"/><path d="M3 13.5h10"/></svg>
+                                    <span class="export-menu-body">
+                                        <span class="export-menu-title">Download</span>
+                                        <span class="export-menu-desc" id="exportDownloadDesc">Save the current view as a file</span>
+                                    </span>
+                                </button>
+                                <button id="exportOpenMars" class="export-menu-item" role="menuitem" type="button">
+                                    <svg class="export-menu-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg>
+                                    <span class="export-menu-body">
+                                        <span class="export-menu-title">Open in MARS</span>
+                                        <span class="export-menu-desc" id="exportOpenMarsDesc">Read, review, or export the current text in MARS</span>
+                                    </span>
+                                </button>
+                            </div>
+                        </div>
+                        <button id="fullscreenBtn" class="icon-btn" title="Toggle fullscreen" aria-label="Toggle fullscreen">
+                            <svg id="fullscreenEnterIcon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+                            <svg id="fullscreenExitIcon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="output-panel">
+                    <div id="resultEmpty" class="empty-state">
+                        <div class="empty-state-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                <path d="M14 2v6h6"/>
+                                <path d="M9 13h6"/>
+                                <path d="M9 17h6"/>
+                            </svg>
+                        </div>
+                        <div class="empty-state-title">Drop a PDF and press Parse</div>
+                        <div class="empty-state-sub">Extracted text or JSON will appear here. Sharing the result puts it in the URL fragment (the PDF itself never leaves the browser).</div>
+                    </div>
+                    <div id="resultProgress" class="progress-state" style="display:none">
+                        <div class="progress-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="progress-spin" aria-hidden="true">
+                                <circle cx="12" cy="12" r="9" opacity=".25"/>
+                                <path d="M21 12a9 9 0 0 1-9 9"/>
+                            </svg>
+                        </div>
+                        <div class="progress-title" id="progressTitle">Parsing PDF...</div>
+                        <div class="progress-sub" id="progressSub">Loading the liteparse engine. First run may take a moment.</div>
+                    </div>
+                    <div id="resultError" class="error-state" style="display:none">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <circle cx="12" cy="12" r="9"/>
+                            <path d="M12 8v4"/>
+                            <path d="M12 16h0"/>
+                        </svg>
+                        <div class="error-title">Failed to parse PDF</div>
+                        <div class="error-sub" id="errorSub"></div>
+                    </div>
+                    <textarea id="resultText" class="output-textarea" style="display:none" readonly aria-label="Extracted text" role="tabpanel" aria-labelledby="tabText"></textarea>
+                    <div id="resultJson" class="output-scroll" style="display:none" role="tabpanel" aria-labelledby="tabJson"><pre class="output-pre" id="resultJsonPre"></pre></div>
+                    <textarea id="resultMd" class="output-textarea" style="display:none" readonly aria-label="Heuristic Markdown reconstruction" role="tabpanel" aria-labelledby="tabMd"></textarea>
+                    <div id="resultMdPending" class="progress-state" style="display:none" role="status">
+                        <div class="progress-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="progress-spin" aria-hidden="true">
+                                <circle cx="12" cy="12" r="9" opacity=".25"/>
+                                <path d="M21 12a9 9 0 0 1-9 9"/>
+                            </svg>
+                        </div>
+                        <div class="progress-title" id="mdProgressTitle">Reconstructing Markdown...</div>
+                        <div class="progress-sub" id="mdProgressSub">Detecting headings, lists, tables, and link annotations.</div>
+                    </div>
+                    <div id="resultOutline" class="output-scroll outline-tree" style="display:none" role="tabpanel" aria-labelledby="tabOutline"></div>
+                    <div id="resultOutlineEmpty" class="empty-state" style="display:none" role="status">
+                        <div class="empty-state-icon">
+                            <svg viewBox="0 0 24 24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M4 6h11"/><path d="M4 12h11"/><path d="M4 18h11"/>
+                                <circle cx="19" cy="6" r="1.4"/><circle cx="19" cy="12" r="1.4"/><circle cx="19" cy="18" r="1.4"/>
+                            </svg>
+                        </div>
+                        <div class="empty-state-title" id="resultOutlineEmptyTitle">No outline in this PDF</div>
+                        <div class="empty-state-sub" id="resultOutlineEmptySub">This PDF has no bookmarks (Table of Contents). Most PDFs don't -- bookmarks are an authoring-time feature most LaTeX / Office workflows skip.</div>
+                    </div>
+                    <div id="resultOutlinePending" class="progress-state" style="display:none" role="status">
+                        <div class="progress-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="progress-spin" aria-hidden="true">
+                                <circle cx="12" cy="12" r="9" opacity=".25"/>
+                                <path d="M21 12a9 9 0 0 1-9 9"/>
+                            </svg>
+                        </div>
+                        <div class="progress-title">Reading outline...</div>
+                        <div class="progress-sub">Resolving PDF bookmarks to page numbers.</div>
+                    </div>
+                    <div id="resultShotsWrap" style="display:none" role="tabpanel" aria-labelledby="tabShots">
+                        <div id="resultShotsToolbar" class="shots-toolbar">
+                            <div class="shots-search">
+                                <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="7" r="5"/><path d="M11 11l3 3"/></svg>
+                                <input id="shotsSearchInput" type="search" placeholder="Search text in pages..." aria-label="Search text in pages" autocomplete="off" spellcheck="false">
+                                <span id="shotsSearchCount" class="shots-search-count" aria-live="polite"></span>
+                            </div>
+                            <label class="shots-toggle" title="Outline every text item with its bounding box (in PDF points, scaled to render DPI)">
+                                <input id="shotsBoxesToggle" type="checkbox">
+                                <span>Show boxes</span>
+                            </label>
+                        </div>
+                        <div id="resultShots" class="output-scroll shots-grid"></div>
+                    </div>
+                    <div id="resultShotsEmpty" class="empty-state" style="display:none" role="status">
+                        <div class="empty-state-icon">
+                            <svg viewBox="0 0 24 24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <rect x="3" y="5" width="18" height="14" rx="2"/>
+                                <circle cx="12" cy="12" r="3"/>
+                            </svg>
+                        </div>
+                        <div class="empty-state-title">Screenshots need the original PDF</div>
+                        <div class="empty-state-sub">This view was opened from a shared link, which only carries the extracted Text or JSON. Drop the PDF to generate per-page renders.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <aside class="su-more-tools" aria-label="More free tools">
+            <p>Other free, no-signup Secutils.dev tools for JWT, SAML, certificates, Markdown, HTTP echo, and more - <a href="https://{{TOOLS_HOST}}/">Browse all tools &rarr;</a></p>
+        </aside>
+    </main>
+
+    <footer class="su-footer">
+        <p>Extract text and structured JSON from PDFs, in your browser.</p>
+        <p class="su-footer-fineprint">
+            <button type="button" class="su-footer-link" id="privacyOpen">Privacy</button>
+            <span aria-hidden="true"> &middot; </span>
+            <button type="button" class="su-footer-link" id="creditsOpen">Credits</button>
+        </p>
+    </footer>
+
+    <dialog id="privacyDialog" class="su-dialog" closedby="any" aria-labelledby="privacyDialogTitle">
+        <header class="su-dialog-header">
+            <h2 id="privacyDialogTitle">Privacy</h2>
+            <button type="button" class="su-dialog-close" id="privacyClose" aria-label="Close">
+                <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13"/></svg>
+            </button>
+        </header>
+        <div class="su-dialog-body">
+            <p><strong>Your PDF stays in your browser.</strong> Parsing runs entirely client-side via the bundled <a href="https://github.com/run-llama/liteparse" target="_blank" rel="noopener noreferrer">liteparse</a> + <a href="https://github.com/mozilla/pdf.js" target="_blank" rel="noopener noreferrer">PDF.js</a> engine. The PDF bytes are never uploaded. Shareable links carry only the extracted text or JSON (and only when you click Share), encoded in the URL fragment (<code>#&hellip;</code>), which browsers never transmit to the server.</p>
+            <p><strong>OCR fetches from public CDNs.</strong> When OCR is enabled and a page needs it, the bundled <a href="https://tesseract.projectnaptha.com/" target="_blank" rel="noopener noreferrer">tesseract.js</a> engine fetches its language data from the public <code>cdn.jsdelivr.net/npm/@tesseract.js-data/&lt;lang&gt;/</code> mirror. The PDF content itself is never sent anywhere, only those static asset URLs are requested. Disable OCR in <em>Options</em> if you'd rather not contact any third party.</p>
+            <p><strong>Anonymous usage analytics.</strong> We use <a href="https://plausible.io/" target="_blank" rel="noopener noreferrer">Plausible Analytics</a>, a privacy-first, GDPR-compliant tool, to collect aggregate usage data. No cookies, no personal data, no individual tracking. Limited to top pages, referral sources, visit duration, and device-class metadata.</p>
+            <p class="su-dialog-fineprint">See the full <a href="https://secutils.dev/privacy" target="_blank" rel="noopener noreferrer">Secutils.dev privacy policy</a> for details on the wider service.</p>
+        </div>
+    </dialog>
+
+    <dialog id="creditsDialog" class="su-dialog" closedby="any" aria-labelledby="creditsDialogTitle">
+        <header class="su-dialog-header">
+            <h2 id="creditsDialogTitle">Credits</h2>
+            <button type="button" class="su-dialog-close" id="creditsClose" aria-label="Close">
+                <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13"/></svg>
+            </button>
+        </header>
+        <div class="su-dialog-body">
+            <p>This tool is powered by the following open-source libraries:</p>
+            <ul class="su-credits-list">
+                <li><a href="https://github.com/run-llama/liteparse" target="_blank" rel="noopener noreferrer"><strong>liteparse</strong></a> - lightweight PDF text and layout extractor, orchestrates parsing and the OCR fallback inside the browser.</li>
+                <li><a href="https://github.com/mozilla/pdf.js" target="_blank" rel="noopener noreferrer"><strong>PDF.js</strong></a> - Mozilla's pure-JavaScript PDF renderer, used to parse the document structure and rasterise pages for OCR.</li>
+                <li><a href="https://github.com/naptha/tesseract.js" target="_blank" rel="noopener noreferrer"><strong>tesseract.js</strong></a> - pure-JavaScript port of the Tesseract OCR engine, used to extract text from image-only PDF pages when OCR is enabled.</li>
+            </ul>
+            <p class="su-dialog-fineprint">All trademarks are property of their respective owners.</p>
+        </div>
+    </dialog>
+
+    <input type="file" id="fileInput" accept=".pdf,application/pdf">
+
+    <div id="toast" class="toast" style="display:none">
+        <span id="toastMsg"></span>
+    </div>
+
+    <!-- Inlined at deploy time by dev/tools/shared/deploy.ts (data-su-bundle). See
+         dev/tools/shared/guides/platform.md -> "Embedded JS bundles". Sub-package source lives
+         in dev/tools/pdf-extractor/. Body is empty in source and stays empty
+         after `npm run build`; the deploy inliner fills it with the built
+         ESM module. `type="text/plain"` keeps the browser from executing the
+         multi-MB source on initial parse -- our `loadLiteparseBundle()`
+         helper Blob-URLs it on demand. -->
+    <script id="su-bundle-liteparse" type="text/plain" data-su-bundle="liteparse" data-su-bundle-encoding="gzip-base64"></script>
+
+    <script>
+const $ = (id) => document.getElementById(id);
+const els = {
+    dropzone: $('dropzone'),
+    fileInput: $('fileInput'),
+    fileName: $('fileName'),
+    fileMeta: $('fileMeta'),
+    clearBtn: $('clearBtn'),
+    replaceBtn: $('replaceBtn'),
+    parseBtn: $('parseBtn'),
+    parseBtn2: $('parseBtn2'),
+    ocrBtn: $('ocrBtn'),
+    ocrPopover: $('ocrPopover'),
+    langChips: $('langChips'),
+    langSearch: $('langSearch'),
+    langSuggestions: $('langSuggestions'),
+    themeToggle: $('themeToggle'),
+    skillLink: $('skillLink'),
+    tabText: $('tabText'),
+    tabJson: $('tabJson'),
+    tabMd: $('tabMd'),
+    tabOutline: $('tabOutline'),
+    tabShots: $('tabShots'),
+    resultText: $('resultText'),
+    resultJson: $('resultJson'),
+    resultJsonPre: $('resultJsonPre'),
+    resultMd: $('resultMd'),
+    resultMdPending: $('resultMdPending'),
+    mdProgressTitle: $('mdProgressTitle'),
+    mdProgressSub: $('mdProgressSub'),
+    resultOutline: $('resultOutline'),
+    resultOutlineEmpty: $('resultOutlineEmpty'),
+    resultOutlineEmptyTitle: $('resultOutlineEmptyTitle'),
+    resultOutlineEmptySub: $('resultOutlineEmptySub'),
+    resultOutlinePending: $('resultOutlinePending'),
+    resultShotsWrap: $('resultShotsWrap'),
+    resultShots: $('resultShots'),
+    resultShotsToolbar: $('resultShotsToolbar'),
+    resultShotsEmpty: $('resultShotsEmpty'),
+    shotsSearchInput: $('shotsSearchInput'),
+    shotsSearchCount: $('shotsSearchCount'),
+    shotsBoxesToggle: $('shotsBoxesToggle'),
+    resultEmpty: $('resultEmpty'),
+    resultProgress: $('resultProgress'),
+    resultError: $('resultError'),
+    progressTitle: $('progressTitle'),
+    progressSub: $('progressSub'),
+    errorSub: $('errorSub'),
+    parseStats: $('parseStats'),
+    resultPane: $('resultPane'),
+    shareBtn: $('shareBtn'),
+    copyBtn: $('copyBtn'),
+    exportBtn: $('exportBtn'),
+    exportMenu: $('exportMenu'),
+    exportDownload: $('exportDownload'),
+    exportDownloadDesc: $('exportDownloadDesc'),
+    exportOpenMars: $('exportOpenMars'),
+    exportOpenMarsDesc: $('exportOpenMarsDesc'),
+    fullscreenBtn: $('fullscreenBtn'),
+    fullscreenEnterIcon: $('fullscreenEnterIcon'),
+    fullscreenExitIcon: $('fullscreenExitIcon'),
+    splitter: $('splitter'),
+    toast: $('toast'),
+    toastMsg: $('toastMsg'),
+};
+
+// State
+let pdfFile = null;              // { name, bytes: Uint8Array, sizeBytes }
+let result = null;               // { text: string, json: object, srcName: string, ocrMode: string, ocrLang: string }
+let activeTab = 'text';
+let liteparseModule = null;      // resolved on first parse, cached after
+let toastTimer = null;
+
+// Screenshots state. Populated lazily the first time the user clicks the
+// Screenshots tab after a successful parse. Pages stream in one at a time
+// rather than blocking on all-at-once render (10 pages at 150 DPI is ~1 GB
+// of intermediate canvas memory in the worst case). Each entry is a
+// `{ page, url, width, height }` object; `url` is a Blob URL we must revoke
+// on clear / replace / re-parse to avoid leaking 5-50 MB per session.
+let shots = null;                // null | { status: 'idle'|'rendering'|'ready'|'error', items: [...], total, error? }
+let shotsAbort = null;           // AbortController-ish flag; set to true to cancel an in-flight render loop
+
+// Markdown reconstruction cache. The heuristic engine (buildMarkdown) is
+// pure but the per-PDF link-annotation pass (getPdfLinks) is async, so we
+// cache the rendered string and skip recomputation while the same result
+// is in scope. Invalidated on clear / replace / re-parse, and rebuilt on
+// the next setActiveTab('md') click.
+let markdownCache = null;        // null | string
+let markdownAbort = null;        // AbortController-ish flag for the in-flight render
+
+// PDF outline (bookmarks / Table of Contents) state. Populated lazily on
+// first click of the Outline tab from the live PDF bytes; cached for the
+// lifetime of the result. Shared links may carry the outline tree
+// directly in the URL fragment (v3 schema, `o` field) -- in that case
+// `outlineCache` is set immediately at hydrate time and the tab opens
+// instantly. The Markdown engine also picks up `outlineCache` (when
+// available) as an authoritative heading hierarchy that overrides the
+// font-size heuristic; see buildMarkdown(json, links, outline).
+let outlineCache = null;         // null | PdfOutlineItem[] (empty array means "fetched, none found")
+let outlineAbort = null;         // AbortController-ish flag for the in-flight fetch
+
+// Screenshots overlay state. The same `<canvas>` we draw onto serves both
+// the bbox-overlay toggle and the full-text search highlight; they layer
+// in that order (search highlights paint on top of bbox outlines so a
+// matched item stays visible even when boxes are on). The toggle persists
+// across re-renders but resets on clear / replace / re-parse.
+let shotsBoxesEnabled = false;   // bbox overlay toggle state
+let shotsSearchQuery = '';       // current search query (case-insensitive substring)
+let shotsSearchDebounce = null;  // debounce timer for the search input
+
+// Practical cap for what we will encode into the URL fragment. ~64 KB of UTF-8
+// is well within every modern browser's URL length limit, doesn't generate a
+// pathologically long anchor, and matches the guidance in
+// dev/tools/shared/guides/url-state.md ("URL state encoding"). Larger results are kept in
+// memory but Share is disabled (with a hint) -- the user can still copy /
+// download the result manually.
+const MAX_URL_STATE_BYTES = 64 * 1024;
+
+// URL state encoding: see dev/tools/shared/guides/url-state.md -> "URL state encoding".
+const utf8Enc = new TextEncoder();
+const utf8Dec = new TextDecoder();
+const toBase64Url = (bytes) => {
+    let s = '';
+    for (const b of bytes) s += String.fromCharCode(b);
+    return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+};
+const fromBase64Url = (str) => {
+    const b64 = str.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '==='.slice(0, (4 - b64.length % 4) % 4);
+    const bin = atob(padded);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+};
+const encodeState = async (text) => {
+    const bytes = utf8Enc.encode(text);
+    const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+    const deflated = new Uint8Array(await new Response(stream).arrayBuffer());
+    const out = new Uint8Array(4 + deflated.length);
+    new DataView(out.buffer).setUint32(0, bytes.length, true);
+    out.set(deflated, 4);
+    return toBase64Url(out);
+};
+const decodeState = async (str) => {
+    try {
+        const bytes = fromBase64Url(str);
+        if (bytes.length < 4) return null;
+        const stream = new Blob([bytes.subarray(4)]).stream()
+            .pipeThrough(new DecompressionStream('deflate-raw'));
+        const inflated = new Uint8Array(await new Response(stream).arrayBuffer());
+        return utf8Dec.decode(inflated);
+    } catch { return null; }
+};
+
+// Theme toggle + skill link wiring (copied from md.html).
+(() => {
+    const root = document.documentElement;
+    const setTheme = (t) => {
+        root.setAttribute('data-theme', t);
+        try { localStorage.setItem('su-tool-theme', t); } catch {}
+    };
+    els.themeToggle.addEventListener('click', () => {
+        setTheme(root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+    });
+    if (els.skillLink) {
+        const p = location.pathname;
+        els.skillLink.href = (p === '/' || p === '') ? '/llms.txt' : p.replace(/\/$/, '') + '.md';
+    }
+    try {
+        const saved = localStorage.getItem('su-tool-theme');
+        if (saved) setTheme(saved);
+        else if (window.matchMedia('(prefers-color-scheme: light)').matches) setTheme('light');
+    } catch {}
+})();
+
+(() => {
+    const dlg = $('privacyDialog');
+    $('privacyOpen').addEventListener('click', () => dlg.showModal());
+    $('privacyClose').addEventListener('click', () => dlg.close());
+})();
+
+(() => {
+    const dlg = $('creditsDialog');
+    $('creditsOpen').addEventListener('click', () => dlg.showModal());
+    $('creditsClose').addEventListener('click', () => dlg.close());
+})();
+
+// Safari fallback for closedby="any" (Newly Baseline elsewhere; limited in Safari as of Q2 2026).
+if (!('closedBy' in HTMLDialogElement.prototype)) {
+    for (const dlg of document.querySelectorAll('dialog.su-dialog')) {
+        dlg.addEventListener('click', (e) => {
+            if (e.target !== dlg) return;
+            const r = dlg.getBoundingClientRect();
+            if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) dlg.close();
+        });
+    }
+}
+
+function toast(msg) {
+    clearTimeout(toastTimer);
+    els.toastMsg.textContent = msg;
+    els.toast.style.display = 'flex';
+    toastTimer = setTimeout(() => { els.toast.style.display = 'none'; }, 2400);
+}
+
+// Yield to the event loop so progress updates / freshly-appended images paint
+// before the next chunk of synchronous work. Prefers `scheduler.yield()` (resumes
+// in the same priority queue, lower latency than rAF) and falls back to rAF for
+// the visual-frame-aligned semantics on browsers without the API.
+// See dev/tools/shared/guides/javascript.md → "Long tasks (scheduler.yield)".
+const yieldToMain = () => 'scheduler' in window && typeof scheduler.yield === 'function'
+    ? scheduler.yield()
+    : new Promise((r) => requestAnimationFrame(() => r()));
+
+function formatBytes(n) {
+    if (n < 1024) return `${n} B`;
+    const kb = n / 1024;
+    return kb < 1024 ? `${kb.toFixed(1)} KB` : `${(kb / 1024).toFixed(2)} MB`;
+}
+
+// Lazy-loads the inlined liteparse bundle. The `<script data-su-bundle>` tag
+// holds the ESM source as text/plain so it's never parsed on initial page
+// load; we Blob-URL it on first use. Cached for subsequent calls. When the
+// placeholder carries `data-su-bundle-encoding="gzip-base64"`, we base64-
+// decode and gunzip it first (the deploy pipeline picks this encoding when
+// the raw bundle would exceed the responder JSON payload cap; see
+// dev/tools/shared/guides/platform.md -> "Embedded JS bundles").
+async function loadLiteparseBundle() {
+    if (liteparseModule) return liteparseModule;
+    const el = document.getElementById('su-bundle-liteparse');
+    const raw = el?.textContent?.trim();
+    if (!raw) {
+        throw new Error('liteparse bundle is missing -- the deploy step inlines it into <script id="su-bundle-liteparse">.');
+    }
+    const encoding = el.getAttribute('data-su-bundle-encoding');
+    let src;
+    if (!encoding) {
+        src = raw;
+    } else if (encoding === 'gzip-base64') {
+        const bin = atob(raw);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+        src = await new Response(stream).text();
+    } else {
+        throw new Error(`liteparse bundle: unsupported data-su-bundle-encoding="${encoding}"`);
+    }
+    const blob = new Blob([src], { type: 'text/javascript' });
+    const url = URL.createObjectURL(blob);
+    try {
+        liteparseModule = await import(url);
+    } finally {
+        // The module is locked in memory by the JS engine after import;
+        // dropping the URL frees the Blob.
+        URL.revokeObjectURL(url);
+    }
+    return liteparseModule;
+}
+
+// ----- Drop zone wiring --------------------------------------------------
+
+function setFile(file) {
+    if (!file) return;
+    const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+    if (!isPdf) {
+        toast('Only PDF files are supported.');
+        return;
+    }
+    file.arrayBuffer().then((buf) => {
+        pdfFile = {
+            name: file.name,
+            sizeBytes: file.size,
+            bytes: new Uint8Array(buf),
+        };
+        els.dropzone.classList.add('has-file');
+        els.fileName.textContent = file.name;
+        els.fileMeta.textContent = formatBytes(file.size);
+        els.parseBtn.disabled = false;
+        els.clearBtn.disabled = false;
+        // Reset any prior result; the user expects a fresh parse.
+        clearResult();
+    }).catch((err) => {
+        toast(`Failed to read file: ${err.message ?? err}`);
+    });
+}
+
+function clearFile() {
+    pdfFile = null;
+    // 'from-shared-link' is set when hydrating from a URL fragment to display
+    // the synthetic "Loaded from shared link" pseudo-file in the dropzone --
+    // clear it here so a subsequent local upload uses the normal styling.
+    els.dropzone.classList.remove('has-file', 'from-shared-link');
+    els.fileName.textContent = '';
+    els.fileMeta.textContent = '';
+    els.parseBtn.disabled = true;
+    els.clearBtn.disabled = true;
+    els.fileInput.value = '';
+    clearResult();
+}
+
+els.dropzone.addEventListener('click', (e) => {
+    // The "Replace" / "Parse" buttons sit inside the dropzone for layout
+    // reasons; their clicks shouldn't bubble up and re-open the file picker.
+    if (e.target.closest('button')) return;
+    els.fileInput.click();
+});
+els.dropzone.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        els.fileInput.click();
+    }
+});
+els.dropzone.addEventListener('dragover', (e) => {
+    if (e.dataTransfer?.types.includes('Files')) {
+        e.preventDefault();
+        els.dropzone.classList.add('dragover');
+    }
+});
+els.dropzone.addEventListener('dragleave', () => els.dropzone.classList.remove('dragover'));
+els.dropzone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    els.dropzone.classList.remove('dragover');
+    const file = e.dataTransfer?.files?.[0];
+    if (file) setFile(file);
+});
+els.fileInput.addEventListener('change', (e) => {
+    const file = e.target.files?.[0];
+    if (file) setFile(file);
+});
+els.replaceBtn.addEventListener('click', () => els.fileInput.click());
+els.clearBtn.addEventListener('click', clearFile);
+
+// ----- Options popover ---------------------------------------------------
+
+// Pin an open [popover] right-aligned just below its invoker. The popover is
+// in the top layer (its containing block is the viewport), so the UA stylesheet
+// uses `position: fixed; inset: 0; margin: auto;` by default — without this
+// override the popover renders centered. `position-area` would replace this
+// helper but is Chromium-only at time of writing.
+// See dev/tools/shared/guides/components.md → "Tethered popovers (native popover + commandfor)".
+const positionPopover = (popover, invoker) => {
+    // Skip in the fallback path (no Popover API) — the fallback IIFE already
+    // positions the element via inline `position: absolute; top/right` styles.
+    if (typeof popover.showPopover !== 'function') return;
+    const r = invoker.getBoundingClientRect();
+    popover.style.position = 'fixed';
+    popover.style.top = `${Math.round(r.bottom + 6)}px`;
+    popover.style.left = 'auto';
+    popover.style.right = `${Math.round(window.innerWidth - r.right)}px`;
+    popover.style.bottom = 'auto';
+};
+
+// Position the popover before it opens. Two listeners cover every code path:
+//   1. `click` on the invoker fires synchronously *before* the browser performs
+//      the [commandfor] default action (showPopover), so the inline `top`/
+//      `right` set here are already on the element when it enters the top
+//      layer — no flash at the UA-default `inset: 0` location.
+//   2. `beforetoggle` on the popover catches programmatic showPopover() calls
+//      and any path that bypasses the invoker click (keyboard shortcut, etc.).
+const wireTether = (invoker, popover) => {
+    invoker.addEventListener('click', () => positionPopover(popover, invoker));
+    popover.addEventListener('beforetoggle', (e) => { if (e.newState === 'open') positionPopover(popover, invoker); });
+};
+wireTether(els.ocrBtn, els.ocrPopover);
+// `toggle` runs the language-suggestion teardown after the popover closes
+// (the visual state has settled by then).
+els.ocrPopover.addEventListener('toggle', (e) => {
+    if (e.newState === 'closed' && typeof showLangSuggestions === 'function') showLangSuggestions(false);
+});
+// ----- OCR language picker -----------------------------------------------
+// tesseract.js downloads each language's `.traineddata.gz` lazily on first
+// use from the jsDelivr NPM mirror at:
+//   https://cdn.jsdelivr.net/npm/@tesseract.js-data/<code>/4.0.0_best_int/<code>.traineddata.gz
+// This is the LSTM-only "tessdata best integerized" corpus (the upstream
+// default for Tesseract.js v6). Codes follow the Tesseract 4 LSTM naming
+// (ISO 639-3 plus a few specials like chi_sim / chi_tra / chr / osd /
+// equ / kmr / *_vert for vertical-script variants). Multiple codes are
+// joined with `+` and passed to tesseract.js, which downloads each one
+// in parallel and feeds them into the same recognition pass.
+//
+// Keep this list alphabetical by friendly name. A handful of codes are
+// labelled in their native script where the friendly English name would
+// be lossy (e.g. Chinese variants distinguish Simplified / Traditional
+// and horizontal / vertical layouts).
+const TESSERACT_LANGUAGES = [
+    { code: 'afr', name: 'Afrikaans' },
+    { code: 'sqi', name: 'Albanian' },
+    { code: 'amh', name: 'Amharic' },
+    { code: 'ara', name: 'Arabic' },
+    { code: 'asm', name: 'Assamese' },
+    { code: 'aze', name: 'Azerbaijani' },
+    { code: 'aze_cyrl', name: 'Azerbaijani (Cyrillic)' },
+    { code: 'eus', name: 'Basque' },
+    { code: 'bel', name: 'Belarusian' },
+    { code: 'ben', name: 'Bengali' },
+    { code: 'bos', name: 'Bosnian' },
+    { code: 'bre', name: 'Breton' },
+    { code: 'bul', name: 'Bulgarian' },
+    { code: 'mya', name: 'Burmese' },
+    { code: 'cat', name: 'Catalan' },
+    { code: 'ceb', name: 'Cebuano' },
+    { code: 'chr', name: 'Cherokee' },
+    { code: 'chi_sim', name: 'Chinese — Simplified' },
+    { code: 'chi_sim_vert', name: 'Chinese — Simplified (vertical)' },
+    { code: 'chi_tra', name: 'Chinese — Traditional' },
+    { code: 'chi_tra_vert', name: 'Chinese — Traditional (vertical)' },
+    { code: 'cos', name: 'Corsican' },
+    { code: 'hrv', name: 'Croatian' },
+    { code: 'ces', name: 'Czech' },
+    { code: 'dan', name: 'Danish' },
+    { code: 'div', name: 'Dhivehi' },
+    { code: 'nld', name: 'Dutch' },
+    { code: 'dzo', name: 'Dzongkha' },
+    { code: 'eng', name: 'English' },
+    { code: 'enm', name: 'English — Middle (1100-1500)' },
+    { code: 'epo', name: 'Esperanto' },
+    { code: 'est', name: 'Estonian' },
+    { code: 'fao', name: 'Faroese' },
+    { code: 'fil', name: 'Filipino' },
+    { code: 'fin', name: 'Finnish' },
+    { code: 'fra', name: 'French' },
+    { code: 'frm', name: 'French — Middle (ca. 1400-1600)' },
+    { code: 'fry', name: 'Frisian (Western)' },
+    { code: 'gla', name: 'Gaelic (Scottish)' },
+    { code: 'glg', name: 'Galician' },
+    { code: 'kat', name: 'Georgian' },
+    { code: 'kat_old', name: 'Georgian (Old)' },
+    { code: 'deu', name: 'German' },
+    { code: 'deu_latf', name: 'German — Fraktur (Latin script)' },
+    { code: 'frk', name: 'German — Fraktur (legacy)' },
+    { code: 'ell', name: 'Greek (Modern)' },
+    { code: 'grc', name: 'Greek (Ancient)' },
+    { code: 'guj', name: 'Gujarati' },
+    { code: 'hat', name: 'Haitian Creole' },
+    { code: 'heb', name: 'Hebrew' },
+    { code: 'hin', name: 'Hindi' },
+    { code: 'hun', name: 'Hungarian' },
+    { code: 'isl', name: 'Icelandic' },
+    { code: 'iku', name: 'Inuktitut' },
+    { code: 'ind', name: 'Indonesian' },
+    { code: 'gle', name: 'Irish' },
+    { code: 'ita', name: 'Italian' },
+    { code: 'jpn', name: 'Japanese' },
+    { code: 'jpn_vert', name: 'Japanese (vertical)' },
+    { code: 'jav', name: 'Javanese' },
+    { code: 'kan', name: 'Kannada' },
+    { code: 'kaz', name: 'Kazakh' },
+    { code: 'khm', name: 'Khmer' },
+    { code: 'kir', name: 'Kyrgyz' },
+    { code: 'kor', name: 'Korean' },
+    { code: 'kor_vert', name: 'Korean (vertical)' },
+    { code: 'kmr', name: 'Kurdish (Kurmanji)' },
+    { code: 'lao', name: 'Lao' },
+    { code: 'lat', name: 'Latin' },
+    { code: 'lav', name: 'Latvian' },
+    { code: 'lit', name: 'Lithuanian' },
+    { code: 'ltz', name: 'Luxembourgish' },
+    { code: 'mkd', name: 'Macedonian' },
+    { code: 'msa', name: 'Malay' },
+    { code: 'mal', name: 'Malayalam' },
+    { code: 'mlt', name: 'Maltese' },
+    { code: 'mri', name: 'Māori' },
+    { code: 'mar', name: 'Marathi' },
+    { code: 'mon', name: 'Mongolian' },
+    { code: 'nep', name: 'Nepali' },
+    { code: 'nor', name: 'Norwegian' },
+    { code: 'oci', name: 'Occitan' },
+    { code: 'ori', name: 'Odia' },
+    { code: 'osd', name: 'Orientation & script detection (osd)' },
+    { code: 'pan', name: 'Punjabi' },
+    { code: 'fas', name: 'Persian' },
+    { code: 'pol', name: 'Polish' },
+    { code: 'por', name: 'Portuguese' },
+    { code: 'pus', name: 'Pashto' },
+    { code: 'que', name: 'Quechua' },
+    { code: 'ron', name: 'Romanian' },
+    { code: 'rus', name: 'Russian' },
+    { code: 'san', name: 'Sanskrit' },
+    { code: 'srp', name: 'Serbian (Cyrillic)' },
+    { code: 'srp_latn', name: 'Serbian (Latin)' },
+    { code: 'snd', name: 'Sindhi' },
+    { code: 'sin', name: 'Sinhala' },
+    { code: 'slk', name: 'Slovak' },
+    { code: 'slv', name: 'Slovenian' },
+    { code: 'spa', name: 'Spanish' },
+    { code: 'spa_old', name: 'Spanish (Old)' },
+    { code: 'sun', name: 'Sundanese' },
+    { code: 'swa', name: 'Swahili' },
+    { code: 'swe', name: 'Swedish' },
+    { code: 'syr', name: 'Syriac' },
+    { code: 'tgk', name: 'Tajik' },
+    { code: 'tam', name: 'Tamil' },
+    { code: 'tat', name: 'Tatar' },
+    { code: 'tel', name: 'Telugu' },
+    { code: 'tha', name: 'Thai' },
+    { code: 'tir', name: 'Tigrinya' },
+    { code: 'ton', name: 'Tongan' },
+    { code: 'tur', name: 'Turkish' },
+    { code: 'uig', name: 'Uyghur' },
+    { code: 'ukr', name: 'Ukrainian' },
+    { code: 'urd', name: 'Urdu' },
+    { code: 'uzb', name: 'Uzbek' },
+    { code: 'uzb_cyrl', name: 'Uzbek (Cyrillic)' },
+    { code: 'vie', name: 'Vietnamese' },
+    { code: 'cym', name: 'Welsh' },
+    { code: 'yid', name: 'Yiddish' },
+    { code: 'yor', name: 'Yoruba' },
+    { code: 'equ', name: 'Math / equations (equ)' },
+];
+const LANG_NAME_BY_CODE = new Map(TESSERACT_LANGUAGES.map((l) => [l.code, l.name]));
+
+// Currently-selected language codes, in display order. Default mirrors the
+// previous text-input default. Codes that aren't in the catalog (e.g. a
+// custom-trained model proxied through dataPath) are tolerated -- they
+// render as chips with their raw code as the label.
+let selectedOcrLangs = ['eng'];
+// Active suggestion index for keyboard navigation (-1 == none).
+let langActiveIdx = -1;
+
+function renderLangChips() {
+    els.langChips.replaceChildren();
+    if (selectedOcrLangs.length === 0) {
+        const empty = document.createElement('span');
+        empty.className = 'lang-chips-empty';
+        empty.textContent = 'No language selected -- OCR will be skipped.';
+        els.langChips.appendChild(empty);
+        return;
+    }
+    for (const code of selectedOcrLangs) {
+        const chip = document.createElement('span');
+        chip.className = 'lang-chip';
+        chip.setAttribute('role', 'listitem');
+        chip.dataset.code = code;
+        const label = document.createElement('span');
+        label.textContent = LANG_NAME_BY_CODE.get(code) ?? code;
+        chip.appendChild(label);
+        const x = document.createElement('button');
+        x.type = 'button';
+        x.className = 'lang-chip-remove';
+        x.setAttribute('aria-label', `Remove ${LANG_NAME_BY_CODE.get(code) ?? code}`);
+        x.textContent = '\u00d7';
+        x.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            toggleLangSelection(code);
+        });
+        chip.appendChild(x);
+        els.langChips.appendChild(chip);
+    }
+}
+
+function renderLangSuggestions(query) {
+    const q = (query || '').trim().toLowerCase();
+    const matches = q
+        ? TESSERACT_LANGUAGES.filter((l) => l.code.toLowerCase().includes(q) || l.name.toLowerCase().includes(q))
+        // No query: show selected first so the user sees current picks at a
+        // glance, then the rest in alphabetical order.
+        : [
+              ...TESSERACT_LANGUAGES.filter((l) => selectedOcrLangs.includes(l.code)),
+              ...TESSERACT_LANGUAGES.filter((l) => !selectedOcrLangs.includes(l.code)),
+          ];
+    els.langSuggestions.replaceChildren();
+    if (matches.length === 0) {
+        const none = document.createElement('div');
+        none.className = 'lang-suggestion-empty';
+        none.textContent = `No language matches "${query}".`;
+        els.langSuggestions.appendChild(none);
+        langActiveIdx = -1;
+        return;
+    }
+    // Clamp the active index into the new (possibly shorter) list.
+    if (langActiveIdx >= matches.length) langActiveIdx = matches.length - 1;
+    matches.forEach((lang, idx) => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'lang-suggestion';
+        item.dataset.code = lang.code;
+        item.setAttribute('role', 'option');
+        const isSelected = selectedOcrLangs.includes(lang.code);
+        if (isSelected) item.classList.add('is-selected');
+        if (idx === langActiveIdx) item.classList.add('active');
+        item.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+        const check = document.createElement('span');
+        check.className = 'lang-check';
+        if (isSelected) {
+            check.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5 7 12l5.5-7"/></svg>';
+        }
+        const name = document.createElement('span');
+        name.className = 'lang-name';
+        name.textContent = lang.name;
+        const code = document.createElement('span');
+        code.className = 'lang-code';
+        code.textContent = lang.code;
+        item.append(check, name, code);
+        // mousedown (not click) so the suggestion fires before the input's
+        // blur handler tears the panel down.
+        item.addEventListener('mousedown', (ev) => {
+            ev.preventDefault();
+            toggleLangSelection(lang.code);
+            els.langSearch.focus();
+        });
+        els.langSuggestions.appendChild(item);
+    });
+}
+
+function toggleLangSelection(code) {
+    if (selectedOcrLangs.includes(code)) {
+        selectedOcrLangs = selectedOcrLangs.filter((c) => c !== code);
+    } else {
+        selectedOcrLangs = [...selectedOcrLangs, code];
+    }
+    renderLangChips();
+    renderLangSuggestions(els.langSearch.value);
+}
+
+function showLangSuggestions(show) {
+    if (show) {
+        renderLangSuggestions(els.langSearch.value);
+        els.langSuggestions.removeAttribute('hidden');
+        els.langSearch.setAttribute('aria-expanded', 'true');
+    } else {
+        els.langSuggestions.setAttribute('hidden', '');
+        els.langSearch.setAttribute('aria-expanded', 'false');
+        langActiveIdx = -1;
+    }
+}
+
+els.langSearch.addEventListener('input', (e) => {
+    langActiveIdx = e.target.value ? 0 : -1;
+    renderLangSuggestions(e.target.value);
+    showLangSuggestions(true);
+});
+els.langSearch.addEventListener('focus', () => showLangSuggestions(true));
+els.langSearch.addEventListener('blur', () => {
+    // Defer so a mousedown on a suggestion can still register.
+    setTimeout(() => {
+        if (!els.langSuggestions.matches(':hover')) showLangSuggestions(false);
+    }, 150);
+});
+els.langSearch.addEventListener('keydown', (e) => {
+    const visibleItems = Array.from(els.langSuggestions.querySelectorAll('.lang-suggestion'));
+    if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (els.langSuggestions.hasAttribute('hidden')) {
+            showLangSuggestions(true);
+            return;
+        }
+        langActiveIdx = Math.min(visibleItems.length - 1, langActiveIdx + 1);
+        updateLangActive(visibleItems);
+    } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        langActiveIdx = Math.max(0, langActiveIdx - 1);
+        updateLangActive(visibleItems);
+    } else if (e.key === 'Enter') {
+        if (langActiveIdx >= 0 && visibleItems[langActiveIdx]) {
+            e.preventDefault();
+            toggleLangSelection(visibleItems[langActiveIdx].dataset.code);
+        }
+    } else if (e.key === 'Backspace' && els.langSearch.value === '' && selectedOcrLangs.length > 0) {
+        // Convenience: empty-input backspace removes the trailing chip,
+        // matching the behaviour of every other chip-style multi-select
+        // (GitHub labels, Gmail recipients, etc.).
+        e.preventDefault();
+        selectedOcrLangs = selectedOcrLangs.slice(0, -1);
+        renderLangChips();
+        renderLangSuggestions('');
+    } else if (e.key === 'Escape') {
+        if (!els.langSuggestions.hasAttribute('hidden')) {
+            e.stopPropagation();
+            showLangSuggestions(false);
+        }
+    }
+});
+
+function updateLangActive(items) {
+    items.forEach((el, i) => el.classList.toggle('active', i === langActiveIdx));
+    const active = items[langActiveIdx];
+    if (active) active.scrollIntoView({ block: 'nearest' });
+}
+
+renderLangChips();
+
+function readOcrOptions() {
+    const mode = document.querySelector('input[name="ocrMode"]:checked')?.value || 'auto';
+    // Empty selection falls back to English so the parse can still
+    // succeed in `auto` mode; with `never` the lang value is ignored
+    // by liteparse, and `always` honours whatever the user picked.
+    const lang = selectedOcrLangs.length > 0 ? selectedOcrLangs.join('+') : 'eng';
+    return { mode, lang };
+}
+
+// ----- Parse -------------------------------------------------------------
+
+function setExportEnabled(on, urlOk) {
+    els.copyBtn.disabled = !on;
+    // Export button is enabled whenever the active tab has *something* to
+    // export -- the contextual menu items decide which formats apply.
+    els.exportBtn.disabled = !on;
+    els.shareBtn.disabled = !on || !urlOk;
+    els.shareBtn.title = on && !urlOk
+        ? `Result is too large to encode in the URL (over ${MAX_URL_STATE_BYTES / 1024} KB). Use Copy or Export instead.`
+        : 'Copy a shareable link with the result encoded in the URL';
+    syncExportMenuItems();
+}
+
+// Update menu-item labels + disabled state based on the active tab. Called
+// from setExportEnabled() and from setActiveTab(); also re-runs when the
+// Markdown / Outline lazy caches resolve so the item descriptions reflect
+// the freshly-available format.
+function syncExportMenuItems() {
+    const payload = currentExportPayload();
+    const hasPayload = payload != null;
+    els.exportDownload.disabled = !hasPayload;
+    if (hasPayload) {
+        els.exportDownloadDesc.textContent = `Save the current view as .${payload.ext}`;
+    } else {
+        els.exportDownloadDesc.textContent = 'Nothing to download from this tab';
+    }
+    // MARS only makes sense for free-form text or Markdown (it
+    // renders the latter natively; the spatial text is handed over verbatim).
+    const canOpenMars = !!result && (activeTab === 'text' || (activeTab === 'md' && markdownCache != null));
+    els.exportOpenMars.disabled = !canOpenMars;
+    els.exportOpenMarsDesc.textContent = canOpenMars
+        ? 'Read, review, or export the current text in MARS'
+        : 'Only available for the Text and Markdown tabs';
+}
+
+function clearResult() {
+    result = null;
+    els.resultText.value = '';
+    els.resultJsonPre.textContent = '';
+    els.resultMd.value = '';
+    els.parseStats.textContent = '';
+    els.parseStats.setAttribute('hidden', '');
+    resetShots();
+    resetMarkdown();
+    resetOutline();
+    setExportEnabled(false, false);
+    closeExportMenu();
+    showResultPanel('empty');
+}
+
+// Tear down any in-flight Markdown render and drop the cached string so
+// the next setActiveTab('md') click rebuilds from the fresh result.
+function resetMarkdown() {
+    if (markdownAbort) markdownAbort.cancelled = true;
+    markdownAbort = null;
+    markdownCache = null;
+    els.resultMd.value = '';
+}
+
+// Drop the cached PDF outline. Next click of the Outline tab will refetch
+// from the live PDF bytes (or fall back to the empty state if the user
+// landed via a v1/v2 shared URL which doesn't carry the outline).
+function resetOutline() {
+    if (outlineAbort) outlineAbort.cancelled = true;
+    outlineAbort = null;
+    outlineCache = null;
+    els.resultOutline.replaceChildren();
+}
+
+// Tear down any in-flight render loop and revoke every Blob URL we minted.
+// Called on clear, replace, and the start of a fresh parse so the next
+// Screenshots-tab click starts from a clean slate. Shot-tab Blob URLs are
+// typically MB-sized and not GC'd until explicitly revoked.
+function resetShots() {
+    if (shotsAbort) shotsAbort.cancelled = true;
+    shotsAbort = null;
+    if (shots?.items) {
+        for (const s of shots.items) {
+            try { URL.revokeObjectURL(s.url); } catch {}
+        }
+    }
+    shots = null;
+    els.resultShots.replaceChildren();
+    els.resultShotsEmpty.style.display = 'none';
+    // The bbox toggle persists across parses (it's a UI preference) but
+    // the search field cleared because matches are tied to result data.
+    clearTimeout(shotsSearchDebounce);
+    shotsSearchDebounce = null;
+    shotsSearchQuery = '';
+    els.shotsSearchInput.value = '';
+    els.shotsSearchCount.textContent = '';
+    els.shotsSearchCount.classList.remove('has-matches', 'no-matches');
+}
+
+function showResultPanel(which) {
+    // which: 'empty' | 'progress' | 'error' | 'text' | 'json' | 'md' |
+    //        'md-pending' | 'outline' | 'outline-empty' | 'outline-pending' |
+    //        'shots' | 'shots-empty'
+    const panels = {
+        empty: els.resultEmpty,
+        progress: els.resultProgress,
+        error: els.resultError,
+        text: els.resultText,
+        json: els.resultJson,
+        md: els.resultMd,
+        'md-pending': els.resultMdPending,
+        outline: els.resultOutline,
+        'outline-empty': els.resultOutlineEmpty,
+        'outline-pending': els.resultOutlinePending,
+        shots: els.resultShotsWrap,
+        'shots-empty': els.resultShotsEmpty,
+    };
+    for (const [k, el] of Object.entries(panels)) {
+        let display;
+        if (k !== which) display = 'none';
+        else if (k === 'text' || k === 'json' || k === 'md' || k === 'outline') display = 'block';
+        else if (k === 'shots') display = 'flex';
+        else display = 'flex';
+        el.style.display = display;
+    }
+}
+
+function setActiveTab(tab) {
+    activeTab = tab;
+    for (const [k, el] of [
+        ['text', els.tabText], ['json', els.tabJson], ['md', els.tabMd],
+        ['outline', els.tabOutline], ['shots', els.tabShots],
+    ]) {
+        el.classList.toggle('active', k === tab);
+        el.setAttribute('aria-selected', k === tab ? 'true' : 'false');
+    }
+    if (tab === 'shots') {
+        // Screenshots need the original PDF bytes (we re-render via PDF.js
+        // on demand). If the user landed here via a shared URL (which only
+        // carries the Text or JSON payload) we have no bytes -- show the
+        // dedicated empty state explaining how to enable the tab.
+        if (!pdfFile) {
+            showResultPanel('shots-empty');
+        } else {
+            showResultPanel('shots');
+            // First click after a fresh parse triggers the render loop.
+            // Subsequent clicks reuse the cached images. An in-flight
+            // render loop also lands here and just keeps appending.
+            if (!shots) renderShots().catch(() => {});
+        }
+    } else if (tab === 'md') {
+        // Markdown is heuristic + needs an async links pass when the PDF
+        // bytes are still in scope. Compute lazily on first click and
+        // cache; show the spinner while we wait.
+        if (!result) {
+            showResultPanel('empty');
+        } else if (markdownCache != null) {
+            showResultPanel('md');
+        } else {
+            showResultPanel('md-pending');
+            renderMarkdown().catch(() => {});
+        }
+    } else if (tab === 'outline') {
+        // Outline ships in v3 shared URLs (the `o` field) so the cache
+        // may already be primed at hydrate time. Otherwise lazy-fetch
+        // from the live PDF bytes via getPdfOutline().
+        if (!result) {
+            showResultPanel('empty');
+        } else if (outlineCache != null) {
+            renderOutlineUi();
+        } else if (pdfFile?.bytes) {
+            showResultPanel('outline-pending');
+            fetchOutline().catch(() => {});
+        } else {
+            // Shared link without an outline payload -- nothing to show
+            // and no bytes to re-derive from. Tell the user.
+            els.resultOutlineEmptyTitle.textContent = 'Outline not in this shared link';
+            els.resultOutlineEmptySub.textContent = 'The shared URL didn\'t carry the PDF outline. Drop the original PDF to regenerate the bookmarks tree.';
+            showResultPanel('outline-empty');
+        }
+    } else if (!result) {
+        showResultPanel('empty');
+    } else {
+        showResultPanel(tab);
+    }
+    // Share / Copy / Export semantics differ for shots + outline (the
+    // former has per-page download links inline; the latter is best
+    // re-fetched from the PDF). Disable the toolbar buttons while either
+    // tab is active. The contextual menu state for Export is owned by
+    // syncExportMenuItems() (invoked via setExportEnabled below).
+    if (tab === 'shots') {
+        els.shareBtn.disabled = true;
+        els.copyBtn.disabled = true;
+        els.exportBtn.disabled = true;
+        els.shareBtn.title = 'Sharing is not available for screenshots; each page has its own download link below.';
+        closeExportMenu();
+    } else if (tab === 'outline') {
+        // Outline shares via the standard mechanism: encode the tree in
+        // the URL fragment. Available as long as we have outline data
+        // (either freshly fetched or hydrated from a v3 share link).
+        if (result && outlineCache != null && outlineCache.length > 0) {
+            refreshShareAvailability();
+        } else {
+            setExportEnabled(false, false);
+        }
+    } else {
+        // Restore based on current result state.
+        if (result) refreshShareAvailability();
+    }
+}
+
+// Render every page of the current PDF to a PNG, streaming the results into
+// the Screenshots tab one figure at a time. Designed to interleave well
+// with the main thread: PDF.js's render() yields naturally, and we add an
+// explicit rAF tick between pages so the new <figure> paints before the
+// next page starts. Memory budget at 150 DPI is roughly 500 KB - 2 MB per
+// page; we keep PNG blobs (not raw canvases) and revoke them on reset.
+const SHOTS_DPI = 150;
+async function renderShots() {
+    if (!pdfFile?.bytes) return;
+    const abort = { cancelled: false };
+    shotsAbort = abort;
+    shots = { status: 'rendering', items: [], total: 0 };
+    els.resultShots.replaceChildren();
+
+    const pending = document.createElement('div');
+    pending.className = 'shots-pending';
+    pending.textContent = 'Loading liteparse renderer...';
+    els.resultShots.appendChild(pending);
+
+    let renderer = null;
+    try {
+        const mod = await loadLiteparseBundle();
+        const { PdfiumRenderer } = mod;
+        if (typeof PdfiumRenderer !== 'function') {
+            throw new Error('liteparse bundle did not export `PdfiumRenderer` -- bundle build may be stale.');
+        }
+        if (abort.cancelled) return;
+        renderer = new PdfiumRenderer();
+        // PdfiumRenderer.loadDocument copies its input, but pdf.js sometimes
+        // transfers the worker-side buffer back -- pass a defensive clone
+        // so the master pdfFile.bytes survives for a second render pass.
+        await renderer.loadDocument(new Uint8Array(pdfFile.bytes));
+        if (abort.cancelled) return;
+        const total = renderer.numPages;
+        shots.total = total;
+        if (total === 0) {
+            pending.textContent = 'No pages to render.';
+            shots.status = 'ready';
+            return;
+        }
+        for (let p = 1; p <= total; p++) {
+            if (abort.cancelled) return;
+            pending.textContent = `Rendering page ${p} of ${total}...`;
+            const png = await renderer.renderPageToBuffer(undefined, p, SHOTS_DPI);
+            if (abort.cancelled) return;
+            const blob = new Blob([png], { type: 'image/png' });
+            const url = URL.createObjectURL(blob);
+            // PNG IHDR is the first chunk after the 8-byte signature; width
+            // and height are big-endian uint32 at bytes 16-19 / 20-23. Done
+            // inline here (instead of waiting for img.onload) because the
+            // overlay canvas needs the natural resolution at append time.
+            const dv = new DataView(png.buffer, png.byteOffset, png.byteLength);
+            const imgWidth = dv.getUint32(16);
+            const imgHeight = dv.getUint32(20);
+            const item = { page: p, url, bytes: png.length, imgWidth, imgHeight };
+            shots.items.push(item);
+            appendShotFigure(item, total);
+            // Yield to the event loop so the freshly appended image paints
+            // before we burn the main thread on the next page.
+            await yieldToMain();
+        }
+        pending.remove();
+        shots.status = 'ready';
+    } catch (err) {
+        console.error('renderShots error', err);
+        shots = { status: 'error', items: shots?.items ?? [], total: shots?.total ?? 0, error: err };
+        pending.remove();
+        const errBox = document.createElement('div');
+        errBox.className = 'shots-error';
+        errBox.textContent = `Failed to render: ${err?.message ?? err}`;
+        els.resultShots.appendChild(errBox);
+    } finally {
+        if (renderer) {
+            try { renderer.close(); } catch {}
+        }
+        if (shotsAbort === abort) shotsAbort = null;
+    }
+}
+
+function appendShotFigure(item, total) {
+    const fig = document.createElement('figure');
+    fig.className = 'shots-figure';
+    fig.dataset.page = String(item.page);
+    const wrap = document.createElement('div');
+    wrap.className = 'shots-img-wrap';
+    const img = document.createElement('img');
+    img.className = 'shots-img';
+    img.src = item.url;
+    img.alt = `Page ${item.page} of ${total}`;
+    img.loading = 'lazy';
+    wrap.appendChild(img);
+    // Overlay canvas sits over the img at the natural image resolution;
+    // CSS scales both together when the figure shrinks. Drawn on demand
+    // (img onload fires before this returns when the PNG is already
+    // decoded in cache; we set width/height explicitly so the first
+    // draw doesn't race against PDF.js handing us the bitmap).
+    const canvas = document.createElement('canvas');
+    canvas.className = 'shots-overlay';
+    canvas.width = item.imgWidth;
+    canvas.height = item.imgHeight;
+    canvas.dataset.page = String(item.page);
+    wrap.appendChild(canvas);
+    fig.appendChild(wrap);
+    const cap = document.createElement('figcaption');
+    cap.className = 'shots-caption';
+    const left = document.createElement('span');
+    left.textContent = `Page ${item.page} / ${total} · ${formatBytes(item.bytes)} · ${SHOTS_DPI} DPI`;
+    cap.appendChild(left);
+    const dl = document.createElement('a');
+    dl.href = item.url;
+    const baseName = (result?.srcName || pdfFile?.name?.replace(/\.pdf$/i, '') || 'document');
+    dl.download = `${baseName}-page-${String(item.page).padStart(2, '0')}.png`;
+    dl.title = `Download page ${item.page} as PNG`;
+    dl.innerHTML = `<svg viewBox="0 0 16 16" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v9"/><path d="M4.5 7.5 8 11l3.5-3.5"/><path d="M3 13.5h10"/></svg><span>PNG</span>`;
+    cap.appendChild(dl);
+    fig.appendChild(cap);
+    // Insert before the trailing .shots-pending node so the "Rendering..."
+    // status stays visually at the bottom while pages stack above it.
+    const pending = els.resultShots.querySelector('.shots-pending');
+    if (pending) els.resultShots.insertBefore(fig, pending);
+    else els.resultShots.appendChild(fig);
+    // Paint any active overlays (bbox + search) for this page now that
+    // the canvas is in the DOM. drawShotOverlay is idempotent and cheap
+    // for the all-disabled case.
+    drawShotOverlay(canvas, item.page, item.imgWidth, item.imgHeight);
+}
+
+// ----- Screenshots overlay (bbox + search highlight) ---------------------
+
+// Item bbox + search-match overlay. Coordinates in `result.json` are in
+// PDF points (top-left origin); the rendered PNG is at SHOTS_DPI, so we
+// scale by SHOTS_DPI / 72 to land in canvas pixel space. Drawn on the
+// natural image resolution so CSS-scaled figures still get crisp edges
+// instead of antialiased mush.
+// Bbox outlines use red (theme-tuned alpha) to maximise contrast against
+// both the page background and any in-page coloured text. Search-match
+// highlights stay in the brand yellow so the two overlays remain visually
+// distinct when they're shown together (a search hit lit on top of a
+// bbox outlined element should read as two distinct cues, not one).
+const SHOTS_OVERLAY_BBOX_STROKE_LIGHT = 'rgba(220, 38, 38, 0.7)';
+const SHOTS_OVERLAY_BBOX_STROKE_DARK = 'rgba(239, 68, 68, 0.85)';
+const SHOTS_OVERLAY_MATCH_FILL = 'rgba(254, 208, 71, 0.38)';
+const SHOTS_OVERLAY_MATCH_STROKE = 'rgba(254, 208, 71, 0.95)';
+
+function shotsTheme() {
+    return document.documentElement.getAttribute('data-theme') === 'light'
+        ? 'light' : 'dark';
+}
+
+function pageTextItems(pageNum) {
+    if (!result?.json?.pages) return null;
+    // Liteparse's JSON pages are 1-indexed in the `.page` field, but the
+    // array is dense from page 1, so an index lookup is safe.
+    const page = result.json.pages[pageNum - 1];
+    if (!page) return null;
+    return Array.isArray(page.textItems) ? page.textItems : [];
+}
+
+function drawShotOverlay(canvas, pageNum, imgW, imgH) {
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (!shotsBoxesEnabled && !shotsSearchQuery) return;
+    const items = pageTextItems(pageNum);
+    if (!items || items.length === 0) return;
+    // Scale factor from PDF points to canvas pixels. The renderer is at
+    // SHOTS_DPI; PDF points are 1/72 inch.
+    const sx = imgW / (result.json?.pages?.[pageNum - 1]?.width ?? imgW * 72 / SHOTS_DPI);
+    const sy = imgH / (result.json?.pages?.[pageNum - 1]?.height ?? imgH * 72 / SHOTS_DPI);
+    // Fall back to the DPI-derived ratio when the JSON doesn't carry the
+    // page size (older parse outputs). Both axes use the same scale so
+    // rectangular text doesn't skew.
+    const fallback = SHOTS_DPI / 72;
+    const scaleX = Number.isFinite(sx) && sx > 0 ? sx : fallback;
+    const scaleY = Number.isFinite(sy) && sy > 0 ? sy : fallback;
+    if (shotsBoxesEnabled) {
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = shotsTheme() === 'light'
+            ? SHOTS_OVERLAY_BBOX_STROKE_LIGHT
+            : SHOTS_OVERLAY_BBOX_STROKE_DARK;
+        for (const it of items) {
+            if (!it.text || it.width <= 0 || it.height <= 0) continue;
+            const x = Math.round(it.x * scaleX) + 0.5;
+            const y = Math.round(it.y * scaleY) + 0.5;
+            const w = Math.max(1, Math.round(it.width * scaleX));
+            const h = Math.max(1, Math.round(it.height * scaleY));
+            ctx.strokeRect(x, y, w, h);
+        }
+    }
+    if (shotsSearchQuery) {
+        const needle = shotsSearchQuery.toLowerCase();
+        ctx.fillStyle = SHOTS_OVERLAY_MATCH_FILL;
+        ctx.strokeStyle = SHOTS_OVERLAY_MATCH_STROKE;
+        ctx.lineWidth = 1.5;
+        // Use the canvas measureText API with a generic stand-in font to
+        // approximate the substring's pixel range inside a possibly-much
+        // -longer text item. PDF text items frequently span a whole line
+        // (PDF.js's getTextContent groups characters into chunks at
+        // whatever granularity the PDF encodes), so a pure proportional
+        // index/length split misplaces the highlight whenever the text
+        // contains wider-than-average glyphs (S, M, W) or narrow ones
+        // (i, l, t) -- e.g. "steuer" at index 8 inside "mit der
+        // SteuerSparErklärung:" lands roughly one character to the
+        // right with the naive ratio. measureText against a system
+        // Latin font has nearly the same per-character proportions as
+        // most embedded PDF fonts, and any absolute size mismatch is
+        // cancelled when we scale by itemPxW / measureText(fullText).
+        ctx.save();
+        for (const it of items) {
+            const raw = it.text || '';
+            const text = raw.toLowerCase();
+            if (!text || !text.includes(needle)) continue;
+            const itemPxX = it.x * scaleX;
+            const itemPxW = it.width * scaleX;
+            const y = Math.round(it.y * scaleY);
+            const h = Math.max(1, Math.round(it.height * scaleY));
+            const fontPx = Math.max(8, Math.round(h * 0.85));
+            ctx.font = `${fontPx}px -apple-system, "Segoe UI", Helvetica, Arial, sans-serif`;
+            const fullMeasured = ctx.measureText(raw).width;
+            const scaleToBbox = fullMeasured > 0 ? itemPxW / fullMeasured : 0;
+            // Loop over every occurrence so something like "Steuer ..
+            // Steuer" inside the same chunk gets two distinct hits.
+            let from = 0;
+            while (from <= text.length - needle.length) {
+                const idx = text.indexOf(needle, from);
+                if (idx === -1) break;
+                let startPx, widthPx;
+                if (scaleToBbox > 0) {
+                    const beforePx = idx === 0 ? 0 : ctx.measureText(raw.slice(0, idx)).width;
+                    const matchPx = ctx.measureText(raw.slice(idx, idx + needle.length)).width;
+                    startPx = beforePx * scaleToBbox;
+                    widthPx = matchPx * scaleToBbox;
+                } else {
+                    // Defensive fallback: if the system font measures the
+                    // string as zero-width (shouldn't happen for non-empty
+                    // text), fall back to the simple character-ratio split.
+                    startPx = itemPxW * (idx / raw.length);
+                    widthPx = itemPxW * (needle.length / raw.length);
+                }
+                const x = Math.round(itemPxX + startPx);
+                const w = Math.max(2, Math.round(widthPx));
+                // Inflate by 1px for visual breathing room around the match.
+                ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
+                ctx.strokeRect(x - 0.5, y - 0.5, w + 1, h + 1);
+                from = idx + needle.length;
+            }
+        }
+        ctx.restore();
+    }
+}
+
+// Redraw every visible page's overlay. Called when the bbox toggle flips
+// or the search query changes. Cheap (typically 1-50 pages, each with
+// 100-500 textItems) so we don't bother diffing pages.
+function redrawAllShotOverlays() {
+    if (!shots?.items?.length) return;
+    const canvases = els.resultShots.querySelectorAll('canvas.shots-overlay');
+    for (const canvas of canvases) {
+        const pageNum = Number(canvas.dataset.page);
+        if (!pageNum) continue;
+        const item = shots.items.find((s) => s.page === pageNum);
+        if (!item) continue;
+        drawShotOverlay(canvas, pageNum, item.imgWidth, item.imgHeight);
+    }
+}
+
+// Update the "23 matches" / "No matches" / "" badge next to the search
+// input based on `shotsSearchQuery` against the current parse result.
+// Also scrolls the first match into view on a non-empty query (only on
+// query change, not on every overlay redraw).
+function updateSearchCount(scrollToFirst = false) {
+    const out = els.shotsSearchCount;
+    out.classList.remove('has-matches', 'no-matches');
+    if (!shotsSearchQuery) {
+        out.textContent = '';
+        return;
+    }
+    if (!result?.json?.pages) {
+        out.textContent = '0 matches';
+        out.classList.add('no-matches');
+        return;
+    }
+    const needle = shotsSearchQuery.toLowerCase();
+    let count = 0;
+    let firstPage = null;
+    for (const page of result.json.pages) {
+        const items = Array.isArray(page.textItems) ? page.textItems : [];
+        for (const it of items) {
+            const text = (it.text || '').toLowerCase();
+            if (text && text.includes(needle)) {
+                count++;
+                if (firstPage == null) firstPage = page.page;
+            }
+        }
+    }
+    out.textContent = count === 0 ? 'No matches' : `${count} match${count === 1 ? '' : 'es'}`;
+    out.classList.add(count > 0 ? 'has-matches' : 'no-matches');
+    if (scrollToFirst && firstPage != null) {
+        const fig = els.resultShots.querySelector(`figure[data-page="${firstPage}"]`);
+        if (fig) fig.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+}
+
+els.shotsBoxesToggle.addEventListener('change', (e) => {
+    shotsBoxesEnabled = !!e.target.checked;
+    redrawAllShotOverlays();
+});
+els.shotsSearchInput.addEventListener('input', (e) => {
+    const value = e.target.value.trim();
+    clearTimeout(shotsSearchDebounce);
+    shotsSearchDebounce = setTimeout(() => {
+        const prev = shotsSearchQuery;
+        shotsSearchQuery = value;
+        updateSearchCount(/* scrollToFirst */ value !== prev && value.length > 0);
+        redrawAllShotOverlays();
+    }, 120);
+});
+els.shotsSearchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        // Force-flush the debounce on Enter so the user can immediately
+        // scroll to the first match without waiting for the timer.
+        clearTimeout(shotsSearchDebounce);
+        shotsSearchQuery = e.target.value.trim();
+        updateSearchCount(/* scrollToFirst */ true);
+        redrawAllShotOverlays();
+    }
+});
+// ----- Markdown engine ---------------------------------------------------
+
+// Heuristic PDF -> Markdown converter. Operates on liteparse's
+// ParseResultJson (one entry per page; each item has x/y/w/h plus optional
+// fontName + fontSize). The output preserves the visual structure of the
+// document well enough to round-trip headings, bullet/numbered lists,
+// column-aligned tables, page breaks, and inline bold/italic from fontName
+// hints. Links come from a separate PDF.js annotation pass (getPdfLinks);
+// pass [] to disable link reconstruction.
+//
+// Out of scope (called out in skill.md): bordered tables without text x-
+// alignment, multi-column flow reconstruction (newspaper layouts), math /
+// formulas, footnotes, raster images (the Screenshots tab covers those).
+
+const MD_HEADING_RATIOS = [1.45, 1.20, 1.08]; // x median body size -> H1/H2/H3
+const MD_TABLE_TOL = 5;     // PDF points; column x-anchor match tolerance
+const MD_TABLE_MIN_ROWS = 3;
+const MD_TABLE_MIN_COLS = 2;
+const MD_LINE_GAP_RATIO = 0.6; // multiplied by median item height
+const MD_PARA_GAP_RATIO = 0.8; // multiplied by median line height
+
+function median(nums) {
+    if (!nums.length) return 0;
+    const sorted = nums.slice().sort((a, b) => a - b);
+    const mid = sorted.length >> 1;
+    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+function escapeMarkdown(s) {
+    // Backslash-escape the characters Markdown treats specially inside an
+    // inline span. Whitespace and most printable characters pass through
+    // verbatim so the round-trip stays human-readable.
+    return s.replace(/([\\*_`\[\]<>|])/g, '\\$1');
+}
+
+function escapeUrl(url) {
+    // Keep PDF annotations inside the Markdown destination, including when
+    // they contain a backslash before a parenthesis or table delimiter.
+    return url.replace(/[\u0000-\u0020\\()<>|]/g, (char) => `%${char.charCodeAt(0).toString(16).padStart(2, '0')}`);
+}
+
+function itemInsideRect(it, r) {
+    // Test the item's centre point against the link rectangle. PDFs often
+    // pad link annotations by a few points; a centre test is forgiving
+    // without being noisy on near-misses.
+    const cx = it.x + (it.width || 0) / 2;
+    const cy = it.y + (it.height || 0) / 2;
+    return cx >= r.x && cx <= r.x + r.width
+        && cy >= r.y && cy <= r.y + r.height;
+}
+
+function renderInlineItem(it, pageLinks) {
+    const raw = (it.text || '').replace(/\s+/g, ' ').trim();
+    if (!raw) return '';
+    let text = escapeMarkdown(raw);
+    const isBold = /bold|black|heavy/i.test(it.fontName || '');
+    const isItalic = /italic|oblique/i.test(it.fontName || '');
+    if (isBold && isItalic) text = `***${text}***`;
+    else if (isBold) text = `**${text}**`;
+    else if (isItalic) text = `*${text}*`;
+    if (pageLinks?.length) {
+        const link = pageLinks.find((l) => itemInsideRect(it, l));
+        if (link) text = `[${text}](${escapeUrl(link.url)})`;
+    }
+    return text;
+}
+
+function renderLineInline(items, pageLinks) {
+    return items
+        .map((it) => renderInlineItem(it, pageLinks))
+        .filter(Boolean)
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function classifyLine(line, headingThresholds) {
+    if (headingThresholds && line.medianSize) {
+        if (line.medianSize >= headingThresholds[0]) return 'heading1';
+        if (line.medianSize >= headingThresholds[1]) return 'heading2';
+        if (line.medianSize >= headingThresholds[2]) return 'heading3';
+    }
+    const first = line.items[0]?.text?.trim() ?? '';
+    if (/^[\u2022\u00b7\u25cf\u25cb\u25aa\u25a0\u2023\-\*\u2013\u2014]\s+/.test(first)) {
+        return 'list-bullet';
+    }
+    if (/^(\d+|[a-z]|[ivx]+)[\.\)]\s+/i.test(first)) {
+        return 'list-number';
+    }
+    return 'paragraph';
+}
+
+function stripListMarker(text) {
+    return text
+        .replace(/^[\u2022\u00b7\u25cf\u25cb\u25aa\u25a0\u2023\\\-\*\u2013\u2014]\s+/, '')
+        .replace(/^(\d+|[a-z]|[ivx]+)[\.\)]\s+/i, '');
+}
+
+// Detect a table run starting at line[start]. Returns
+// `{ end, anchors }` (both inclusive) or `null` if no table is detected.
+//
+// A run is a table iff at least MD_TABLE_MIN_ROWS consecutive paragraph-
+// classified lines (each with at least 2 items) share at least
+// MD_TABLE_MIN_COLS column anchors within +/- MD_TABLE_TOL PDF points.
+function findTableRun(lines, start) {
+    let end = start;
+    let sharedAnchors = lines[start].items.map((it) => it.x);
+    for (let j = start + 1; j < lines.length; j++) {
+        const next = lines[j];
+        if (next.type !== 'paragraph' || next.items.length < 2) break;
+        const cand = next.items.map((it) => it.x);
+        const newShared = sharedAnchors.filter(
+            (a) => cand.some((c) => Math.abs(c - a) <= MD_TABLE_TOL),
+        );
+        if (newShared.length < MD_TABLE_MIN_COLS) break;
+        sharedAnchors = newShared;
+        end = j;
+    }
+    if (end - start + 1 < MD_TABLE_MIN_ROWS) return null;
+    sharedAnchors.sort((a, b) => a - b);
+    return { end, anchors: sharedAnchors };
+}
+
+function emitTable(tableLines, anchors, pageLinks) {
+    const cols = anchors.length;
+    const rows = tableLines.map((line) => {
+        const cells = new Array(cols).fill('');
+        for (const it of line.items) {
+            let nearest = 0;
+            let nearestDist = Infinity;
+            for (let c = 0; c < cols; c++) {
+                const d = Math.abs(it.x - anchors[c]);
+                if (d < nearestDist) { nearestDist = d; nearest = c; }
+            }
+            const rendered = renderInlineItem(it, pageLinks);
+            if (!rendered) continue;
+            cells[nearest] = cells[nearest] ? cells[nearest] + ' ' + rendered : rendered;
+        }
+        return cells.map((cell) => cell.replace(/[\r\n]/g, ' '));
+    });
+    const header = rows[0];
+    const sep = new Array(cols).fill('---');
+    const body = rows.slice(1);
+    return [
+        '| ' + header.join(' | ') + ' |',
+        '| ' + sep.join(' | ') + ' |',
+        ...body.map((r) => '| ' + r.join(' | ') + ' |'),
+    ].join('\n');
+}
+
+// Normalize a string for outline-title matching. Strips all whitespace
+// runs to a single space, lowercases, and trims. This trades exactness
+// for resilience against the PDF's text reading order vs. the
+// bookmark's free-form label (which often uses non-breaking spaces or
+// includes a section-number prefix that may or may not match the
+// rendered heading text byte-for-byte).
+function normalizeForOutline(s) {
+    return (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function buildMarkdown(json, links, outline) {
+    const pages = json?.pages ?? [];
+    if (pages.length === 0) return '';
+    const linkList = Array.isArray(links) ? links : [];
+
+    // Document-wide median font size, used to threshold headings. If the
+    // document has no fontSize metadata (e.g. some OCR-only outputs), we
+    // fall back to disabling heading detection entirely.
+    const sizes = [];
+    for (const p of pages) {
+        for (const it of (p.textItems ?? [])) {
+            if (typeof it.fontSize === 'number' && it.fontSize > 0) sizes.push(it.fontSize);
+        }
+    }
+    const medianBody = sizes.length ? median(sizes) : 0;
+    const headingThresholds = medianBody > 0
+        ? MD_HEADING_RATIOS.map((r) => medianBody * r)
+        : null;
+
+    const linksByPage = new Map();
+    for (const l of linkList) {
+        if (!linksByPage.has(l.page)) linksByPage.set(l.page, []);
+        linksByPage.get(l.page).push(l);
+    }
+
+    // Flatten the outline tree into a `Map<pageNum, [{titleN, level}]>`
+    // for O(1) per-line lookup during the heading pass. When a line's
+    // normalized plain text matches an outline title on the same page,
+    // we use the outline's level (capped at H6) instead of the
+    // font-size heuristic. Crucially, the outline is authoritative
+    // even when the heading would otherwise be classified as a
+    // paragraph (common for PDFs whose section headings are typeset
+    // at the body font size).
+    const outlineByPage = new Map();
+    if (Array.isArray(outline) && outline.length > 0) {
+        const walk = (nodes) => {
+            for (const n of nodes) {
+                if (n.page != null && n.title) {
+                    const norm = normalizeForOutline(n.title);
+                    if (norm) {
+                        if (!outlineByPage.has(n.page)) outlineByPage.set(n.page, []);
+                        outlineByPage.get(n.page).push({
+                            titleN: norm,
+                            level: n.level,
+                        });
+                    }
+                }
+                if (n.children?.length) walk(n.children);
+            }
+        };
+        walk(outline);
+    }
+    const outlineMatch = (pageNum, lineText) => {
+        const candidates = outlineByPage.get(pageNum);
+        if (!candidates) return null;
+        const norm = normalizeForOutline(lineText);
+        if (!norm) return null;
+        // Match either exact normalized equality or a containment in
+        // either direction -- bookmark labels often differ from the
+        // rendered heading by a leading section number or a trailing
+        // page reference.
+        const hit = candidates.find((c) =>
+            c.titleN === norm
+            || norm.includes(c.titleN)
+            || c.titleN.includes(norm),
+        );
+        return hit ? hit.level : null;
+    };
+
+    const pageBlocks = [];
+    pages.forEach((page, pageIdx) => {
+        const items = (page.textItems ?? []).filter((it) => it.text && it.text.trim());
+        if (items.length === 0) return;
+
+        // Bucket items into lines by y. Sort top-down, then within each
+        // line by x. The line-gap threshold scales with the median item
+        // height so 10pt body text and 24pt headings get a fair shake.
+        const lineGap = Math.max(2, median(items.map((it) => it.height || 0)) * MD_LINE_GAP_RATIO);
+        const sortedByY = items.slice().sort((a, b) => a.y - b.y);
+        const lines = [];
+        for (const it of sortedByY) {
+            const last = lines[lines.length - 1];
+            if (last && Math.abs(it.y - last.yMin) <= lineGap) {
+                last.items.push(it);
+                last.yMin = Math.min(last.yMin, it.y);
+                last.yMax = Math.max(last.yMax, it.y + (it.height || 0));
+            } else {
+                lines.push({
+                    items: [it],
+                    yMin: it.y,
+                    yMax: it.y + (it.height || 0),
+                });
+            }
+        }
+        const pageLinks = linksByPage.get(page.page ?? (pageIdx + 1)) ?? [];
+        for (const line of lines) {
+            line.items.sort((a, b) => a.x - b.x);
+            const lineFontSizes = line.items
+                .map((it) => it.fontSize || 0)
+                .filter((s) => s > 0);
+            line.medianSize = lineFontSizes.length ? median(lineFontSizes) : medianBody;
+            line.height = line.yMax - line.yMin;
+            line.rendered = renderLineInline(line.items, pageLinks);
+            line.type = classifyLine(line, headingThresholds);
+        }
+
+        const heights = lines.map((l) => l.height).filter((h) => h > 0);
+        const lineHeightMedian = heights.length ? median(heights) : 12;
+
+        const pageOut = [];
+        let i = 0;
+        while (i < lines.length) {
+            const line = lines[i];
+
+            // Try a table-detection pass before falling through to the
+            // single-line classifiers. We only attempt tables on paragraph-
+            // classified lines with at least 2 items (headings/lists are
+            // never table rows).
+            if (line.type === 'paragraph' && line.items.length >= 2) {
+                const run = findTableRun(lines, i);
+                if (run) {
+                    pageOut.push(emitTable(lines.slice(i, run.end + 1), run.anchors, pageLinks));
+                    i = run.end + 1;
+                    continue;
+                }
+            }
+
+            // Outline override: if the line's normalized plain text
+            // matches a bookmark on this page, emit the bookmark's
+            // level instead of (or in addition to) the font-size
+            // heuristic. Level 0 -> H1, level 1 -> H2, ..., capped at
+            // H6 because Markdown / HTML have no further heading
+            // levels. This is the most reliable heading signal we
+            // have when the PDF has an outline (most don't) -- a
+            // section heading typeset at the body font size is
+            // invisible to the font-size heuristic but is captured
+            // perfectly by the bookmark.
+            const olevel = outlineMatch(page.page ?? (pageIdx + 1), line.rendered);
+            if (olevel != null) {
+                const depth = Math.min(olevel, 5) + 1;
+                const prefix = '#'.repeat(depth);
+                pageOut.push(`${prefix} ${line.rendered}`);
+                i++;
+                continue;
+            }
+
+            if (line.type === 'heading1' || line.type === 'heading2' || line.type === 'heading3') {
+                const prefix = line.type === 'heading1' ? '#'
+                    : line.type === 'heading2' ? '##' : '###';
+                pageOut.push(`${prefix} ${line.rendered}`);
+                i++;
+                continue;
+            }
+
+            if (line.type === 'list-bullet' || line.type === 'list-number') {
+                const buf = [];
+                while (i < lines.length
+                    && (lines[i].type === 'list-bullet' || lines[i].type === 'list-number')) {
+                    const stripped = stripListMarker(lines[i].rendered);
+                    const prefix = lines[i].type === 'list-bullet' ? '- ' : '1. ';
+                    buf.push(prefix + stripped);
+                    i++;
+                }
+                pageOut.push(buf.join('\n'));
+                continue;
+            }
+
+            // Paragraph: coalesce adjacent paragraph lines until a vertical
+            // gap larger than ~0.8 line-heights forces a break.
+            const paraLines = [line.rendered];
+            let j = i + 1;
+            while (j < lines.length && lines[j].type === 'paragraph') {
+                const prev = lines[j - 1];
+                const next = lines[j];
+                if (next.yMin - prev.yMax > lineHeightMedian * MD_PARA_GAP_RATIO) break;
+                paraLines.push(next.rendered);
+                j++;
+            }
+            pageOut.push(paraLines.join(' '));
+            i = j;
+        }
+
+        pageBlocks.push(pageOut.filter(Boolean).join('\n\n'));
+    });
+
+    return pageBlocks.filter(Boolean).join('\n\n---\n\n').trim() + '\n';
+}
+
+// Run the heuristic engine over the current `result.json`, joined with a
+// best-effort PDF.js annotation pass + outline lookup when we still have
+// the original PDF bytes in scope (a shared link only carries the
+// rendered JSON, so both are unavailable in that case; the v3 share URL
+// schema does carry the outline as `o` so renders from a v3 link still
+// get the bookmark-driven heading hierarchy). Caches the rendered string
+// for the rest of the result's lifetime.
+async function renderMarkdown() {
+    if (!result) return;
+    const abort = { cancelled: false };
+    markdownAbort = abort;
+    els.mdProgressTitle.textContent = 'Reconstructing Markdown...';
+    els.mdProgressSub.textContent = pdfFile?.bytes
+        ? 'Detecting headings, lists, tables, links, and bookmarks.'
+        : 'Detecting headings, lists, and tables. (Links unavailable when hydrating from a shared URL.)';
+    try {
+        let links = [];
+        let outline = outlineCache;
+        if (pdfFile?.bytes) {
+            try {
+                const mod = await loadLiteparseBundle();
+                if (abort.cancelled) return;
+                const { getPdfLinks, getPdfOutline } = mod;
+                if (typeof getPdfLinks === 'function') {
+                    // Defensive clone -- pdf.js may transfer the buffer to
+                    // its worker and detach the master view otherwise.
+                    links = await getPdfLinks(new Uint8Array(pdfFile.bytes));
+                    if (abort.cancelled) return;
+                }
+                // Fetch the outline if it's not already cached, so the
+                // bookmark-based heading hierarchy takes effect on the
+                // first Markdown render. (Subsequent Markdown renders
+                // and the Outline tab share this cache.)
+                if (outline == null && typeof getPdfOutline === 'function') {
+                    outline = await getPdfOutline(new Uint8Array(pdfFile.bytes));
+                    if (abort.cancelled) return;
+                    outlineCache = outline ?? [];
+                }
+            } catch (err) {
+                // Annotation / outline extraction is best-effort; a
+                // failure here just downgrades to a heuristic-only
+                // render. The body of the tab will still be useful.
+                console.warn('Markdown auxiliary pass failed', err);
+            }
+        }
+        if (abort.cancelled) return;
+        const md = buildMarkdown(result.json, links, outline);
+        if (abort.cancelled) return;
+        markdownCache = md;
+        els.resultMd.value = md;
+        if (activeTab === 'md') {
+            showResultPanel('md');
+            // Re-run the share/copy/download enable check now that the
+            // payload exists -- the toolbar was disabled while we waited.
+            refreshShareAvailability();
+        }
+    } catch (err) {
+        console.error('renderMarkdown error', err);
+        if (activeTab === 'md') {
+            els.errorSub.textContent = `Failed to build Markdown: ${err?.message ?? err}`;
+            showResultPanel('error');
+        }
+    } finally {
+        if (markdownAbort === abort) markdownAbort = null;
+    }
+}
+
+els.tabText.addEventListener('click', () => setActiveTab('text'));
+els.tabJson.addEventListener('click', () => setActiveTab('json'));
+els.tabMd.addEventListener('click', () => setActiveTab('md'));
+els.tabOutline.addEventListener('click', () => setActiveTab('outline'));
+els.tabShots.addEventListener('click', () => setActiveTab('shots'));
+
+// ----- Outline (PDF bookmarks / TOC) -------------------------------------
+
+// Fetch the PDF outline tree from the live bytes. Idempotent: a second
+// click while the first is in flight is a no-op (the inflight promise
+// will land normally). On success we cache the tree and render it. On
+// error we surface a tab-local error state (rare; PDF.js outline parsing
+// is best-effort and tolerates malformed catalogs).
+async function fetchOutline() {
+    if (!pdfFile?.bytes) return;
+    if (outlineAbort) return;
+    const abort = { cancelled: false };
+    outlineAbort = abort;
+    try {
+        const mod = await loadLiteparseBundle();
+        if (abort.cancelled) return;
+        const { getPdfOutline } = mod;
+        if (typeof getPdfOutline !== 'function') {
+            throw new Error('liteparse bundle did not export `getPdfOutline` -- bundle build may be stale.');
+        }
+        const tree = await getPdfOutline(new Uint8Array(pdfFile.bytes));
+        if (abort.cancelled) return;
+        outlineCache = Array.isArray(tree) ? tree : [];
+        // Whatever Markdown was previously cached against the no-outline
+        // heuristic is now stale. Drop it so the next Markdown click
+        // rebuilds with the authoritative hierarchy. Skip if the user
+        // is currently on the Markdown tab to avoid yanking the panel
+        // out from under them.
+        if (activeTab !== 'md') {
+            markdownCache = null;
+        }
+        if (activeTab === 'outline') renderOutlineUi();
+    } catch (err) {
+        console.error('fetchOutline error', err);
+        if (activeTab === 'outline') {
+            els.errorSub.textContent = `Failed to read outline: ${err?.message ?? err}`;
+            showResultPanel('error');
+        }
+        // Don't poison the cache on error -- a retry click should try
+        // again. (User can re-click the tab to retry.)
+    } finally {
+        if (outlineAbort === abort) outlineAbort = null;
+    }
+}
+
+// Render the cached outline tree into the Outline panel. Each item is a
+// <button> so it's keyboard-accessible; clicking jumps to the destination
+// page in the Screenshots tab (rendering it on demand if needed).
+function renderOutlineUi() {
+    if (outlineCache == null) return;
+    if (outlineCache.length === 0) {
+        els.resultOutlineEmptyTitle.textContent = 'No outline in this PDF';
+        els.resultOutlineEmptySub.textContent = 'This PDF has no bookmarks (Table of Contents). Most PDFs don\'t -- bookmarks are an authoring-time feature most LaTeX / Office workflows skip.';
+        showResultPanel('outline-empty');
+        return;
+    }
+    const root = document.createElement('ul');
+    root.className = 'outline-list';
+    root.setAttribute('role', 'tree');
+    for (const node of outlineCache) renderOutlineNode(node, root, 0);
+    els.resultOutline.replaceChildren(root);
+    showResultPanel('outline');
+    if (result) refreshShareAvailability();
+}
+
+function renderOutlineNode(node, parentList, level) {
+    const li = document.createElement('li');
+    li.setAttribute('role', 'treeitem');
+    const row = document.createElement('div');
+    row.className = 'outline-item';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `outline-item-row level-${Math.min(level, 5)}`;
+    const title = document.createElement('span');
+    title.className = 'outline-item-title';
+    title.textContent = node.title || '(untitled)';
+    btn.appendChild(title);
+    if (node.page != null) {
+        const pageBadge = document.createElement('span');
+        pageBadge.className = 'outline-item-page';
+        pageBadge.textContent = String(node.page);
+        btn.appendChild(pageBadge);
+        btn.title = `Jump to page ${node.page}`;
+        btn.addEventListener('click', () => jumpToPage(node.page));
+    } else {
+        btn.disabled = true;
+        btn.title = 'No destination resolvable for this entry';
+    }
+    row.appendChild(btn);
+    li.appendChild(row);
+    if (node.children?.length) {
+        const sub = document.createElement('ul');
+        sub.className = 'outline-list';
+        sub.setAttribute('role', 'group');
+        for (const child of node.children) {
+            renderOutlineNode(child, sub, level + 1);
+        }
+        li.appendChild(sub);
+    }
+    parentList.appendChild(li);
+}
+
+// Switch to the Screenshots tab and scroll to the requested page. When the
+// shots haven't been rendered yet, the standard render loop kicks off and
+// we re-attempt the scroll after each page lands.
+function jumpToPage(pageNum) {
+    setActiveTab('shots');
+    const tryScroll = () => {
+        const fig = els.resultShots.querySelector(`figure[data-page="${pageNum}"]`);
+        if (fig) {
+            fig.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            return true;
+        }
+        return false;
+    };
+    if (tryScroll()) return;
+    // Shots not rendered yet (or not far enough). Poll briefly while the
+    // render loop catches up; give up after a few seconds rather than
+    // leaving a dangling observer.
+    const start = performance.now();
+    const interval = setInterval(() => {
+        if (tryScroll() || performance.now() - start > 5000) {
+            clearInterval(interval);
+        }
+    }, 250);
+}
+
+// Controls that must be inert while a parse is in flight. Mid-parse clicks
+// on Clear / Replace would race the engine into either crashing (the input
+// `pdfFile.bytes` view gets detached) or silently throwing away the result;
+// switching tabs while the result panel is showing `<progress>` would expose
+// stale text from the previous parse; toggling OCR options would have no
+// effect because `readOcrOptions()` already snapshotted them. Disabling
+// everything in both pane bars is the simplest, least-surprising model.
+//
+// On busy=false we re-derive enabled state from app-state predicates rather
+// than from a snapshot taken on entry, because the parse itself flips
+// share/copy/export via setExportEnabled() during the try block and the
+// snapshot would clobber that work. The Parse buttons are excluded because
+// the parsePdf() finally block computes their state from `!pdfFile`
+// (mirroring how the file loader leaves them).
+function setParsingBusy(busy) {
+    els.clearBtn.disabled = busy || !pdfFile;
+    els.replaceBtn.disabled = busy || !pdfFile;
+    els.ocrBtn.disabled = busy;
+    for (const t of [els.tabText, els.tabJson, els.tabMd, els.tabOutline, els.tabShots]) {
+        t.disabled = busy;
+    }
+    // Share / Copy / Export are managed by setExportEnabled() based on the
+    // parse result. Force-disable on entry; on exit, leave alone so the
+    // setExportEnabled() call inside the try block (or the catch's
+    // setExportEnabled(false, false)) wins.
+    if (busy) {
+        els.shareBtn.disabled = true;
+        els.copyBtn.disabled = true;
+        els.exportBtn.disabled = true;
+    }
+    els.dropzone.classList.toggle('is-busy', busy);
+    if (busy) els.dropzone.setAttribute('aria-busy', 'true');
+    else els.dropzone.removeAttribute('aria-busy');
+    els.dropzone.tabIndex = busy ? -1 : 0;
+}
+
+async function parsePdf() {
+    if (!pdfFile) return;
+    const opts = readOcrOptions();
+    setParsingBusy(true);
+    showResultPanel('progress');
+    // The cached Markdown/Screenshots views are derived from the previous
+    // parse result; a fresh Parse click invalidates both so the next
+    // tab click rebuilds against the new result.
+    resetMarkdown();
+    resetShots();
+    els.progressTitle.textContent = 'Loading liteparse...';
+    els.progressSub.textContent = liteparseModule
+        ? 'Re-using cached engine.'
+        : 'First run downloads ~3 MB of bundled engine code (already in this page).';
+    try {
+        const mod = await loadLiteparseBundle();
+        const { LiteParse } = mod;
+        if (typeof LiteParse !== 'function') {
+            throw new Error('liteparse bundle did not export `LiteParse`. The build may be stale.');
+        }
+        els.progressTitle.textContent = `Parsing ${pdfFile.name}...`;
+        els.progressSub.textContent = opts.mode === 'never'
+            ? 'OCR disabled; using embedded text only.'
+            : `OCR ${opts.mode === 'auto' ? 'in auto mode' : 'forced for every page'} (${opts.lang}). Language data downloads on first use.`;
+        // Yield a frame so the progress text actually paints before the heavy
+        // work pegs the main thread.
+        await yieldToMain();
+        const parser = new LiteParse({
+            ocrEnabled: opts.mode !== 'never',
+            // The 'always' mode tells liteparse to run OCR on every page even
+            // when there is embedded text (useful when the embedded text is
+            // a junk encoding). 'auto' lets it decide per page based on
+            // text-density heuristics. 'never' disables OCR entirely.
+            ocrAlways: opts.mode === 'always',
+            ocrLanguage: opts.lang,
+            outputFormat: 'json',
+            // Single in-browser worker. Spawning more from a tab tends to
+            // saturate the user's main thread without much speedup, since
+            // pdf.js and tesseract.js each spawn their own helper worker
+            // internally.
+            numWorkers: 1,
+        });
+        const t0 = performance.now();
+        // Defensive clone: pdf.js sometimes transfers its input ArrayBuffer
+        // to a worker, which would detach `pdfFile.bytes` and break the
+        // later Screenshots-tab render pass (and any second Parse click).
+        // `new Uint8Array(srcView)` copies the underlying bytes into a
+        // fresh ArrayBuffer, so the master view stays intact.
+        const parsed = await parser.parse(new Uint8Array(pdfFile.bytes), true /* quiet */);
+        const elapsedMs = performance.now() - t0;
+
+        const text = (parsed && typeof parsed.text === 'string') ? parsed.text : '';
+        const json = parsed?.json ?? { pages: [] };
+        const pageCount = json?.pages?.length ?? 0;
+        const bboxCount = (json?.pages || []).reduce(
+            (n, p) => n + ((p.boundingBoxes || []).length),
+            0,
+        );
+
+        result = {
+            text,
+            json,
+            srcName: pdfFile.name.replace(/\.pdf$/i, ''),
+            ocrMode: opts.mode,
+            ocrLang: opts.lang,
+        };
+        els.resultText.value = text;
+        // Pretty-print JSON for the in-panel view but cap at ~512 KB of
+        // rendered text to keep the pane snappy on big PDFs. Beyond that
+        // point the user is better off using Download anyway.
+        const jsonStr = JSON.stringify(json, null, 2);
+        if (jsonStr.length > 512 * 1024) {
+            els.resultJsonPre.textContent = jsonStr.slice(0, 512 * 1024) +
+                '\n\n/* ...truncated for display (' + formatBytes(jsonStr.length) + ' total); use Download for the full JSON. */\n';
+        } else {
+            els.resultJsonPre.textContent = jsonStr;
+        }
+        const ms = Math.round(elapsedMs);
+        els.parseStats.textContent = `${pageCount} page${pageCount === 1 ? '' : 's'} · ${bboxCount} bbox · ${ms}ms`;
+        els.parseStats.removeAttribute('hidden');
+
+        // Decide whether the current tab's payload fits in the URL. The
+        // share/copy/download toolbar state and the visible panel are
+        // both driven by setActiveTab below (which also kicks off the
+        // Screenshots / Markdown render loops if that's the live tab).
+        // Markdown isn't computed yet here -- the share button stays
+        // disabled while the user is on the Markdown tab until the
+        // engine finishes and refreshShareAvailability re-evaluates.
+        const fitsTextUrl = utf8Enc.encode(text).length <= MAX_URL_STATE_BYTES;
+        const fitsJsonUrl = jsonStr.length <= MAX_URL_STATE_BYTES;
+        const urlOk = activeTab === 'json' ? fitsJsonUrl
+            : activeTab === 'md' ? false
+            : fitsTextUrl;
+        setExportEnabled(true, urlOk);
+        setActiveTab(activeTab);
+        // Strip any old hash now that the result is fresh -- a stale
+        // share-link in the URL is a usability trap.
+        if (location.hash) history.replaceState({}, '', location.pathname + location.search);
+    } catch (err) {
+        console.error('liteparse parse error', err);
+        const msg = err?.message || String(err);
+        els.errorSub.textContent = msg.length > 320 ? msg.slice(0, 320) + '...' : msg;
+        showResultPanel('error');
+        setExportEnabled(false, false);
+    } finally {
+        setParsingBusy(false);
+        // Parse buttons mirror file-loaded state, not the prior disabled
+        // snapshot (the snapshot was `true` because we just disabled them on
+        // entry — restoring that would leave them stuck).
+        els.parseBtn.disabled = !pdfFile;
+        els.parseBtn2.disabled = !pdfFile;
+    }
+}
+els.parseBtn.addEventListener('click', parsePdf);
+els.parseBtn2.addEventListener('click', parsePdf);
+document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !els.parseBtn.disabled) {
+        e.preventDefault();
+        parsePdf();
+    }
+});
+
+// Re-evaluate the share button when the user flips between Text, JSON,
+// Markdown, and Outline -- the URL-fit test depends on the active
+// payload, and the Markdown payload may not be computed yet (in which
+// case the whole export toolbar stays disabled until renderMarkdown()
+// finishes and calls us back). The Outline tab can also be shared when
+// the outline tree is populated (typically tiny -- a few hundred bytes).
+function refreshShareAvailability() {
+    if (!result) return;
+    if (activeTab === 'md' && markdownCache == null) {
+        setExportEnabled(false, false);
+        return;
+    }
+    if (activeTab === 'outline' && (outlineCache == null || outlineCache.length === 0)) {
+        setExportEnabled(false, false);
+        return;
+    }
+    let fits;
+    if (activeTab === 'json') {
+        fits = JSON.stringify(result.json).length <= MAX_URL_STATE_BYTES;
+    } else if (activeTab === 'md') {
+        fits = utf8Enc.encode(markdownCache).length <= MAX_URL_STATE_BYTES;
+    } else if (activeTab === 'outline') {
+        fits = JSON.stringify(outlineCache).length <= MAX_URL_STATE_BYTES;
+    } else {
+        fits = utf8Enc.encode(result.text).length <= MAX_URL_STATE_BYTES;
+    }
+    setExportEnabled(true, fits);
+}
+els.tabText.addEventListener('click', refreshShareAvailability);
+els.tabJson.addEventListener('click', refreshShareAvailability);
+els.tabMd.addEventListener('click', refreshShareAvailability);
+els.tabOutline.addEventListener('click', refreshShareAvailability);
+
+// ----- Share / Copy / Download / Open-in-MARS ---------------------------
+
+// URL state shape (v3; v1 / v2 are read for backward-compat in the
+// hydrate block):
+//   { v: 3, f: 'text'|'json'|'md'|'outline', s: <srcName>, t?, j?, m?, o? }
+// Stored as JSON.stringify(state), then encodeState() (deflate + base64url).
+//
+// Schema history:
+//   v1: { v, f: 'text'|'json', s, t?, j? }
+//   v2: + 'md' tab and 'm' (rendered markdown) field
+//   v3: + 'outline' tab and 'o' (resolved outline tree) field, AND the
+//        outline tree is opportunistically piggy-backed onto any other
+//        tab's share URL when it's small (<= 4 KB JSON) so the
+//        recipient's Markdown / Outline tabs both work without
+//        re-deriving the outline from PDF bytes they don't have.
+//
+// `o` is the resolved outline tree (`PdfOutlineItem[]`), not the raw
+// PDF bookmark catalog -- destinations are pre-resolved to 1-indexed
+// page numbers so the recipient doesn't need PDF.js or the original
+// bytes to render the tree.
+const SHARE_OUTLINE_PIGGYBACK_BYTES = 4 * 1024;
+async function buildShareUrl() {
+    if (!result) return null;
+    const state = { v: 3, f: activeTab, s: result.srcName };
+    if (activeTab === 'json') state.j = result.json;
+    else if (activeTab === 'md') {
+        if (markdownCache == null) return null;
+        state.m = markdownCache;
+    } else if (activeTab === 'outline') {
+        if (outlineCache == null || outlineCache.length === 0) return null;
+        state.o = outlineCache;
+    } else {
+        state.t = result.text;
+    }
+    // Piggyback the outline on non-outline tabs when it's cheap. This
+    // lets the recipient's Outline + Markdown tabs use the
+    // authoritative bookmark hierarchy without holding the PDF bytes.
+    if (activeTab !== 'outline'
+        && Array.isArray(outlineCache)
+        && outlineCache.length > 0) {
+        const oJson = JSON.stringify(outlineCache);
+        if (oJson.length <= SHARE_OUTLINE_PIGGYBACK_BYTES) state.o = outlineCache;
+    }
+    const json = JSON.stringify(state);
+    if (utf8Enc.encode(json).length > MAX_URL_STATE_BYTES + 4096) return null;
+    const encoded = await encodeState(json);
+    return `${location.origin}${location.pathname}#${encoded}`;
+}
+els.shareBtn.addEventListener('click', async () => {
+    try {
+        const url = await buildShareUrl();
+        if (!url) {
+            toast('Result is too large to share via URL. Use Copy or Download.');
+            return;
+        }
+        history.replaceState({}, '', url);
+        await navigator.clipboard.writeText(url);
+        toast('Share link copied');
+    } catch (err) {
+        toast(`Failed to copy share link: ${err.message ?? err}`);
+    }
+});
+
+// Per-tab payload + presentation metadata for the Copy / Download / Open-
+// in-MARS buttons. Returns null when the active tab has nothing
+// (yet) to export -- the Markdown tab during the lazy build, the Outline
+// tab before the bookmarks have been fetched, etc.
+function currentExportPayload() {
+    if (!result) return null;
+    if (activeTab === 'json') {
+        return {
+            text: JSON.stringify(result.json, null, 2),
+            ext: 'json',
+            mime: 'application/json;charset=utf-8',
+            toast: 'JSON copied',
+        };
+    }
+    if (activeTab === 'md') {
+        if (markdownCache == null) return null;
+        return {
+            text: markdownCache,
+            ext: 'md',
+            mime: 'text/markdown;charset=utf-8',
+            toast: 'Markdown copied',
+        };
+    }
+    if (activeTab === 'outline') {
+        if (outlineCache == null || outlineCache.length === 0) return null;
+        return {
+            text: JSON.stringify(outlineCache, null, 2),
+            ext: 'json',
+            mime: 'application/json;charset=utf-8',
+            toast: 'Outline copied',
+        };
+    }
+    return {
+        text: result.text,
+        ext: 'txt',
+        mime: 'text/plain;charset=utf-8',
+        toast: 'Text copied',
+    };
+}
+
+els.copyBtn.addEventListener('click', async () => {
+    const payload = currentExportPayload();
+    if (!payload) return;
+    try {
+        await navigator.clipboard.writeText(payload.text);
+        toast(payload.toast);
+    } catch { toast('Failed to copy'); }
+});
+
+// ----- Export dropdown ---------------------------------------------------
+// The same payload selector (currentExportPayload) feeds both menu
+// items; syncExportMenuItems() is responsible for keeping their enabled
+// state + descriptions in sync with the active tab.
+
+// Export menu: open/close handled declaratively by [popover] + [commandfor].
+// Re-sync the menu items every time the popover transitions to the open state
+// so the user always sees an up-to-date Download extension (Markdown / Outline
+// caches may have resolved while the menu was closed). Fires for both the
+// native showPopover() path and the fallback IIFE below.
+wireTether(els.exportBtn, els.exportMenu);
+els.exportMenu.addEventListener('toggle', (e) => {
+    if (e.newState === 'open') syncExportMenuItems();
+});
+function closeExportMenu() {
+    if (typeof els.exportMenu.hidePopover === 'function') { if (els.exportMenu.matches(':popover-open')) els.exportMenu.hidePopover(); }
+    else els.exportMenu.hidden = true;
+}
+
+// Shared fallback for engines without Popover API + Invoker Commands (older Safari, older Firefox).
+// Wires the OCR popover and the Export menu at the same time; see
+// dev/tools/shared/guides/components.md → "Tethered popovers (native popover + commandfor)".
+if (!('popover' in HTMLElement.prototype) || !('commandForElement' in HTMLButtonElement.prototype)) {
+    const pops = document.querySelectorAll('[popover]');
+    for (const p of pops) { p.hidden = true; p.style.position = 'absolute'; p.style.top = 'calc(100% + 6px)'; p.style.right = '0'; }
+    const setState = (p, open) => { if (p.hidden === !open) return; p.hidden = !open; p.dispatchEvent(Object.assign(new Event('toggle'), { newState: open ? 'open' : 'closed' })); };
+    const closeAll = () => { for (const p of pops) setState(p, false); for (const i of document.querySelectorAll('[commandfor]')) i.setAttribute('aria-expanded', 'false'); };
+    for (const inv of document.querySelectorAll('[commandfor]')) {
+        const t = document.getElementById(inv.getAttribute('commandfor'));
+        if (!t) continue;
+        inv.addEventListener('click', (e) => { if (inv.disabled) return; e.stopPropagation(); const opening = t.hidden; closeAll(); if (opening) { setState(t, true); inv.setAttribute('aria-expanded', 'true'); } });
+    }
+    document.addEventListener('click', (e) => { for (const p of pops) if (!p.hidden && !p.contains(e.target)) closeAll(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAll(); });
+}
+
+els.exportDownload.addEventListener('click', () => {
+    const payload = currentExportPayload();
+    if (!payload) return;
+    const blob = new Blob([payload.text], { type: payload.mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${result.srcName || 'document'}.${payload.ext}`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast(`Downloaded ${a.download}`);
+    closeExportMenu();
+});
+
+// Both Text and Markdown travel verbatim in MARS's full-link fragment.
+// The explicit source name keeps the PDF filename instead of inferring a heading.
+els.exportOpenMars.addEventListener('click', async () => {
+    if (!result || (activeTab !== 'text' && activeTab !== 'md')) return;
+    const payload = currentExportPayload();
+    if (!payload) return;
+    const name = result.srcName || 'document';
+    closeExportMenu();
+    try {
+        const encoded = await encodeState(payload.text);
+        const url = `https://{{MARS_HOST}}/#${new URLSearchParams({ name, md: encoded })}`;
+        window.open(url, '_blank', 'noopener');
+    } catch (err) {
+        toast(`Open in MARS failed: ${err.message ?? err}`);
+    }
+});
+
+// ----- Fullscreen toggle for the result pane -----------------------------
+
+els.fullscreenBtn.addEventListener('click', async () => {
+    try {
+        if (!document.fullscreenElement) {
+            await els.resultPane.requestFullscreen();
+        } else {
+            await document.exitFullscreen();
+        }
+    } catch (e) {
+        toast(`Fullscreen failed: ${e?.message ?? e}`);
+    }
+});
+document.addEventListener('fullscreenchange', () => {
+    const entering = !!document.fullscreenElement;
+    els.fullscreenEnterIcon.style.display = entering ? 'none' : 'block';
+    els.fullscreenExitIcon.style.display = entering ? 'block' : 'none';
+});
+
+// ----- Splitter (resizable two-pane) -------------------------------------
+
+(() => {
+    const splitter = els.splitter;
+    const grid = splitter.parentElement;
+    let dragging = false;
+    let overlay = null;
+    const startDrag = (e) => {
+        e.preventDefault();
+        dragging = true;
+        splitter.classList.add('active');
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+        overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;inset:0;cursor:col-resize;z-index:9999;background:transparent;';
+        document.body.appendChild(overlay);
+    };
+    const stopDrag = () => {
+        if (!dragging) return;
+        dragging = false;
+        splitter.classList.remove('active');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        if (overlay) { overlay.remove(); overlay = null; }
+    };
+    splitter.addEventListener('mousedown', startDrag);
+    document.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        const rect = grid.getBoundingClientRect();
+        const pct = Math.max(15, Math.min(85, ((e.clientX - rect.left) / rect.width) * 100));
+        grid.style.gridTemplateColumns = `${pct}% 12px ${100 - pct}%`;
+    });
+    document.addEventListener('mouseup', stopDrag);
+    window.addEventListener('blur', stopDrag);
+})();
+
+// ----- Hydrate from URL fragment -----------------------------------------
+
+(async () => {
+    if (location.hash.length <= 1) return;
+    const decoded = await decodeState(location.hash.slice(1));
+    if (!decoded) return;
+    let state;
+    try { state = JSON.parse(decoded); } catch { return; }
+    // v1 (legacy): { v: 1, f: 'text'|'json', s, t?, j? }
+    // v2: adds 'md' to f and 'm' (rendered markdown).
+    // v3: adds 'outline' to f and 'o' (resolved outline tree); the
+    //     outline may also piggy-back on other tabs' shares when
+    //     small (see buildShareUrl), in which case `state.o` is
+    //     present even when `state.f !== 'outline'`. All three
+    //     versions are accepted so older share links keep working
+    //     after the upgrade.
+    if (!state || (state.v !== 1 && state.v !== 2 && state.v !== 3)) return;
+    const requestedTab = state.f;
+    const tab = requestedTab === 'json' ? 'json'
+        : requestedTab === 'md' ? 'md'
+        : requestedTab === 'outline' ? 'outline'
+        : 'text';
+    result = {
+        text: state.t ?? '',
+        json: state.j ?? { pages: [] },
+        srcName: state.s || 'document',
+        ocrMode: 'auto',
+        ocrLang: 'eng',
+    };
+    els.resultText.value = result.text;
+    const jsonStr = JSON.stringify(result.json, null, 2);
+    els.resultJsonPre.textContent = jsonStr;
+    // The Markdown payload is carried verbatim in the share URL so the
+    // recipient sees the same heuristic output as the sender (the
+    // engine is allowed to evolve between releases). When the share
+    // URL carries `f: 'md'` but no `m` field (older v1 link), the
+    // Markdown tab will lazily run the engine over `state.j` on click.
+    if (typeof state.m === 'string') {
+        markdownCache = state.m;
+        els.resultMd.value = state.m;
+    }
+    // The outline tree (when present) primes the cache so the Outline
+    // tab opens instantly and the Markdown engine picks up the
+    // bookmark hierarchy on first render -- even though we never have
+    // the PDF bytes from a shared link.
+    if (Array.isArray(state.o)) {
+        outlineCache = state.o;
+    }
+    const pageCount = result.json?.pages?.length ?? 0;
+    // Populate the dropzone with a synthetic "Loaded from shared link"
+    // pseudo-file so users see *where* the result came from without us
+    // having to keep a separate "shared link" badge anywhere on the page.
+    // The `from-shared-link` class re-styles the file pill (dashed border,
+    // italic muted name) to telegraph that no PDF bytes are actually
+    // loaded -- dropping a real PDF will replace it cleanly.
+    els.dropzone.classList.add('has-file', 'from-shared-link');
+    els.fileName.textContent = 'Loaded from shared link';
+    els.fileMeta.textContent = 'no PDF bytes';
+    els.parseStats.textContent = `${pageCount} page${pageCount === 1 ? '' : 's'} · shared link`;
+    els.parseStats.removeAttribute('hidden');
+    setActiveTab(tab);
+    // Shared links always fit (they came from a URL we just deflated).
+    setExportEnabled(true, true);
+})();
+    </script>
+</body>
+</html>

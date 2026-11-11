@@ -1,7 +1,7 @@
 /**
  * Structural smoke test for the `webhook.html` `@su:responder-script` block.
  *
- * Extracts the responder script from `dev/tools/webhook.html`, runs it under
+ * Extracts the responder script from `dev/tools/webhook/index.html`, runs it under
  * `node:vm` with stubbed `Deno.core` + `globalThis.secutils` (an in-memory KV
  * store and a trivial reversible "seal"), and exercises every branch of the
  * three-role responder: CAPTURE (`<mount>/<token>`), MANAGEMENT (`?t=<token>`
@@ -23,7 +23,7 @@ import * as vm from 'node:vm';
 
 import { expect, test } from '@playwright/test';
 
-const HTML_PATH = join(__dirname, '..', '..', 'dev', 'tools', 'webhook.html');
+const HTML_PATH = join(__dirname, '..', '..', 'dev', 'tools', 'webhook/index.html');
 
 /** Pulls the JS between `<!-- @su:responder-script` and the closing `-->`. */
 function extractResponderScript(html: string): string {

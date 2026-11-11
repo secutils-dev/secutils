@@ -2,7 +2,7 @@
 
 // tools-check: verifies that the marketing site's hard-coded "Free single-page
 // tools" list stays in sync with the source of truth - the
-// `<meta name="su-tool-promote">` tag in every `dev/tools/*.html`.
+// `<meta name="su-tool-promote">` tag in every discovered tool HTML source.
 //
 // Concretely it asserts:
 //  1. Every tool whose source HTML carries `su-tool-promote=true` appears at
@@ -15,8 +15,7 @@
 //     can still run `make tools-check`.
 //  2. Every promoted tool is listed in the README's "Free single-page tools"
 //     table (`README.md`).
-//  3. Every promoted tool has a corresponding `<slug>.skill.md` in
-//     `dev/tools/`.
+//  3. Every promoted tool has a corresponding companion skill.
 //  4. No non-promoted tool (e.g. mock-saml-idp) is referenced in the promo
 //     home strip / cards section - those tools live on the index page only.
 //
@@ -25,9 +24,11 @@
 // stripping, no transpile step). Exits non-zero on any drift so it's safe to
 // wire into CI.
 
-import { readdir, readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { discoverTools } from "../dev/tools/shared/sources.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "..");
@@ -55,17 +56,15 @@ const META_RE = (name: string): RegExp =>
   new RegExp(`<meta\\s+name=["']${name}["']\\s+content=["']([^"']*)["']`, "i");
 
 async function readTools(): Promise<Tool[]> {
-  const entries = await readdir(TOOLS_DIR);
   const tools: Tool[] = [];
-  for (const file of entries) {
-    if (!file.endsWith(".html") || file === "og-template.html") continue;
+  for (const { html: file } of discoverTools()) {
     const html = await readFile(resolve(TOOLS_DIR, file), "utf8");
     const path = META_RE("su-tool-path").exec(html)?.[1];
     const name = META_RE("su-tool-name").exec(html)?.[1];
     const promote = META_RE("su-tool-promote").exec(html)?.[1];
     if (!path || !name || promote == null) {
       throw new Error(
-        `${file} is missing one of su-tool-path / su-tool-name / su-tool-promote - required by dev/tools/guides/platform.md`,
+        `${file} is missing one of su-tool-path / su-tool-name / su-tool-promote - required by dev/tools/shared/guides/platform.md`,
       );
     }
     const host = META_RE("su-tool-host").exec(html)?.[1]?.replace(/\{\{\s*MARS_HOST\s*\}\}/g, MARS_HOST);
@@ -140,12 +139,12 @@ async function main(): Promise<void> {
   }
 
   // (3) every promoted tool has a sibling skill .md.
-  const dirEntries = new Set(await readdir(TOOLS_DIR));
+  const sources = discoverTools();
   for (const t of promoted) {
-    const expected = t.file.replace(/\.html$/, ".skill.md");
-    if (!dirEntries.has(expected)) {
+    const expected = sources.find((source) => source.html === t.file)?.skill;
+    if (!expected || !existsSync(resolve(TOOLS_DIR, expected))) {
       errors.push(
-        `Promoted tool "${t.name}" (${t.file}) is missing the sibling AI-agent skill at ${expected} (required by dev/tools/guides/agent-surface.md → "AI-agent surface").`,
+        `Promoted tool "${t.name}" (${t.file}) is missing its companion AI-agent skill (required by dev/tools/shared/guides/agent-surface.md).`,
       );
     }
   }

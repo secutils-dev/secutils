@@ -14,7 +14,7 @@ import { test } from './_mars_test';
 import { mermaidNavigationTests } from './_mermaid_navigation';
 
 // MARS keeps reviews in IndexedDB, so every test gets a fresh context. It runs on its own
-// host (MARS_BASE_URL); locally, `npm run serve` in dev/tools/js/mars and
+// host (MARS_BASE_URL); locally, `npm run serve` in dev/tools/mars and
 // MARS_BASE_URL=http://localhost:7373.
 const tool = getTool('mars');
 const MARS_BASE_URL = process.env.MARS_BASE_URL ?? `https://${tool.host}`;

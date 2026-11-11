@@ -40,7 +40,7 @@ test('Markdown export keeps backslashes, pipes, and link delimiters inside their
 /**
  * Build a shareable PDF Extractor URL fragment from a pre-extracted state
  * payload. Mirrors the production wire format encoded in
- * `dev/tools/pdf-extractor.html#encodeState`:
+ * `dev/tools/pdf-extractor/index.html#encodeState`:
  *
  *   [ 4 bytes uncompressed-length (LE u32) | N bytes raw DEFLATE of JSON ]
  *   -> base64url (`+` -> `-`, `/` -> `_`, strip `=`)

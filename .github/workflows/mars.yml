@@ -3,30 +3,30 @@ name: MARS
 permissions:
   contents: read
 
-# ci.yml ignores dev/tools/**; this workflow covers the MARS sub-package only.
+# ci.yml ignores dev/tools/**; this workflow covers MARS and the shared source inventory.
 on:
   push:
     branches: [ main ]
     paths:
-      - 'dev/tools/js/mars/**'
-      - 'dev/tools/shared/**'
-      - 'dev/tools/shared-assets.ts'
+      - 'dev/tools/**'
+      - 'scripts/tools-layout.test.ts'
       - 'scripts/tools-shared.test.ts'
       - 'scripts/mars-test-scopes.test.ts'
       - 'scripts/mars-test-cleanup.ts'
       - 'e2e/mars-test-scopes.ts'
       - 'e2e/tools/_mars_test.ts'
+      - 'e2e/tools/registry.ts'
       - '.github/workflows/mars.yml'
   pull_request:
     paths:
-      - 'dev/tools/js/mars/**'
-      - 'dev/tools/shared/**'
-      - 'dev/tools/shared-assets.ts'
+      - 'dev/tools/**'
+      - 'scripts/tools-layout.test.ts'
       - 'scripts/tools-shared.test.ts'
       - 'scripts/mars-test-scopes.test.ts'
       - 'scripts/mars-test-cleanup.ts'
       - 'e2e/mars-test-scopes.ts'
       - 'e2e/tools/_mars_test.ts'
+      - 'e2e/tools/registry.ts'
       - '.github/workflows/mars.yml'
 
 jobs:
@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: dev/tools/js/mars
+        working-directory: dev/tools/mars
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -44,8 +44,8 @@ jobs:
           node-version-file: '.nvmrc'
           cache: 'npm'
           cache-dependency-path: |
-            dev/tools/js/mars/package-lock.json
-            dev/tools/js/mars/eval/package-lock.json
+            dev/tools/mars/package-lock.json
+            dev/tools/mars/eval/package-lock.json
 
       - name: Install dependencies
         run: npm ci && npm --prefix eval ci
@@ -59,16 +59,16 @@ jobs:
       - name: Test
         run: |
           npm test
-          node --test ../../../../scripts/tools-shared.test.ts
-          node --test ../../../../scripts/mars-test-scopes.test.ts
+          node --test ../../../scripts/tools-shared.test.ts ../../../scripts/tools-layout.test.ts
+          node --test ../../../scripts/mars-test-scopes.test.ts
 
       # Best quality (EmbeddingGemma 2, about 200 MB) is checked locally; see README.md#evaluation.
       - name: Cache the Best speed model
         uses: actions/cache@v6.1.0
         with:
-          path: dev/tools/js/mars/eval/.cache
-          key: mars-search-models-${{ hashFiles('dev/tools/js/mars/src/search/models.ts') }}
-          restore-keys: mars-search-models-
+          path: dev/tools/mars/eval/.cache
+          key: mars-search-models-v2-${{ hashFiles('dev/tools/mars/src/search/models.ts') }}
+          restore-keys: mars-search-models-v2-
 
       - name: Search quality (Best speed, CPU and WebGPU weights)
         run: npm --prefix eval run eval -- fast@q8 fast@fp16 --check

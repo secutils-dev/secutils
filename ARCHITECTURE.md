@@ -103,7 +103,11 @@ secutils/
 ├── dev/
 │   ├── agent-guides/         # Task guides for coding agents (routed from AGENTS.md)
 │   ├── docker/               # Docker Compose files and configs
-│   └── tools/                # Free tool apps and MARS, deployed as webhook responders
+│   └── tools/                # Self-contained tool apps, deployed as webhook responders
+│       ├── index.html        # Single-file tools index
+│       ├── mars/             # MARS HTML, skill, source, assets, tests, and evaluation
+│       ├── <app>/            # Other apps: index.html, SKILL.md, and app-specific files
+│       └── shared/           # Guides, styles, glyphs, libraries, and deployment helpers
 ├── e2e/                      # Playwright end-to-end tests
 ├── migrations/               # SQLx database migrations
 ├── src/                      # Secutils API server (Rust)

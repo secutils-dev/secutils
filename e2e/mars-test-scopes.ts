@@ -31,7 +31,7 @@ const repositoryRoot = () => {
   let directory = process.cwd();
   while (
     !existsSync(resolve(directory, 'e2e/package.json')) ||
-    !existsSync(resolve(directory, 'dev/tools/mars.html'))
+    !existsSync(resolve(directory, 'dev/tools/mars/index.html'))
   ) {
     const parent = dirname(directory);
     if (parent === directory) throw new Error('Run MARS test tools from the Secutils checkout.');

@@ -9,7 +9,7 @@ import { webhookBackend } from './_webhook_backend';
 
 const root = join(__dirname, '../..');
 const origin = 'https://tools.secutils.dev';
-const source = readFileSync(join(root, 'dev/tools/webhook.html'), 'utf8');
+const source = readFileSync(join(root, 'dev/tools/webhook/index.html'), 'utf8');
 const responder = source.match(/<!--\s*@su:responder-script\s*([\s\S]*?)-->/)![1];
 let html: string;
 let backend: ReturnType<typeof webhookBackend>;
@@ -22,9 +22,9 @@ test.beforeAll(() => {
     input: `
       import { readFileSync } from 'node:fs';
       import { minify } from 'html-minifier-terser';
-      import { MINIFY_OPTIONS } from './dev/tools/deploy.ts';
-      import { inlineSharedAssets } from './dev/tools/shared-assets.ts';
-      const source = readFileSync('dev/tools/webhook.html', 'utf8').replace(/\\{\\{TOOLS_HOST\\}\\}/g, 'tools.secutils.dev');
+      import { MINIFY_OPTIONS } from './dev/tools/shared/deploy.ts';
+      import { inlineSharedAssets } from './dev/tools/shared/assets.ts';
+      const source = readFileSync('dev/tools/webhook/index.html', 'utf8').replace(/\\{\\{TOOLS_HOST\\}\\}/g, 'tools.secutils.dev');
       process.stdout.write(await minify(inlineSharedAssets(source), MINIFY_OPTIONS));
     `,
   });

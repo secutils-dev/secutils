@@ -1,0 +1,194 @@
+# Shared design system
+
+Read this guide before changes to `dev/tools/shared/`, MARS chrome, or a migration of another tool.
+The shared foundation reproduces the lightweight EUI look of MARS with CSS and native HTML.
+It includes Borealis neutrals and EUI glyphs, without EUI components or React.
+MARS, ECHO, and Webhook Inspector consume this foundation.
+Other tools keep their existing styles until their migration.
+
+## Ownership
+
+| Surface | Source |
+|---|---|
+| Neutrals, semantic colors, fonts, radii, shadows | `../tokens.css` |
+| Header, buttons, fields, panels, groups, menus, dialogs, toast, footer | `../components.css` |
+| EUI glyphs, SVG renderer, icon hydration | `../icons.js` |
+| ECHO app icon, isolated from its OG tile | `../../echo/assets/echo-app-icon.svg` |
+| WEBHOOKS app icon, Secutils Webhooks glyph in SU colors | `../../webhook/assets/webhook-app-icon.svg` |
+| Source-to-responder asset inclusion | `../assets.ts` |
+| MARS coral identity and document colors, shared with Observatory | `../themes/mars.css` |
+| MARS sidebar and document layout | `../../mars/src/ui/components.css` |
+
+The CSS and glyph catalog are the source of truth for visual values.
+Use the CSS variables instead of copies of color values.
+Keep app layout, data state, and event handlers in the app.
+Keep EUI glyph attribution in `icons.js` when moving or adding glyphs.
+
+## Migrate a tool
+
+1. Record its controls, theme behavior, dialogs, responsive layout, and state contract.
+   The inventory is complete when every visible control has a corresponding shared primitive or app-specific rule.
+2. Add these links before the app stylesheet:
+
+   ```html
+   <link rel="stylesheet" href="../shared/tokens.css" data-su-style="tokens">
+   <link rel="stylesheet" href="../shared/components.css" data-su-style="components">
+   ```
+
+   `deploy.ts` replaces these links with inline styles before minification.
+   MARS imports the same CSS through its bundle.
+3. Use shared classes for every primitive in the inventory.
+   Delete the corresponding local CSS rules.
+   Keep the remaining CSS limited to app layout and app-specific content.
+4. Replace UI glyphs with `<span data-icon="copy"></span>` and other catalog names.
+   Import the renderer in the app module:
+
+   ```html
+   <script type="module">
+   import { icon, hydrateIcons } from '../shared/icons.js';
+   hydrateIcons();
+   // After creating dynamic markup: hydrateIcons(container).
+   // For a dynamic button: button.innerHTML = icon('cross').
+   </script>
+   ```
+
+   Deployment replaces this module path with an embedded data URL.
+   Source pages work through an HTTP server that serves `dev/tools/`.
+   Deployed pages need no shared-file requests.
+5. Preserve the URL state format, responder script, metadata, and Skill link contract.
+   Keep the footer and related-tools banner on tools-host pages.
+   Use [components.md](components.md) for native dialog and popover behavior.
+6. Run the checks in [../../AGENTS.md](../../AGENTS.md) and the verification section below.
+   Completion requires every inventoried control to pass desktop, phone, theme, and keyboard checks.
+
+## Primitive contracts
+
+- Use `.su-header`, `.su-header-section`, and `.su-header-btn` for the 48px header.
+- Use `.su-app-brand` for the app icon beside a stacked app name and publisher.
+- Use `.su-app-icon` for a square 32px icon area, with app-specific artwork.
+- Use `.su-app-brand-copy`, `.su-app-name`, and `.su-app-publisher` for the text stack.
+- Keep both text lines visible on phones, with `Secutils.dev` under the short app name.
+- Use `.btn` for a 32px button, `.btn-sm` for 28px, and `.btn-xs` for 24px.
+- Use `.btn-primary`, `.btn-empty`, and `.btn-danger` for action emphasis.
+- Use `.icon-btn` for a 28px icon button with an accessible label.
+- Use `.input`, `.input-mono`, `.textarea`, and `.select` for native fields.
+- Use `.field-label` with an associated field or section heading.
+- Use `.su-panel` for a content surface and `.su-dialog` for a native modal.
+- Use `.toast` with a live region for action feedback.
+- Keep visible keyboard focus and delayed `:user-invalid` feedback.
+- Let native `color-scheme` follow `data-theme` for browser controls.
+- Keep control heights fixed when controls share a row.
+- Preserve labels on mobile unless an accessible name remains on the control.
+
+## Buttons, loading, and copy feedback
+
+Use the [EUI button guidance](https://eui.elastic.co/docs/components/navigation/buttons/button/) and [Save button patterns](https://eui.elastic.co/docs/patterns/save-buttons/).
+The shared CSS implements these patterns with native HTML. Keep the same geometry across variants.
+
+| Role | Classes | Use |
+|---|---|---|
+| Primary | `.btn.btn-primary` | One dominant action per group, such as Save, Connect, or Create live link |
+| Secondary | `.btn` | Bordered, text-colored actions, such as Backup and settings |
+| Tertiary | `.btn.btn-empty` | Cancel, Close, and complementary actions beside the primary action |
+| Neutral tertiary | `.btn.btn-empty.btn-text` | Low-prominence navigation or relationship actions on dense screens |
+| Destructive confirmation | `.btn.btn-danger` | Confirm deletion or an irreversible loss of access, never Cancel |
+| Icon-only | `.icon-btn` or `.icon-btn.icon-btn-s` | Recognizable actions with an accessible label and a tooltip |
+
+Use `.btn-flush-left`, `.btn-flush-right`, or `.btn-flush-both` only with empty buttons at a container edge.
+These remove horizontal padding, so the text aligns with the adjacent content.
+Do not remove padding from bordered or filled buttons.
+Keep Cancel beside the primary action, with the same height. Use the neutral text variant in MARS's dense dialogs, never danger styling.
+Keep navigation Back at the left edge when the flow needs it.
+Use primary plus tertiary variants in one group, or a group of secondary actions. Avoid all three variants in one group.
+Use anchors for navigation and buttons for actions, even when an action looks like a text link.
+Use a filled Save button for permanent changes. Reserve Apply for temporary changes.
+Use danger styling only at confirmation. Disconnecting a device does not delete its saved documents.
+
+MARS uses `buttonClass` in `src/ui/ui.ts` for generated buttons.
+Do not make every non-primary action an empty button.
+The 32px default is the compressed EUI size for this dense application. Fields and buttons in one row must match.
+
+### Busy state
+
+Use `.su-spinner`, adapted from EUI's `EuiLoadingSpinner` bordered ring.
+Put it in the active button, change the label to the current action, and disable repeat submissions.
+Set `aria-busy` and announce the action through a status region. Hide the decorative spinner from screen readers.
+Disable related fields during the operation. Keep Close available for dismissal.
+The spinner rotates only when the user permits motion.
+
+### Tooltips and clipboard
+
+Use the [EUI tooltip requirements](https://eui.elastic.co/docs/components/display/tooltip/) and [EuiCopy pattern](https://eui.elastic.co/docs/utilities/copy/).
+In MARS, `src/ui/feedback.ts` provides hover/focus tooltips and `copyFeedback`.
+Icon buttons need an `aria-label` and `data-tooltip`. Do not rely on the browser's `title` tooltip.
+The initializer migrates existing icon titles and follows dynamic buttons.
+Tooltip content must be plain text, not interactive content.
+Suppress duplicate screen-reader output when the tooltip repeats the button label.
+Show a brief Copied tooltip after clipboard success. Show a clear failure message when copying fails.
+Keep feedback outside document flow. Do not add a paragraph, resize the dialog, or replace the button label for Copy feedback.
+Clamp the tooltip to the viewport. Remove it when its control closes or disappears.
+Use `width: max-content` with the viewport width cap. Keep `overflow: visible` so native popovers do not clip arrows.
+The tooltip width must remain unchanged after its positioning helper sets `left`.
+
+The shared foundation owns component geometry and neutral colors.
+An app identity can override `--brand*` and `--focus` in both themes.
+MARS keeps its coral identity. ECHO and Webhook Inspector use the default Secutils yellow/maroon identity.
+Use contrast-safe `--brand-text` for links in both themes.
+Use `--brand-on` for text on filled primary buttons.
+
+## Add an EUI glyph
+
+1. Read the upstream SVG under `components/secutils-webui/node_modules/@elastic/eui/lib/components/icon/svgs/`.
+2. Copy its inner markup into `ICONS` in `../icons.js`.
+   Preserve the path data and explicit fills of multicolor logos.
+3. If the upstream viewBox uses a 32px grid, add its name to `LOGOS_32`.
+   The renderer uses a 16px grid for other glyphs.
+4. Run the glyph tests and inspect the glyph in both themes.
+
+Use the EUI glyph catalog for every UI action.
+App logo artwork remains app-specific.
+
+For a file-backed app icon, use this source markup:
+
+```html
+<img class="su-app-icon" src="./assets/echo-app-icon.svg" data-su-app-icon="echo" width="32" height="32" alt="">
+```
+
+The marker names `<app>/assets/<app>-app-icon.svg` under `dev/tools/`.
+Deployment embeds the SVG as a data URL, so the served header needs no asset request.
+Keep the decorative icon label empty when the adjacent text identifies the app.
+Keep shared OG and header artwork aligned through an icon parity test.
+
+## SVG viewport clipping
+
+Firefox can clip curved artwork that touches an inline SVG's `viewBox` at fractional display scales (for example, 125%).
+MARS exposed this with its edge-aligned circle.
+The shared `svg.su-app-icon` rule uses `overflow: visible` to preserve the edge without changing the 32px layout.
+
+ECHO uses an SVG through `<img>`, with an inset bolt and an edge-aligned square tile.
+It does not show the same circle defect.
+Page CSS cannot change the internal SVG viewport of an `<img>`.
+
+- Use explicit `clipPath` elements for artwork that must stay inside a shape.
+- For file-backed artwork that needs edge bleed, expand the SVG's `viewBox` or inset the artwork.
+- After logo changes, inspect Firefox at 100%, 125%, and 150% display scales in both themes.
+- Keep this protection specific to app icons, rather than all SVGs or regular EUI glyphs.
+
+## Verification
+
+Run these commands from the repository root:
+
+```bash
+node --test scripts/tools-shared.test.ts
+make tools-verify ARGS="dev/tools/echo/index.html dev/tools/mars/index.html dev/tools/webhook/index.html"
+make tools-check
+make e2e-standalone-test ARGS="tools_shared_ui.spec.ts --browser=all"
+make e2e-standalone-test ARGS="webhook_shared_ui.spec.ts --browser=all"
+```
+
+For shared CSS or glyph changes, also run the MARS checks in [../../mars/AGENTS.md](../../mars/AGENTS.md#verify-a-change).
+Inspect both themes at desktop and phone widths.
+Make sure that native dialogs close and return focus correctly.
+Make sure that fields, header rows, dynamic glyphs, and copy feedback remain usable.
+Inspect the generated page for unresolved shared-file references.
+Report any blocked check as incomplete verification.

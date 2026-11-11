@@ -19,4 +19,4 @@ The importer tests generate small packages for Core base materials, object defau
 Its ZIP64 directory and per-entry extra fields reproduce the packaging used by the supplied `one_3mf.3mf` file.
 The original user file is not stored in this repository.
 The fixture uses this repository's license.
-To regenerate it, run `node src/generate-zip64-fixture.mjs` from `dev/tools/js/three-mf/`.
+To regenerate it, run `node src/generate-zip64-fixture.mjs` from `dev/tools/shared/libs/three-mf/`.

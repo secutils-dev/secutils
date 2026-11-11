@@ -5,19 +5,22 @@
 //  1. every inline <script> parses (modules use Node's module syntax check;
 //     JSON-LD and `text/plain` bundle placeholders are skipped);
 //  2. the `@su:responder-script` block, if any, parses as the expression deploy.ts ships;
-//  3. html-minifier-terser accepts the page with deploy.ts's exact options.
+//  3. html-minifier-terser accepts the page with deploy.ts's exact options,
+//     and minified script bodies contain no HTML comment-openers.
 //
-// Usage: `make tools-verify [ARGS="dev/tools/md.html ..."]` (default: every tool).
+// Usage: `make tools-verify [ARGS="dev/tools/md/index.html ..."]` (default: every tool).
 // Read-only, no browser, no network. Exits non-zero on any failure.
 
-import { readdir, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as vm from "node:vm";
 import { minify } from "html-minifier-terser";
-import { MINIFY_OPTIONS } from "../dev/tools/deploy.ts";
-import { inlineSharedAssets } from "../dev/tools/shared-assets.ts";
+import { MINIFY_OPTIONS } from "../dev/tools/shared/deploy.ts";
+import { inlineSharedAssets } from "../dev/tools/shared/assets.ts";
+import { discoverTools } from "../dev/tools/shared/sources.ts";
+import { assertInlineScriptSafety } from "../dev/tools/shared/html.ts";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const TOOLS_DIR = resolve(REPO_ROOT, "dev/tools");
@@ -25,7 +28,7 @@ const TOOLS_DIR = resolve(REPO_ROOT, "dev/tools");
 const args = process.argv.slice(2);
 const files = args.length
   ? args.map((f) => resolve(f))
-  : (await readdir(TOOLS_DIR)).filter((f) => f.endsWith(".html") && f !== "og-template.html").map((f) => resolve(TOOLS_DIR, f));
+  : discoverTools().map((tool) => resolve(TOOLS_DIR, tool.html));
 
 let failed = 0;
 for (const file of files) {
@@ -51,7 +54,7 @@ for (const file of files) {
     catch (err) { errors.push(`responder script: ${(err as Error).message}`); }
   }
 
-  try { await minify(inlineSharedAssets(html), MINIFY_OPTIONS); }
+  try { assertInlineScriptSafety(await minify(inlineSharedAssets(html), MINIFY_OPTIONS), name); }
   catch (err) { errors.push(`minifier: ${(err as Error).message}`); }
 
   if (errors.length) {

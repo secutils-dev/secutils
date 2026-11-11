@@ -16,7 +16,7 @@ export interface Tool {
   /** Slug used in OG image filenames (`og-<slug>.png`) and inside the spec
    *  filename (`<slug>.spec.ts`). Path-derived so URLs stay self-evident. */
   slug: string;
-  /** Source HTML filename in `dev/tools/`. */
+  /** Source HTML path relative to `dev/tools/`. */
   source: string;
   /** Human-readable name (matches `<meta name="su-tool-name">`). */
   name: string;
@@ -33,14 +33,14 @@ export interface Tool {
   /** Own host of a standalone app (matches `<meta name="su-tool-host">`): served at `/`,
    *  with its SKILL.md at `/llms.txt`, and absent from the tools-host sitemap. */
   host?: string;
-  /** Symbolic icon id understood by `dev/tools/og-template.html`. */
+  /** Symbolic icon id understood by `dev/tools/shared/og-template.html`. */
   icon: 'key' | 'shield' | 'cert' | 'doc' | 'bolt' | 'id' | 'grid' | 'pdf' | 'chart' | 'mars' | 'webhook';
 }
 
 export const TOOLS: readonly Tool[] = [
   {
     slug: 'jwt',
-    source: 'jwt-debugger.html',
+    source: 'jwt-debugger/index.html',
     name: 'JWT Debugger',
     path: '/jwt',
     description: 'Decode, verify, and sign HMAC JSON Web Tokens.',
@@ -51,7 +51,7 @@ export const TOOLS: readonly Tool[] = [
   },
   {
     slug: 'saml',
-    source: 'saml-decoder.html',
+    source: 'saml-decoder/index.html',
     name: 'SAML Decoder',
     path: '/saml',
     description: 'Inspect SAML responses, requests, and metadata.',
@@ -62,7 +62,7 @@ export const TOOLS: readonly Tool[] = [
   },
   {
     slug: 'pem',
-    source: 'certificate-decoder.html',
+    source: 'certificate-decoder/index.html',
     name: 'PEM Certificate Decoder',
     path: '/pem',
     description: 'Inspect PEM-encoded X.509 certificate chains.',
@@ -78,7 +78,7 @@ export const TOOLS: readonly Tool[] = [
     // Block controls reserve a gutter and retain adjacent items in gaps; ordered moves renumber source.
     // Document links open in a new tab in Preview; fragment links still scroll locally.
     // Mermaid: zoom, pan, and fit in preview/fullscreen; unchanged diagrams retain views after edits.
-    source: 'md.html',
+    source: 'md/index.html',
     name: 'Markdown Preview',
     path: '/md',
     description: 'Reading-first Markdown preview with Mermaid, math, alerts, and HTML/PDF export.',
@@ -96,7 +96,7 @@ export const TOOLS: readonly Tool[] = [
     // Block controls reserve a gutter and retain adjacent items in gaps; ordered moves renumber source.
     // Document links open in a new tab in Preview; fragment links still scroll locally.
     // Mermaid: zoom, pan, and fit in preview/fullscreen; unchanged diagrams retain views after edits.
-    source: 'mars.html',
+    source: 'mars/index.html',
     name: 'MARS',
     path: '/',
     host: MARS_HOST,
@@ -109,7 +109,7 @@ export const TOOLS: readonly Tool[] = [
   },
   {
     slug: 'pdf',
-    source: 'pdf-extractor.html',
+    source: 'pdf-extractor/index.html',
     name: 'PDF Extractor',
     path: '/pdf',
     description: 'Extract spatial text and structured JSON from PDFs, in-browser.',
@@ -120,7 +120,7 @@ export const TOOLS: readonly Tool[] = [
   },
   {
     slug: 'echo',
-    source: 'echo.html',
+    source: 'echo/index.html',
     name: 'HTTP Echo / Mock Response',
     path: '/echo',
     description: 'Build a customizable HTTP response, served as a shareable URL.',
@@ -131,7 +131,7 @@ export const TOOLS: readonly Tool[] = [
   },
   {
     slug: 'webhook',
-    source: 'webhook.html',
+    source: 'webhook/index.html',
     name: 'Webhook Inspector',
     path: '/webhook',
     description: 'Ephemeral webhook URL that captures and decrypts incoming HTTP requests live.',
@@ -142,7 +142,7 @@ export const TOOLS: readonly Tool[] = [
   },
   {
     slug: 'forecast',
-    source: 'forecast.html',
+    source: 'forecast/index.html',
     name: 'Forecast',
     path: '/forecast',
     description: 'Fit trendlines, forecast future values, and spot anomalies in numeric series.',
@@ -153,7 +153,7 @@ export const TOOLS: readonly Tool[] = [
   },
   {
     slug: 'mars-stats',
-    source: 'mars-stats.html',
+    source: 'mars-stats/index.html',
     name: 'MARS Observatory',
     path: '/mars-stats',
     description: 'Private MARS storage statistics, capacity, expiration, and thirty days of usage history.',
@@ -164,7 +164,7 @@ export const TOOLS: readonly Tool[] = [
   },
   {
     slug: 'mock-saml-idp',
-    source: 'mock-saml-idp.html',
+    source: 'mock-saml-idp/index.html',
     name: 'Mock SAML IdP',
     path: '/elastic/saml/idp-login',
     description: 'Signed SAML responses for Elasticsearch and Kibana SSO testing.',

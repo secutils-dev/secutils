@@ -14,7 +14,7 @@ Interrupted key rotation now retains a durable plan with exact key envelopes. Ch
 Large encrypted recovery now uses authenticated binary chunks. Its browser restore retained oversized pending work and an existing private library.
 The final affected all-browser regression passed 492 cases with 14 expected skips. Six additional marker checks passed in all engines.
 Artifact review passed. The user authorized deployment after these checks.
-See `dev/tools/js/mars/src/sync/README.md` for the current contracts and remaining release gates.
+See `dev/tools/mars/src/sync/README.md` for the current contracts and remaining release gates.
 
 ### Follow-up: Sync dialog and table selection
 
@@ -1041,7 +1041,7 @@ Keep current snapshot-link, temporary-reading, HTML/PDF privacy, and v1/v2 datab
 
 ## Code boundaries and guides
 
-Current integration points: `src/app.ts`, `src/store/db.ts`, `src/tree/model.ts`, `src/sidebar/sidebar.ts`, `src/doc/viewer.js`, and `src/doc/editor.js` within `dev/tools/js/mars/`.
+Current integration points: `src/app.ts`, `src/store/db.ts`, `src/tree/model.ts`, `src/sidebar/sidebar.ts`, `src/doc/viewer.js`, and `src/doc/editor.js` within `dev/tools/mars/`.
 Use a new `src/sync/` area for protocol, replica, transport, credentials, enrollment, and connection presentation.
 The sync protocol belongs in `src/sync/`, with a separately compiled responder entry and executable protocol tests.
 Deployment assembles this entry with the existing MARS responder. No Rust feature module or SQL migration is required.
