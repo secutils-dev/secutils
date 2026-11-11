@@ -7,12 +7,19 @@ import { installTableRanges } from '../src/doc/table-renderer.ts';
 
 const viewer = readFileSync(new URL('../src/doc/viewer.js', import.meta.url), 'utf8');
 const md = readFileSync(new URL('../../md/index.html', import.meta.url), 'utf8');
-const section = (text: string, start: string, end: string) => text.slice(text.indexOf(start), text.indexOf(end, text.indexOf(start)));
+const section = (text: string, start: string, end: string) =>
+    text.slice(text.indexOf(start), text.indexOf(end, text.indexOf(start)));
 const mapping = section(viewer, 'const LIST_ITEM_RE', '// Keep the review open');
-const render = runInNewContext(`${mapping}\nrenderSourceBlocks`, { marked, installTableRanges, escapeUnmatchedInlineHtml: () => {} });
+const render = runInNewContext(`${mapping}\nrenderSourceBlocks`, {
+    marked,
+    installTableRanges,
+    escapeUnmatchedInlineHtml: () => {},
+});
 const renumber = runInNewContext(`(${section(viewer, 'function renumberListItem', 'function moveOrderedItem')})`);
-const itemRanges = (source: string) => [...render(source, new marked.Renderer()).matchAll(/<li\b[^>]*data-start="(\d+)" data-end="(\d+)"[^>]*>/g)]
-    .map((match) => ({ start: Number(match[1]), text: source.slice(Number(match[1]), Number(match[2])) }));
+const itemRanges = (source: string) =>
+    [...render(source, new marked.Renderer()).matchAll(/<li\b[^>]*data-start="(\d+)" data-end="(\d+)"[^>]*>/g)].map(
+        (match) => ({ start: Number(match[1]), text: source.slice(Number(match[1]), Number(match[2])) }),
+    );
 
 test('shared source mapping and block controls match Markdown Preview apart from MARS table and sync hooks', () => {
     for (const [start, end] of [
@@ -20,7 +27,11 @@ test('shared source mapping and block controls match Markdown Preview apart from
         ['function renumberListItem', 'async function copyTarget'],
         ['// ---- Block handle', '// ---- Selection formatting toolbar'],
         ['// ---- Selection formatting toolbar', '// ---- Review comments'],
-    ]) assert.equal(section(viewer, start, end).replace(/^.*\/\/ MARS-only (?:table (?:mapping|hook)|sync hook)\.\n/gm, ''), section(md, start, end));
+    ])
+        assert.equal(
+            section(viewer, start, end).replace(/^.*\/\/ MARS-only (?:table (?:mapping|hook)|sync hook)\.\n/gm, ''),
+            section(md, start, end),
+        );
 });
 
 test('nested multiline list items retain original source ranges and indentation', () => {
@@ -46,12 +57,18 @@ test('list markers in code fences do not steal subsequent nested item ranges', (
 
 test('table ranges skip identical examples in inline list fences and stop before later fences', () => {
     const table = '| Name | State |\n| --- | --- |\n| Alice | Ready |';
-    const quoted = (prefix: string) => table.split('\n').map((line) => `${prefix}${line}\n`).join('');
+    const quoted = (prefix: string) =>
+        table
+            .split('\n')
+            .map((line) => `${prefix}${line}\n`)
+            .join('');
     for (const prefix of ['', '> ']) {
         const example = `${prefix}- \`\`\`md\n${quoted(`${prefix}  `)}${prefix}  \`\`\`\n${prefix}\n`;
         const actual = quoted(`${prefix}  `);
         const source = example + actual + `${prefix}\n` + example;
-        const ranges = [...render(source, new marked.Renderer()).matchAll(/data-table-start="(\d+)" data-table-end="(\d+)"/g)];
+        const ranges = [
+            ...render(source, new marked.Renderer()).matchAll(/data-table-start="(\d+)" data-table-end="(\d+)"/g),
+        ];
         assert.equal(ranges.length, 1);
         assert.equal(Number(ranges[0][1]), example.length);
         assert.equal(source.slice(Number(ranges[0][1]), Number(ranges[0][2])).trimEnd(), actual.trimEnd());
@@ -68,9 +85,14 @@ test('nested tab-indented items map to original characters, not expanded token c
 
 test('renumbering preserves nested text and code while adjusting continuation columns', () => {
     const source = '9. Parent\n   continuation\n   - child\n     nested\n\n   ```md\n   42. literal\n   ```';
-    assert.equal(renumber(source, 10), '10. Parent\n    continuation\n    - child\n      nested\n\n    ```md\n    42. literal\n    ```');
-    assert.equal(renumber('10) [x] Wrapped\n    more\n\n    Second paragraph.\nlazy words', 9),
-        '9) [x] Wrapped\n   more\n\n   Second paragraph.\nlazy words');
+    assert.equal(
+        renumber(source, 10),
+        '10. Parent\n    continuation\n    - child\n      nested\n\n    ```md\n    42. literal\n    ```',
+    );
+    assert.equal(
+        renumber('10) [x] Wrapped\n    more\n\n    Second paragraph.\nlazy words', 9),
+        '9) [x] Wrapped\n   more\n\n   Second paragraph.\nlazy words',
+    );
     assert.equal(renumber('9.\tTabbed\n\tcontinuation', 10), '10.\tTabbed\n\tcontinuation');
     assert.equal(renumber('99. Item\n\tcontinuation', 100), '100. Item\n\t continuation');
     assert.equal(renumber('100. Item\n\t continuation', 99), '99. Item\n\tcontinuation');
@@ -79,7 +101,11 @@ test('renumbering preserves nested text and code while adjusting continuation co
 
 test('list gaps retain adjacent targets, including nested and hidden items', () => {
     const hover = runInNewContext(`(${section(viewer, 'function listHoverTarget', 'function blockTargetAt')})`);
-    const parent = {}, one = {}, two = {}, three = {}, hidden = {};
+    const parent = {},
+        one = {},
+        two = {},
+        three = {},
+        hidden = {};
     const rows = [
         { item: parent, next: null, top: 0, bottom: 200 },
         { item: one, next: two, top: 10, bottom: 30 },
@@ -94,8 +120,12 @@ test('list gaps retain adjacent targets, including nested and hidden items', () 
     assert.equal(hover(rows, 70, null), two);
     assert.equal(hover(rows, 80, two), three);
     assert.equal(hover(rows, 45, three), two);
-    assert.equal(hover([
-        rows[0], rows[1], { ...rows[2], next: hidden },
-        { item: hidden, next: three, top: 0, bottom: 0 }, rows[3],
-    ], 70, two), two);
+    assert.equal(
+        hover(
+            [rows[0], rows[1], { ...rows[2], next: hidden }, { item: hidden, next: three, top: 0, bottom: 0 }, rows[3]],
+            70,
+            two,
+        ),
+        two,
+    );
 });

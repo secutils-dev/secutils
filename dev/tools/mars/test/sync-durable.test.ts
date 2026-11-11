@@ -8,7 +8,9 @@ import { BodyReplica } from '../src/sync/replica.ts';
 class Repository implements ReplicaRepository {
     value: DurableRecord | undefined;
     fail = false;
-    async get() { return this.value ? structuredClone(this.value) : undefined; }
+    async get() {
+        return this.value ? structuredClone(this.value) : undefined;
+    }
     async commit(expected: number | null, value: DurableRecord) {
         if (this.fail) throw new Error('quota exceeded');
         if ((this.value?.revision ?? null) !== expected) throw new Error('revision conflict');
@@ -17,13 +19,17 @@ class Repository implements ReplicaRepository {
 }
 const id = () => crypto.randomUUID();
 async function fixture(permission: SyncBinding['permission'] = 'owner') {
-    const repository = new Repository(), who = await identity(), key = keyBytes();
+    const repository = new Repository(),
+        who = await identity(),
+        key = keyBytes();
     const binding: SyncBinding = { collection: id(), document: id(), member: id(), epoch: 1, permission, kind: 'sync' };
     let client: DurableBody;
     if (permission === 'owner') client = await DurableBody.create(binding, 'one two three', repository, who, key);
     else {
-        const seed = new BodyReplica(); seed.seed('one two three');
-        client = await DurableBody.join(binding, seed.checkpoint(), repository, who, key); seed.destroy();
+        const seed = new BodyReplica();
+        seed.seed('one two three');
+        client = await DurableBody.join(binding, seed.checkpoint(), repository, who, key);
+        seed.destroy();
     }
     return { repository, who, key, binding, client };
 }
@@ -32,7 +38,8 @@ test('offline edits commit before encryption and a crash retries the exact persi
     await f.client.edit({ from: 0, to: 0, insert: 'offline ' });
     assert.equal(f.repository.value?.projection, 'offline one two three');
     assert.equal(f.repository.value?.outbox[0].envelope, null);
-    const prepared = await f.client.prepare(); assert.ok(prepared);
+    const prepared = await f.client.prepare();
+    assert.ok(prepared);
     const reopened = new DurableBody((await f.repository.get())!, f.repository, f.who, f.key);
     assert.deepEqual(await reopened.prepare(), prepared);
     await assert.rejects(reopened.acknowledge(prepared.checkpoint.operation, 'wrong digest'), /mismatch/);
@@ -53,12 +60,37 @@ test('unsent intents coalesce, while an already prepared ciphertext remains immu
     assert.equal(f.repository.value?.projection, 'DCBAone two three');
 });
 test('a rejected remote write cannot advance progress or replace the live editor projection', async () => {
-    const f = await fixture(), peer = await identity(), remote = new BodyReplica(f.client.body.checkpoint());
+    const f = await fixture(),
+        peer = await identity(),
+        remote = new BodyReplica(f.client.body.checkpoint());
     remote.edit({ from: 0, to: 0, insert: 'remote ' });
-    const author: Grant = { v: 1, collection: f.binding.collection, member: id(), participant: id(), permission: 'edit', document: null,
-        publicKey: peer.publicKey, boxKey: peer.boxKey, expires: 0, tokenHash: await tokenHash(randomSecret()) };
-    const envelope = await sealCheckpoint({ v: 1, collection: f.binding.collection, document: f.binding.document, member: author.member,
-        stream: 'body', epoch: 1, sequence: 1, operation: id() }, remote.checkpoint(), f.key, peer);
+    const author: Grant = {
+        v: 1,
+        collection: f.binding.collection,
+        member: id(),
+        participant: id(),
+        permission: 'edit',
+        document: null,
+        publicKey: peer.publicKey,
+        boxKey: peer.boxKey,
+        expires: 0,
+        tokenHash: await tokenHash(randomSecret()),
+    };
+    const envelope = await sealCheckpoint(
+        {
+            v: 1,
+            collection: f.binding.collection,
+            document: f.binding.document,
+            member: author.member,
+            stream: 'body',
+            epoch: 1,
+            sequence: 1,
+            operation: id(),
+        },
+        remote.checkpoint(),
+        f.key,
+        peer,
+    );
     f.repository.fail = true;
     await assert.rejects(f.client.receive(envelope, author), /quota/);
     assert.equal(f.client.body.text(), 'one two three');

@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { extractEmbeddedMarkdown, frontmatterTitle, readSource, sourceName, sourceUrl, stripSourceExtension, urlFileName } from '../src/io/source.ts';
+import {
+    extractEmbeddedMarkdown,
+    frontmatterTitle,
+    readSource,
+    sourceName,
+    sourceUrl,
+    stripSourceExtension,
+    urlFileName,
+} from '../src/io/source.ts';
 import { InputController } from '../src/io/input.ts';
 import { mergeDocuments, splitComments } from '../src/share/merge.ts';
 
@@ -9,12 +17,16 @@ test('source naming honors explicit names, frontmatter, headings, filenames, and
     assert.equal(sourceName(text, { name: ' Explicit.HTML ', fileName: 'File.md' }), 'Explicit');
     assert.equal(sourceName(text, { fileName: 'File.md' }), 'Frontmatter title');
     assert.equal(sourceName('# Heading ###\n\nBody.', { fileName: 'File.md' }), 'Heading');
-    assert.equal(sourceName('```md\n# Example\n```\n\nActual title\n============', { fileName: 'File.html' }), 'Actual title');
+    assert.equal(
+        sourceName('```md\n# Example\n```\n\nActual title\n============', { fileName: 'File.html' }),
+        'Actual title',
+    );
     assert.equal(sourceName('Body only.', { fileName: 'File.HTM' }), 'File');
     assert.equal(sourceName('Body only.', { fallback: 'document' }), 'document');
     assert.equal(sourceName('Body only.'), 'Untitled');
     assert.equal(sourceName('\uFEFF# Unicode title\n'), 'Unicode title');
-    for (const extension of ['md', 'MD', 'markdown', 'mdx', 'txt', 'html', 'htm']) assert.equal(stripSourceExtension(` File.${extension} `), 'File');
+    for (const extension of ['md', 'MD', 'markdown', 'mdx', 'txt', 'html', 'htm'])
+        assert.equal(stripSourceExtension(` File.${extension} `), 'File');
 });
 
 test('frontmatter titles support quoted scalars, CRLF, and empty/missing values', () => {
@@ -27,7 +39,8 @@ test('frontmatter titles support quoted scalars, CRLF, and empty/missing values'
 });
 
 test('ordinary Markdown retains exact CRLF and review metadata, including source-tag examples', () => {
-    const text = '---\r\ntitle: Doc\r\n---\r\n# Body\r\n\r\n<!-- su-comments\r\n[ { "id":"t", "quote":"Body", "comments":[{"body":"Review"}] } ]\r\n-->\r\n';
+    const text =
+        '---\r\ntitle: Doc\r\n---\r\n# Body\r\n\r\n<!-- su-comments\r\n[ { "id":"t", "quote":"Body", "comments":[{"body":"Review"}] } ]\r\n-->\r\n';
     assert.deepEqual(readSource(text, { fileName: 'File.md' }), { text, name: 'Doc', embedded: false });
     const example = '# Reader\n\n```html\n<script type="text/markdown">\nExample\n</script>\n```\n';
     assert.equal(readSource(example, { fileName: 'Reader.md' }).text, example);
@@ -38,11 +51,28 @@ test('ordinary Markdown retains exact CRLF and review metadata, including source
 
 test('embedded source decoding reverses closing-script escaping and only the wrapping newlines', () => {
     const markup = '<html><script id="su-md-source" TYPE = text/markdown>source</script></html>';
-    assert.equal(extractEmbeddedMarkdown(markup, () => '\n# Body\n\nLiteral <\\/script> and <\\/SCRIPT>.\n\n'), '# Body\n\nLiteral </script> and </SCRIPT>.\n');
-    assert.equal(extractEmbeddedMarkdown(markup, () => '\r\nBody\r\n\r\n'), 'Body\r\n');
-    assert.equal(extractEmbeddedMarkdown(markup, () => ''), '');
-    assert.equal(extractEmbeddedMarkdown(markup, () => null), null);
-    assert.equal(extractEmbeddedMarkdown('<script type="text/plain">Source</script>', () => { throw new Error('Must not parse'); }), null);
+    assert.equal(
+        extractEmbeddedMarkdown(markup, () => '\n# Body\n\nLiteral <\\/script> and <\\/SCRIPT>.\n\n'),
+        '# Body\n\nLiteral </script> and </SCRIPT>.\n',
+    );
+    assert.equal(
+        extractEmbeddedMarkdown(markup, () => '\r\nBody\r\n\r\n'),
+        'Body\r\n',
+    );
+    assert.equal(
+        extractEmbeddedMarkdown(markup, () => ''),
+        '',
+    );
+    assert.equal(
+        extractEmbeddedMarkdown(markup, () => null),
+        null,
+    );
+    assert.equal(
+        extractEmbeddedMarkdown('<script type="text/plain">Source</script>', () => {
+            throw new Error('Must not parse');
+        }),
+        null,
+    );
 });
 
 test('URL validation is shared and filename decoding cannot discard a successful import', () => {
@@ -50,7 +80,8 @@ test('URL validation is shared and filename decoding cannot discard a successful
     assert.equal(urlFileName(sourceUrl('https://example.test/Read%20me.HTML')), 'Read me.HTML');
     assert.equal(urlFileName(sourceUrl('https://example.test/bad%zz.md')), 'bad%zz.md');
     assert.equal(urlFileName(sourceUrl('https://example.test/')), 'document');
-    for (const url of ['bad url', 'file:///Reader.md', 'javascript:alert(1)', 'ftp://example.test/Reader.md']) assert.throws(() => sourceUrl(url));
+    for (const url of ['bad url', 'file:///Reader.md', 'javascript:alert(1)', 'ftp://example.test/Reader.md'])
+        assert.throws(() => sourceUrl(url));
 });
 
 test('input generations abort superseded work and reject stale asynchronous completions', async () => {
@@ -74,7 +105,8 @@ test('input generations abort superseded work and reject stale asynchronous comp
 });
 
 test('unchanged receives preserve original review block bytes and merges retain CRLF', () => {
-    const text = '# Body\r\n\r\n<!-- su-comments\r\n[ { "id":"t", "quote":"Body", "comments":[{"id":"c","body":"Review"}] } ]\r\n-->\r\n';
+    const text =
+        '# Body\r\n\r\n<!-- su-comments\r\n[ { "id":"t", "quote":"Body", "comments":[{"id":"c","body":"Review"}] } ]\r\n-->\r\n';
     const same = mergeDocuments(text, text);
     assert.equal(same.mine, text);
     assert.equal(same.theirs, text);

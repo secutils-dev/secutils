@@ -5,7 +5,19 @@ import * as db from '../store/db.ts';
 import { ancestors, descendants, textBytes, type TreeNode } from '../tree/model.ts';
 import { $, copyRich, esc, modal } from '../ui/ui.ts';
 import * as viewer from '../doc/viewer.js';
-import { type Bundle, decodeState, deriveShortLink, encodeState, fromBase64Url, hashText, openSealed, parseBundle, sealBundle, SHORT_MAX_CHARS, toBase64Url } from './codec.ts';
+import {
+    type Bundle,
+    decodeState,
+    deriveShortLink,
+    encodeState,
+    fromBase64Url,
+    hashText,
+    openSealed,
+    parseBundle,
+    sealBundle,
+    SHORT_MAX_CHARS,
+    toBase64Url,
+} from './codec.ts';
 import { joinComments, mergeDocuments, openThreads, splitComments, type Thread } from './merge.ts';
 import { matchScore } from './match.ts';
 import { beginInput, checkInput, type InputOperation } from '../io/input.ts';
@@ -19,27 +31,67 @@ const SHORT_TTLS = [86400, 604800, 1209600, 2592000];
 const LINKS_KEY = 'mars.shortLinks';
 const TTL_KEY = 'mars.shortTtl';
 let shortTtl = 604800;
-try { shortTtl = SHORT_TTLS.find((t) => t === Number(localStorage.getItem(TTL_KEY))) ?? shortTtl; } catch {}
+try {
+    shortTtl = SHORT_TTLS.find((t) => t === Number(localStorage.getItem(TTL_KEY))) ?? shortTtl;
+} catch {}
 
 const base = () => `${location.origin}${location.pathname}`;
 const ttlLabel = (sec: number) => `${sec / 86400} day${sec === 86400 ? '' : 's'}`;
-const fmtExpiry = (exp: number) => new Date(exp * 1000).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-const fmtSize = (chars: number) => (chars < 1024 ? `${chars} B` : chars < 1048576 ? `${Math.round(chars / 1024)} KB` : `${(chars / 1048576).toFixed(1)} MB`);
+const fmtExpiry = (exp: number) =>
+    new Date(exp * 1000).toLocaleString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+const fmtSize = (chars: number) =>
+    chars < 1024
+        ? `${chars} B`
+        : chars < 1048576
+          ? `${Math.round(chars / 1024)} KB`
+          : `${(chars / 1048576).toFixed(1)} MB`;
 
 // ---- Bundles ----
 async function bundleFor(id: string): Promise<Bundle | null> {
     const n = app.node(id);
     if (!n) return null;
-    const widthFor = (doc: TreeNode) => doc.id === app.state.currentId ? viewer.exportReadingWidth() : doc.readingWidth ?? viewer.defaultReadingWidth();
-    if (n.kind === 'doc') return { v: 1, kind: 'doc', name: n.name, docs: [{ path: [], name: n.name, originId: n.originId ?? n.id, text: await app.docText(n.id), readingWidth: widthFor(n) }], ...(db.isTemporaryStorage() ? { temporary: true } : {}) };
+    const widthFor = (doc: TreeNode) =>
+        doc.id === app.state.currentId
+            ? viewer.exportReadingWidth()
+            : (doc.readingWidth ?? viewer.defaultReadingWidth());
+    if (n.kind === 'doc')
+        return {
+            v: 1,
+            kind: 'doc',
+            name: n.name,
+            docs: [
+                {
+                    path: [],
+                    name: n.name,
+                    originId: n.originId ?? n.id,
+                    text: await app.docText(n.id),
+                    readingWidth: widthFor(n),
+                },
+            ],
+            ...(db.isTemporaryStorage() ? { temporary: true } : {}),
+        };
     const docs = [];
     for (const d of descendants(app.state.nodes, n.id)) {
         if (d.kind !== 'doc') continue;
-        const path = ancestors(app.state.nodes, d.id).slice(ancestors(app.state.nodes, n.id).length + 1).map((f) => f.name);
+        const path = ancestors(app.state.nodes, d.id)
+            .slice(ancestors(app.state.nodes, n.id).length + 1)
+            .map((f) => f.name);
         const readingWidth = widthFor(d);
         docs.push({ path, name: d.name, originId: d.originId ?? d.id, text: await app.docText(d.id), readingWidth });
     }
-    return { v: 1, kind: 'folder', name: n.name, originId: n.originId ?? n.id, docs, ...(db.isTemporaryStorage() ? { temporary: true } : {}) };
+    return {
+        v: 1,
+        kind: 'folder',
+        name: n.name,
+        originId: n.originId ?? n.id,
+        docs,
+        ...(db.isTemporaryStorage() ? { temporary: true } : {}),
+    };
 }
 
 async function fullLink(bundle: Bundle) {
@@ -60,49 +112,78 @@ let temporaryLinks: Record<string, LinkRecord> = {};
 function readLinks(): Record<string, LinkRecord> {
     let links: Record<string, LinkRecord> = {};
     if (db.isTemporaryStorage()) links = { ...temporaryLinks };
-    else try { links = JSON.parse(localStorage.getItem(LINKS_KEY) ?? '{}') || {}; } catch {}
+    else
+        try {
+            links = JSON.parse(localStorage.getItem(LINKS_KEY) ?? '{}') || {};
+        } catch {}
     const now = Date.now() / 1000;
     for (const [id, l] of Object.entries(links)) if (!(l?.exp > now)) delete links[id];
     return links;
 }
 const writeLinks = (links: Record<string, LinkRecord>) => {
-    if (db.isTemporaryStorage()) { temporaryLinks = links; return; }
-    try { localStorage.setItem(LINKS_KEY, JSON.stringify(links)); } catch {}
+    if (db.isTemporaryStorage()) {
+        temporaryLinks = links;
+        return;
+    }
+    try {
+        localStorage.setItem(LINKS_KEY, JSON.stringify(links));
+    } catch {}
 };
 // Folder snapshots can also contain a selected descendant. Count each known,
 // unexpired snapshot once; deleting a library item does not revoke snapshots.
 export function shortLinksForDeletion(ids: string[]) {
-    const selected = new Set(ids.flatMap(id => [id, ...ancestors(app.state.nodes, id).map(node => node.id)]));
-    return Object.values(readLinks()).filter(link => selected.has(link.nodeId)).length;
+    const selected = new Set(ids.flatMap((id) => [id, ...ancestors(app.state.nodes, id).map((node) => node.id)]));
+    return Object.values(readLinks()).filter((link) => selected.has(link.nodeId)).length;
 }
 const shortUrl = (secret: string, bundle: Bundle) => `${base()}#s=${secret}${bundle.temporary ? '&t=1' : ''}`;
 
 async function shortFetch(id: string, { query = '', ...init }: RequestInit & { query?: string } = {}) {
-    const send = () => fetch(`${location.pathname}?s=${id}${query}`, { cache: 'no-store', ...init }).catch(() => {
-        throw new Error('Network error. Check your connection and try again.');
-    });
+    const send = () =>
+        fetch(`${location.pathname}?s=${id}${query}`, { cache: 'no-store', ...init }).catch(() => {
+            throw new Error('Network error. Check your connection and try again.');
+        });
     const res = await send();
     // A 429 without a JSON error comes from the responder's concurrency limit, not the throttle.
-    if (res.status !== 429 || (await res.clone().json().catch(() => null))?.error) return res;
+    if (
+        res.status !== 429 ||
+        (
+            await res
+                .clone()
+                .json()
+                .catch(() => null)
+        )?.error
+    )
+        return res;
     await new Promise((r) => setTimeout(r, 1000 * Math.min(5, Number(res.headers.get('Retry-After')) || 1)));
     return send();
 }
 
 async function shortLink(nodeId: string, bundle: Bundle, ttl = shortTtl) {
-    const hash = await hashText(JSON.stringify(bundle)), now = Date.now() / 1000;
+    const hash = await hashText(JSON.stringify(bundle)),
+        now = Date.now() / 1000;
     const links = readLinks();
     const reuse = Object.values(links).find((l) => l.hash === hash && l.ttl === ttl && l.exp - now >= ttl / 2);
     if (reuse) return { url: shortUrl(reuse.secret, bundle), exp: reuse.exp };
     const { id, secret, blob } = await sealBundle(bundle);
-    if (blob.length > SHORT_MAX_CHARS) throw new Error('Too large for a short link. Copy a full link or download the file instead.');
+    if (blob.length > SHORT_MAX_CHARS)
+        throw new Error('Too large for a short link. Copy a full link or download the file instead.');
     const token = toBase64Url(crypto.getRandomValues(new Uint8Array(16)));
-    const res = await shortFetch(id, { method: 'POST', body: blob, headers: { 'x-su-delete-token': token }, query: `&ttl=${ttl}` });
+    const res = await shortFetch(id, {
+        method: 'POST',
+        body: blob,
+        headers: { 'x-su-delete-token': token },
+        query: `&ttl=${ttl}`,
+    });
     if (res.status !== 201) {
-        throw new Error(({
-            413: 'Too large for a short link. Copy a full link or download the file instead.',
-            429: 'Too many short links from this network. Try again in an hour.',
-            507: 'Short-link storage is full right now. Copy a full link instead.',
-        } as Record<number, string>)[res.status] ?? `Could not create a short link (HTTP ${res.status})`);
+        throw new Error(
+            (
+                {
+                    413: 'Too large for a short link. Copy a full link or download the file instead.',
+                    429: 'Too many short links from this network. Try again in an hour.',
+                    507: 'Short-link storage is full right now. Copy a full link instead.',
+                } as Record<number, string>
+            )[res.status] ?? `Could not create a short link (HTTP ${res.status})`,
+        );
     }
     const { exp } = await res.json();
     links[id] = { token, exp, secret, ttl, hash, nodeId };
@@ -110,20 +191,30 @@ async function shortLink(nodeId: string, bundle: Bundle, ttl = shortTtl) {
     return { url: shortUrl(secret, bundle), exp };
 }
 export async function snapshotLink(id: string, format: 'short' | 'full', ttl = shortTtl) {
-    if (id === app.state.currentId || descendants(app.state.nodes, id).some(node => node.id === app.state.currentId)) await viewer.flush();
-    const bundle = await bundleFor(id); if (!bundle) throw new Error('Nothing to share');
+    if (id === app.state.currentId || descendants(app.state.nodes, id).some((node) => node.id === app.state.currentId))
+        await viewer.flush();
+    const bundle = await bundleFor(id);
+    if (!bundle) throw new Error('Nothing to share');
     if (format === 'full') return { url: await fullLink(bundle), expires: null };
     if (!SHORT_TTLS.includes(ttl)) throw new Error('Choose an available expiration date.');
-    shortTtl = ttl; try { localStorage.setItem(TTL_KEY, String(ttl)); } catch {}
-    const result = await shortLink(id, bundle, ttl); return { url: result.url, expires: result.exp };
+    shortTtl = ttl;
+    try {
+        localStorage.setItem(TTL_KEY, String(ttl));
+    } catch {}
+    const result = await shortLink(id, bundle, ttl);
+    return { url: result.url, expires: result.exp };
 }
-export const copyLinkDialog = (id: string, mode: 'snapshot' | 'live' = 'snapshot') => import('./dialog.ts').then(module => module.openShareDialog(id, mode));
+export const copyLinkDialog = (id: string, mode: 'snapshot' | 'live' = 'snapshot') =>
+    import('./dialog.ts').then((module) => module.openShareDialog(id, mode));
 
 // Copies a link for a tree node. The clipboard write starts synchronously (Safari).
 export async function copyNodeLink(id: string, kind: 'short' | 'full') {
     let sharedId = id;
     const bundle = (async () => {
-        if (id === app.state.currentId || descendants(app.state.nodes, id).some((node) => node.id === app.state.currentId)) {
+        if (
+            id === app.state.currentId ||
+            descendants(app.state.nodes, id).some((node) => node.id === app.state.currentId)
+        ) {
             await viewer.flush();
             if (id === app.state.currentId) sharedId = app.state.currentId ?? id;
         }
@@ -138,22 +229,38 @@ export async function copyNodeLink(id: string, kind: 'short' | 'full') {
         await copyRich(url);
         viewer.toast(kind === 'full' ? 'Full link copied' : `Short link copied · expires in ${ttlLabel(shortTtl)}`);
     } catch (err) {
-        viewer.toast((await url.then(() => null, (e) => e?.message)) ?? 'Failed to copy the link');
+        viewer.toast(
+            (await url.then(
+                () => null,
+                (e) => e?.message,
+            )) ?? 'Failed to copy the link',
+        );
     }
 }
 
 // Short link when possible, full link otherwise (too large, offline, or throttled).
 async function bestLink(id: string, bundle: Bundle) {
-    try { return (await shortLink(id, bundle)).url; } catch { return fullLink(bundle); }
+    try {
+        return (await shortLink(id, bundle)).url;
+    } catch {
+        return fullLink(bundle);
+    }
 }
 
 function githubSummary(name: string, url: string, threads: Thread[]) {
     const open = threads.filter((t) => !t.resolved);
-    const quote = (s: string) => s.split('\n').map((l) => `> ${l}`).join('\n');
-    const lines = [`**[${name.replace(/[[\]]/g, '\\$&')}](${url})** · review in MARS · ${open.length} open thread${open.length === 1 ? '' : 's'}`];
+    const quote = (s: string) =>
+        s
+            .split('\n')
+            .map((l) => `> ${l}`)
+            .join('\n');
+    const lines = [
+        `**[${name.replace(/[[\]]/g, '\\$&')}](${url})** · review in MARS · ${open.length} open thread${open.length === 1 ? '' : 's'}`,
+    ];
     for (const t of open) {
         lines.push('', '---', '', quote(t.quote.length > 400 ? `${t.quote.slice(0, 400)}…` : t.quote));
-        for (const c of t.comments) lines.push('', `**${c.author || 'Anonymous'}**${c.at ? ` · ${c.at.slice(0, 10)}` : ''}`, '', c.body);
+        for (const c of t.comments)
+            lines.push('', `**${c.author || 'Anonymous'}**${c.at ? ` · ${c.at.slice(0, 10)}` : ''}`, '', c.body);
     }
     return lines.join('\n');
 }
@@ -178,7 +285,9 @@ function agentPrompt(n: TreeNode, threads: Thread[]) {
 
 // ---- Toolbar share menu (current document) ----
 const menu = $('shareMenu');
-const hideMenu = () => { if (menu.matches(':popover-open')) menu.hidePopover(); };
+const hideMenu = () => {
+    if (menu.matches(':popover-open')) menu.hidePopover();
+};
 
 async function currentBundle() {
     await viewer.flush();
@@ -197,14 +306,19 @@ export async function startTemporary(copyCurrent = false) {
 function renderMenu(tooLarge = false) {
     const owned = Object.values(readLinks()).filter((l) => l.nodeId === app.state.currentId);
     $('deleteShortLinkBtn').hidden = !owned.length;
-    if (owned.length) $('deleteShortLinkLabel').textContent = `Delete short link${owned.length > 1 ? 's' : ''} · expires ${fmtExpiry(Math.max(...owned.map((l) => l.exp)))}`;
+    if (owned.length)
+        $('deleteShortLinkLabel').textContent =
+            `Delete short link${owned.length > 1 ? 's' : ''} · expires ${fmtExpiry(Math.max(...owned.map((l) => l.exp)))}`;
 }
 
 menu.addEventListener('toggle', async (e) => {
     if ((e as ToggleEvent).newState !== 'open') return;
     renderMenu();
 });
-$('copyLinkBtn').addEventListener('click', () => { hideMenu(); if (app.state.currentId) void copyLinkDialog(app.state.currentId); });
+$('copyLinkBtn').addEventListener('click', () => {
+    hideMenu();
+    if (app.state.currentId) void copyLinkDialog(app.state.currentId);
+});
 $('copySlackBtn').addEventListener('click', async () => {
     hideMenu();
     const data = currentBundle().then(async ({ id, bundle }) => {
@@ -214,27 +328,39 @@ $('copySlackBtn').addEventListener('click', async () => {
         return { plain: `${label}: ${url}`, html: `<a href="${esc(url)}">${esc(label)}</a>` };
     });
     try {
-        await copyRich(data.then((d) => d.plain), data.then((d) => d.html));
+        await copyRich(
+            data.then((d) => d.plain),
+            data.then((d) => d.html),
+        );
         viewer.toast('Copied for Slack: paste it into a message');
-    } catch (err) { viewer.toast((err as Error)?.message ?? 'Failed to copy'); }
+    } catch (err) {
+        viewer.toast((err as Error)?.message ?? 'Failed to copy');
+    }
 });
 // One line, so it can sit at the end of a comment: GitHub picks the badge for its theme.
-const githubBadge = (url: string) => `<a href="${esc(url)}"><picture><source media="(prefers-color-scheme: dark)" srcset="${base()}badge-dark.svg"><img alt="View full review in MARS" src="${base()}badge.svg" height="28"></picture></a>`;
+const githubBadge = (url: string) =>
+    `<a href="${esc(url)}"><picture><source media="(prefers-color-scheme: dark)" srcset="${base()}badge-dark.svg"><img alt="View full review in MARS" src="${base()}badge.svg" height="28"></picture></a>`;
 $('copyGithubBtn').addEventListener('click', async () => {
     hideMenu();
     const text = currentBundle().then(async ({ id, bundle }) => githubBadge(await bestLink(id, bundle)));
     try {
         await copyRich(text);
         viewer.toast('Copied a GitHub badge that links to this review');
-    } catch (err) { viewer.toast((err as Error)?.message ?? 'Failed to copy'); }
+    } catch (err) {
+        viewer.toast((err as Error)?.message ?? 'Failed to copy');
+    }
 });
 $('copyGithubThreadsBtn').addEventListener('click', async () => {
     hideMenu();
-    const text = currentBundle().then(async ({ id, bundle }) => githubSummary(bundle.name, await bestLink(id, bundle), splitComments(bundle.docs[0].text).threads));
+    const text = currentBundle().then(async ({ id, bundle }) =>
+        githubSummary(bundle.name, await bestLink(id, bundle), splitComments(bundle.docs[0].text).threads),
+    );
     try {
         await copyRich(text);
         viewer.toast('Copied a GitHub comment with the open threads');
-    } catch (err) { viewer.toast((err as Error)?.message ?? 'Failed to copy'); }
+    } catch (err) {
+        viewer.toast((err as Error)?.message ?? 'Failed to copy');
+    }
 });
 $('copyAgentBtn').addEventListener('click', async () => {
     hideMenu();
@@ -246,7 +372,9 @@ $('copyAgentBtn').addEventListener('click', async () => {
     try {
         await copyRich(text);
         viewer.toast('Copied the open threads for an AI agent: paste them into its chat');
-    } catch (err) { viewer.toast((err as Error)?.message ?? 'Failed to copy'); }
+    } catch (err) {
+        viewer.toast((err as Error)?.message ?? 'Failed to copy');
+    }
 });
 $('deleteShortLinkBtn').addEventListener('click', async () => {
     hideMenu();
@@ -255,23 +383,39 @@ $('deleteShortLinkBtn').addEventListener('click', async () => {
         for (const [id, l] of Object.entries(links)) {
             if (l.nodeId !== app.state.currentId) continue;
             const res = await shortFetch(id, { method: 'DELETE', headers: { 'x-su-delete-token': l.token } });
-            if (res.status !== 204 && res.status !== 404) throw new Error(`Could not delete the short link (HTTP ${res.status})`);
+            if (res.status !== 204 && res.status !== 404)
+                throw new Error(`Could not delete the short link (HTTP ${res.status})`);
             delete links[id];
         }
         viewer.toast('Short link deleted');
-    } catch (err) { viewer.toast((err as Error).message); }
-    finally { writeLinks(links); }
+    } catch (err) {
+        viewer.toast((err as Error).message);
+    } finally {
+        writeLinks(links);
+    }
 });
 
 // ---- Receiving ----
-const findDoc = (originId: string) => app.state.nodes.find((n) => n.kind === 'doc' && (n.originId ?? n.id) === originId);
+const findDoc = (originId: string) =>
+    app.state.nodes.find((n) => n.kind === 'doc' && (n.originId ?? n.id) === originId);
 const sharedRoot = () => app.findOrCreateFolder(SHARED_FOLDER, null);
 
 async function saveText(n: TreeNode, text: string) {
-    if (n.connection) { await sync.snapshot(n, text); return; }
+    if (n.connection) {
+        await sync.snapshot(n, text);
+        return;
+    }
     Object.assign(n, { size: textBytes(text), threads: openThreads(text), updatedAt: Date.now() });
     await db.putNodes([n], { [n.id]: text });
-    if (n.id === app.state.currentId) viewer.openDocument({ text, name: n.name, handle: n.handle ?? null, stamp: n.stamp ?? 0, dirty: !!n.dirty, readingWidth: n.readingWidth });
+    if (n.id === app.state.currentId)
+        viewer.openDocument({
+            text,
+            name: n.name,
+            handle: n.handle ?? null,
+            stamp: n.stamp ?? 0,
+            dirty: !!n.dirty,
+            readingWidth: n.readingWidth,
+        });
 }
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -281,7 +425,13 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 // changed it is taken (and the changes marked), when only the stored copy changed it stays,
 // and when both changed (or the source text is unknown) the reader decides. `link` attaches
 // the file an incoming copy was opened from.
-async function updateExisting(existing: TreeNode, text: string, link?: { handle: FileSystemFileHandle; stamp: number }, input?: InputOperation, readingWidth?: ReadingWidth) {
+async function updateExisting(
+    existing: TreeNode,
+    text: string,
+    link?: { handle: FileSystemFileHandle; stamp: number },
+    input?: InputOperation,
+    readingWidth?: ReadingWidth,
+) {
     checkInput(input);
     await viewer.flush();
     checkInput(input);
@@ -296,7 +446,9 @@ async function updateExisting(existing: TreeNode, text: string, link?: { handle:
     let note: string;
     if (merged.sameBody || local === text) {
         choice = 'mine';
-        note = merged.added ? `Merged ${plural(merged.added, 'new comment')} into "${existing.name}"` : `"${existing.name}" is already up to date`;
+        note = merged.added
+            ? `Merged ${plural(merged.added, 'new comment')} into "${existing.name}"`
+            : `"${existing.name}" is already up to date`;
     } else if (opened !== undefined && app.bodyOf(opened) === app.bodyOf(text)) {
         choice = 'mine';
         note = `Kept your edits to "${existing.name}": its source hasn't changed${comments}`;
@@ -305,21 +457,39 @@ async function updateExisting(existing: TreeNode, text: string, link?: { handle:
         note = `Updated "${existing.name}"${comments} · showing what changed`;
     } else {
         const both = opened !== undefined;
-        ({ value: choice } = await modal({
+        ({ value: choice } = (await modal({
             signal: input?.signal,
             title: both ? 'Both copies changed' : 'This document is already in your sidebar',
             html: both
                 ? `<p>You edited <strong>${esc(existing.name)}</strong> in MARS, and the incoming copy changed too. Comments are merged in every case.</p><p><strong>Review changes</strong> takes the incoming text; your edits stay visible under <em>Show before</em> until you mark it reviewed.</p>`
                 : `<p>The incoming copy of <strong>${esc(existing.name)}</strong> has different text than yours${merged.added ? ` and ${plural(merged.added, 'new comment')}` : ''}. Comments are merged in every case.</p><p><strong>Review changes</strong> takes the incoming text and marks what changed since your review.</p>`,
             buttons: both
-                ? [{ label: 'Keep my text', value: 'mine' }, { label: 'Review changes', value: 'theirs' }, { label: 'Save as a copy', value: 'copy', primary: true }]
-                : [{ label: 'Save as a copy', value: 'copy' }, { label: 'Keep my text', value: 'mine' }, { label: 'Review changes', value: 'theirs', primary: true }],
-        }) as { value: typeof choice });
-        note = choice === 'theirs' ? 'Showing what changed since your review' : 'Kept your text and merged the comments';
+                ? [
+                      { label: 'Keep my text', value: 'mine' },
+                      { label: 'Review changes', value: 'theirs' },
+                      { label: 'Save as a copy', value: 'copy', primary: true },
+                  ]
+                : [
+                      { label: 'Save as a copy', value: 'copy' },
+                      { label: 'Keep my text', value: 'mine' },
+                      { label: 'Review changes', value: 'theirs', primary: true },
+                  ],
+        })) as { value: typeof choice });
+        note =
+            choice === 'theirs' ? 'Showing what changed since your review' : 'Kept your text and merged the comments';
     }
     checkInput(input);
     if (choice === 'copy') {
-        await app.createDoc({ name: app.uniqueName(`${existing.name} (new)`, existing.parentId), text, parentId: existing.parentId, opened: true, handle: link?.handle, stamp: link?.stamp, input, readingWidth: readingWidth ?? existing.readingWidth });
+        await app.createDoc({
+            name: app.uniqueName(`${existing.name} (new)`, existing.parentId),
+            text,
+            parentId: existing.parentId,
+            opened: true,
+            handle: link?.handle,
+            stamp: link?.stamp,
+            input,
+            readingWidth: readingWidth ?? existing.readingWidth,
+        });
         checkInput(input);
         viewer.toast(`Saved the incoming copy next to "${existing.name}"`);
         return;
@@ -329,19 +499,37 @@ async function updateExisting(existing: TreeNode, text: string, link?: { handle:
         existing.readingWidth = readingWidth;
         viewer.setDocumentReadingWidth(readingWidth);
     }
-    if (link) Object.assign(existing, { handle: link.handle, stamp: link.stamp, dirty: choice === 'mine' && !merged.sameBody });
+    if (link)
+        Object.assign(existing, {
+            handle: link.handle,
+            stamp: link.stamp,
+            dirty: choice === 'mine' && !merged.sameBody,
+        });
     const next = choice === 'theirs' ? merged.theirs : merged.mine;
     if (next !== local) {
-        try { await saveText(existing, next); }
-        catch (error) {
+        try {
+            await saveText(existing, next);
+        } catch (error) {
             if (!existing.connection) throw error;
-            const answer = await modal({ title: 'Keep the incoming copy?', body: 'This connection cannot accept all incoming edits or imported author identities. The connected document stays unchanged. Save an independent local copy to retain the incoming content.',
-                buttons: [{ label: 'Cancel', value: '' }, { label: 'Save as a copy', value: 'copy', primary: true }] });
-            if (answer.value === 'copy') await app.createDoc({ name: app.uniqueName(`${existing.name} (incoming copy)`, null), text, parentId: null, input, readingWidth });
+            const answer = await modal({
+                title: 'Keep the incoming copy?',
+                body: 'This connection cannot accept all incoming edits or imported author identities. The connected document stays unchanged. Save an independent local copy to retain the incoming content.',
+                buttons: [
+                    { label: 'Cancel', value: '' },
+                    { label: 'Save as a copy', value: 'copy', primary: true },
+                ],
+            });
+            if (answer.value === 'copy')
+                await app.createDoc({
+                    name: app.uniqueName(`${existing.name} (incoming copy)`, null),
+                    text,
+                    parentId: null,
+                    input,
+                    readingWidth,
+                });
             return;
         }
-    }
-    else await db.putNodes([existing]);
+    } else await db.putNodes([existing]);
     await app.setOpened(existing, text);
     if (choice === 'theirs') await app.rebase(existing, local, merged.theirs);
     await db.putNodes([existing]);
@@ -352,7 +540,8 @@ async function updateExisting(existing: TreeNode, text: string, link?: { handle:
 // A stored document the incoming one is likely an updated copy of (a moved file, or a file
 // opened with Open), confirmed by the reader. The origin then follows the new location.
 async function findLikely(name: string, text: string, originId?: string, input?: InputOperation) {
-    let best: TreeNode | null = null, bestScore = 0;
+    let best: TreeNode | null = null,
+        bestScore = 0;
     for (const n of app.state.nodes) {
         if (n.kind !== 'doc') continue;
         const score = matchScore({ name, text }, { name: n.name, text: (await db.getText(n.id)) ?? '' });
@@ -365,38 +554,67 @@ async function findLikely(name: string, text: string, originId?: string, input?:
         signal: input?.signal,
         title: 'Is this an updated copy?',
         html: `<p><strong>${esc(name)}</strong> looks like an updated copy of <strong>${esc(best.name)}</strong>${folder ? ` in <em>${esc(folder)}</em>` : ''}.</p><p>Updating it keeps one document with its comments and marks what changed.</p>`,
-        buttons: [{ label: 'Add as new', value: 'new' }, { label: `Update "${best.name}"`, value: 'update', primary: true }],
+        buttons: [
+            { label: 'Add as new', value: 'new' },
+            { label: `Update "${best.name}"`, value: 'update', primary: true },
+        ],
     });
     checkInput(input);
     if (value !== 'update') return null;
-    if (originId && /^(file|url):/.test(originId)) { best.originId = originId; await db.putNodes([best]); }
+    if (originId && /^(file|url):/.test(originId)) {
+        best.originId = originId;
+        await db.putNodes([best]);
+    }
     return best;
 }
 
 async function receiveDoc(doc: Bundle['docs'][0], input?: InputOperation) {
     const existing = findDoc(doc.originId) ?? (await findLikely(doc.name, doc.text, doc.originId, input));
     checkInput(input);
-    if (existing) { await updateExisting(existing, doc.text, undefined, input, doc.readingWidth); return; }
-    const parent = app.defaultIncomingFolder() ?? await sharedRoot();
+    if (existing) {
+        await updateExisting(existing, doc.text, undefined, input, doc.readingWidth);
+        return;
+    }
+    const parent = app.defaultIncomingFolder() ?? (await sharedRoot());
     checkInput(input);
-    await app.createDoc({ name: app.uniqueName(doc.name || 'Untitled', parent.id), text: doc.text, parentId: parent.id, originId: doc.originId, opened: true, input, readingWidth: doc.readingWidth });
+    await app.createDoc({
+        name: app.uniqueName(doc.name || 'Untitled', parent.id),
+        text: doc.text,
+        parentId: parent.id,
+        originId: doc.originId,
+        opened: true,
+        input,
+        readingWidth: doc.readingWidth,
+    });
     checkInput(input);
     viewer.toast(`Added "${doc.name}" to ${parent.name}`);
 }
 
 // A Markdown file opened with Open or dropped on the preview. Chromium hands over a handle,
 // which identifies a file already in the sidebar exactly; otherwise the content decides.
-export async function receiveFile(file: { name: string; text: string; handle: FileSystemFileHandle | null; stamp: number; parentId?: string | null }, input: InputOperation = beginInput()) {
+export async function receiveFile(
+    file: { name: string; text: string; handle: FileSystemFileHandle | null; stamp: number; parentId?: string | null },
+    input: InputOperation = beginInput(),
+) {
     await viewer.flush();
     input.check();
     if (db.isTemporaryStorage()) {
-        await app.createDoc({ name: app.uniqueName(file.name, null), text: file.text, parentId: null, opened: true, input });
+        await app.createDoc({
+            name: app.uniqueName(file.name, null),
+            text: file.text,
+            parentId: null,
+            opened: true,
+            input,
+        });
         return;
     }
     let existing: TreeNode | null = null;
     if (file.handle) {
         for (const n of app.state.nodes) {
-            if (n.handle && (await n.handle.isSameEntry(file.handle).catch(() => false))) { existing = n; break; }
+            if (n.handle && (await n.handle.isSameEntry(file.handle).catch(() => false))) {
+                existing = n;
+                break;
+            }
             input.check();
         }
     }
@@ -404,20 +622,41 @@ export async function receiveFile(file: { name: string; text: string; handle: Fi
     existing ??= await findLikely(file.name, file.text, undefined, input);
     input.check();
     const link = file.handle ? { handle: file.handle, stamp: file.stamp } : undefined;
-    if (existing) { await updateExisting(existing, file.text, link, input); return; }
-    const parentId = file.parentId === undefined ? app.defaultIncomingFolder()?.id ?? app.state.folderId : file.parentId;
-    await app.createDoc({ name: app.uniqueName(file.name, parentId), text: file.text, parentId, handle: link?.handle, stamp: link?.stamp, opened: true, input });
+    if (existing) {
+        await updateExisting(existing, file.text, link, input);
+        return;
+    }
+    const parentId =
+        file.parentId === undefined ? (app.defaultIncomingFolder()?.id ?? app.state.folderId) : file.parentId;
+    await app.createDoc({
+        name: app.uniqueName(file.name, parentId),
+        text: file.text,
+        parentId,
+        handle: link?.handle,
+        stamp: link?.stamp,
+        opened: true,
+        input,
+    });
     input.check();
 }
 
 async function receiveFolder(bundle: Bundle, input?: InputOperation) {
-    let target = bundle.originId ? app.state.nodes.find((n) => n.kind === 'folder' && n.originId === bundle.originId) : undefined;
+    let target = bundle.originId
+        ? app.state.nodes.find((n) => n.kind === 'folder' && n.originId === bundle.originId)
+        : undefined;
     if (!target) {
-        const parent = app.defaultIncomingFolder() ?? await sharedRoot();
-        target = await app.createFolder(app.uniqueName(bundle.name || 'Untitled', parent.id), parent.id, bundle.originId);
+        const parent = app.defaultIncomingFolder() ?? (await sharedRoot());
+        target = await app.createFolder(
+            app.uniqueName(bundle.name || 'Untitled', parent.id),
+            parent.id,
+            bundle.originId,
+        );
     }
     checkInput(input);
-    let added = 0, merged = 0, differ = 0, first: string | null = null;
+    let added = 0,
+        merged = 0,
+        differ = 0,
+        first: string | null = null;
     for (const doc of bundle.docs) {
         checkInput(input);
         const existing = findDoc(doc.originId);
@@ -428,15 +667,26 @@ async function receiveFolder(bundle: Bundle, input?: InputOperation) {
             checkInput(input);
             const m = mergeDocuments(local, doc.text);
             if (!m.sameBody) differ++;
-            if (m.added) { merged += m.added; await saveText(existing, m.mine); }
-            else if (addWidth) await db.putNodes([existing]);
+            if (m.added) {
+                merged += m.added;
+                await saveText(existing, m.mine);
+            } else if (addWidth) await db.putNodes([existing]);
             first ??= existing.id;
             continue;
         }
         let parentId = target.id;
         for (const seg of doc.path) parentId = (await app.findOrCreateFolder(seg, parentId)).id;
         checkInput(input);
-        const created = await app.createDoc({ name: app.uniqueName(doc.name, parentId), text: doc.text, parentId, originId: doc.originId, open: false, opened: true, input, readingWidth: doc.readingWidth });
+        const created = await app.createDoc({
+            name: app.uniqueName(doc.name, parentId),
+            text: doc.text,
+            parentId,
+            originId: doc.originId,
+            open: false,
+            opened: true,
+            input,
+            readingWidth: doc.readingWidth,
+        });
         first ??= created.id;
         added++;
     }
@@ -444,7 +694,11 @@ async function receiveFolder(bundle: Bundle, input?: InputOperation) {
     checkInput(input);
     if (first) await app.openDoc(first, input);
     checkInput(input);
-    const parts = [added && `added ${added} document${added === 1 ? '' : 's'}`, merged && `merged ${merged} comment${merged === 1 ? '' : 's'}`, differ && `kept your text in ${differ} changed document${differ === 1 ? '' : 's'}`].filter(Boolean);
+    const parts = [
+        added && `added ${added} document${added === 1 ? '' : 's'}`,
+        merged && `merged ${merged} comment${merged === 1 ? '' : 's'}`,
+        differ && `kept your text in ${differ} changed document${differ === 1 ? '' : 's'}`,
+    ].filter(Boolean);
     viewer.toast(`"${target.name}": ${parts.join(', ') || 'already up to date'}`);
 }
 
@@ -470,14 +724,19 @@ export async function receiveUrl(url: string, input: InputOperation = beginInput
         input.check();
         const { name, text } = readSource(raw, { fileName: urlFileName(target), fallback: 'document' });
         input.check();
-        await receive({ v: 1, kind: 'doc', name, docs: [{ path: [], name, originId: `url:${target.href}`, text }] }, input);
+        await receive(
+            { v: 1, kind: 'doc', name, docs: [{ path: [], name, originId: `url:${target.href}`, text }] },
+            input,
+        );
         input.check();
         viewer.endLoading();
     } catch (error) {
         input.check();
         if (error instanceof TypeError) throw new Error('Fetch failed (CORS or network). Try a raw, CORS-enabled URL.');
         throw error;
-    } finally { input.signal.removeEventListener('abort', cancelled); }
+    } finally {
+        input.signal.removeEventListener('abort', cancelled);
+    }
 }
 
 // Opens whatever the address bar carries: `#doc=<id>`, a share link, or `?url=`.
@@ -501,7 +760,10 @@ export async function openFromLocation(address = location.href): Promise<boolean
     try {
         if (params.has('doc')) {
             const id = params.get('doc')!;
-            if (app.node(id)?.kind === 'doc') { await app.openDoc(id, input); return true; }
+            if (app.node(id)?.kind === 'doc') {
+                await app.openDoc(id, input);
+                return true;
+            }
             history.replaceState(history.state, '', location.pathname);
             return false;
         }
@@ -509,7 +771,11 @@ export async function openFromLocation(address = location.href): Promise<boolean
         if (params.has('s')) {
             const secret = params.get('s')!;
             let id: string;
-            try { id = (await deriveShortLink(fromBase64Url(secret))).id; } catch { return fail(null); }
+            try {
+                id = (await deriveShortLink(fromBase64Url(secret))).id;
+            } catch {
+                return fail(null);
+            }
             const res = await shortFetch(id, { signal: input.signal });
             input.check();
             if (res.status === 404) return fail(null);
@@ -530,9 +796,23 @@ export async function openFromLocation(address = location.href): Promise<boolean
             input.check();
             if (text === null) return fail('This link is damaged or incomplete.');
             const source = readSource(text, { name: params.get('name') ?? undefined });
-            bundle = { v: 1, kind: 'doc', name: source.name, docs: [{ path: [], name: source.name, originId: params.get('o') || `link:${await hashText(text)}`, text: source.text }] };
+            bundle = {
+                v: 1,
+                kind: 'doc',
+                name: source.name,
+                docs: [
+                    {
+                        path: [],
+                        name: source.name,
+                        originId: params.get('o') || `link:${await hashText(text)}`,
+                        text: source.text,
+                    },
+                ],
+            };
         } else if (urlParam) {
-            try { await receiveUrl(urlParam, input); } catch (err) {
+            try {
+                await receiveUrl(urlParam, input);
+            } catch (err) {
                 if (!input.current()) return true;
                 viewer.endLoading();
                 viewer.toast((err as Error).message);
@@ -543,7 +823,8 @@ export async function openFromLocation(address = location.href): Promise<boolean
         }
         input.check();
         if ((params.get('t') === '1' || bundle.temporary) && !db.isTemporaryStorage()) {
-            await viewer.flush(); input.check();
+            await viewer.flush();
+            input.check();
             request.searchParams.set('temporary', '1');
             location.assign(request.href);
             return true;

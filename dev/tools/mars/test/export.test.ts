@@ -7,11 +7,26 @@ import { exportBody, renderKey, snapshot } from '../src/export/snapshot.ts';
 
 test('export settings restore typed values, reject malformed storage, and seed reading width', () => {
     assert.deepEqual(decodeSettings(null, 'full'), defaults('full'));
-    for (const raw of ['broken', '{}', '{"v":2}', 'null', '[]']) assert.deepEqual(decodeSettings(raw, 1234), defaults(1234));
-    assert.deepEqual(decodeSettings(JSON.stringify({ v: 1, html: { readingWidth: 320, toc: false, find: false, pdf: false, source: true }, pdf: { paper: 'Letter', orientation: 'landscape' } })), {
-        v: 1, html: { readingWidth: 320, toc: false, find: false, pdf: false, source: true }, pdf: { paper: 'Letter', orientation: 'landscape' },
-    });
-    assert.deepEqual(decodeSettings('{"v":1,"html":{"readingWidth":"2400","toc":"false"},"pdf":{"paper":"A0"}}'), defaults());
+    for (const raw of ['broken', '{}', '{"v":2}', 'null', '[]'])
+        assert.deepEqual(decodeSettings(raw, 1234), defaults(1234));
+    assert.deepEqual(
+        decodeSettings(
+            JSON.stringify({
+                v: 1,
+                html: { readingWidth: 320, toc: false, find: false, pdf: false, source: true },
+                pdf: { paper: 'Letter', orientation: 'landscape' },
+            }),
+        ),
+        {
+            v: 1,
+            html: { readingWidth: 320, toc: false, find: false, pdf: false, source: true },
+            pdf: { paper: 'Letter', orientation: 'landscape' },
+        },
+    );
+    assert.deepEqual(
+        decodeSettings('{"v":1,"html":{"readingWidth":"2400","toc":"false"},"pdf":{"paper":"A0"}}'),
+        defaults(),
+    );
     for (const width of [320, 800, 1100, 2400, 'full']) assert.equal(validWidth(width), true);
     for (const width of [0, 319, 2401, 1234.5, NaN, null, 'custom', '800']) assert.equal(validWidth(width), false);
 });
@@ -40,19 +55,42 @@ test('PDF dimensions preserve A4/Letter paper dimensions in both orientations', 
 // Build pure output assembly with representative runtime strings. Browser cases below use
 // the real separately bundled runtimes and the deploy-equivalent page.
 const result = await build({
-    stdin: { contents: "export * from './src/export/html.ts'; export * from './src/export/pdf.ts';", resolveDir: process.cwd() },
-    bundle: true, write: false, format: 'esm', platform: 'node', loader: { '.css': 'text' },
-    plugins: [{ name: 'test-runtime', setup(builder) {
-        builder.onResolve({ filter: /^mars-runtime:/ }, ({ path }) => ({ path, namespace: 'test' }));
-        builder.onLoad({ filter: /.*/, namespace: 'test' }, () => ({ contents: `export default ${JSON.stringify('console.log("reader</script>")')}`, loader: 'js' }));
-    } }],
+    stdin: {
+        contents: "export * from './src/export/html.ts'; export * from './src/export/pdf.ts';",
+        resolveDir: process.cwd(),
+    },
+    bundle: true,
+    write: false,
+    format: 'esm',
+    platform: 'node',
+    loader: { '.css': 'text' },
+    plugins: [
+        {
+            name: 'test-runtime',
+            setup(builder) {
+                builder.onResolve({ filter: /^mars-runtime:/ }, ({ path }) => ({ path, namespace: 'test' }));
+                builder.onLoad({ filter: /.*/, namespace: 'test' }, () => ({
+                    contents: `export default ${JSON.stringify('console.log("reader</script>")')}`,
+                    loader: 'js',
+                }));
+            },
+        },
+    ],
 });
-const { htmlDocument, embedSource, hasToc, printCss } = await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}`);
+const { htmlDocument, embedSource, hasToc, printCss } = await import(
+    `data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}`
+);
 
 test('HTML assembly escapes titles/source, retains reader features, and excludes app state', () => {
-    const captured = snapshot('private-id', 'Title </title><script>bad()</script>', '## Body\n\nLiteral </script> text.', 800);
+    const captured = snapshot(
+        'private-id',
+        'Title </title><script>bad()</script>',
+        '## Body\n\nLiteral </script> text.',
+        800,
+    );
     const content = '<h1>Body</h1><h2>One</h2><h2>Two</h2><h3>Three</h3><pre><code>Code</code></pre>';
-    const settings = defaults(); settings.html.source = true;
+    const settings = defaults();
+    settings.html.source = true;
     const output = htmlDocument(captured, content, settings, 'operation');
     assert.match(output, /Title &lt;\/title&gt;&lt;script&gt;bad\(\)&lt;\/script&gt;/);
     assert.match(output, /id="toc"/);
@@ -88,10 +126,14 @@ test('each optional HTML reader feature switches independently without changing 
 });
 
 test('print CSS retains dimension, footer, light, and vector layout contracts', () => {
-    for (const paper of ['A4', 'Letter'] as const) for (const orientation of ['portrait', 'landscape'] as const) {
-        const dimensions = pageDimensions({ paper, orientation });
-        assert.match(printCss({ paper, orientation }), new RegExp(`size: ${dimensions.width}mm ${dimensions.height}mm`));
-    }
+    for (const paper of ['A4', 'Letter'] as const)
+        for (const orientation of ['portrait', 'landscape'] as const) {
+            const dimensions = pageDimensions({ paper, orientation });
+            assert.match(
+                printCss({ paper, orientation }),
+                new RegExp(`size: ${dimensions.width}mm ${dimensions.height}mm`),
+            );
+        }
     assert.match(printCss({ paper: 'A4', orientation: 'portrait' }), /counter\(page\).*counter\(pages\)/);
     assert.match(printCss({ paper: 'A4', orientation: 'portrait' }), /string\(doctitle\)/);
     assert.doesNotMatch(printCss({ paper: 'A4', orientation: 'portrait' }), /:is\(h1/);
@@ -101,7 +143,8 @@ test('standalone runtimes have no app imports, function stringification, or eage
     const reader = await readFile('src/export/reader-runtime.ts', 'utf8');
     const print = await readFile('src/export/print-runtime.ts', 'utf8');
     const html = await readFile('src/export/html.ts', 'utf8');
-    for (const source of [reader, print, html]) assert.doesNotMatch(source, /app\.ts|store\/db|\.toString\(\)|plausible|transformers/);
+    for (const source of [reader, print, html])
+        assert.doesNotMatch(source, /app\.ts|store\/db|\.toString\(\)|plausible|transformers/);
     assert.match(print, /pagedjs@0\.4\.3/);
     assert.doesNotMatch(html, /<script src=/);
 });

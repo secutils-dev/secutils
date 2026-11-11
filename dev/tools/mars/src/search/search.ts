@@ -7,12 +7,37 @@ import { icon } from '../ui/icons.ts';
 import { $, esc, modal, openMenu } from '../ui/ui.ts';
 import * as viewer from '../doc/viewer.js';
 import { type Chunk, nudgeDue, searchBody, snippet, threadChunks } from './chunks.ts';
-import { activeDevice, disable, enable, enabledModel, indexRevision, isDownloaded, isPaused, MODELS, modelUsage, onIndexed, onStatus, pause, placementOf, reindex, removeModel, resume, search, type Hit, type ModelKey } from './embed.ts';
+import {
+    activeDevice,
+    disable,
+    enable,
+    enabledModel,
+    indexRevision,
+    isDownloaded,
+    isPaused,
+    MODELS,
+    modelUsage,
+    onIndexed,
+    onStatus,
+    pause,
+    placementOf,
+    reindex,
+    removeModel,
+    resume,
+    search,
+    type Hit,
+    type ModelKey,
+} from './embed.ts';
 
-const smartBtn = $('sbSmartBtn'), statusEl = $('sbSmartStatus');
+const smartBtn = $('sbSmartBtn'),
+    statusEl = $('sbSmartStatus');
 const listeners = new Set<() => void>();
-export const onUpdate = (fn: () => void) => { listeners.add(fn); };
-const notify = () => { for (const fn of listeners) fn(); };
+export const onUpdate = (fn: () => void) => {
+    listeners.add(fn);
+};
+const notify = () => {
+    for (const fn of listeners) fn();
+};
 
 // ---- Text matches ----
 const texts = new Map<string, { at: number; body: string; threads: Chunk[] }>();
@@ -24,11 +49,15 @@ function refreshTexts() {
         for (const n of docs) {
             if (texts.get(n.id)?.at === n.updatedAt) continue;
             const at = n.updatedAt; // Before the read, so a save during it refreshes the entry later.
-            const text = (await db.getText(n.id)) ?? '', body = searchBody(text);
+            const text = (await db.getText(n.id)) ?? '',
+                body = searchBody(text);
             texts.set(n.id, { at, body, threads: threadChunks(text, body) });
         }
         for (const id of texts.keys()) if (!app.node(id)) texts.delete(id);
-    })().finally(() => { loadingTexts = null; notify(); });
+    })().finally(() => {
+        loadingTexts = null;
+        notify();
+    });
 }
 
 // Documents whose text or review comments contain `query`, with a snippet around the first
@@ -44,10 +73,16 @@ export function textMatches(query: string) {
         if (t?.at !== n.updatedAt) stale = true;
         if (!t) continue;
         const s = snippet(t.body, query);
-        if (s) { out.set(n.id, { snippet: s }); continue; }
+        if (s) {
+            out.set(n.id, { snippet: s });
+            continue;
+        }
         for (const c of t.threads) {
             const inComment = snippet(c.text, query);
-            if (inComment) { out.set(n.id, { snippet: inComment, start: c.start }); break; }
+            if (inComment) {
+                out.set(n.id, { snippet: inComment, start: c.start });
+                break;
+            }
         }
     }
     if (stale && !loadingTexts) refreshTexts();
@@ -77,7 +112,8 @@ export function smartMatches(query: string) {
                 const hits = await search(query);
                 if (same(smart, query, at)) smart = { query, at, hits, pending: false };
             } catch (err) {
-                if (same(smart, query, at)) smart = { query, at, hits: [], pending: false, error: (err as Error)?.message ?? String(err) };
+                if (same(smart, query, at))
+                    smart = { query, at, hits: [], pending: false, error: (err as Error)?.message ?? String(err) };
             }
             if (same(smart, query, at)) notify();
         }, 350);
@@ -87,12 +123,15 @@ export function smartMatches(query: string) {
 onIndexed(notify);
 
 // ---- Settings ----
-const deviceLabel = () => ({ webgpu: 'GPU', wasm: 'CPU' } as Record<string, string>)[activeDevice() ?? ''];
+const deviceLabel = () => (({ webgpu: 'GPU', wasm: 'CPU' }) as Record<string, string>)[activeDevice() ?? ''];
 
 function syncButton() {
-    const key = enabledModel(), on = deviceLabel();
+    const key = enabledModel(),
+        on = deviceLabel();
     smartBtn.setAttribute('aria-pressed', String(!!key));
-    smartBtn.title = key ? `Smart search: on (${MODELS[key].label} model${on ? `, ${on}` : ''})` : 'Smart search: find passages by meaning (off)';
+    smartBtn.title = key
+        ? `Smart search: on (${MODELS[key].label} model${on ? `, ${on}` : ''})`
+        : 'Smart search: find passages by meaning (off)';
 }
 
 // The badge beside the Documents title. Screen readers hear state changes only, not every
@@ -102,13 +141,19 @@ let lastState: string | null = null;
 onStatus((s) => {
     statusEl.hidden = !s;
     if (s) {
-        const glyph = s.state === 'paused' ? icon('pause', 12) : s.state === 'error' ? icon('warning', 12) : '<span class="sb-spin" aria-hidden="true"></span>';
+        const glyph =
+            s.state === 'paused'
+                ? icon('pause', 12)
+                : s.state === 'error'
+                  ? icon('warning', 12)
+                  : '<span class="sb-spin" aria-hidden="true"></span>';
         statusEl.innerHTML = `${glyph}<span>${esc(s.label)}</span>`;
         statusEl.dataset.state = s.state;
         statusEl.title = `${s.text}. Click for smart-search options.`;
     }
     const state = s?.state ?? null;
-    if (state !== lastState) liveEl.textContent = s ? s.text : lastState === 'index' ? 'Smart-search index is up to date' : '';
+    if (state !== lastState)
+        liveEl.textContent = s ? s.text : lastState === 'index' ? 'Smart-search index is up to date' : '';
     lastState = state;
     syncButton();
 });
@@ -122,10 +167,16 @@ const OPTION_TEXT: Record<ModelKey, string> = {
 // The model picker. Resolves with the chosen model, or null when cancelled.
 async function chooseModel(current: ModelKey | null): Promise<ModelKey | null> {
     const keys = Object.keys(MODELS) as ModelKey[];
-    const info = Object.fromEntries(await Promise.all(keys.map(async (k) => [k, { p: await placementOf(k), have: await isDownloaded(k) }] as const)));
+    const info = Object.fromEntries(
+        await Promise.all(
+            keys.map(async (k) => [k, { p: await placementOf(k), have: await isDownloaded(k) }] as const),
+        ),
+    );
     const option = (key: ModelKey) => {
-        const m = MODELS[key], { p, have } = info[key], off = !p;
-        const text = off ? 'Needs a graphics card (WebGPU), which this browser doesn\'t offer.' : OPTION_TEXT[key];
+        const m = MODELS[key],
+            { p, have } = info[key],
+            off = !p;
+        const text = off ? "Needs a graphics card (WebGPU), which this browser doesn't offer." : OPTION_TEXT[key];
         return `<label class="model-option${off ? ' disabled' : ''}"><input type="radio" name="smartModel" value="${key}"${key === (current ?? 'fast') && !off ? ' checked' : ''}${off ? ' disabled' : ''}><span><strong>${m.label}</strong>${have ? ' <span class="model-badge">Downloaded</span>' : p ? ` · ${fmtBytes(p.bytes)} download` : ''}<span class="opt-desc">${text}<span class="model-id">${m.name}</span></span></span></label>`;
     };
     const { value } = await modal({
@@ -134,10 +185,16 @@ async function chooseModel(current: ModelKey | null): Promise<ModelKey | null> {
 <p>MARS downloads a search model once. After that, indexing and searching happen in this browser, and your documents never leave it.</p>
 <fieldset class="model-choice"><legend>Model</legend>${option('fast')}${option('best')}</fieldset>
 <p class="su-dialog-fineprint">${current ? 'Switching rebuilds the index with the new model.' : 'Change the model, remove downloaded models, or turn smart search off from the sparkles button in the search box.'}</p>`,
-        buttons: [{ label: 'Cancel', value: '' }, { label: current ? 'Switch model' : 'Turn on', value: 'ok', primary: true }],
+        buttons: [
+            { label: 'Cancel', value: '' },
+            { label: current ? 'Switch model' : 'Turn on', value: 'ok', primary: true },
+        ],
     });
     if (value !== 'ok') return null;
-    return ($('marsModalBody').querySelector<HTMLInputElement>('input[name="smartModel"]:checked')?.value as ModelKey) ?? 'fast';
+    return (
+        ($('marsModalBody').querySelector<HTMLInputElement>('input[name="smartModel"]:checked')?.value as ModelKey) ??
+        'fast'
+    );
 }
 
 export async function turnOn() {
@@ -147,7 +204,9 @@ export async function turnOn() {
     hideNudge();
     await enable(key);
     syncButton();
-    viewer.toast(`Smart search is on (${MODELS[key].label} model). ${isPaused() ? 'Indexing stays paused.' : 'Indexing your documents…'}`);
+    viewer.toast(
+        `Smart search is on (${MODELS[key].label} model). ${isPaused() ? 'Indexing stays paused.' : 'Indexing your documents…'}`,
+    );
     notify();
 }
 
@@ -160,17 +219,83 @@ async function smartMenu(anchor: HTMLElement) {
     if (!key) return;
     const usage = await modelUsage();
     const unused = (Object.keys(usage) as ModelKey[]).filter((k) => k !== key);
-    openMenu(anchor, [
-        { label: `On · ${MODELS[key].label} model`, icon: 'sparkles', sub: [MODELS[key].langs, deviceLabel() && `runs on the ${deviceLabel()}`, usage[key] && `${fmtBytes(usage[key]!)} downloaded`].filter(Boolean).join(', '), disabled: true },
-        { label: 'Change model…', icon: 'gear', run: turnOn },
-        isPaused()
-            ? { label: 'Resume indexing', icon: 'play', sub: 'Indexes what changed while paused', run: () => { resume(); viewer.toast('Indexing resumed'); } }
-            : { label: 'Pause indexing', icon: 'pause', sub: 'In all MARS tabs, until resumed', run: () => { pause(); viewer.toast('Indexing paused'); } },
-        { label: 'Rebuild the index', icon: 'refresh', run: async () => { await enable(key, true); viewer.toast(isPaused() ? 'Index cleared. Resume indexing to rebuild it.' : 'Rebuilding the smart-search index'); } },
-        ...(unused.length ? ['separator' as const, ...unused.map((k) => ({ label: `Remove the ${MODELS[k].label} model`, icon: 'trash' as const, sub: `Frees ${fmtBytes(usage[k]!)}`, run: async () => { await removeModel(k); viewer.toast(`Removed the ${MODELS[k].label} model`); } }))] : []),
-        'separator',
-        { label: 'Turn off smart search', icon: 'cross', sub: 'Removes the index and the downloaded models', danger: true, run: async () => { await disable(); syncButton(); notify(); viewer.toast('Smart search is off'); } },
-    ], 'Smart search');
+    openMenu(
+        anchor,
+        [
+            {
+                label: `On · ${MODELS[key].label} model`,
+                icon: 'sparkles',
+                sub: [
+                    MODELS[key].langs,
+                    deviceLabel() && `runs on the ${deviceLabel()}`,
+                    usage[key] && `${fmtBytes(usage[key]!)} downloaded`,
+                ]
+                    .filter(Boolean)
+                    .join(', '),
+                disabled: true,
+            },
+            { label: 'Change model…', icon: 'gear', run: turnOn },
+            isPaused()
+                ? {
+                      label: 'Resume indexing',
+                      icon: 'play',
+                      sub: 'Indexes what changed while paused',
+                      run: () => {
+                          resume();
+                          viewer.toast('Indexing resumed');
+                      },
+                  }
+                : {
+                      label: 'Pause indexing',
+                      icon: 'pause',
+                      sub: 'In all MARS tabs, until resumed',
+                      run: () => {
+                          pause();
+                          viewer.toast('Indexing paused');
+                      },
+                  },
+            {
+                label: 'Rebuild the index',
+                icon: 'refresh',
+                run: async () => {
+                    await enable(key, true);
+                    viewer.toast(
+                        isPaused()
+                            ? 'Index cleared. Resume indexing to rebuild it.'
+                            : 'Rebuilding the smart-search index',
+                    );
+                },
+            },
+            ...(unused.length
+                ? [
+                      'separator' as const,
+                      ...unused.map((k) => ({
+                          label: `Remove the ${MODELS[k].label} model`,
+                          icon: 'trash' as const,
+                          sub: `Frees ${fmtBytes(usage[k]!)}`,
+                          run: async () => {
+                              await removeModel(k);
+                              viewer.toast(`Removed the ${MODELS[k].label} model`);
+                          },
+                      })),
+                  ]
+                : []),
+            'separator',
+            {
+                label: 'Turn off smart search',
+                icon: 'cross',
+                sub: 'Removes the index and the downloaded models',
+                danger: true,
+                run: async () => {
+                    await disable();
+                    syncButton();
+                    notify();
+                    viewer.toast('Smart search is off');
+                },
+            },
+        ],
+        'Smart search',
+    );
 }
 
 // ---- Suggestion ----
@@ -178,9 +303,21 @@ async function smartMenu(anchor: HTMLElement) {
 const NUDGE_KEY = 'mars.smartNudge';
 const nudge = $('smartNudge');
 type NudgeState = { shown: number; never?: boolean };
-const readNudge = (): NudgeState => { try { return JSON.parse(localStorage.getItem(NUDGE_KEY) ?? '') || { shown: 0 }; } catch { return { shown: 0 }; } };
-const writeNudge = (s: NudgeState) => { try { localStorage.setItem(NUDGE_KEY, JSON.stringify(s)); } catch {} };
-const hideNudge = () => { nudge.hidden = true; };
+const readNudge = (): NudgeState => {
+    try {
+        return JSON.parse(localStorage.getItem(NUDGE_KEY) ?? '') || { shown: 0 };
+    } catch {
+        return { shown: 0 };
+    }
+};
+const writeNudge = (s: NudgeState) => {
+    try {
+        localStorage.setItem(NUDGE_KEY, JSON.stringify(s));
+    } catch {}
+};
+const hideNudge = () => {
+    nudge.hidden = true;
+};
 
 function checkNudge() {
     const state = readNudge();
@@ -193,7 +330,10 @@ function checkNudge() {
 }
 
 $('smartNudgeClose').addEventListener('click', hideNudge);
-$('smartNudgeNever').addEventListener('click', () => { writeNudge({ ...readNudge(), never: true }); hideNudge(); });
+$('smartNudgeNever').addEventListener('click', () => {
+    writeNudge({ ...readNudge(), never: true });
+    hideNudge();
+});
 $('smartNudgeOn').addEventListener('click', turnOn);
 
 let nudgeTimer: ReturnType<typeof setTimeout> | undefined;

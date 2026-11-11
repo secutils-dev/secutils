@@ -18,25 +18,43 @@ export class TemporaryRoute {
     private status: (state: TemporaryLinkStatus) => void;
     private encode: typeof encodeState;
     constructor(write: (hash: string) => void, status: (state: TemporaryLinkStatus) => void, encode = encodeState) {
-        this.write = write; this.status = status; this.encode = encode;
+        this.write = write;
+        this.status = status;
+        this.encode = encode;
     }
 
-    cancel() { this.generation++; }
+    cancel() {
+        this.generation++;
+    }
     private clear(state: TemporaryLinkStatus) {
-        try { this.write('#t=1'); this.status(state); }
-        catch { this.status('failed'); }
+        try {
+            this.write('#t=1');
+            this.status(state);
+        } catch {
+            this.status('failed');
+        }
     }
 
     async update(doc: SharedDoc | null) {
         const generation = ++this.generation;
-        if (!doc) { this.clear('empty'); return; }
-        if (doc.text.length > MAX_AUTOMATIC_SOURCE) { this.clear('too-large'); return; }
+        if (!doc) {
+            this.clear('empty');
+            return;
+        }
+        if (doc.text.length > MAX_AUTOMATIC_SOURCE) {
+            this.clear('too-large');
+            return;
+        }
         this.status('pending');
         try {
             const hash = await temporaryFragment(doc, this.encode);
             if (generation !== this.generation) return;
-            if (hash.length > MAX_TEMPORARY_FRAGMENT) { this.clear('too-large'); return; }
-            this.write(hash); this.status('ready');
+            if (hash.length > MAX_TEMPORARY_FRAGMENT) {
+                this.clear('too-large');
+                return;
+            }
+            this.write(hash);
+            this.status('ready');
         } catch {
             if (generation !== this.generation) return;
             this.clear('failed');

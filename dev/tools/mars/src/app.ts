@@ -1,7 +1,16 @@
 // App state: the review tree (mirrored from IndexedDB), the open document, and the
 // operations the sidebar, sharing, and import/export build on.
 import * as db from './store/db.ts';
-import { ancestors, childrenOf, descendants, moveNode, newId, nextOrder, textBytes, type TreeNode } from './tree/model.ts';
+import {
+    ancestors,
+    childrenOf,
+    descendants,
+    moveNode,
+    newId,
+    nextOrder,
+    textBytes,
+    type TreeNode,
+} from './tree/model.ts';
 import { openThreads, splitComments } from './share/merge.ts';
 import { $ } from './ui/ui.ts';
 import * as viewer from './doc/viewer.js';
@@ -22,8 +31,12 @@ export const state = {
 };
 
 const listeners = new Set<() => void>();
-export const onChange = (fn: () => void) => { listeners.add(fn); };
-const emit = () => { for (const fn of listeners) fn(); };
+export const onChange = (fn: () => void) => {
+    listeners.add(fn);
+};
+const emit = () => {
+    for (const fn of listeners) fn();
+};
 export const notify = emit;
 
 export const node = (id: string | null) => (id ? state.nodes.find((n) => n.id === id) : undefined);
@@ -39,22 +52,28 @@ export async function load() {
 }
 export const defaultIncomingFolder = () => incomingFolder(state.nodes, state.defaultIncomingFolder);
 export async function setDefaultIncomingFolder(id: string | null) {
-    if (db.isTemporaryStorage() || id && !incomingFolder(state.nodes, id)) throw new Error('Choose an editable library folder.');
+    if (db.isTemporaryStorage() || (id && !incomingFolder(state.nodes, id)))
+        throw new Error('Choose an editable library folder.');
     await db.setMeta(DEFAULT_DESTINATION_KEY, id, true);
-    state.defaultIncomingFolder = id; emit();
+    state.defaultIncomingFolder = id;
+    emit();
 }
 
 const now = () => Date.now();
 const save = (nodes: TreeNode[], texts?: Record<string, string>) => db.putNodes(nodes, texts);
 const temporaryRoute = new TemporaryRoute(
     (hash) => history.replaceState(history.state, '', `${location.pathname}${hash}`),
-    (status) => { state.temporaryLink = status; emit(); },
+    (status) => {
+        state.temporaryLink = status;
+        emit();
+    },
 );
 export const cancelTemporaryRoute = () => temporaryRoute.cancel();
 export function useTemporaryFallback(error: unknown) {
     db.useTemporaryStorage();
     state.storageError = (error as Error)?.message ?? String(error);
-    state.nodes = []; state.currentId = state.folderId = state.defaultIncomingFolder = null;
+    state.nodes = [];
+    state.currentId = state.folderId = state.defaultIncomingFolder = null;
     viewer.toast('Browser storage is unavailable. The document is now temporary.');
     emit();
 }
@@ -62,8 +81,21 @@ export function useTemporaryFallback(error: unknown) {
 async function setRoute(id: string | null) {
     if (db.isTemporaryStorage()) {
         const n = node(id);
-        if (n?.connection?.kind === 'live') { temporaryRoute.cancel(); return; }
-        await temporaryRoute.update(n?.kind === 'doc' ? { path: [], name: n.name, originId: n.originId ?? n.id, text: (await db.getText(n.id)) ?? '', readingWidth: n.readingWidth ?? viewer.exportReadingWidth() } : null);
+        if (n?.connection?.kind === 'live') {
+            temporaryRoute.cancel();
+            return;
+        }
+        await temporaryRoute.update(
+            n?.kind === 'doc'
+                ? {
+                      path: [],
+                      name: n.name,
+                      originId: n.originId ?? n.id,
+                      text: (await db.getText(n.id)) ?? '',
+                      readingWidth: n.readingWidth ?? viewer.exportReadingWidth(),
+                  }
+                : null,
+        );
         return;
     }
     temporaryRoute.cancel();
@@ -72,28 +104,65 @@ async function setRoute(id: string | null) {
 }
 
 export async function createFolder(name: string, parentId: string | null, originId?: string) {
-    const n: TreeNode = { id: newId(), parentId, kind: 'folder', name, order: nextOrder(state.nodes, parentId), createdAt: now(), updatedAt: now(), open: true };
+    const n: TreeNode = {
+        id: newId(),
+        parentId,
+        kind: 'folder',
+        name,
+        order: nextOrder(state.nodes, parentId),
+        createdAt: now(),
+        updatedAt: now(),
+        open: true,
+    };
     if (originId) n.originId = originId;
     state.nodes.push(n);
     await save([n]);
-    if (node(parentId)?.connection) void sync.created(n.id).catch((error) => viewer.toast(`Could not enroll the new folder: ${error.message}`));
+    if (node(parentId)?.connection)
+        void sync.created(n.id).catch((error) => viewer.toast(`Could not enroll the new folder: ${error.message}`));
     emit();
     return n;
 }
 
 // `opened`: the text comes from outside (a file, link, URL, or import) and is kept as the
 // document's source text, for "changes since opened" and for re-opens.
-export async function createDoc(opts: { name?: string; text?: string; parentId?: string | null; originId?: string; handle?: FileSystemFileHandle; stamp?: number; open?: boolean; opened?: boolean; input?: InputOperation; readingWidth?: ReadingWidth } = {}) {
+export async function createDoc(
+    opts: {
+        name?: string;
+        text?: string;
+        parentId?: string | null;
+        originId?: string;
+        handle?: FileSystemFileHandle;
+        stamp?: number;
+        open?: boolean;
+        opened?: boolean;
+        input?: InputOperation;
+        readingWidth?: ReadingWidth;
+    } = {},
+) {
     if (!opts.input && opts.open !== false) cancelInput();
     checkInput(opts.input);
     const id = newId();
     const parentId = opts.parentId === undefined ? state.folderId : opts.parentId;
     const text = opts.text ?? '';
-    const n: TreeNode = { id, parentId, kind: 'doc', name: opts.name ?? 'Untitled', order: nextOrder(state.nodes, parentId), createdAt: now(), updatedAt: now(), originId: opts.originId ?? id, threads: openThreads(text), size: textBytes(text) };
+    const n: TreeNode = {
+        id,
+        parentId,
+        kind: 'doc',
+        name: opts.name ?? 'Untitled',
+        order: nextOrder(state.nodes, parentId),
+        createdAt: now(),
+        updatedAt: now(),
+        originId: opts.originId ?? id,
+        threads: openThreads(text),
+        size: textBytes(text),
+    };
     if (validWidth(opts.readingWidth)) n.readingWidth = opts.readingWidth;
     if (opts.handle) Object.assign(n, { handle: opts.handle, stamp: opts.stamp ?? 0, dirty: false });
     try {
-        if (opts.opened) { n.opened = true; await db.putSide('opened', id, text); }
+        if (opts.opened) {
+            n.opened = true;
+            await db.putSide('opened', id, text);
+        }
         checkInput(opts.input);
         state.nodes.push(n);
         await save([n], { [id]: text });
@@ -107,7 +176,12 @@ export async function createDoc(opts: { name?: string; text?: string; parentId?:
     expandTo(parentId);
     if (opts.open !== false) await openDoc(id, opts.input);
     else emit();
-    if (node(parentId)?.connection) void sync.created(n.id).catch((error) => viewer.toast(`Could not enroll the new document: ${error.message}. Its local copy is retained.`));
+    if (node(parentId)?.connection)
+        void sync
+            .created(n.id)
+            .catch((error) =>
+                viewer.toast(`Could not enroll the new document: ${error.message}. Its local copy is retained.`),
+            );
     return n;
 }
 
@@ -156,7 +230,9 @@ export async function unlink(id: string) {
 // refresh the stamp. `request` re-reads unconditionally and may prompt for permission.
 async function readChangedFile(n: TreeNode, request = false) {
     const handle = n.handle!;
-    const permission = await (request ? handle.requestPermission?.({ mode: 'read' }) : handle.queryPermission?.({ mode: 'read' }));
+    const permission = await (request
+        ? handle.requestPermission?.({ mode: 'read' })
+        : handle.queryPermission?.({ mode: 'read' }));
     if (permission !== 'granted') {
         if (request) viewer.toast('Read permission was not granted');
         return null;
@@ -164,8 +240,12 @@ async function readChangedFile(n: TreeNode, request = false) {
     const file = await handle.getFile();
     if (!request && file.lastModified === n.stamp) return null;
     const text = await file.text();
-    const previous = n.id === state.currentId ? viewer.currentText() : (await db.getText(n.id)) ?? '';
-    if (text === previous && !request) { n.stamp = file.lastModified; await save([n]); return null; }
+    const previous = n.id === state.currentId ? viewer.currentText() : ((await db.getText(n.id)) ?? '');
+    if (text === previous && !request) {
+        n.stamp = file.lastModified;
+        await save([n]);
+        return null;
+    }
     return { text, previous, stamp: file.lastModified };
 }
 
@@ -175,7 +255,13 @@ async function syncFromDisk(n: TreeNode, request = false) {
     if (!change) return false;
     await rebase(n, change.previous, change.text);
     await setOpened(n, change.text);
-    Object.assign(n, { stamp: change.stamp, dirty: false, updatedAt: now(), threads: openThreads(change.text), size: textBytes(change.text) });
+    Object.assign(n, {
+        stamp: change.stamp,
+        dirty: false,
+        updatedAt: now(),
+        threads: openThreads(change.text),
+        size: textBytes(change.text),
+    });
     await save([n], { [n.id]: change.text });
     viewer.toast(`Reloaded ${n.handle!.name} from disk`);
     return true;
@@ -189,9 +275,16 @@ export async function openDoc(id: string, input?: InputOperation) {
     const operation = input ?? beginInput();
     if (!operation.current()) return;
     if (state.currentId && state.currentId !== id) await viewer.flush();
-    if (viewer.hasConnectionDraftConflict()) { viewer.toast('Save or download the draft before switching documents.'); return; }
+    if (viewer.hasConnectionDraftConflict()) {
+        viewer.toast('Save or download the draft before switching documents.');
+        return;
+    }
     if (!operation.current()) return;
-    if (n.handle && !n.dirty && !n.connection) { try { await syncFromDisk(n); } catch {} }
+    if (n.handle && !n.dirty && !n.connection) {
+        try {
+            await syncFromDisk(n);
+        } catch {}
+    }
     if (!operation.current()) return;
     const text = (await db.getText(id)) ?? '';
     if (!operation.current() || !node(id)) return;
@@ -199,8 +292,19 @@ export async function openDoc(id: string, input?: InputOperation) {
     state.folderId = n.parentId;
     expandTo(n.parentId);
     await setRoute(id);
-    viewer.openDocument({ text, name: n.name, handle: n.handle ?? null, stamp: n.stamp ?? 0, dirty: !!n.dirty, readingWidth: n.localReadingWidth ?? n.readingWidth });
-    if (n.connection) { n.manualFileSave = true; await sync.present(id); void sync.opened(id); }
+    viewer.openDocument({
+        text,
+        name: n.name,
+        handle: n.handle ?? null,
+        stamp: n.stamp ?? 0,
+        dirty: !!n.dirty,
+        readingWidth: n.localReadingWidth ?? n.readingWidth,
+    });
+    if (n.connection) {
+        n.manualFileSave = true;
+        await sync.present(id);
+        void sync.opened(id);
+    }
     emit();
 }
 
@@ -215,7 +319,14 @@ export async function reloadFromDisk(id: string) {
 async function reopen(n: TreeNode) {
     const text = (await db.getText(n.id)) ?? '';
     if (state.currentId !== n.id || !node(n.id)) return;
-    viewer.openDocument({ text, name: n.name, handle: n.handle ?? null, stamp: n.stamp ?? 0, dirty: !!n.dirty, readingWidth: n.localReadingWidth ?? n.readingWidth });
+    viewer.openDocument({
+        text,
+        name: n.name,
+        handle: n.handle ?? null,
+        stamp: n.stamp ?? 0,
+        dirty: !!n.dirty,
+        readingWidth: n.localReadingWidth ?? n.readingWidth,
+    });
 }
 
 // Linked files exist only where the File System Access pickers do (Chromium); Firefox and
@@ -224,14 +335,18 @@ async function reopen(n: TreeNode) {
 // Switch to FileSystemObserver once it is Baseline.
 const LIVE_KEY = 'mars.liveFiles';
 let live = false;
-try { live = localStorage.getItem(LIVE_KEY) === '1'; } catch {}
+try {
+    live = localStorage.getItem(LIVE_KEY) === '1';
+} catch {}
 if ('showOpenFilePicker' in window) {
     const input = $<HTMLInputElement>('optLiveFiles');
     $('optLiveFilesWrap').hidden = false;
     input.checked = live;
     input.addEventListener('change', () => {
         live = input.checked;
-        try { localStorage.setItem(LIVE_KEY, live ? '1' : ''); } catch {}
+        try {
+            localStorage.setItem(LIVE_KEY, live ? '1' : '');
+        } catch {}
     });
 }
 const notified = new Map<string, number>(); // doc id -> file stamp already announced
@@ -245,14 +360,20 @@ setInterval(async () => {
         await viewer.flush();
         if (n.dirty || n !== current()) return;
         if (live) {
-            if (await syncFromDisk(n)) { await reopen(n); emit(); }
+            if (await syncFromDisk(n)) {
+                await reopen(n);
+                emit();
+            }
             return;
         }
         const change = await readChangedFile(n);
         if (!change || notified.get(n.id) === change.stamp) return;
         notified.set(n.id, change.stamp);
         viewer.toast(`${n.handle.name} changed on disk`, { label: 'Reload', run: () => reloadFromDisk(n.id) });
-    } catch {} finally { polling = false; }
+    } catch {
+    } finally {
+        polling = false;
+    }
 }, 2000);
 
 export function closeDoc() {
@@ -274,10 +395,15 @@ export function detach() {
 export async function setReadingWidth(width: ReadingWidth) {
     const n = current();
     if (!n || !validWidth(width)) return;
-    if (n.connection) { n.localReadingWidth = width; await save([n]); return; }
+    if (n.connection) {
+        n.localReadingWidth = width;
+        await save([n]);
+        return;
+    }
     if (n.readingWidth === width) return;
     n.readingWidth = width;
-    if (n.connection) await sync.metadata(n.id); else await save([n]);
+    if (n.connection) await sync.metadata(n.id);
+    else await save([n]);
     if (db.isTemporaryStorage()) await setRoute(n.id);
 }
 
@@ -289,28 +415,42 @@ export async function adoptRemoteChange(ids: string[]) {
     if (!n || n.kind !== 'doc' || n.connection || !ids.includes(n.id) || db.isTemporaryStorage()) return;
     const text = (await db.getText(n.id)) ?? '';
     if (n !== current() || (text === viewer.currentText() && n.name === viewer.currentName())) return;
-    if (viewer.applyConnectionProjection({ text, name: n.name })) { staleNotified.delete(n.id); return; }
+    if (viewer.applyConnectionProjection({ text, name: n.name })) {
+        staleNotified.delete(n.id);
+        return;
+    }
     // This tab has an unsaved edit or an open editor. Keep it, and tell the reader once.
     if (staleNotified.has(n.id)) return;
     staleNotified.add(n.id);
-    viewer.toast('This document changed in another tab. Your next save here replaces that change. Reload this tab to get it.');
+    viewer.toast(
+        'This document changed in another tab. Your next save here replaces that change. Reload this tab to get it.',
+    );
 }
 
 type PersistedDoc = { text: string; name: string; handle: FileSystemFileHandle | null; stamp: number; dirty: boolean };
 let persistQueue: Promise<void> = Promise.resolve();
 export function serializePersistence<T>(run: () => Promise<T>) {
-    const task = persistQueue.then(run); persistQueue = task.then(() => {}, () => {}); return task;
+    const task = persistQueue.then(run);
+    persistQueue = task.then(
+        () => {},
+        () => {},
+    );
+    return task;
 }
 // Serialized, so two quick saves of an unsaved document create one tree entry.
 export function persist(doc: PersistedDoc) {
-    const run = persistQueue.then(() => persistOne(doc)).catch(async (error) => {
-        if (current()?.connection || db.isTemporaryStorage() || !db.isStorageFailure(error)) throw error;
-        const originId = current()?.originId, readingWidth = viewer.exportReadingWidth();
-        useTemporaryFallback(error);
-        const n = await createDoc({ name: doc.name, text: doc.text, originId, readingWidth, open: false });
-        state.currentId = n.id;
-        await setRoute(n.id); emit();
-    });
+    const run = persistQueue
+        .then(() => persistOne(doc))
+        .catch(async (error) => {
+            if (current()?.connection || db.isTemporaryStorage() || !db.isStorageFailure(error)) throw error;
+            const originId = current()?.originId,
+                readingWidth = viewer.exportReadingWidth();
+            useTemporaryFallback(error);
+            const n = await createDoc({ name: doc.name, text: doc.text, originId, readingWidth, open: false });
+            state.currentId = n.id;
+            await setRoute(n.id);
+            emit();
+        });
     persistQueue = run.catch(() => {});
     return run;
 }
@@ -319,17 +459,33 @@ async function persistOne(doc: PersistedDoc) {
     let n = current();
     if (!n) {
         // Use the returned node: an import or a duplicate can push another node while this save waits.
-        n = await createDoc({ name: doc.name, text: doc.text, handle: doc.handle ?? undefined, stamp: doc.stamp, open: false });
+        n = await createDoc({
+            name: doc.name,
+            text: doc.text,
+            handle: doc.handle ?? undefined,
+            stamp: doc.stamp,
+            open: false,
+        });
         state.currentId = n.id;
         await setRoute(n.id);
         emit();
         return;
     }
-    Object.assign(n, { name: doc.name, updatedAt: now(), threads: openThreads(doc.text), size: textBytes(doc.text), stamp: doc.stamp, dirty: doc.dirty });
-    if (doc.handle) n.handle = doc.handle; else delete n.handle;
+    Object.assign(n, {
+        name: doc.name,
+        updatedAt: now(),
+        threads: openThreads(doc.text),
+        size: textBytes(doc.text),
+        stamp: doc.stamp,
+        dirty: doc.dirty,
+    });
+    if (doc.handle) n.handle = doc.handle;
+    else delete n.handle;
     if (n.connection) {
         if (!['ended', 'attention'].includes(n.connection.phase ?? '')) n.connection.phase = 'waiting';
-        await sync.persist(n, doc.text); emit(); return;
+        await sync.persist(n, doc.text);
+        emit();
+        return;
     }
     await save([n], { [n.id]: doc.text });
     if (db.isTemporaryStorage()) await setRoute(n.id);
@@ -341,18 +497,20 @@ export async function rename(id: string, name: string) {
     if (!n || !name.trim() || n.name === name) return;
     n.name = name.trim();
     n.updatedAt = now();
-    if (n.connection) await sync.metadata(id); else await save([n]);
+    if (n.connection) await sync.metadata(id);
+    else await save([n]);
     if (id === state.currentId) viewer.renameDocument(n.name);
     if (db.isTemporaryStorage() && id === state.currentId) await setRoute(id);
     emit();
 }
 
 export async function move(id: string, parentId: string | null, beforeId: string | null = null) {
-    if ((node(id)?.connection || node(parentId)?.connection) && !await sync.beforeMove(id, parentId)) return false;
+    if ((node(id)?.connection || node(parentId)?.connection) && !(await sync.beforeMove(id, parentId))) return false;
     const changed = moveNode(state.nodes, id, parentId, beforeId);
     if (!changed.length) return false;
     await save(changed);
-    if (node(id)?.connection) await sync.metadata(id); else if (node(parentId)?.connection) await sync.created(id);
+    if (node(id)?.connection) await sync.metadata(id);
+    else if (node(parentId)?.connection) await sync.created(id);
     expandTo(parentId);
     if (id === state.currentId) state.folderId = parentId;
     emit();
@@ -362,7 +520,10 @@ export async function move(id: string, parentId: string | null, beforeId: string
 export async function setOpen(id: string, open: boolean) {
     const n = node(id);
     if (!n || n.kind !== 'folder') return;
-    if (!!n.open === open) { if (open && n.connection) void sync.opened(id).catch(() => {}); return; }
+    if (!!n.open === open) {
+        if (open && n.connection) void sync.opened(id).catch(() => {});
+        return;
+    }
     n.open = open;
     emit();
     await save([n]);
@@ -379,8 +540,18 @@ export async function duplicate(id: string) {
     const n = node(id);
     if (n?.kind !== 'doc') return;
     const text = (await db.getText(id)) ?? '';
-    const copy = await createDoc({ name: `${n.name} (copy)`, text, parentId: n.parentId, open: false, readingWidth: n.readingWidth });
-    await move(copy.id, n.parentId, childrenOf(state.nodes, n.parentId)[childrenOf(state.nodes, n.parentId).indexOf(n) + 1]?.id ?? null);
+    const copy = await createDoc({
+        name: `${n.name} (copy)`,
+        text,
+        parentId: n.parentId,
+        open: false,
+        readingWidth: n.readingWidth,
+    });
+    await move(
+        copy.id,
+        n.parentId,
+        childrenOf(state.nodes, n.parentId)[childrenOf(state.nodes, n.parentId).indexOf(n) + 1]?.id ?? null,
+    );
     await openDoc(copy.id);
 }
 
@@ -395,26 +566,38 @@ export async function remove(id: string) {
     const wasOpen = state.currentId && ids.has(state.currentId) ? state.currentId : null;
     // Leave the tree first, so the smart-search indexer stops writing entries for these documents.
     state.nodes = state.nodes.filter((d) => !ids.has(d.id));
-    try { await db.deleteNodes([...ids]); }
-    catch (error) { state.nodes.push(...gone.filter(node => !state.nodes.some(current => current.id === node.id))); emit(); throw error; }
+    try {
+        await db.deleteNodes([...ids]);
+    } catch (error) {
+        state.nodes.push(...gone.filter((node) => !state.nodes.some((current) => current.id === node.id)));
+        emit();
+        throw error;
+    }
     if (state.folderId && ids.has(state.folderId)) state.folderId = n.parentId;
-    if (wasOpen) closeDoc(); else emit();
+    if (wasOpen) closeDoc();
+    else emit();
     return async () => {
         state.nodes.push(...gone);
         await save(gone, texts);
-        if (wasOpen) await openDoc(wasOpen); else emit();
+        if (wasOpen) await openDoc(wasOpen);
+        else emit();
     };
 }
 
-export const docText = async (id: string) => (id === state.currentId ? viewer.currentText() : (await db.getText(id)) ?? '');
+export const docText = async (id: string) =>
+    id === state.currentId ? viewer.currentText() : ((await db.getText(id)) ?? '');
 
 export async function findOrCreateFolder(name: string, parentId: string | null) {
-    return state.nodes.find((n) => n.kind === 'folder' && n.parentId === parentId && n.name === name) ?? createFolder(name, parentId);
+    return (
+        state.nodes.find((n) => n.kind === 'folder' && n.parentId === parentId && n.name === name) ??
+        createFolder(name, parentId)
+    );
 }
 
 export function uniqueName(name: string, parentId: string | null) {
     const taken = new Set(childrenOf(state.nodes, parentId).map((n) => n.name));
-    let out = name, i = 2;
+    let out = name,
+        i = 2;
     while (taken.has(out)) out = `${name} (${i++})`;
     return out;
 }

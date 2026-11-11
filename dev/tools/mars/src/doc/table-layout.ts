@@ -6,9 +6,12 @@ export function tableMetadataHtml(text: string): string | null {
     const match = text.match(/^\s*<!--\s*su-table\s+([^\r\n]*?)\s*-->\s*$/);
     if (!match) return null;
     try {
-        const value = JSON.parse(match[1]), widths = metadataWidths(match[1], value?.cols?.length ?? 0);
+        const value = JSON.parse(match[1]),
+            widths = metadataWidths(match[1], value?.cols?.length ?? 0);
         return widths ? `<span data-su-table-layout="${widths.join(',')}" hidden></span>` : null;
-    } catch { return null; }
+    } catch {
+        return null;
+    }
 }
 
 export function setTableWidths(table: HTMLTableElement, widths: number[] | null) {
@@ -18,7 +21,9 @@ export function setTableWidths(table: HTMLTableElement, widths: number[] | null)
     const group = document.createElement('colgroup');
     group.dataset.suTable = '';
     for (const width of widths) {
-        const col = document.createElement('col'); col.style.width = `${width * 100}%`; group.append(col);
+        const col = document.createElement('col');
+        col.style.width = `${width * 100}%`;
+        group.append(col);
     }
     table.prepend(group);
 }
@@ -28,20 +33,40 @@ export function applyTableLayouts(root: HTMLElement, forExport: boolean) {
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_COMMENT);
     const markers: { node: Comment | HTMLElement; metadata: string }[] = [];
     while (walker.nextNode()) {
-        const node = walker.currentNode as Comment, match = node.data.match(/^\s*su-table\s+([^\r\n]*?)\s*$/);
+        const node = walker.currentNode as Comment,
+            match = node.data.match(/^\s*su-table\s+([^\r\n]*?)\s*$/);
         if (match) markers.push({ node, metadata: match[1] });
     }
-    for (const node of root.querySelectorAll<HTMLElement>('[data-su-table-layout]')) markers.push({ node,
-        metadata: JSON.stringify({ v: 1, cols: node.getAttribute('data-su-table-layout')!.split(',').map(Number) }) });
+    for (const node of root.querySelectorAll<HTMLElement>('[data-su-table-layout]'))
+        markers.push({
+            node,
+            metadata: JSON.stringify({ v: 1, cols: node.getAttribute('data-su-table-layout')!.split(',').map(Number) }),
+        });
     for (const { node, metadata } of markers) {
         const parent = node.parentElement;
-        const block = parent?.matches('.su-block') && [...parent.childNodes].every((n) => n === node || n.nodeType === Node.COMMENT_NODE || (n.nodeType === Node.TEXT_NODE && !n.textContent?.trim())) ? parent : null;
+        const block =
+            parent?.matches('.su-block') &&
+            [...parent.childNodes].every(
+                (n) =>
+                    n === node ||
+                    n.nodeType === Node.COMMENT_NODE ||
+                    (n.nodeType === Node.TEXT_NODE && !n.textContent?.trim()),
+            )
+                ? parent
+                : null;
         let next: ChildNode | null = (block ?? node).nextSibling;
         while (next?.nodeType === Node.TEXT_NODE && !next.textContent?.trim()) next = next.nextSibling;
         const element = next instanceof HTMLElement ? next : null;
-        const table = element instanceof HTMLTableElement ? element
-            : element?.matches('.su-block') && element.firstElementChild instanceof HTMLTableElement ? element.firstElementChild : null;
-        if (!table) { if (node instanceof HTMLElement) node.remove(); continue; }
+        const table =
+            element instanceof HTMLTableElement
+                ? element
+                : element?.matches('.su-block') && element.firstElementChild instanceof HTMLTableElement
+                  ? element.firstElementChild
+                  : null;
+        if (!table) {
+            if (node instanceof HTMLElement) node.remove();
+            continue;
+        }
         const widths = metadataWidths(metadata, table.rows[0]?.cells.length ?? 0);
         setTableWidths(table, widths);
         if (block && !forExport && element) {

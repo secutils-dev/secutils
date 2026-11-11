@@ -4,9 +4,16 @@ import type { TreeNode } from '../tree/model.ts';
 import type { Thread } from '../share/merge.ts';
 export { connectionStates } from './status.ts';
 let module: Promise<typeof import('./manager.ts')> | null = null;
-const api = () => module ??= import('./manager.ts');
-export const labels = { waiting: 'Saved locally · waiting to sync', working: 'Syncing', current: 'Up to date', offline: 'Offline · changes saved locally', attention: 'Needs attention', ended: 'Local copy · connection ended' };
-export const label = (node?: TreeNode) => node?.connection ? labels[node.connection.phase ?? 'waiting'] : '';
+const api = () => (module ??= import('./manager.ts'));
+export const labels = {
+    waiting: 'Saved locally · waiting to sync',
+    working: 'Syncing',
+    current: 'Up to date',
+    offline: 'Offline · changes saved locally',
+    attention: 'Needs attention',
+    ended: 'Local copy · connection ended',
+};
+export const label = (node?: TreeNode) => (node?.connection ? labels[node.connection.phase ?? 'waiting'] : '');
 export const enroll = (id: string) => api().then((m) => m.enroll(id));
 export const details = (id: string) => api().then((m) => m.details(id));
 export const persist = (node: TreeNode, text: string) => api().then((m) => m.persist(node, text));
@@ -23,18 +30,25 @@ export const isConnectionLocation = (url: string) => {
     const params = new URLSearchParams(new URL(url).hash.slice(1));
     return params.has('sync') || params.has('invite') || params.has('live');
 };
-export const receiveLocation = (url: string) => isConnectionLocation(url) ? api().then((m) => m.receiveLocation(url)) : Promise.resolve(false);
+export const receiveLocation = (url: string) =>
+    isConnectionLocation(url) ? api().then((m) => m.receiveLocation(url)) : Promise.resolve(false);
 export const undo = (id: string, redo = false) => api().then((m) => m.undo(id, redo));
 export const live = (id: string) => api().then((m) => m.live(id));
-export const liveLinks = (id: string) => api().then(m => m.liveLinks(id));
-export const createLiveLink = (id: string, permission: 'view' | 'comment' | 'edit', ttl: number, format: 'short' | 'full') => api().then(m => m.createLiveLink(id, permission, ttl, format));
-export const liveLinkInfo = (id: string) => api().then(m => m.liveLinkInfo(id));
-export const forwardLiveLink = (id: string) => api().then(m => m.forwardLiveLink(id));
+export const liveLinks = (id: string) => api().then((m) => m.liveLinks(id));
+export const createLiveLink = (
+    id: string,
+    permission: 'view' | 'comment' | 'edit',
+    ttl: number,
+    format: 'short' | 'full',
+) => api().then((m) => m.createLiveLink(id, permission, ttl, format));
+export const liveLinkInfo = (id: string) => api().then((m) => m.liveLinkInfo(id));
+export const forwardLiveLink = (id: string) => api().then((m) => m.forwardLiveLink(id));
 export const saveLive = (id: string) => api().then((m) => m.saveLive(id));
 export const remove = (id: string, remote = false) => api().then((m) => m.remove(id, remote));
-export const deletionInfo = (ids: string[]) => api().then(m => m.deletionInfo(ids));
+export const deletionInfo = (ids: string[]) => api().then((m) => m.deletionInfo(ids));
 export const restoreRecovery = (file?: File) => api().then((m) => m.restoreRecovery(file));
-export const exportRecovery = (ids: string[], password: string) => api().then(m => m.exportRecovery(ids, password));
+export const exportRecovery = (ids: string[], password: string) => api().then((m) => m.exportRecovery(ids, password));
 export const markReviewed = (id: string) => api().then((m) => m.markReviewed(id));
-export const undoReview = (id: string, before: Thread[], after: Thread[]) => api().then((m) => m.undoReview(id, before, after));
+export const undoReview = (id: string, before: Thread[], after: Thread[]) =>
+    api().then((m) => m.undoReview(id, before, after));
 export const sharedWidth = (id: string, width: number | 'full') => api().then((m) => m.sharedWidth(id, width));

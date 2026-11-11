@@ -46,36 +46,81 @@ export function printDocument(content: string, title: string, settings: PdfSetti
     return `<!DOCTYPE html><html lang="en" data-theme="light"><head>${head(title, content, printCss(settings))}</head><body><main>${article.outerHTML}</main>${watermark}${jsonTag('mars-print-config', { operation, ...pageDimensions(settings) })}${scriptTag(printRuntime)}</body></html>`;
 }
 
-export interface PreparedFrame { frame: HTMLIFrameElement; ready: Promise<void>; print(): void; dispose(): void }
+export interface PreparedFrame {
+    frame: HTMLIFrameElement;
+    ready: Promise<void>;
+    print(): void;
+    dispose(): void;
+}
 
 // Opaque srcdoc: communicate through source-window + operation checks, never child globals.
-export function prepareFrame(container: HTMLElement, html: string, operation: string, format: 'html' | 'pdf', onPrint?: () => void, onAfterPrint?: () => void): PreparedFrame {
+export function prepareFrame(
+    container: HTMLElement,
+    html: string,
+    operation: string,
+    format: 'html' | 'pdf',
+    onPrint?: () => void,
+    onAfterPrint?: () => void,
+): PreparedFrame {
     const frame = document.createElement('iframe');
     frame.title = format === 'html' ? 'Standalone HTML preview' : 'Paginated PDF preview';
     frame.sandbox.value = format === 'pdf' ? PRINT_SANDBOX : 'allow-scripts allow-modals allow-popups allow-downloads';
     frame.setAttribute('allow', 'fullscreen; clipboard-write');
     frame.referrerPolicy = 'no-referrer';
-    let settled = false, succeeded = false, printing = false, dispose = () => {};
+    let settled = false,
+        succeeded = false,
+        printing = false,
+        dispose = () => {};
     const ready = new Promise<void>((resolve, reject) => {
-        const fail = (error: Error) => { if (!settled) { settled = true; clearTimeout(timer); reject(error); } };
-        const timer = setTimeout(() => fail(new Error('Preview preparation timed out. Retry when the network is available.')), 60000);
+        const fail = (error: Error) => {
+            if (!settled) {
+                settled = true;
+                clearTimeout(timer);
+                reject(error);
+            }
+        };
+        const timer = setTimeout(
+            () => fail(new Error('Preview preparation timed out. Retry when the network is available.')),
+            60000,
+        );
         const receive = (event: MessageEvent) => {
-            if (event.source !== frame.contentWindow || event.data?.kind !== MESSAGE_KIND || event.data.operation !== operation) return;
-            if (event.data.type === 'ready' && !settled) { settled = succeeded = true; clearTimeout(timer); resolve(); }
-            else if (event.data.type === 'error') fail(new Error(String(event.data.message || 'Preview preparation failed.')));
-            else if (event.data.type === 'print-requested' && succeeded) { printing = true; onPrint?.(); }
-            else if (event.data.type === 'afterprint' && printing) { printing = false; onAfterPrint?.(); }
+            if (
+                event.source !== frame.contentWindow ||
+                event.data?.kind !== MESSAGE_KIND ||
+                event.data.operation !== operation
+            )
+                return;
+            if (event.data.type === 'ready' && !settled) {
+                settled = succeeded = true;
+                clearTimeout(timer);
+                resolve();
+            } else if (event.data.type === 'error')
+                fail(new Error(String(event.data.message || 'Preview preparation failed.')));
+            else if (event.data.type === 'print-requested' && succeeded) {
+                printing = true;
+                onPrint?.();
+            } else if (event.data.type === 'afterprint' && printing) {
+                printing = false;
+                onAfterPrint?.();
+            }
         };
         window.addEventListener('message', receive);
         dispose = () => {
             fail(new DOMException('Preview cancelled', 'AbortError'));
-            clearTimeout(timer); window.removeEventListener('message', receive); frame.remove();
+            clearTimeout(timer);
+            window.removeEventListener('message', receive);
+            frame.remove();
         };
         container.append(frame);
         frame.srcdoc = html;
     });
-    return { frame, ready, dispose: () => dispose(), print: () => {
-        if (!succeeded || !frame.isConnected) return;
-        frame.contentWindow?.postMessage({ kind: MESSAGE_KIND, operation, type: 'print' }, '*');
-    } };
+    return {
+        frame,
+        ready,
+        dispose: () => dispose(),
+        print: () => {
+            if (!succeeded || !frame.isConnected) return;
+            frame.contentWindow?.postMessage({ kind: MESSAGE_KIND, operation, type: 'print' }, '*');
+        },
+    };
 }

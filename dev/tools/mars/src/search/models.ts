@@ -35,17 +35,63 @@ export interface Model {
 // Picked by the evaluation in eval/ (see mars/README.md). Licenses must allow any use
 // (MARS is a public tool).
 export const MODELS = {
-    fast: { label: 'Best speed', name: 'GTE Small 33M', id: 'Xenova/gte-small', file: 'model', dtype: 'q8', bytes: 35e6, gpuDtype: 'fp16', gpuBytes: 68e6, langs: 'English', query: '', doc: () => '', dims: 0, min: 0.81, gpu: false },
-    best: { label: 'Best quality', name: 'EmbeddingGemma 2 270M', id: 'onnx-community/embeddinggemma-2-ONNX', file: 'model', dtype: 'q4', bytes: 207e6, gpuDtype: 'q4f16', gpuBytes: 190e6, langs: '100+ languages', query: 'task: search result | query: ', doc: (title) => `title: ${title || 'none'} | text: `, dims: 256, min: 0.7, gpu: true },
+    fast: {
+        label: 'Best speed',
+        name: 'GTE Small 33M',
+        id: 'Xenova/gte-small',
+        file: 'model',
+        dtype: 'q8',
+        bytes: 35e6,
+        gpuDtype: 'fp16',
+        gpuBytes: 68e6,
+        langs: 'English',
+        query: '',
+        doc: () => '',
+        dims: 0,
+        min: 0.81,
+        gpu: false,
+    },
+    best: {
+        label: 'Best quality',
+        name: 'EmbeddingGemma 2 270M',
+        id: 'onnx-community/embeddinggemma-2-ONNX',
+        file: 'model',
+        dtype: 'q4',
+        bytes: 207e6,
+        gpuDtype: 'q4f16',
+        gpuBytes: 190e6,
+        langs: '100+ languages',
+        query: 'task: search result | query: ',
+        doc: (title) => `title: ${title || 'none'} | text: `,
+        dims: 256,
+        min: 0.7,
+        gpu: true,
+    },
 } satisfies Record<string, Model>;
 export type ModelKey = keyof typeof MODELS;
 
 // The ONNX file a dtype loads, as Transformers.js names them.
-const SUFFIX: Record<string, string> = { fp32: '', fp16: '_fp16', q8: '_quantized', int8: '_int8', uint8: '_uint8', q4: '_q4', q4f16: '_q4f16', bnb4: '_bnb4' };
+const SUFFIX: Record<string, string> = {
+    fp32: '',
+    fp16: '_fp16',
+    q8: '_quantized',
+    int8: '_int8',
+    uint8: '_uint8',
+    q4: '_q4',
+    q4f16: '_q4f16',
+    bnb4: '_bnb4',
+};
 export const onnxFile = (m: Model, dtype: string) => `${m.file}${SUFFIX[dtype] ?? `_${dtype}`}.onnx`;
 
-export interface Gpu { ok: boolean; f16: boolean }
-export interface Placement { device: 'webgpu' | 'wasm'; dtype: string; bytes: number }
+export interface Gpu {
+    ok: boolean;
+    f16: boolean;
+}
+export interface Placement {
+    device: 'webgpu' | 'wasm';
+    dtype: string;
+    bytes: number;
+}
 
 // Where a model runs and which weights it loads, or null when it cannot run here. Per chunk
 // in Chrome on an Apple M-series GPU, GTE Small takes 7 ms at fp16 on WebGPU, 78 ms at q8 on
@@ -68,7 +114,8 @@ export function indexChunks(text: string): Chunk[] {
     return [...chunkDoc(body).filter(embeddable), ...threadChunks(text, body, 3)];
 }
 
-export const passageInput = (m: Model, title: string, c: Chunk) => m.doc(title) + (c.embed ?? c.text).slice(0, MAX_EMBED_CHARS);
+export const passageInput = (m: Model, title: string, c: Chunk) =>
+    m.doc(title) + (c.embed ?? c.text).slice(0, MAX_EMBED_CHARS);
 export const queryInput = (m: Model, query: string) => m.query + query;
 
 // Builds the embedding function from a Transformers.js module (`tf`). The worker runs this
@@ -84,7 +131,13 @@ export async function createEncoder(
     // encoders (300 MB at q4).
     config.vision_config = config.audio_config = null;
     const tokenizer = await tf.AutoTokenizer.from_pretrained(data.model, { progress_callback });
-    const model = await tf.AutoModel.from_pretrained(data.model, { config, dtype: data.dtype, device, model_file_name: data.file, progress_callback });
+    const model = await tf.AutoModel.from_pretrained(data.model, {
+        config,
+        dtype: data.dtype,
+        device,
+        model_file_name: data.file,
+        progress_callback,
+    });
     return async (texts: string[]): Promise<{ dims: number[]; data: Float32Array }> => {
         const inputs = await tokenizer(texts, { padding: true, truncation: true });
         const out = await model(inputs);
@@ -107,8 +160,16 @@ export function toVectors(m: Model, dims: number, data: Float32Array, count: num
     });
 }
 
-export interface Hit { id: string; score: number; start: number; text: string }
-export interface Indexed { id: string; chunks: { start: number; text: string; v: Float32Array }[] }
+export interface Hit {
+    id: string;
+    score: number;
+    start: number;
+    text: string;
+}
+export interface Indexed {
+    id: string;
+    chunks: { start: number; text: string; v: Float32Array }[];
+}
 
 // The best-matching passage of each document, best first: what the sidebar shows. With
 // `min`, documents scoring lower are left out.

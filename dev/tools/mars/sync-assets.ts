@@ -2,7 +2,12 @@
 // The compatibility shims stay inside the dispatched branch, not on the sandbox global.
 export function inlineMarsSync(script: string, compiled: string): string {
     if (!script.includes('// @su:mars-sync')) return script;
-    return script.replace('(() => {', '(async () => {').replaceAll('secutils.kv', 'marsKv').replace('// @su:mars-sync', () => `
+    return script
+        .replace('(() => {', '(async () => {')
+        .replaceAll('secutils.kv', 'marsKv')
+        .replace(
+            '// @su:mars-sync',
+            () => `
     let marsKv = secutils.kv;
     if ((context.path || '').startsWith('/sync/') || context.headers?.['x-mars-test-scope'] || context.headers?.['x-mars-test-token']) {
         const TextEncoder = class { encode(value) { return Deno.core.encode(value); } };
@@ -13,5 +18,6 @@ export function inlineMarsSync(script: string, compiled: string): string {
         const runtime = prepared.runtime || secutils;
         marsKv = runtime.kv;
         if ((context.path || '').startsWith('/sync/')) return MARS_SYNC.handle(context, runtime);
-    }`);
+    }`,
+        );
 }

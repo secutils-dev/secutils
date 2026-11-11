@@ -21,7 +21,7 @@ export const toBase64Url = (bytes: Uint8Array) => {
 
 export const fromBase64Url = (str: string) => {
     const b64 = str.replace(/-/g, '+').replace(/_/g, '/');
-    const bin = atob(b64 + '==='.slice(0, (4 - b64.length % 4) % 4));
+    const bin = atob(b64 + '==='.slice(0, (4 - (b64.length % 4)) % 4));
     return Uint8Array.from(bin, (c) => c.charCodeAt(0));
 };
 
@@ -43,32 +43,46 @@ export async function encodeStateBytes(text: string) {
 export const MAX_STATE_BYTES = 64 * 1024 * 1024;
 
 async function inflate(bytes: Uint8Array, limit: number) {
-    const reader = new Blob([bytes as BlobPart]).stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader();
+    const reader = new Blob([bytes as BlobPart])
+        .stream()
+        .pipeThrough(new DecompressionStream('deflate-raw'))
+        .getReader();
     const chunks: Uint8Array[] = [];
     let total = 0;
     for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
         total += value.length;
-        if (total > limit) { await reader.cancel(); throw new Error('State is too large'); }
+        if (total > limit) {
+            await reader.cancel();
+            throw new Error('State is too large');
+        }
         chunks.push(value);
     }
     const out = new Uint8Array(total);
     let offset = 0;
-    for (const chunk of chunks) { out.set(chunk, offset); offset += chunk.length; }
+    for (const chunk of chunks) {
+        out.set(chunk, offset);
+        offset += chunk.length;
+    }
     return out;
 }
 
 export async function decodeStateBytes(bytes: Uint8Array, limit = MAX_STATE_BYTES) {
     if (bytes.length < 4) throw new Error('Truncated state');
     // The prefix is the declared size. Reject an oversized claim early, and bound the actual output too.
-    if (new DataView(bytes.buffer, bytes.byteOffset, 4).getUint32(0, true) > limit) throw new Error('State is too large');
+    if (new DataView(bytes.buffer, bytes.byteOffset, 4).getUint32(0, true) > limit)
+        throw new Error('State is too large');
     return dec.decode(await inflate(bytes.subarray(4), limit));
 }
 
 export const encodeState = async (text: string) => toBase64Url(await encodeStateBytes(text));
 export const decodeState = async (str: string) => {
-    try { return await decodeStateBytes(fromBase64Url(str)); } catch { return null; }
+    try {
+        return await decodeStateBytes(fromBase64Url(str));
+    } catch {
+        return null;
+    }
 };
 
 export interface SharedDoc {
@@ -92,13 +106,27 @@ export interface Bundle {
 export function parseBundle(json: string): Bundle | null {
     try {
         const b = JSON.parse(json);
-        const docOk = (d: SharedDoc) => d && typeof d.text === 'string' && typeof d.name === 'string'
-            && typeof d.originId === 'string' && Array.isArray(d.path) && d.path.every((p) => typeof p === 'string');
-        if (b?.v !== 1 || !['doc', 'folder'].includes(b.kind) || typeof b.name !== 'string' || !Array.isArray(b.docs) || !b.docs.every(docOk)) return null;
+        const docOk = (d: SharedDoc) =>
+            d &&
+            typeof d.text === 'string' &&
+            typeof d.name === 'string' &&
+            typeof d.originId === 'string' &&
+            Array.isArray(d.path) &&
+            d.path.every((p) => typeof p === 'string');
+        if (
+            b?.v !== 1 ||
+            !['doc', 'folder'].includes(b.kind) ||
+            typeof b.name !== 'string' ||
+            !Array.isArray(b.docs) ||
+            !b.docs.every(docOk)
+        )
+            return null;
         for (const doc of b.docs) if (!validWidth(doc.readingWidth)) delete doc.readingWidth;
         if (b.temporary !== true) delete b.temporary;
         return b;
-    } catch { return null; }
+    } catch {
+        return null;
+    }
 }
 
 // ---- Short links ----
@@ -110,7 +138,10 @@ const sha256 = async (...parts: (string | Uint8Array)[]) =>
 
 export async function deriveShortLink(secret: Uint8Array) {
     const [idHash, keyBytes] = await Promise.all([sha256('id', secret), sha256('key', secret)]);
-    const key = await crypto.subtle.importKey('raw', keyBytes as BufferSource, 'AES-GCM', false, ['encrypt', 'decrypt']);
+    const key = await crypto.subtle.importKey('raw', keyBytes as BufferSource, 'AES-GCM', false, [
+        'encrypt',
+        'decrypt',
+    ]);
     return { id: toBase64Url(idHash.subarray(0, 12)), key };
 }
 
@@ -132,9 +163,13 @@ export async function openSealed(secretParam: string, blob: string): Promise<Bun
         if (secret.length !== 12) return null;
         const { key } = await deriveShortLink(secret);
         const envelope = fromBase64Url(blob);
-        const plain = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: envelope.subarray(0, 12) }, key, envelope.subarray(12)));
+        const plain = new Uint8Array(
+            await crypto.subtle.decrypt({ name: 'AES-GCM', iv: envelope.subarray(0, 12) }, key, envelope.subarray(12)),
+        );
         return parseBundle(await decodeStateBytes(plain));
-    } catch { return null; }
+    } catch {
+        return null;
+    }
 }
 
 export const hashText = async (text: string) => toBase64Url(await sha256(text));

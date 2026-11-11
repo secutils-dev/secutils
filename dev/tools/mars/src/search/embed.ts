@@ -3,7 +3,21 @@
 // (one `vec:<id>` entry per document) lives in IndexedDB and follows document edits.
 import * as app from '../app.ts';
 import * as db from '../store/db.ts';
-import { createEncoder, type Gpu, type Hit, indexChunks, MODELS, type ModelKey, onnxFile, passageInput, placement, queryInput, rank, toVectors, TRANSFORMERS_VERSION } from './models.ts';
+import {
+    createEncoder,
+    type Gpu,
+    type Hit,
+    indexChunks,
+    MODELS,
+    type ModelKey,
+    onnxFile,
+    passageInput,
+    placement,
+    queryInput,
+    rank,
+    toVectors,
+    TRANSFORMERS_VERSION,
+} from './models.ts';
 
 export { MODELS, type Hit, type ModelKey };
 
@@ -15,27 +29,55 @@ const INDEX_VERSION = 5;
 const indexVersion = (key: ModelKey) => `${INDEX_VERSION}:${MODELS[key].id}:${MODELS[key].dtype}`;
 const SETTING_KEY = 'mars.smartSearch';
 const PAUSE_KEY = 'mars.indexingPaused';
-const readPaused = () => { try { return localStorage.getItem(PAUSE_KEY) === '1'; } catch { return false; } };
+const readPaused = () => {
+    try {
+        return localStorage.getItem(PAUSE_KEY) === '1';
+    } catch {
+        return false;
+    }
+};
 let paused = readPaused();
 export function enabledModel(): ModelKey | null {
     try {
         const v = localStorage.getItem(SETTING_KEY);
         return v && v in MODELS ? (v as ModelKey) : null;
-    } catch { return null; }
+    } catch {
+        return null;
+    }
 }
 
-interface Entry { id: string; model: ModelKey; v?: number | string; at: number; chunks: { start: number; text: string; v: Float32Array }[] }
+interface Entry {
+    id: string;
+    model: ModelKey;
+    v?: number | string;
+    at: number;
+    chunks: { start: number; text: string; v: Float32Array }[];
+}
 
 const index = new Map<string, Entry>();
 // What smart search is doing: `label` fits the sidebar badge, `text` is the full sentence.
-export type Status = { state: 'download' | 'prepare' | 'index' | 'paused' | 'error'; label: string; text: string } | null;
+export type Status = {
+    state: 'download' | 'prepare' | 'index' | 'paused' | 'error';
+    label: string;
+    text: string;
+} | null;
 const statusListeners = new Set<(s: Status) => void>();
-export const onStatus = (fn: (s: Status) => void) => { statusListeners.add(fn); fn(currentStatus); };
+export const onStatus = (fn: (s: Status) => void) => {
+    statusListeners.add(fn);
+    fn(currentStatus);
+};
 let currentStatus: Status = null;
-const status = (s: Status) => { currentStatus = s; for (const fn of statusListeners) fn(s); };
+const status = (s: Status) => {
+    currentStatus = s;
+    for (const fn of statusListeners) fn(s);
+};
 const PAUSED: Status = { state: 'paused', label: 'Paused', text: 'Smart-search indexing is paused' };
 if (paused && enabledModel()) currentStatus = PAUSED;
-const unavailable = (err: unknown): Status => ({ state: 'error', label: 'Unavailable', text: `Smart search is unavailable: ${(err as Error)?.message ?? err}` });
+const unavailable = (err: unknown): Status => ({
+    state: 'error',
+    label: 'Unavailable',
+    text: `Smart search is unavailable: ${(err as Error)?.message ?? err}`,
+});
 
 // ---- Worker ----
 const WORKER = `
@@ -73,18 +115,35 @@ self.onmessage = async ({ data }) => {
 let worker: Worker | null = null;
 let loaded: { key: ModelKey; ready: Promise<void> } | null = null;
 let seq = 0;
-const pending = new Map<number, { resolve: (v: { dims: number; data: Float32Array; device?: string }) => void; reject: (e: Error) => void; progress?: (p: { file: string; loaded: number; total: number }) => void }>();
+const pending = new Map<
+    number,
+    {
+        resolve: (v: { dims: number; data: Float32Array; device?: string }) => void;
+        reject: (e: Error) => void;
+        progress?: (p: { file: string; loaded: number; total: number }) => void;
+    }
+>();
 
 function call(msg: Record<string, unknown>, progress?: (p: { file: string; loaded: number; total: number }) => void) {
-    worker ??= Object.assign(new Worker(URL.createObjectURL(new Blob([WORKER], { type: 'text/javascript' })), { type: 'module', name: 'mars-smart-search' }), {
-        onmessage: ({ data }: MessageEvent) => {
-            const p = pending.get(data.id);
-            if (!p) return;
-            if (data.progress) { p.progress?.(data.progress); return; }
-            pending.delete(data.id);
-            if (data.error) p.reject(new Error(data.error)); else p.resolve(data);
+    worker ??= Object.assign(
+        new Worker(URL.createObjectURL(new Blob([WORKER], { type: 'text/javascript' })), {
+            type: 'module',
+            name: 'mars-smart-search',
+        }),
+        {
+            onmessage: ({ data }: MessageEvent) => {
+                const p = pending.get(data.id);
+                if (!p) return;
+                if (data.progress) {
+                    p.progress?.(data.progress);
+                    return;
+                }
+                pending.delete(data.id);
+                if (data.error) p.reject(new Error(data.error));
+                else p.resolve(data);
+            },
         },
-    });
+    );
     const id = ++seq;
     return new Promise<{ dims: number; data: Float32Array; device?: string }>((resolve, reject) => {
         pending.set(id, { resolve, reject, progress });
@@ -96,7 +155,11 @@ function call(msg: Record<string, unknown>, progress?: (p: { file: string; loade
 // and headless browsers offer a software fallback adapter, far too slow for embeddings.
 let gpu: Promise<Gpu> | null = null;
 export function gpuInfo() {
-    type Adapter = { isFallbackAdapter?: boolean; info?: { isFallbackAdapter?: boolean }; features?: Set<string> } | null;
+    type Adapter = {
+        isFallbackAdapter?: boolean;
+        info?: { isFallbackAdapter?: boolean };
+        features?: Set<string>;
+    } | null;
     const nav = navigator as unknown as { gpu?: { requestAdapter(): Promise<Adapter> } };
     gpu ??= (nav.gpu?.requestAdapter() ?? Promise.resolve(null))
         .then((a) => {
@@ -115,35 +178,69 @@ export const activeDevice = () => device;
 
 function loadModel(key: ModelKey) {
     if (loaded?.key === key) return loaded.ready;
-    const m = MODELS[key], files = new Map<string, [number, number]>();
+    const m = MODELS[key],
+        files = new Map<string, [number, number]>();
     let line: Status = null;
     // Queries can load the model while indexing is paused; keep the pause badge visible.
-    const show = (s: Status) => { line = s; status(paused ? PAUSED : s); };
+    const show = (s: Status) => {
+        line = s;
+        status(paused ? PAUSED : s);
+    };
     const preparing = (): Status => ({ state: 'prepare', label: 'Preparing', text: `Preparing the ${m.label} model…` });
     // The loading status goes once the model is ready or failed; a status set meanwhile stays.
     // Re-emitting also refreshes the button's device label.
     const settle = () => status(currentStatus === line ? null : currentStatus);
     show(preparing());
-    const ready = placementOf(key).then((p) => {
-        // EmbeddingGemma on WebAssembly takes minutes per document and can run out of memory.
-        if (!p) throw new Error(`the ${m.label} model needs a graphics card (WebGPU), which this browser doesn't offer. Pick another model from the sparkles button.`);
-        return call({ type: 'load', model: m.id, file: m.file, dtype: p.dtype, cpuDtype: m.dtype, device: p.device, gpuOnly: m.gpu }, ({ file, loaded: got, total }) => {
-            files.set(file, [got, total]);
-            const [done, all] = [...files.values()].reduce((s, [a, b]) => [s[0] + a, s[1] + b], [0, 0]);
-            const pct = Math.min(99, Math.round((done / Math.max(all, p.bytes)) * 100));
-            if (all > 1e6 && done < all) show({ state: 'download', label: `Downloading ${pct}%`, text: `Downloading the ${m.label} model… ${pct}%` });
-            else if (all > 1e6 && line?.state !== 'prepare') show(preparing());
+    const ready = placementOf(key)
+        .then((p) => {
+            // EmbeddingGemma on WebAssembly takes minutes per document and can run out of memory.
+            if (!p)
+                throw new Error(
+                    `the ${m.label} model needs a graphics card (WebGPU), which this browser doesn't offer. Pick another model from the sparkles button.`,
+                );
+            return call(
+                {
+                    type: 'load',
+                    model: m.id,
+                    file: m.file,
+                    dtype: p.dtype,
+                    cpuDtype: m.dtype,
+                    device: p.device,
+                    gpuOnly: m.gpu,
+                },
+                ({ file, loaded: got, total }) => {
+                    files.set(file, [got, total]);
+                    const [done, all] = [...files.values()].reduce((s, [a, b]) => [s[0] + a, s[1] + b], [0, 0]);
+                    const pct = Math.min(99, Math.round((done / Math.max(all, p.bytes)) * 100));
+                    if (all > 1e6 && done < all)
+                        show({
+                            state: 'download',
+                            label: `Downloading ${pct}%`,
+                            text: `Downloading the ${m.label} model… ${pct}%`,
+                        });
+                    else if (all > 1e6 && line?.state !== 'prepare') show(preparing());
+                },
+            );
+        })
+        .then((r) => {
+            device = r.device ?? null;
+            settle();
         });
-    }).then((r) => { device = r.device ?? null; settle(); });
     loaded = { key, ready };
-    ready.catch(() => { settle(); if (loaded?.ready === ready) loaded = null; });
+    ready.catch(() => {
+        settle();
+        if (loaded?.ready === ready) loaded = null;
+    });
     return ready;
 }
 
 async function embed(key: ModelKey, texts: string[]) {
     await loadModel(key);
     const { dims, data, device: used } = await call({ type: 'embed', texts });
-    if (used && used !== device) { device = used; status(currentStatus); }
+    if (used && used !== device) {
+        device = used;
+        status(currentStatus);
+    }
     return toVectors(MODELS[key], dims, data, texts.length);
 }
 
@@ -156,7 +253,9 @@ let queued = false;
 let revision = 0;
 export const indexRevision = () => revision;
 const indexedListeners = new Set<() => void>();
-export const onIndexed = (fn: () => void) => { indexedListeners.add(fn); };
+export const onIndexed = (fn: () => void) => {
+    indexedListeners.add(fn);
+};
 export const isPaused = () => paused;
 function setPaused(value: boolean) {
     if (paused === value) return false;
@@ -165,22 +264,29 @@ function setPaused(value: boolean) {
     return true;
 }
 export function pause() {
-    try { localStorage.setItem(PAUSE_KEY, '1'); } catch {}
+    try {
+        localStorage.setItem(PAUSE_KEY, '1');
+    } catch {}
     setPaused(true);
 }
 export function resume() {
-    try { localStorage.removeItem(PAUSE_KEY); } catch {}
+    try {
+        localStorage.removeItem(PAUSE_KEY);
+    } catch {}
     setPaused(false);
     return reindex();
 }
 // Read the latest value, not a queued event's value: a newer toggle may already have won.
-const syncPaused = () => { if (setPaused(readPaused()) && !paused) reindex(); };
+const syncPaused = () => {
+    if (setPaused(readPaused()) && !paused) reindex();
+};
 window.addEventListener('storage', (e) => {
     if (e.storageArea === localStorage && (e.key === PAUSE_KEY || e.key === null)) syncPaused();
 });
 window.addEventListener('pageshow', syncPaused);
 
-let indexStorage = -1, indexModel: ModelKey | null = null;
+let indexStorage = -1,
+    indexModel: ModelKey | null = null;
 async function loadIndex(key: ModelKey) {
     const storage = db.storageGeneration();
     if (indexStorage === storage && indexModel === key) return;
@@ -188,15 +294,22 @@ async function loadIndex(key: ModelKey) {
     if (storage !== db.storageGeneration()) return loadIndex(key);
     index.clear();
     for (const e of entries) if (e?.model === key && e.v === indexVersion(key)) index.set(e.id, e);
-    indexStorage = storage; indexModel = key;
+    indexStorage = storage;
+    indexModel = key;
 }
 
 // Embeds documents whose text changed since they were indexed; one run at a time.
 export function reindex() {
     const key = enabledModel();
     if (!key) return Promise.resolve();
-    if (paused) { status(PAUSED); return Promise.resolve(); }
-    if (indexing) { queued = true; return indexing; }
+    if (paused) {
+        status(PAUSED);
+        return Promise.resolve();
+    }
+    if (indexing) {
+        queued = true;
+        return indexing;
+    }
     queued = false;
     const gen = generation;
     let changed = false;
@@ -206,25 +319,51 @@ export function reindex() {
             const storage = db.storageGeneration();
             const docs = app.state.nodes.filter((n) => n.kind === 'doc');
             const ids = new Set(docs.map((n) => n.id));
-            for (const id of index.keys()) if (!ids.has(id)) { index.delete(id); changed = true; }
+            for (const id of index.keys())
+                if (!ids.has(id)) {
+                    index.delete(id);
+                    changed = true;
+                }
             const current = (e?: Entry) => e?.model === key && e.v === indexVersion(key);
             const stale = docs.filter((n) => index.get(n.id)?.at !== n.updatedAt || !current(index.get(n.id)));
             // Load first, so the status shows the download before "Indexing".
             if (stale.length) await loadModel(key);
             for (const [i, n] of stale.entries()) {
                 if (gen !== generation) return;
-                if (paused) { status(PAUSED); return; }
+                if (paused) {
+                    status(PAUSED);
+                    return;
+                }
                 if (!app.node(n.id)) continue;
-                status({ state: 'index', label: `Indexing ${i + 1}/${stale.length}`, text: `Indexing ${i + 1} of ${stale.length}…` });
+                status({
+                    state: 'index',
+                    label: `Indexing ${i + 1}/${stale.length}`,
+                    text: `Indexing ${i + 1} of ${stale.length}…`,
+                });
                 // Read the timestamp before the text. A save during the awaits then leaves the entry
                 // stale, and the next pass embeds the new text.
                 const at = n.updatedAt;
                 const chunks = indexChunks((await db.getText(n.id)) ?? '');
                 const vectors: Float32Array[] = [];
-                for (let j = 0; j < chunks.length; j += 8) vectors.push(...(await embed(key, chunks.slice(j, j + 8).map((c) => passageInput(MODELS[key], n.name, c)))));
-                if (storage !== db.storageGeneration()) { queued = true; return; }
+                for (let j = 0; j < chunks.length; j += 8)
+                    vectors.push(
+                        ...(await embed(
+                            key,
+                            chunks.slice(j, j + 8).map((c) => passageInput(MODELS[key], n.name, c)),
+                        )),
+                    );
+                if (storage !== db.storageGeneration()) {
+                    queued = true;
+                    return;
+                }
                 if (gen !== generation || !app.node(n.id)) continue;
-                const entry: Entry = { id: n.id, model: key, v: indexVersion(key), at, chunks: chunks.map((c, j) => ({ start: c.start, text: c.text.slice(0, 220), v: vectors[j] })) };
+                const entry: Entry = {
+                    id: n.id,
+                    model: key,
+                    v: indexVersion(key),
+                    at,
+                    chunks: chunks.map((c, j) => ({ start: c.start, text: c.text.slice(0, 220), v: vectors[j] })),
+                };
                 index.set(n.id, entry);
                 changed = true;
                 await db.putSide('vec', n.id, entry);
@@ -234,7 +373,10 @@ export function reindex() {
             if (gen === generation) status(unavailable(err));
         } finally {
             indexing = null;
-            if (changed) { revision++; for (const fn of indexedListeners) fn(); }
+            if (changed) {
+                revision++;
+                for (const fn of indexedListeners) fn();
+            }
             // A model switch or rebuild starts its own run once the old index is cleared.
             if (queued && gen === generation && !paused) reindex();
         }
@@ -292,11 +434,14 @@ export async function removeModel(key: ModelKey) {
 // `force` rebuilds the index even when the model stays the same.
 export async function enable(key: ModelKey, force = false) {
     const previous = enabledModel();
-    try { localStorage.setItem(SETTING_KEY, key); } catch {}
+    try {
+        localStorage.setItem(SETTING_KEY, key);
+    } catch {}
     if (previous !== key || force) {
         generation++;
         index.clear();
-        indexStorage = -1; indexModel = null;
+        indexStorage = -1;
+        indexModel = null;
         await indexing;
         await db.clearSides('vec');
     }
@@ -305,12 +450,17 @@ export async function enable(key: ModelKey, force = false) {
 
 // Turns smart search off and removes the index and every downloaded model.
 export async function disable() {
-    try { localStorage.removeItem(SETTING_KEY); } catch {}
-    try { localStorage.removeItem(PAUSE_KEY); } catch {}
+    try {
+        localStorage.removeItem(SETTING_KEY);
+    } catch {}
+    try {
+        localStorage.removeItem(PAUSE_KEY);
+    } catch {}
     paused = false;
     generation++;
     index.clear();
-    indexStorage = -1; indexModel = null;
+    indexStorage = -1;
+    indexModel = null;
     worker?.terminate();
     worker = null;
     loaded = null;
@@ -325,11 +475,18 @@ let timer: ReturnType<typeof setTimeout> | undefined;
 let scheduledDocs = new Map<string, { at: number; name: string }>();
 app.onChange(() => {
     if (!enabledModel()) return;
-    const docs = app.state.nodes.filter(node => node.kind === 'doc');
-    if (scheduledDocs.size === docs.length && docs.every(node => scheduledDocs.get(node.id)?.at === node.updatedAt && scheduledDocs.get(node.id)?.name === node.name)) return;
+    const docs = app.state.nodes.filter((node) => node.kind === 'doc');
+    if (
+        scheduledDocs.size === docs.length &&
+        docs.every(
+            (node) =>
+                scheduledDocs.get(node.id)?.at === node.updatedAt && scheduledDocs.get(node.id)?.name === node.name,
+        )
+    )
+        return;
     // Connection status and other presentation-only notifications must not keep
     // postponing a document change while multiple synced tabs are open.
-    scheduledDocs = new Map(docs.map(node => [node.id, { at: node.updatedAt, name: node.name }]));
+    scheduledDocs = new Map(docs.map((node) => [node.id, { at: node.updatedAt, name: node.name }]));
     clearTimeout(timer);
     timer = setTimeout(reindex, 2000);
 });

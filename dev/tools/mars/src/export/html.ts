@@ -4,8 +4,11 @@ import { icon } from '../ui/icons.ts';
 import type { ExportSnapshot } from './snapshot.ts';
 import type { ExportSettings } from './settings.ts';
 
-export const embedSource = (body: string) => `<script type="text/markdown" id="su-md-source" data-source="markdown">\n${body.replace(/<\/(script)/gi, '<\\/$1')}\n</script>`;
-export function hasToc(content: string) { return (content.match(/<h[23]\b/gi)?.length ?? 0) > 2; }
+export const embedSource = (body: string) =>
+    `<script type="text/markdown" id="su-md-source" data-source="markdown">\n${body.replace(/<\/(script)/gi, '<\\/$1')}\n</script>`;
+export function hasToc(content: string) {
+    return (content.match(/<h[23]\b/gi)?.length ?? 0) > 2;
+}
 
 export function htmlDocument(value: ExportSnapshot, content: string, settings: ExportSettings, operation: string) {
     const { html, pdf } = settings;

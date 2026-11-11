@@ -13,10 +13,14 @@ export class MemoryStore {
     }
 
     all<T>(store: Store, prefix = ''): T[] {
-        return [...this.stores[store]].filter(([key]) => key.startsWith(prefix)).map(([, value]) => structuredClone(value) as T);
+        return [...this.stores[store]]
+            .filter(([key]) => key.startsWith(prefix))
+            .map(([, value]) => structuredClone(value) as T);
     }
 
-    delete(store: Store, key: string) { this.stores[store].delete(key); }
+    delete(store: Store, key: string) {
+        this.stores[store].delete(key);
+    }
 
     clearPrefix(store: Store, prefix: string) {
         for (const key of this.stores[store].keys()) if (key.startsWith(prefix)) this.stores[store].delete(key);

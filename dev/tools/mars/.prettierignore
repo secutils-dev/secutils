@@ -1,0 +1,17 @@
+# Build output and dependencies.
+dist/
+node_modules/
+eval/.cache/
+eval/node_modules/
+package-lock.json
+eval/package-lock.json
+
+# The viewer shares sections byte for byte with ../md/index.html (test/viewer-parity.test.ts).
+src/doc/viewer.js
+
+# Fixtures, prose, styles, and npm-managed JSON keep their own layout.
+eval/corpus/
+*.md
+*.html
+*.css
+*.json

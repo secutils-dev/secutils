@@ -9,7 +9,9 @@
     "preview": "node build.mjs --preview",
     "serve": "node build.mjs --preview && node serve.mjs",
     "test": "node --test test/*.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "@codemirror/lang-markdown": "6.3.0",
@@ -25,6 +27,7 @@
   "devDependencies": {
     "esbuild": "0.28.2",
     "fake-indexeddb": "6.2.7",
+    "prettier": "3.9.10",
     "typescript": "6.0.3"
   }
 }

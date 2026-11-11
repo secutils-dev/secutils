@@ -10,22 +10,34 @@ const MAX_WORDS = 2000;
 function commonPairs(a: string[], b: string[]): [number, number][] {
     let start = 0;
     while (start < a.length && start < b.length && a[start] === b[start]) start++;
-    let endA = a.length, endB = b.length;
-    while (endA > start && endB > start && a[endA - 1] === b[endB - 1]) { endA--; endB--; }
+    let endA = a.length,
+        endB = b.length;
+    while (endA > start && endB > start && a[endA - 1] === b[endB - 1]) {
+        endA--;
+        endB--;
+    }
     const pairs: [number, number][] = [];
     for (let i = 0; i < start; i++) pairs.push([i, i]);
-    const n = endA - start, m = endB - start;
+    const n = endA - start,
+        m = endB - start;
     if (n && m && n * m <= MAX_CELLS) {
         // lcs[i][j]: LCS length of a[start+i..endA) and b[start+j..endB).
-        const w = m + 1, lcs = new Uint16Array((n + 1) * w);
+        const w = m + 1,
+            lcs = new Uint16Array((n + 1) * w);
         for (let i = n - 1; i >= 0; i--) {
             for (let j = m - 1; j >= 0; j--) {
-                lcs[i * w + j] = a[start + i] === b[start + j] ? lcs[(i + 1) * w + j + 1] + 1 : Math.max(lcs[(i + 1) * w + j], lcs[i * w + j + 1]);
+                lcs[i * w + j] =
+                    a[start + i] === b[start + j]
+                        ? lcs[(i + 1) * w + j + 1] + 1
+                        : Math.max(lcs[(i + 1) * w + j], lcs[i * w + j + 1]);
             }
         }
         for (let i = 0, j = 0; i < n && j < m;) {
-            if (a[start + i] === b[start + j]) { pairs.push([start + i, start + j]); i++; j++; }
-            else if (lcs[(i + 1) * w + j] >= lcs[i * w + j + 1]) i++;
+            if (a[start + i] === b[start + j]) {
+                pairs.push([start + i, start + j]);
+                i++;
+                j++;
+            } else if (lcs[(i + 1) * w + j] >= lcs[i * w + j + 1]) i++;
             else j++;
         }
     }
@@ -41,9 +53,11 @@ export type BlockChange =
     | { kind: 'removed'; old: number; cur: number };
 
 export function diffBlocks(oldRaws: string[], newRaws: string[]): BlockChange[] {
-    const a = oldRaws.map((s) => s.trim()), b = newRaws.map((s) => s.trim());
+    const a = oldRaws.map((s) => s.trim()),
+        b = newRaws.map((s) => s.trim());
     const out: BlockChange[] = [];
-    let oi = 0, ni = 0;
+    let oi = 0,
+        ni = 0;
     for (const [oj, nj] of [...commonPairs(a, b), [a.length, b.length] as [number, number]]) {
         const edited = Math.min(oj - oi, nj - ni);
         for (let k = 0; k < edited; k++) out.push({ kind: 'edited', old: oi + k, cur: ni + k });
@@ -60,7 +74,8 @@ const tokens = (text: string) => text.match(/\s+|[\p{L}\p{N}_]+|[^\s\p{L}\p{N}_]
 // Inserted `[start, end)` ranges of `newText`, or null when either side is too long to compare.
 // Ranges separated only by whitespace merge, and whitespace-only insertions are dropped.
 export function diffWords(oldText: string, newText: string): [number, number][] | null {
-    const a = tokens(oldText), b = tokens(newText);
+    const a = tokens(oldText),
+        b = tokens(newText);
     if (a.length > MAX_WORDS || b.length > MAX_WORDS) return null;
     const kept = new Set(commonPairs(a, b).map(([, j]) => j));
     const ranges: [number, number][] = [];
@@ -69,7 +84,8 @@ export function diffWords(oldText: string, newText: string): [number, number][] 
         const end = pos + tok.length;
         if (!kept.has(j) && tok.trim()) {
             const last = ranges.at(-1);
-            if (last && !newText.slice(last[1], pos).trim()) last[1] = end; else ranges.push([pos, end]);
+            if (last && !newText.slice(last[1], pos).trim()) last[1] = end;
+            else ranges.push([pos, end]);
         }
         pos = end;
     });

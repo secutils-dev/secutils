@@ -19,9 +19,21 @@ const MARKS = ['su-diff-add', 'su-diff-edit', 'su-diff-del', 'su-diff-del-end', 
 const KIND = { added: 'Added', edited: 'Edited', removed: 'Removed' } as const;
 
 type Mode = 'review' | 'opened';
-interface Base { id: string; mode: Mode; raws: string[]; texts: Map<number, string>; comments: Set<string> }
+interface Base {
+    id: string;
+    mode: Mode;
+    raws: string[];
+    texts: Map<number, string>;
+    comments: Set<string>;
+}
 // `span`: from the first to the last inserted word of an edited block, when words were compared.
-interface Change { kind: keyof typeof KIND; el: HTMLElement; old: number[]; at: number; span?: [number, number] }
+interface Change {
+    kind: keyof typeof KIND;
+    el: HTMLElement;
+    old: number[];
+    at: number;
+    span?: [number, number];
+}
 
 let wanted: string | null = null;
 let base: Base | null = null;
@@ -37,9 +49,16 @@ const followed = new Map<string, Change | null>();
 const highlight = 'highlights' in CSS ? new Highlight() : null;
 if (highlight) CSS.highlights.set('su-diff-ins', highlight);
 
-const bar = $('changesBar'), label = $('changesLabel'), before = $('diffBefore');
-const prevBtn = $<HTMLButtonElement>('changesPrev'), nextBtn = $<HTMLButtonElement>('changesNext'), beforeBtn = $<HTMLButtonElement>('changesBefore');
-const doneBtn = $('changesDone'), closeBtn = $('changesClose'), swapBtn = $('changesSwap'), openedBtn = $<HTMLButtonElement>('optSinceOpened');
+const bar = $('changesBar'),
+    label = $('changesLabel'),
+    before = $('diffBefore');
+const prevBtn = $<HTMLButtonElement>('changesPrev'),
+    nextBtn = $<HTMLButtonElement>('changesNext'),
+    beforeBtn = $<HTMLButtonElement>('changesBefore');
+const doneBtn = $('changesDone'),
+    closeBtn = $('changesClose'),
+    swapBtn = $('changesSwap'),
+    openedBtn = $<HTMLButtonElement>('optSinceOpened');
 
 function parseBase(id: string, mode: Mode, text: string): Base {
     const { body, threads } = splitComments(text.replace(/\r\n?/g, '\n'));
@@ -57,22 +76,25 @@ baselineRenderer.text = function (token) {
         ? token.text.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
         : renderBaselineText.call(this, token);
 };
-const oldHtml = (i: number) => safeRenderedHtml(marked.parse(base!.raws[i], { async: false, renderer: baselineRenderer }));
+const oldHtml = (i: number) =>
+    safeRenderedHtml(marked.parse(base!.raws[i], { async: false, renderer: baselineRenderer }));
 function oldText(i: number) {
     let text = base!.texts.get(i);
     if (text === undefined) {
         const div = document.createElement('div');
         div.innerHTML = oldHtml(i);
-        base!.texts.set(i, text = div.textContent ?? '');
+        base!.texts.set(i, (text = div.textContent ?? ''));
     }
     return text;
 }
 
 const author = (name?: string) => name?.trim() || 'Anonymous';
-const isNew = (c: Comment) => !!base && !base.comments.has(commentKey(c)) && author(c.author) !== author(viewer.currentAuthor());
+const isNew = (c: Comment) =>
+    !!base && !base.comments.has(commentKey(c)) && author(c.author) !== author(viewer.currentAuthor());
 
 function clearMarks() {
-    for (const el of document.querySelectorAll<HTMLElement>(MARKS.map((c) => `#previewArticle .${c}`).join(','))) el.classList.remove(...MARKS);
+    for (const el of document.querySelectorAll<HTMLElement>(MARKS.map((c) => `#previewArticle .${c}`).join(',')))
+        el.classList.remove(...MARKS);
     highlight?.clear();
     changes = [];
     byOld = new Map();
@@ -98,15 +120,25 @@ function followRange(change: Change) {
 // the baseline clears itself.
 function apply(fromRender = false) {
     clearMarks();
-    if (!base || base.id !== app.state.currentId || !viewer.inSync()) { renderBar(); return; }
+    if (!base || base.id !== app.state.currentId || !viewer.inSync()) {
+        renderBar();
+        return;
+    }
     const blocks = [...$('previewArticle').querySelectorAll<HTMLElement>(':scope > .su-block')];
     const src = viewer.renderedSource();
     if (blocks.length || !src.trim()) {
-        const ops = diffBlocks(base.raws, blocks.map((b) => src.slice(Number(b.dataset.start), Number(b.dataset.end))));
+        const ops = diffBlocks(
+            base.raws,
+            blocks.map((b) => src.slice(Number(b.dataset.start), Number(b.dataset.end))),
+        );
         for (const op of ops) {
             if (op.kind === 'removed') {
                 const last = changes.at(-1);
-                if (last?.kind === 'removed' && last.at === op.cur) { last.old.push(op.old); byOld.set(op.old, last); continue; }
+                if (last?.kind === 'removed' && last.at === op.cur) {
+                    last.old.push(op.old);
+                    byOld.set(op.old, last);
+                    continue;
+                }
                 const el = blocks[op.cur] ?? blocks.at(-1);
                 if (!el) continue;
                 el.classList.add(op.cur < blocks.length ? 'su-diff-del' : 'su-diff-del-end');
@@ -119,7 +151,10 @@ function apply(fromRender = false) {
             el.classList.add(op.kind === 'added' ? 'su-diff-add' : 'su-diff-edit');
             const change: Change = { kind: op.kind, el, old: op.kind === 'edited' ? [op.old] : [], at: op.cur };
             changes.push(change);
-            if (op.kind === 'edited') { byOld.set(op.old, change); markWords(change, oldText(op.old)); }
+            if (op.kind === 'edited') {
+                byOld.set(op.old, change);
+                markWords(change, oldText(op.old));
+            }
         }
     }
     newCount = viewer.currentThreads().reduce((n, t) => n + t.comments.filter(isNew).length, 0);
@@ -136,16 +171,21 @@ function apply(fromRender = false) {
 // A thread whose quote is gone follows it into the block that replaced the quoted text.
 function fallbackAnchor(t: Thread): Range | null {
     if (!base || base.id !== app.state.currentId) return null;
-    let best = -1, bestScore = -1;
+    let best = -1,
+        bestScore = -1;
     base.raws.forEach((_, i) => {
         const text = oldText(i);
         if (!text.includes(t.quote)) return;
-        const score = (text.includes((t.prefix ?? '') + t.quote) ? 1 : 0) + (text.includes(t.quote + (t.suffix ?? '')) ? 1 : 0);
+        const score =
+            (text.includes((t.prefix ?? '') + t.quote) ? 1 : 0) + (text.includes(t.quote + (t.suffix ?? '')) ? 1 : 0);
         if (score > bestScore) [best, bestScore] = [i, score];
     });
     const change = best < 0 ? undefined : byOld.get(best);
     if (!change) return null;
-    if (change.kind === 'removed') { followed.set(t.id, null); return null; }
+    if (change.kind === 'removed') {
+        followed.set(t.id, null);
+        return null;
+    }
     followed.set(t.id, change);
     return followRange(change);
 }
@@ -161,14 +201,20 @@ function note(t: Thread) {
 function renderBar() {
     const cur = app.current();
     openedBtn.disabled = !cur?.opened;
-    openedBtn.textContent = sinceOpened && sinceOpened === cur?.id ? 'Hide changes since opened' : 'Show changes since opened';
+    openedBtn.textContent =
+        sinceOpened && sinceOpened === cur?.id ? 'Hide changes since opened' : 'Show changes since opened';
     const shown = !!base && base.id === app.state.currentId;
     bar.hidden = !shown;
-    if (!shown) { hideBefore(); return; }
+    if (!shown) {
+        hideBefore();
+        return;
+    }
     const c = changes[focused];
     const count = `${changes.length} change${changes.length === 1 ? '' : 's'}`;
     const replies = newCount ? ` · ${newCount} new repl${newCount === 1 ? 'y' : 'ies'}` : '';
-    label.textContent = c ? `${KIND[c.kind]} · ${focused + 1} of ${changes.length}${replies}` : `${changes.length ? count : 'No text changes'} ${since()}${replies}`;
+    label.textContent = c
+        ? `${KIND[c.kind]} · ${focused + 1} of ${changes.length}${replies}`
+        : `${changes.length ? count : 'No text changes'} ${since()}${replies}`;
     prevBtn.disabled = nextBtn.disabled = !changes.length;
     beforeBtn.hidden = !c || c.kind === 'added';
     doneBtn.hidden = base!.mode !== 'review';
@@ -203,11 +249,15 @@ function hideBefore() {
 function showBefore() {
     const c = changes[focused];
     if (!c || !base) return;
-    if (before.matches(':popover-open')) { hideBefore(); return; }
+    if (before.matches(':popover-open')) {
+        hideBefore();
+        return;
+    }
     before.innerHTML = `<div class="diff-before-head">${base.mode === 'opened' ? 'As opened' : 'Before your last review'}</div><div class="preview-article">${c.old.map(oldHtml).join('')}</div>`;
     applyTableLayouts(before, true);
     before.showPopover();
-    const r = c.el.getBoundingClientRect(), { width, height } = before.getBoundingClientRect();
+    const r = c.el.getBoundingClientRect(),
+        { width, height } = before.getBoundingClientRect();
     before.style.left = `${Math.round(Math.min(Math.max(8, r.left), innerWidth - width - 8))}px`;
     before.style.top = `${Math.round(r.bottom + 6 + height > innerHeight - 8 ? Math.max(8, r.top - height - 6) : r.bottom + 6)}px`;
     beforeBtn.setAttribute('aria-expanded', 'true');
@@ -216,7 +266,9 @@ function showBefore() {
 async function markReviewed() {
     const id = app.state.currentId;
     if (!id || base?.mode !== 'review') return;
-    const requotes = [...followed].filter(([, c]) => c?.el.isConnected).map(([tid, c]): [string, Range] => [tid, followRange(c!)]);
+    const requotes = [...followed]
+        .filter(([, c]) => c?.el.isConnected)
+        .map(([tid, c]): [string, Range] => [tid, followRange(c!)]);
     if (requotes.length) viewer.requote(requotes);
     await app.markReviewed(id);
     viewer.toast('Marked as reviewed');
@@ -232,7 +284,9 @@ openedBtn.addEventListener('click', () => {
     $('optionsPopover').hidePopover();
     setSinceOpened(sinceOpened !== app.state.currentId);
 });
-before.addEventListener('toggle', (e) => { if ((e as ToggleEvent).newState === 'closed') beforeBtn.setAttribute('aria-expanded', 'false'); });
+before.addEventListener('toggle', (e) => {
+    if ((e as ToggleEvent).newState === 'closed') beforeBtn.setAttribute('aria-expanded', 'false');
+});
 
 viewer.onRendered(() => apply(true));
 viewer.setThreadHooks({ fallbackAnchor, note, isNew });
@@ -244,14 +298,21 @@ async function load() {
     if (sinceOpened !== cur?.id) sinceOpened = null;
     const mode: Mode | null = cur && sinceOpened === cur.id && cur.opened ? 'opened' : cur?.pending ? 'review' : null;
     const want = mode ? `${mode}:${cur!.id}` : null;
-    if (want === wanted) { renderBar(); return; }
+    if (want === wanted) {
+        renderBar();
+        return;
+    }
     wanted = want;
     base = null;
     focused = -1;
     if (mode) {
         const text = await db.getSide(mode === 'opened' ? 'opened' : 'base', cur!.id);
         if (wanted !== want) return;
-        if (text === undefined) { if (mode === 'review') app.markReviewed(cur!.id); renderBar(); return; }
+        if (text === undefined) {
+            if (mode === 'review') app.markReviewed(cur!.id);
+            renderBar();
+            return;
+        }
         base = parseBase(cur!.id, mode, text);
     }
     apply();

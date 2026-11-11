@@ -21,13 +21,22 @@ export interface ViewerHost {
     detach(): void;
     readingWidthChanged?(width: ReadingWidth): Promise<void>;
     temporary?(): boolean;
-    connection?(): { permission: 'view' | 'comment' | 'edit' | 'owner'; label: string; participant: string; ownerParticipant?: string; ended?: boolean } | null;
+    connection?(): {
+        permission: 'view' | 'comment' | 'edit' | 'owner';
+        label: string;
+        participant: string;
+        ownerParticipant?: string;
+        ended?: boolean;
+    } | null;
     fileAutoSave?(): boolean;
     undoConnection?(redo: boolean): Promise<void>;
     undoReview?(before: Thread[], after: Thread[], id?: string): Promise<void>;
     connectionSaved?(): void;
     // Extracted source from Open or a drop; converted HTML never retains a writable handle.
-    openFile?(file: { name: string; text: string; handle: FileSystemFileHandle | null; stamp: number }, input?: InputOperation): Promise<void>;
+    openFile?(
+        file: { name: string; text: string; handle: FileSystemFileHandle | null; stamp: number },
+        input?: InputOperation,
+    ): Promise<void>;
     openUrl?(url: string): Promise<void>;
 }
 
@@ -41,7 +50,9 @@ export function hasConnectionDraftConflict(): boolean;
 export function isEditing(): boolean;
 export function canApplyConnection(): boolean;
 export function canPublishConnection(): boolean;
-export function applyConnectionProjection(doc: Pick<ViewerDoc, 'text' | 'name'> & { readingWidth?: ReadingWidth }): boolean;
+export function applyConnectionProjection(
+    doc: Pick<ViewerDoc, 'text' | 'name'> & { readingWidth?: ReadingWidth },
+): boolean;
 export function renameDocument(name: string): void;
 export function closeDocument(): void;
 export function setViewMode(mode: 'preview' | 'edit'): void;

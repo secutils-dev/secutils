@@ -21,25 +21,47 @@ test('Mermaid views follow unchanged sources, including edited duplicates and re
     const source = viewer.slice(viewer.indexOf('function mermaidViews('), viewer.indexOf('// Keep SVG sizing'));
     const match = runInNewContext(`(${source})`);
     const root = (figures: object[]) => ({ querySelectorAll: () => figures });
-    const old = ['A', 'B', 'A'].map((src, index) => ({ __suMermaidSource: src, __suReadMermaidView: () => ({ index }) }));
+    const old = ['A', 'B', 'A'].map((src, index) => ({
+        __suMermaidSource: src,
+        __suReadMermaidView: () => ({ index }),
+    }));
     for (const [sources, expected] of [
-        [['A', 'B', 'A'], [0, 1, 2]],
-        [['Changed', 'B', 'A'], [undefined, 1, 2]],
-        [['A', 'B', 'Changed'], [0, 1, undefined]],
-        [['B', 'A', 'A'], [1, 0, 2]],
-        [['New', 'A', 'B', 'A'], [undefined, 0, 1, 2]],
+        [
+            ['A', 'B', 'A'],
+            [0, 1, 2],
+        ],
+        [
+            ['Changed', 'B', 'A'],
+            [undefined, 1, 2],
+        ],
+        [
+            ['A', 'B', 'Changed'],
+            [0, 1, undefined],
+        ],
+        [
+            ['B', 'A', 'A'],
+            [1, 0, 2],
+        ],
+        [
+            ['New', 'A', 'B', 'A'],
+            [undefined, 0, 1, 2],
+        ],
         [[], []],
     ] as const) {
         const next = sources.map((src) => ({ __suMermaidSource: src }));
         const result = match(root(old), root(next));
-        assert.deepEqual(next.map((fig) => result.get(fig)?.index), expected);
+        assert.deepEqual(
+            next.map((fig) => result.get(fig)?.index),
+            expected,
+        );
     }
 });
 
 test('preview links preserve anchors and existing link metadata in both viewers', () => {
     const viewer = readFileSync(new URL('../src/doc/viewer.js', import.meta.url), 'utf8');
     const md = readFileSync(new URL('../../md/index.html', import.meta.url), 'utf8');
-    const helper = (s: string) => s.slice(s.indexOf('function enhancePreviewLinks('), s.indexOf('// `comment` escapes raw HTML'));
+    const helper = (s: string) =>
+        s.slice(s.indexOf('function enhancePreviewLinks('), s.indexOf('// `comment` escapes raw HTML'));
     assert.ok(helper(viewer).length > 100);
     assert.equal(helper(viewer), helper(md));
     const attributes: Record<string, string>[] = [
@@ -49,13 +71,20 @@ test('preview links preserve anchors and existing link metadata in both viewers'
     ];
     const links = attributes.map((attrs) => ({
         getAttribute: (name: string) => attrs[name] ?? null,
-        setAttribute: (name: string, value: string) => { attrs[name] = value; },
+        setAttribute: (name: string, value: string) => {
+            attrs[name] = value;
+        },
     }));
     const enhance = runInNewContext(`(${helper(viewer)})`);
     enhance({ querySelectorAll: () => links });
     enhance({ querySelectorAll: () => links }); // Idempotent on rerender.
     assert.deepEqual(attributes, [
-        { href: 'https://example.test/', rel: 'nofollow noopener noreferrer', title: 'Original title', target: '_blank' },
+        {
+            href: 'https://example.test/',
+            rel: 'nofollow noopener noreferrer',
+            title: 'Original title',
+            target: '_blank',
+        },
         { href: '/relative', target: '_blank', rel: 'noopener noreferrer' },
         { href: '#section' },
     ]);
@@ -65,7 +94,8 @@ test('both viewers parse only the final review block and preserve earlier Markdo
     const viewer = readFileSync(new URL('../src/doc/viewer.js', import.meta.url), 'utf8');
     const md = readFileSync(new URL('../../md/index.html', import.meta.url), 'utf8');
     const section = (text: string) => {
-        const start = text.indexOf('const COMMENTS_RE'), fn = text.indexOf('function matchCommentBlock(', start);
+        const start = text.indexOf('const COMMENTS_RE'),
+            fn = text.indexOf('function matchCommentBlock(', start);
         return text.slice(start, text.indexOf('\n}', fn) + 2);
     };
     assert.equal(section(viewer), section(md));

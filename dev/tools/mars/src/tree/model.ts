@@ -69,7 +69,12 @@ export const canMove = (nodes: TreeNode[], id: string, parentId: string | null) 
 
 // Moves `id` under `parentId`, before `beforeId` (or last). Returns the nodes whose
 // parent or order changed; sibling orders are renumbered 0..n.
-export function moveNode(nodes: TreeNode[], id: string, parentId: string | null, beforeId: string | null = null): TreeNode[] {
+export function moveNode(
+    nodes: TreeNode[],
+    id: string,
+    parentId: string | null,
+    beforeId: string | null = null,
+): TreeNode[] {
     const node = nodes.find((n) => n.id === id);
     if (!node || !canMove(nodes, id, parentId)) return [];
     const siblings = childrenOf(nodes, parentId).filter((n) => n.id !== id);
@@ -96,9 +101,14 @@ export function exportPaths(nodes: TreeNode[], rootId: string | null): Map<strin
     const walk = (parentId: string | null, prefix: string) => {
         const used = new Set<string>();
         for (const n of childrenOf(nodes, parentId)) {
-            const base = n.name.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '-').replace(/^[.\s]+|[.\s]+$/g, '').slice(0, 120) || 'Untitled';
+            const base =
+                n.name
+                    .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '-')
+                    .replace(/^[.\s]+|[.\s]+$/g, '')
+                    .slice(0, 120) || 'Untitled';
             const ext = n.kind === 'doc' ? '.md' : '';
-            let name = base, i = 2;
+            let name = base,
+                i = 2;
             while (used.has(`${name}${ext}`.toLowerCase())) name = `${base} (${i++})`;
             used.add(`${name}${ext}`.toLowerCase());
             out.set(n.id, `${prefix}${name}${ext}`);

@@ -31,24 +31,46 @@ viewer.setHost({
     openFile: share.receiveFile,
     openUrl: share.receiveUrl,
     temporary: db.isTemporaryStorage,
-    connection: () => { const n = app.current(); return n?.connection ? { permission: n.connection.permission, label: sync.label(n), participant: n.connection.participant ?? n.connection.member, ownerParticipant: n.connection.ownerParticipant, ended: n.connection.phase === 'ended' } : null; },
+    connection: () => {
+        const n = app.current();
+        return n?.connection
+            ? {
+                  permission: n.connection.permission,
+                  label: sync.label(n),
+                  participant: n.connection.participant ?? n.connection.member,
+                  ownerParticipant: n.connection.ownerParticipant,
+                  ended: n.connection.phase === 'ended',
+              }
+            : null;
+    },
     fileAutoSave: () => !app.current()?.connection && !app.current()?.manualFileSave,
-    undoConnection: (redo) => app.state.currentId ? sync.undo(app.state.currentId, redo) : Promise.resolve(),
-    undoReview: (before, after, id) => id ? sync.undoReview(id, before, after) : Promise.resolve(),
-    connectionSaved: () => { if (app.state.currentId) void sync.refresh([app.state.currentId]).catch((error) => viewer.toast(error.message)); },
+    undoConnection: (redo) => (app.state.currentId ? sync.undo(app.state.currentId, redo) : Promise.resolve()),
+    undoReview: (before, after, id) => (id ? sync.undoReview(id, before, after) : Promise.resolve()),
+    connectionSaved: () => {
+        if (app.state.currentId) void sync.refresh([app.state.currentId]).catch((error) => viewer.toast(error.message));
+    },
 });
 
 let lastDoc: string | null = null;
 app.onChange(() => {
     const cur = app.current();
     document.title = cur ? `${cur.name} | MARS` : DEFAULT_TITLE;
-    const access = $('documentAccess'), permission = cur?.connection?.permission;
+    const access = $('documentAccess'),
+        permission = cur?.connection?.permission;
     access.hidden = !cur?.connection || cur.connection.kind !== 'live' || permission === 'owner';
     if (!access.hidden && permission) {
         const labels = { view: 'View only', comment: 'Can comment', edit: 'Can edit', owner: '' };
-        const descriptions = { view: 'You can read this document and its comments.', comment: 'You can add comments, but cannot change the document.', edit: 'You can change the document and manage comments.', owner: '' };
+        const descriptions = {
+            view: 'You can read this document and its comments.',
+            comment: 'You can add comments, but cannot change the document.',
+            edit: 'You can change the document and manage comments.',
+            owner: '',
+        };
         if (access.textContent !== labels[permission]) access.textContent = labels[permission];
-        access.dataset.tooltip = cur!.connection!.phase === 'ended' ? 'The Live link ended. Keep this as a local copy to make it independent.' : descriptions[permission];
+        access.dataset.tooltip =
+            cur!.connection!.phase === 'ended'
+                ? 'The Live link ended. Keep this as a local copy to make it independent.'
+                : descriptions[permission];
     }
     renderTemporary();
     if (app.state.currentId !== lastDoc) {
@@ -63,36 +85,77 @@ function renderTemporary() {
     const ended = app.current()?.connection?.phase === 'ended';
     $('temporarySession').hidden = !temporary && !ended;
     ($('readTemporaryBtn') as HTMLButtonElement).disabled = !app.current() || temporary;
-    ($('saveToLibraryBtn') as HTMLButtonElement).disabled = !app.current() || (!live && app.state.temporaryLink !== 'ready');
-    $('saveToLibraryBtn').textContent = ended && live ? 'Save local copy to library' : live ? 'Save live document to library' : 'Save current to library';
-    $('saveToLibraryBtn').hidden = !temporary; $('returnToLibrary').hidden = !temporary;
+    ($('saveToLibraryBtn') as HTMLButtonElement).disabled =
+        !app.current() || (!live && app.state.temporaryLink !== 'ready');
+    $('saveToLibraryBtn').textContent =
+        ended && live
+            ? 'Save local copy to library'
+            : live
+              ? 'Save live document to library'
+              : 'Save current to library';
+    $('saveToLibraryBtn').hidden = !temporary;
+    $('returnToLibrary').hidden = !temporary;
     if (!temporary) {
-        $('sidebarTitle').textContent = 'Documents'; $('sidebar').setAttribute('aria-label', 'Documents'); $('tree').setAttribute('aria-label', 'Documents');
-        if ($('emptyState').querySelector('.empty-state-sub')!.textContent !== DEFAULT_EMPTY_HELP) $('emptyState').querySelector('.empty-state-sub')!.textContent = DEFAULT_EMPTY_HELP;
+        $('sidebarTitle').textContent = 'Documents';
+        $('sidebar').setAttribute('aria-label', 'Documents');
+        $('tree').setAttribute('aria-label', 'Documents');
+        if ($('emptyState').querySelector('.empty-state-sub')!.textContent !== DEFAULT_EMPTY_HELP)
+            $('emptyState').querySelector('.empty-state-sub')!.textContent = DEFAULT_EMPTY_HELP;
         if (!ended) return;
-    } else { $('sidebarTitle').textContent = 'Temporary documents'; $('sidebar').setAttribute('aria-label', 'Temporary documents'); $('tree').setAttribute('aria-label', 'Temporary documents'); }
-    const status = ended ? 'Local copy · connection ended' : live ? 'Temporary live session' : app.state.storageError ? 'Storage unavailable · Temporary session' : 'Temporary session';
+    } else {
+        $('sidebarTitle').textContent = 'Temporary documents';
+        $('sidebar').setAttribute('aria-label', 'Temporary documents');
+        $('tree').setAttribute('aria-label', 'Temporary documents');
+    }
+    const status = ended
+        ? 'Local copy · connection ended'
+        : live
+          ? 'Temporary live session'
+          : app.state.storageError
+            ? 'Storage unavailable · Temporary session'
+            : 'Temporary session';
     if ($('temporaryStatus').textContent !== status) $('temporaryStatus').textContent = status;
-    const message = ended ? temporary
-        ? 'The Live link is no longer available. This copy and any unsent changes are still here. Download it or save it to your library before closing. Reload cannot restore it.'
-        : `This connection ended. Your saved copy and any unsent changes are still here. Use ${live ? 'Live document' : 'Sync'} to keep it as an independent local document.`
-        : live ? 'Not saved in your library. Reload restores acknowledged live content, not unsent edits. Download pending work before closing.' : app.state.temporaryLink === 'failed'
-        ? 'MARS could not update the address bar. Download this document before closing. Nothing is saved in your library.'
-        : app.state.temporaryLink === 'too-large'
-            ? 'This document is too large for automatic URL recovery. Download it before closing. Nothing is saved in your library.'
-            : 'Not saved in your library. The address bar restores the current document. Export other session documents before closing.';
+    const message = ended
+        ? temporary
+            ? 'The Live link is no longer available. This copy and any unsent changes are still here. Download it or save it to your library before closing. Reload cannot restore it.'
+            : `This connection ended. Your saved copy and any unsent changes are still here. Use ${live ? 'Live document' : 'Sync'} to keep it as an independent local document.`
+        : live
+          ? 'Not saved in your library. Reload restores acknowledged live content, not unsent edits. Download pending work before closing.'
+          : app.state.temporaryLink === 'failed'
+            ? 'MARS could not update the address bar. Download this document before closing. Nothing is saved in your library.'
+            : app.state.temporaryLink === 'too-large'
+              ? 'This document is too large for automatic URL recovery. Download it before closing. Nothing is saved in your library.'
+              : 'Not saved in your library. The address bar restores the current document. Export other session documents before closing.';
     if ($('temporaryHelp').textContent !== message) $('temporaryHelp').textContent = message;
-    if (temporary) $('emptyState').querySelector('.empty-state-sub')!.textContent = 'Open or drop a file, paste Markdown, or start writing. This session is temporary and is not saved in your library.';
+    if (temporary)
+        $('emptyState').querySelector('.empty-state-sub')!.textContent =
+            'Open or drop a file, paste Markdown, or start writing. This session is temporary and is not saved in your library.';
     ($('returnToLibrary') as HTMLAnchorElement).href = `${location.pathname}?library=1`;
 }
-$('readTemporaryBtn').addEventListener('click', () => share.startTemporary(true).catch((error) => viewer.toast(error.message)));
-$('setSharedReadingWidth').addEventListener('click', () => { if (app.state.currentId) void sync.sharedWidth(app.state.currentId, viewer.exportReadingWidth()).catch((error) => viewer.toast(error.message)); });
+$('readTemporaryBtn').addEventListener('click', () =>
+    share.startTemporary(true).catch((error) => viewer.toast(error.message)),
+);
+$('setSharedReadingWidth').addEventListener('click', () => {
+    if (app.state.currentId)
+        void sync
+            .sharedWidth(app.state.currentId, viewer.exportReadingWidth())
+            .catch((error) => viewer.toast(error.message));
+});
 $('saveToLibraryBtn').addEventListener('click', async () => {
     await viewer.flush();
-    if (app.current()?.connection?.kind === 'live') { await sync.saveLive(app.state.currentId!); return; }
-    if (app.state.temporaryLink !== 'ready') { viewer.toast('Download the document to keep it.'); return; }
-    const target = new URL(location.href), params = new URLSearchParams(target.hash.slice(1));
-    params.delete('t'); target.hash = params.toString(); target.search = '?library=1';
+    if (app.current()?.connection?.kind === 'live') {
+        await sync.saveLive(app.state.currentId!);
+        return;
+    }
+    if (app.state.temporaryLink !== 'ready') {
+        viewer.toast('Download the document to keep it.');
+        return;
+    }
+    const target = new URL(location.href),
+        params = new URLSearchParams(target.hash.slice(1));
+    params.delete('t');
+    target.hash = params.toString();
+    target.search = '?library=1';
     location.assign(target.href);
 });
 
@@ -105,7 +168,9 @@ for (const id of ['importInput', 'importFolderInput']) {
     });
 }
 
-window.addEventListener('pagehide', () => { viewer.flush(); });
+window.addEventListener('pagehide', () => {
+    viewer.flush();
+});
 
 try {
     db.persistStorage();
@@ -130,16 +195,27 @@ const last = await db.getMeta<string>(LAST_DOC_KEY).catch(() => undefined);
 // Generation guards make address-bar navigation safe while an initial fetch is pending.
 window.addEventListener('hashchange', async () => {
     try {
-        if (!await sync.receiveLocation(location.href)) await share.openFromLocation();
-    } catch (error) { startupError('Could not open this link')(error); }
+        if (!(await sync.receiveLocation(location.href))) await share.openFromLocation();
+    } catch (error) {
+        startupError('Could not open this link')(error);
+    }
 });
 try {
     // A failed ?url= load retains the previous document, just like the URL form.
     if (!request.hash && request.searchParams.has('url') && last && app.node(last)) await app.openDoc(last);
-    if (db.isTemporaryStorage() && request.searchParams.get('new') === '1' && !request.hash && !request.searchParams.has('url')) {
+    if (
+        db.isTemporaryStorage() &&
+        request.searchParams.get('new') === '1' &&
+        !request.hash &&
+        !request.searchParams.has('url')
+    ) {
         await app.createDoc();
         viewer.setViewMode('edit');
-    } else if (!(sync.isConnectionLocation(request.href) ? await sync.receiveLocation(request.href) : await share.openFromLocation(request.href))) {
+    } else if (
+        !(sync.isConnectionLocation(request.href)
+            ? await sync.receiveLocation(request.href)
+            : await share.openFromLocation(request.href))
+    ) {
         if (last && app.node(last)) await app.openDoc(last);
         else viewer.endLoading();
     }
@@ -147,8 +223,12 @@ try {
     startupError('Could not open the document')(error);
     viewer.endLoading();
 }
-db.onRemoteChange((ids) => { void app.serializePersistence(async () => {
-    await app.load();
-    await app.adoptRemoteChange(ids);
-    if (app.state.nodes.some((node) => node.connection)) await sync.refresh(ids);
-}).catch((error) => viewer.toast(`Could not refresh this library: ${error.message}. Local edits are retained.`)); });
+db.onRemoteChange((ids) => {
+    void app
+        .serializePersistence(async () => {
+            await app.load();
+            await app.adoptRemoteChange(ids);
+            if (app.state.nodes.some((node) => node.connection)) await sync.refresh(ids);
+        })
+        .catch((error) => viewer.toast(`Could not refresh this library: ${error.message}. Local edits are retained.`));
+});

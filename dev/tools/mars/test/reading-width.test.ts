@@ -5,20 +5,45 @@ import { runInNewContext } from 'node:vm';
 
 const viewer = readFileSync(new URL('../src/doc/viewer.js', import.meta.url), 'utf8');
 const md = readFileSync(new URL('../../md/index.html', import.meta.url), 'utf8');
-const section = (text: string) => text.slice(text.indexOf('const READING_WIDTH_MIN'), text.indexOf("window.addEventListener('pageshow', restoreReadingWidth);") + "window.addEventListener('pageshow', restoreReadingWidth);".length);
+const section = (text: string) =>
+    text.slice(
+        text.indexOf('const READING_WIDTH_MIN'),
+        text.indexOf("window.addEventListener('pageshow', restoreReadingWidth);") +
+            "window.addEventListener('pageshow', restoreReadingWidth);".length,
+    );
 
 function setup(saved: string | null = null, denied = false) {
     const styles = new Map<string, string>();
     const callbacks = new Map<string, () => void>();
-    const input = (id: string, value: string) => ({ value, hidden: true, options: ['800', '1100', 'full', 'custom'].map((value) => ({ value })), focus() {}, addEventListener(event: string, fn: () => void) { callbacks.set(`${id}:${event}`, fn); } });
-    const els = { optReadingWidth: input('width', '800'), optReadingCustom: input('custom', '800'), optReadingCustomWrap: { hidden: true } };
+    const input = (id: string, value: string) => ({
+        value,
+        hidden: true,
+        options: ['800', '1100', 'full', 'custom'].map((value) => ({ value })),
+        focus() {},
+        addEventListener(event: string, fn: () => void) {
+            callbacks.set(`${id}:${event}`, fn);
+        },
+    });
+    const els = {
+        optReadingWidth: input('width', '800'),
+        optReadingCustom: input('custom', '800'),
+        optReadingCustomWrap: { hidden: true },
+    };
     runInNewContext(section(viewer), {
         els,
-        document: { documentElement: { style: { setProperty: (key: string, value: string) => styles.set(key, value) } } },
+        document: {
+            documentElement: { style: { setProperty: (key: string, value: string) => styles.set(key, value) } },
+        },
         window: { addEventListener: (event: string, fn: () => void) => callbacks.set(event, fn) },
         localStorage: {
-            getItem() { if (denied) throw new Error('Storage blocked'); return saved; },
-            setItem(_key: string, value: string) { if (denied) throw new Error('Storage blocked'); saved = value; },
+            getItem() {
+                if (denied) throw new Error('Storage blocked');
+                return saved;
+            },
+            setItem(_key: string, value: string) {
+                if (denied) throw new Error('Storage blocked');
+                saved = value;
+            },
         },
     });
     return { els, styles, callbacks, saved: () => saved };

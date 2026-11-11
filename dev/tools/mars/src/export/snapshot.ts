@@ -13,7 +13,9 @@ export interface ExportSnapshot {
 // Strip even malformed review metadata from reading output; the .md download keeps it.
 export function exportBody(text: string) {
     const block = matchCommentBlock(text);
-    return (block ? text.slice(0, block.index) : text).replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '').replace(/\r\n?/g, '\n');
+    return (block ? text.slice(0, block.index) : text)
+        .replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '')
+        .replace(/\r\n?/g, '\n');
 }
 
 export const snapshot = (id: string | null, name: string, text: string, readingWidth: ReadingWidth): ExportSnapshot =>

@@ -7,7 +7,12 @@ let editorModule;
 function editorLibrary() {
     if (!editorModule) {
         const url = URL.createObjectURL(new Blob([editorRuntime], { type: 'text/javascript' }));
-        editorModule = import(url).catch(error => { editorModule = undefined; throw error; }).finally(() => URL.revokeObjectURL(url));
+        editorModule = import(url)
+            .catch((error) => {
+                editorModule = undefined;
+                throw error;
+            })
+            .finally(() => URL.revokeObjectURL(url));
     }
     return editorModule;
 }
@@ -23,22 +28,39 @@ function textareaEditor(mount, text) {
     mount.replaceChildren(ta);
     window.__suEditorAPI = {
         kind: 'textarea',
-        setText: (t) => { ta.value = t; window.__suOnEditorChange?.(t); },
+        setText: (t) => {
+            ta.value = t;
+            window.__suOnEditorChange?.(t);
+        },
         getText: () => ta.value,
         focus: () => ta.focus(),
-        setReadOnly: (value) => { ta.readOnly = value; },
+        setReadOnly: (value) => {
+            ta.readOnly = value;
+        },
         applyRemote: (text) => {
-            const change = sourceChange(ta.value, text); if (!change) return;
-            const map = (at) => at <= change.from ? at : at >= change.to ? at + change.insert.length - (change.to - change.from) : change.from + change.insert.length;
-            const start = map(ta.selectionStart), end = map(ta.selectionEnd), scroll = ta.scrollTop;
-            ta.value = text; ta.setSelectionRange(start, end); ta.scrollTop = scroll;
+            const change = sourceChange(ta.value, text);
+            if (!change) return;
+            const map = (at) =>
+                at <= change.from
+                    ? at
+                    : at >= change.to
+                      ? at + change.insert.length - (change.to - change.from)
+                      : change.from + change.insert.length;
+            const start = map(ta.selectionStart),
+                end = map(ta.selectionEnd),
+                scroll = ta.scrollTop;
+            ta.value = text;
+            ta.setSelectionRange(start, end);
+            ta.scrollTop = scroll;
         },
     };
 }
 
 export async function loadEditor(mount) {
     try {
-        const cm = await editorLibrary(), cmMd = cm, state = cm;
+        const cm = await editorLibrary(),
+            cmMd = cm,
+            state = cm;
         const permission = new state.Compartment();
         let applying = false;
         const view = new cm.EditorView({
@@ -56,10 +78,22 @@ export async function loadEditor(mount) {
             parent: mount,
         });
         window.__suCreateBlockEditor = (parent, doc) => {
-            const editor = new cm.EditorView({ doc, extensions: [cm.minimalSetup, cmMd.markdown(), cm.EditorView.lineWrapping, cm.EditorView.contentAttributes.of({ 'aria-label': 'Edit Markdown block' })], parent });
+            const editor = new cm.EditorView({
+                doc,
+                extensions: [
+                    cm.minimalSetup,
+                    cmMd.markdown(),
+                    cm.EditorView.lineWrapping,
+                    cm.EditorView.contentAttributes.of({ 'aria-label': 'Edit Markdown block' }),
+                ],
+                parent,
+            });
             return {
                 getText: () => editor.state.doc.toString(),
-                focus: () => { editor.focus(); editor.dispatch({ selection: { anchor: editor.state.doc.length } }); },
+                focus: () => {
+                    editor.focus();
+                    editor.dispatch({ selection: { anchor: editor.state.doc.length } });
+                },
                 destroy: () => editor.destroy(),
             };
         };
@@ -74,13 +108,27 @@ export async function loadEditor(mount) {
             },
             getText: () => view.state.doc.toString(),
             focus: () => view.focus(),
-            setReadOnly: (value) => view.dispatch({ effects: permission.reconfigure([state.EditorState.readOnly.of(value), cm.EditorView.editable.of(!value)]) }),
+            setReadOnly: (value) =>
+                view.dispatch({
+                    effects: permission.reconfigure([
+                        state.EditorState.readOnly.of(value),
+                        cm.EditorView.editable.of(!value),
+                    ]),
+                }),
             applyRemote: (text) => {
-                const change = sourceChange(view.state.doc.toString(), text); if (!change) return;
+                const change = sourceChange(view.state.doc.toString(), text);
+                if (!change) return;
                 const scroll = view.scrollDOM.scrollTop;
                 applying = true;
-                try { view.dispatch({ changes: { from: change.from, to: change.to, insert: change.insert }, annotations: state.Transaction.addToHistory.of(false) }); }
-                finally { applying = false; view.scrollDOM.scrollTop = scroll; }
+                try {
+                    view.dispatch({
+                        changes: { from: change.from, to: change.to, insert: change.insert },
+                        annotations: state.Transaction.addToHistory.of(false),
+                    });
+                } finally {
+                    applying = false;
+                    view.scrollDOM.scrollTop = scroll;
+                }
             },
         };
     } catch (err) {

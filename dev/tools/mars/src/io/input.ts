@@ -14,9 +14,13 @@ export class InputController {
         const controller = new AbortController();
         this.active = controller;
         const current = () => this.active === controller && !controller.signal.aborted;
-        return { signal: controller.signal, current, check: () => {
-            if (!current()) throw new DOMException('Document input was superseded', 'AbortError');
-        } };
+        return {
+            signal: controller.signal,
+            current,
+            check: () => {
+                if (!current()) throw new DOMException('Document input was superseded', 'AbortError');
+            },
+        };
     }
 
     cancel() {
