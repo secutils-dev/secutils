@@ -16,6 +16,10 @@ It runs at <https://mars.secutils.dev/>. It needs no account, no extension, and 
 - Exports standalone HTML, PDF, and Markdown.
 - Shows what changed when a reviewed document comes back with new text.
 
+Gantt task labels support clock times such as `13:00` before a whitespace-prefixed task separator (` :`).
+MARS escapes these colons only for rendering. Source text, shared links, and Markdown downloads stay unchanged.
+Other Mermaid errors appear beside their source, without an extra error diagram outside the document.
+
 ## Privacy and analytics
 
 The Privacy dialog in the app is the full policy. This table is the summary.

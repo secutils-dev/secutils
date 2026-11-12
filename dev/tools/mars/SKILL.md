@@ -14,6 +14,8 @@ description: >-
 # MARS: Markdown Annotation & Review System (Secutils.dev)
 
 MARS renders GitHub-flavored Markdown with Mermaid, KaTeX math, GeoJSON/TopoJSON maps, STL/3MF models, and GitHub alerts.
+Gantt labels support clock times such as `13:00` before a whitespace-prefixed task separator (` :`).
+MARS escapes these colons only for rendering. Source text, shared links, and Markdown downloads stay unchanged.
 A reader selects rendered text to start a review thread, then replies, resolves, and shares.
 Documents stay in the reader's browser (IndexedDB) unless the reader shares or syncs them.
 Review threads travel inside the Markdown file as one trailing HTML comment that other renderers hide.

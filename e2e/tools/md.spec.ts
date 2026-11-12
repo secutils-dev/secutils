@@ -10,6 +10,7 @@ import { LINK_MARKDOWN, previewLinkTests } from './_markdown_links';
 import { readingWidthTests } from './_markdown_reading_width';
 import { alertSelectionTests, listItemTests, selectionToolbarTests, sourceSelectionTests } from './_markdown_selection';
 import { mermaidNavigationTests } from './_mermaid_navigation';
+import { mermaidRenderingTests } from './_mermaid_rendering';
 
 const tool = getTool('md');
 const modelFixture = (name: string) => resolve(__dirname, `fixtures/3mf/${name}.3mf`);
@@ -57,6 +58,10 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     await setMarkdown(page, markdown);
   });
   mermaidNavigationTests(async (page, markdown) => {
+    await page.goto(tool.path);
+    await setMarkdown(page, markdown);
+  });
+  mermaidRenderingTests(async (page, markdown) => {
     await page.goto(tool.path);
     await setMarkdown(page, markdown);
   });

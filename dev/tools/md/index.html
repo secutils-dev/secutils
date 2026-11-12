@@ -1380,7 +1380,8 @@ function ensureMermaid() {
     if (!_mermaidPromise) {
         _mermaidPromise = import(MERMAID_URL).then((m) => {
             const mermaid = m.default;
-            mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'default' });
+            // The host owns error UI; Mermaid otherwise leaves its error SVG in document.body.
+            mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'default', suppressErrorRendering: true });
             return mermaid;
         }).catch((err) => { _mermaidPromise = undefined; throw err; });
     }
@@ -1395,10 +1396,19 @@ function autoQuoteMermaidLabels(src) {
     });
 }
 
+// Gantt's lexer takes the first colon as the task separator, even inside a clock label.
+// Only repair clock text before an explicit, whitespace-prefixed separator. Metadata and
+// directives stay intact; Mermaid decodes #58; back to a colon in the SVG, not in the source.
+function escapeMermaidGanttTimes(src) {
+    return src.replace(/^(?![ \t]*(?:(?:title|section|accTitle|accDescr|click|todayMarker)\b|%%))([^\n]*?\S)([ \t]+:[^\n]*)$/gmi, (line, label, data) =>
+        label.replace(/\b(\d{1,2}):(?=\d{2}\b)/g, '$1#58;') + data);
+}
+
 async function sanitizeMermaid(mermaid, src) {
     try {
-        await mermaid.parse(src);
-        return src;
+        const parsed = await mermaid.parse(src);
+        // Gantt syntax parsing can succeed with malformed task data; the renderer fails later.
+        return parsed.diagramType === 'gantt' ? escapeMermaidGanttTimes(src) : src;
     } catch (firstErr) {
         const fixed = autoQuoteMermaidLabels(src);
         if (fixed !== src) {

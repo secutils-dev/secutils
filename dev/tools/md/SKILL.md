@@ -35,6 +35,8 @@ available on demand.
   View changes do not alter the Markdown or shared links.
   Unchanged diagrams retain zoom, pan, and Fit mode after unrelated block or Source edits.
   Changed diagrams start in Fit mode. Opening a document or reloading the page starts fresh views.
+  Gantt labels support clock times such as `13:00` before a whitespace-prefixed task separator (` :`).
+  The renderer escapes these colons without changing the source. Other Mermaid errors stay beside their source, without an extra error diagram.
 - **GeoJSON and TopoJSON maps** - fenced `geojson` and `topojson` blocks display
   interactive longitude/latitude maps. Drag to pan, use arrow keys, or use the zoom and reset buttons.
   Feature properties appear in hover tooltips. Maps use an OpenStreetMap basemap with a Web Mercator projection.

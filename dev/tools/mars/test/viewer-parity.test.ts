@@ -9,10 +9,13 @@ test('Mermaid navigation and styles match Markdown Preview', () => {
     const css = readFileSync(new URL('../src/doc/doc.css', import.meta.url), 'utf8');
     const helper = (s: string) => s.slice(s.indexOf('function initMermaids('), s.indexOf('// Maps use SVG;'));
     const matching = (s: string) => s.slice(s.indexOf('function mermaidViews('), s.indexOf('// Keep SVG sizing'));
+    const rendering = (s: string) => s.slice(s.indexOf('// ---- Mermaid ('), s.indexOf('// Match unchanged diagrams'));
     const styles = (s: string) => s.slice(s.indexOf('/* Mermaid:'), s.indexOf('.su-diagram {'));
     assert.ok(helper(viewer).length > 100);
     assert.equal(helper(viewer), helper(md));
     assert.equal(matching(viewer), matching(md));
+    assert.ok(rendering(viewer).length > 100);
+    assert.equal(rendering(viewer), rendering(md));
     assert.equal(styles(css), styles(md));
 });
 

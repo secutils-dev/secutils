@@ -6,6 +6,7 @@ import type { Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 
 import { test } from './_mars_test';
+import { GANTT_DOCUMENT } from './_mermaid_rendering';
 
 const MARS_BASE_URL = process.env.MARS_BASE_URL ?? 'https://mars.secutils.dev';
 test.use({ baseURL: MARS_BASE_URL });
@@ -237,6 +238,30 @@ H<sub>2</sub>O keeps <kbd>inline</kbd> tags.
     await expect(page.locator('figure[data-kind="geojson"] svg.su-diagram-view path')).toHaveCount(1);
     await page.locator('figure[data-kind="stl"]').getByRole('button', { name: 'Rotate right', exact: true }).click();
     await expect(page.locator('figure[data-kind="stl"] polygon')).toHaveCount(1);
+  });
+
+  test('retains Gantt clock labels in HTML and PDF while Markdown downloads stay byte-identical', async ({ page }) => {
+    await openDoc(page, GANTT_DOCUMENT, 'Timeline.md');
+    await expect(page.locator('#previewArticle .su-mermaid-stage > svg')).toBeVisible({ timeout: 20000 });
+    await openExport(page);
+    await expect(htmlFrame(page).locator('.su-mermaid svg')).toContainText('slice 13:00 BAD (p99 13,448)');
+    await expect(htmlFrame(page).locator('.su-mermaid-error')).toHaveCount(0);
+    const output = await htmlDownload(page);
+    expect(output.text).toContain('slice 13:00 BAD (p99 13,448)');
+    expect(output.text).not.toContain('slice 13#58;00');
+    await readyPdf(page);
+    // Paged.js can retain an empty split clone. Assert the complete diagram in the prepared pages,
+    // not the hidden source document or a clone without task content.
+    const pdfDiagram = pdfFrame(page)
+      .locator('.pagedjs_pages .su-mermaid svg')
+      .filter({ hasText: 'slice 14:10 BAD (p99 13,842)' });
+    await expect(pdfDiagram).toBeVisible();
+    await expect(pdfDiagram.locator('rect.task')).toHaveCount(5);
+    await expect(pdfFrame(page).locator('.su-mermaid-error')).toHaveCount(0);
+    const pending = page.waitForEvent('download');
+    await dlg(page).getByRole('button', { name: 'Download Markdown', exact: true }).click();
+    const download = await pending;
+    expect(await readFile(await download.path(), 'utf8')).toBe(GANTT_DOCUMENT);
   });
 
   test('uses one toolbar control, isolated exact HTML, and lossless Markdown download', async ({ page }) => {

@@ -12,6 +12,7 @@ import { alertSelectionTests, listItemTests, selectionToolbarTests, sourceSelect
 import { indexingTests } from './_mars_indexing';
 import { test } from './_mars_test';
 import { mermaidNavigationTests } from './_mermaid_navigation';
+import { mermaidRenderingTests } from './_mermaid_rendering';
 
 // MARS keeps reviews in IndexedDB, so every test gets a fresh context. It runs on its own
 // host (MARS_BASE_URL); locally, `npm run serve` in dev/tools/mars and
@@ -118,6 +119,10 @@ test.describe(`${tool.name} (${tool.path})`, () => {
   });
   indexingTests(tool.path);
   mermaidNavigationTests(async (page, markdown) => {
+    await page.goto(tool.path);
+    await newDoc(page, markdown);
+  });
+  mermaidRenderingTests(async (page, markdown) => {
     await page.goto(tool.path);
     await newDoc(page, markdown);
   });
