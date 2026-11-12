@@ -71,7 +71,8 @@ An HTML file that MARS exported with embedded source opens as editable Markdown.
 | Snapshot, Short | Send a copy as a short link | The browser uploads an encrypted copy. You can delete the link early from the same browser. |
 | Live | Let another person view, comment, or edit one document | Changes arrive without a new link. You can disable the link at any time. |
 
-Folders support snapshot links only. A link also carries the reading width and the table column widths.
+Folders support snapshot links only. Their Copy link dialog omits the Live option.
+A link also carries the reading width and the table column widths.
 
 ### Sync your devices
 
@@ -115,16 +116,18 @@ CAUTION: Keep the backup password. Secutils.dev cannot recover it.
 | Choice | Result |
 |--------|--------|
 | **Delete everywhere** (personal Sync) | Deletes the document or folder and its synced contents from every paired device. Offline deletions remain queued after reload. |
-| **Delete local copy** | Removes the document from this browser. Other devices and shared links stay active. |
-| **Delete from collection** (Live-only owner) | Ends Live access. Copies that recipients saved stay there. |
+| **Delete document** or **Delete folder** (sharing source) | Deletes the local selection and its owned live content from the service. Saved copies on other devices remain with a broken-link icon. |
+| **Delete document** (live recipient) | Deletes this browser's copy only. The owner's link stays active. |
 
 Personal Sync offers **Delete everywhere**, not **Delete local copy**. Shared deletion is permanent and has no **Undo** action.
+Source deletion also has no **Undo** action. A failed remote cleanup keeps the local document and resumes after reload.
 **Disconnect this device** keeps an independent copy instead. Independent descendants move outside a deleted synced folder.
 Unsent edits retain their review data and a connection archive under **Recovered Sync copies**.
 Live recipients, independent copies, snapshots, and downloaded files are not remotely deleted.
 Old deletions without signed receipts retain their existing local copies.
 
 Short snapshot links stay available until they expire. To delete one early, use **Share** before you delete the document.
+The delete dialog shows the live-link count in bold and offers one delete button beside **Cancel**.
 
 ### Temporary sessions
 

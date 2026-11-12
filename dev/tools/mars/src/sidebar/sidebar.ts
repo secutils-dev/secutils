@@ -366,18 +366,23 @@ async function deleteNode(n: TreeNode) {
         const ids = selected.map((node) => node.id),
             connected = selected.some((node) => node.connection);
         const shortLinks = share.shortLinksForDeletion(ids);
-        const info = connected ? await sync.deletionInfo(ids) : { liveLinks: 0, synced: 0, shared: false };
+        const info = connected
+            ? await sync.deletionInfo(ids)
+            : { liveLinks: 0, synced: 0, shared: false, remote: false };
         const active = selected.filter((node) => node.connection && node.connection.phase !== 'ended');
-        const remote = !info.shared && n.connection?.permission === 'owner' && n.connection.phase !== 'ended';
         const docs = selected.filter((node) => node.kind === 'doc').length;
         const paragraphs = [
             info.shared
                 ? n.kind === 'folder'
                     ? `This deletes the folder and its synced contents from every connected device.`
                     : 'This deletes the document from every connected device.'
-                : n.kind === 'folder'
-                  ? `This removes the folder and ${docs} document${docs === 1 ? '' : 's'} from this browser.`
-                  : 'This removes the document from this browser.',
+                : info.remote
+                  ? n.kind === 'folder'
+                      ? `This deletes the folder and ${docs} document${docs === 1 ? '' : 's'} from this browser and deletes their owned remote content.`
+                      : 'This deletes the document from this browser and the service.'
+                  : n.kind === 'folder'
+                    ? `This removes the folder and ${docs} document${docs === 1 ? '' : 's'} from this browser.`
+                    : 'This removes the document from this browser.',
         ];
         if (info.shared)
             paragraphs.push(
@@ -385,44 +390,37 @@ async function deleteNode(n: TreeNode) {
             );
         else if (info.synced)
             paragraphs.push(
-                `${info.synced === 1 ? 'This document syncs' : `${info.synced} documents sync`} across devices. Deleting the local copy leaves other devices connected.`,
+                `${info.synced === 1 ? 'This document syncs' : `${info.synced} documents sync`} across devices. Synced documents are deleted from your paired devices when they next connect.`,
             );
         if (active.some((node) => node.connection!.kind === 'live'))
-            paragraphs.push("This copy receives Live updates. Deleting it does not disable the owner's link.");
+            paragraphs.push("This copy receives live updates. Deleting it does not disable the owner's link.");
         if (connected && !active.length)
             paragraphs.push('The connection has ended. Only the saved local copy will be removed.');
-        if (info.liveLinks)
-            paragraphs.push(
-                info.shared
-                    ? `${info.liveLinks} active Live link${info.liveLinks === 1 ? '' : 's'} will stop working. Copies that recipients saved remain.`
-                    : `${info.liveLinks} active Live link${info.liveLinks === 1 ? '' : 's'}. Deleting the local copy leaves ${info.liveLinks === 1 ? 'it' : 'them'} active.${remote ? ' Deleting from the collection ends Live access. Saved copies on other devices remain.' : ''}`,
-            );
-        if (remote && (!info.liveLinks || info.synced))
-            paragraphs.push(
-                'Delete from collection also ends access on other devices. Saved copies on those devices remain.' +
-                    (n.kind === 'folder' ? ' Local-only items inside the folder are kept at the top level.' : ''),
-            );
         if (shortLinks)
             paragraphs.push(
                 `${shortLinks} active short snapshot link${shortLinks === 1 ? '' : 's'} ${shortLinks === 1 ? 'contains' : 'contain'} this content. ${shortLinks === 1 ? 'It stays' : 'They stay'} available until expiry. To delete these links first, cancel and use Share on the shared item.`,
             );
+        const html = paragraphs.map((text) => `<p>${esc(text)}</p>`);
+        if (info.liveLinks)
+            html.splice(
+                1,
+                0,
+                `<p>${n.kind === 'folder' ? 'The documents in this folder have' : 'The document has'} <strong>${esc(String(info.liveLinks))}</strong> live link${info.liveLinks === 1 ? '' : 's'}. Deleting ${n.kind === 'folder' ? 'the folder' : 'the document'} ends live access, but any saved local copies on other devices remain.</p>`,
+            );
         const answer = await modal({
             title: `Delete "${n.name}"?`,
-            html: paragraphs.map((text) => `<p>${esc(text)}</p>`).join(''),
+            html: html.join(''),
             buttons: [
                 { label: 'Cancel', value: '' },
                 {
                     label: info.shared
                         ? 'Delete everywhere'
-                        : active.length
-                          ? 'Delete local copy'
-                          : n.kind === 'folder'
-                            ? 'Delete folder'
-                            : 'Delete document',
-                    value: info.shared ? 'shared' : 'local',
+                        : n.kind === 'folder'
+                          ? 'Delete folder'
+                          : 'Delete document',
+                    value: 'delete',
                     danger: true,
                 },
-                ...(remote ? [{ label: 'Delete from collection', value: 'remote', danger: true }] : []),
             ],
         });
         if (!answer.value) return;
@@ -434,9 +432,9 @@ async function deleteNode(n: TreeNode) {
             toast(`Deleted ${n.name}. Deletion will sync to your other devices.`);
             return;
         }
-        if (connected) await sync.remove(n.id, answer.value === 'remote');
+        if (connected) await sync.remove(n.id, true);
         const undo = await app.remove(n.id);
-        if (undo) toast(`Deleted ${n.name}`, { label: 'Undo', run: undo });
+        if (undo) toast(`Deleted ${n.name}`, info.remote ? undefined : { label: 'Undo', run: undo });
     } catch (error) {
         toast(`Could not delete "${n.name}": ${(error as Error).message}. Your local copy is still here.`, {
             label: 'Try again',

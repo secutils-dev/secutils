@@ -226,7 +226,7 @@ Use this reference when the user asks how to do a task in MARS. Each row is one 
 | Export | **Export…** beside **Share**, or `Ctrl/Cmd+P` for PDF | HTML, PDF (A4 or Letter), or Markdown. HTML and PDF exclude review threads. |
 | Back up everything | Sidebar > **Export all** | A ZIP with readable Markdown. **Include connections and pending changes** adds an encrypted recovery file with a separate password. |
 | Delete synced content | Document or folder menu > **Delete > Delete everywhere** | Any paired personal device can delete synced content. Offline devices apply the deletion after reconnect. Unsent edits stay under **Recovered Sync copies**. |
-| Delete a Live copy | Document menu > **Delete** | **Delete local copy** affects this browser only. The owner-only **Delete from collection** ends Live access but retains recipients' saved copies. |
+| Delete live content | Document or folder menu > **Delete** | One **Delete document** or **Delete folder** button. Source deletion also deletes owned live content from the service. Recipients retain copies with a broken-link icon. Recipient deletion affects only that browser. |
 | Send threads to an agent or GitHub | **Share > Copy for agent**, **Copy for GitHub**, **Copy threads for GitHub** | **Copy for GitHub** needs a short link. |
 
 Limits and behavior that users ask about:

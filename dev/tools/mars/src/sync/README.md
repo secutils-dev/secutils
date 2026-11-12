@@ -215,6 +215,9 @@ Cleanup refuses to delete a document that still has personal-device grants or a 
 Small deletion and revocation fences remain so that retries cannot revive old access. They contain no document content or encryption keys.
 Late writes cannot publish after deletion. Maintenance can reclaim their reservations without the abandoned-write grace period.
 Recipients retain their saved projection and outbox. Their persistent badge shows a disconnected local copy.
+Source **Delete document** uses the same cleanup before local deletion, even while live links remain active.
+**Delete folder** also cleans up owned live documents inside an independent folder. Received live documents only detach locally.
+Cleanup failure keeps the local document and its saved cleanup job. Source deletion has no Undo action.
 
 ## Activity and UI boundaries
 

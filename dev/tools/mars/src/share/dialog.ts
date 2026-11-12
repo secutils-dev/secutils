@@ -51,7 +51,7 @@ export async function openShareDialog(id: string, initial: 'snapshot' | 'live' =
         const answer = ui.screen({
             title: 'Copy link',
             html: `<p><strong>${esc(node.name)}</strong></p>
-            <fieldset class="copy-options"><legend class="field-label">Share</legend><label><input type="radio" name="copyMode" value="snapshot"${mode === 'snapshot' ? ' checked' : ''}> Snapshot</label><label><input type="radio" name="copyMode" value="live"${mode === 'live' ? ' checked' : ''}${canLive ? '' : ' disabled'}> Live</label></fieldset>
+            ${node.kind === 'doc' ? `<fieldset class="copy-options"><legend class="field-label">Share</legend><label><input type="radio" name="copyMode" value="snapshot"${mode === 'snapshot' ? ' checked' : ''}> Snapshot</label><label><input type="radio" name="copyMode" value="live"${mode === 'live' ? ' checked' : ''}${canLive ? '' : ' disabled'}> Live</label></fieldset>` : ''}
             <p id="copyModeHelp" class="sync-fineprint"></p>
             <fieldset id="copyFormatFields" class="copy-options"><legend class="field-label">Link format</legend><label><input type="radio" name="copyFormat" value="full" checked> Full</label><label><input type="radio" name="copyFormat" value="short"> Short</label></fieldset>
             <div id="copyExpiryFields" class="live-expiry"><label class="field-label" for="copyLifetime">Expires</label><select class="select" id="copyLifetime"></select></div>
@@ -134,8 +134,8 @@ export async function openShareDialog(id: string, initial: 'snapshot' | 'live' =
             const live = mode === 'live',
                 forwarding = live && received,
                 expires = !forwarding && (live || format === 'short');
-            ui.element.querySelector<HTMLInputElement>('input[name="copyMode"][value="live"]')!.disabled =
-                !canCreate && !original;
+            const liveChoice = ui.element.querySelector<HTMLInputElement>('input[name="copyMode"][value="live"]');
+            if (liveChoice) liveChoice.disabled = !canCreate && !original;
             ui.element.querySelector<HTMLElement>('#copyFormatFields')!.hidden = forwarding;
             ui.element.querySelector<HTMLElement>('#copyExpiryFields')!.hidden = !expires;
             ui.element.querySelector<HTMLElement>('#copyAccessFields')!.hidden = !live || forwarding;
@@ -156,7 +156,7 @@ export async function openShareDialog(id: string, initial: 'snapshot' | 'live' =
                 : live
                   ? 'Receives later document changes. Choose what people can do.'
                   : node.kind === 'folder'
-                    ? 'A copy of this folder and its documents. Later changes are not included. Live links are available for individual documents.'
+                    ? 'A snapshot of this folder and its documents. Later changes are not included.'
                     : 'A copy of this document. Later changes are not included.';
             if (received && !original && !forwarding)
                 help.textContent += ' The Live link ended. Only snapshots can be shared.';

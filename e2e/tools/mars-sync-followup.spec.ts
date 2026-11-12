@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 
@@ -900,10 +900,12 @@ test.describe('sync protocol follow-up', () => {
     await page.getByRole('button', { name: 'Actions for Shared note', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Delete', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Delete "Shared note"?' });
-    await expect(dialog).toContainText('1 active Live link');
+    await expect(dialog).toContainText('The document has 1 live link.');
+    await expect(dialog.locator('#marsModalBody strong')).toHaveText('1');
     await expect(dialog).toContainText('1 active short snapshot link');
-    await expect(dialog).toContainText('Deleting from the collection ends Live access');
-    await dialog.getByRole('button', { name: 'Delete local copy', exact: true }).click();
+    await expect(dialog).toContainText('Deleting the document ends live access');
+    await expect(dialog.locator('footer button')).toHaveCount(2);
+    await dialog.getByRole('button', { name: 'Delete document', exact: true }).click();
     await expect(page.locator('#tree .tree-link')).toHaveCount(0);
     expect(await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('mars.shortLinks')!)).length)).toBe(1);
   });
@@ -912,7 +914,7 @@ test.describe('sync protocol follow-up', () => {
     await openDoc(page, 'Retry delete', '# Retry delete\n\nNever lose a failed deletion.');
     await live(page);
     let requests = 0;
-    await page.route('**/sync/delete-document', (route) =>
+    await page.route('**/sync/purge-live-document', (route) =>
       route.fulfill({
         status: ++requests === 1 ? 503 : 410,
         json: { error: requests === 1 ? 'service-unavailable' : 'connection-expired' },
@@ -921,14 +923,172 @@ test.describe('sync protocol follow-up', () => {
     const requestDelete = async () => {
       await page.getByRole('button', { name: 'Actions for Retry delete', exact: true }).click();
       await page.getByRole('menuitem', { name: 'Delete', exact: true }).click();
-      await page.getByRole('button', { name: 'Delete from collection', exact: true }).click();
+      await page.getByRole('button', { name: 'Delete document', exact: true }).click();
     };
     await requestDelete();
     await expect(page.locator('#toast')).toContainText('Could not delete');
     await expect(page.locator('#tree .tree-link')).toHaveCount(1);
+    await page.reload();
+    await expect(page.locator('#previewArticle')).toContainText('Never lose a failed deletion.');
     await requestDelete();
     await expect(page.locator('#tree .tree-link')).toHaveCount(0);
   });
+
+  for (const kind of ['document', 'folder'] as const)
+    test(`one delete button purges owned live links of a ${kind} and retains recipient copies`, async ({ browser }) => {
+      test.setTimeout(120000);
+      const c = await clients(browser, 3),
+        [owner, temporary, saved] = c.pages;
+      const purged = new Set<string>();
+      const failures: { page: number; action: string; status: number; code: unknown }[] = [];
+      for (const [index, page] of c.pages.entries())
+        page.on('response', async (response) => {
+          const path = new URL(response.url()).pathname;
+          if (!path.startsWith('/sync/') || response.status() < 400) return;
+          const body = await response.json().catch(() => ({}));
+          failures.push({ page: index, action: path, status: response.status(), code: body.error });
+        });
+      let fences = 0;
+      owner.on('request', (request) => {
+        const path = new URL(request.url()).pathname;
+        if (path === '/sync/purge-live-document') purged.add(request.postDataJSON().document);
+        if (path === '/sync/delete-document') fences++;
+      });
+      try {
+        await owner.goto(baseURL);
+        await expect(owner.locator('#emptyState')).toBeVisible();
+        if (kind === 'folder') {
+          await owner.locator('#importInput').setInputFiles({
+            name: 'Shared folder.zip',
+            mimeType: 'application/zip',
+            buffer: Buffer.from(
+              zipSync({
+                'Shared folder/One.md': Buffer.from('# One\n\nRetain this shared content.'),
+                'Shared folder/Two.md': Buffer.from('# Two\n\nRetain the second document.'),
+              }),
+            ),
+          });
+          await expect(owner.locator('#toast')).toContainText('Imported 2 documents');
+          await owner
+            .getByRole('treeitem')
+            .filter({ has: owner.getByRole('link', { name: 'One', exact: true }) })
+            .getByRole('link')
+            .click();
+        } else await openDoc(owner, 'One', '# One\n\nRetain this shared content.');
+        const first = await live(owner);
+        await owner.getByRole('button', { name: 'Actions for One', exact: true }).click();
+        await owner.getByRole('menuitem', { name: 'Delete', exact: true }).click();
+        const single = owner.getByRole('dialog', { name: 'Delete "One"?', exact: true });
+        await expect(single).toContainText('The document has 1 live link.');
+        await expect(single.locator('#marsModalBody strong')).toHaveText('1');
+        await expect(single.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+        await owner.keyboard.press('Escape');
+        let second = first;
+        if (kind === 'folder') {
+          await owner.getByRole('link', { name: 'Two', exact: true }).click();
+          second = await live(owner);
+        } else second = await live(owner);
+        await temporary.goto(first);
+        await saved.goto(second);
+        await expect(temporary.locator('#previewArticle')).toContainText('Retain this shared content.', {
+          timeout: 15000,
+        });
+        await expect(saved.locator('#previewArticle')).toContainText(
+          kind === 'folder' ? 'Retain the second document.' : 'Retain this shared content.',
+          { timeout: 15000 },
+        );
+        await saved.getByRole('button', { name: 'Save live document to library', exact: true }).click();
+        await saved.getByRole('button', { name: 'Save to library', exact: true }).click();
+        await expect(saved.locator('#temporarySession')).toBeHidden();
+        // A recipient uses the same single delete button, but cannot purge the owner's content.
+        await temporary.getByRole('button', { name: 'Actions for One', exact: true }).click();
+        await temporary.getByRole('menuitem', { name: 'Delete', exact: true }).click();
+        const recipientDelete = temporary.getByRole('dialog', { name: 'Delete "One"?', exact: true });
+        await expect(recipientDelete).toContainText("Deleting it does not disable the owner's link.");
+        await recipientDelete.getByRole('button', { name: 'Delete document', exact: true }).click();
+        await expect(temporary.locator('#tree [data-connection]')).toHaveCount(0);
+        await temporary.goto(first);
+        await expect(temporary.locator('#previewArticle')).toContainText('Retain this shared content.');
+        // The old projection can appear before an asynchronous rejoin finishes. Wait for the
+        // connection, not just the retained text, before the owner deletes the source.
+        await expect(temporary.locator('#tree [data-connection]')).toHaveCount(1);
+        await expect(temporary.locator('#saveState')).toHaveText('Up to date', { timeout: 15000 });
+        await owner.bringToFront();
+        const name = kind === 'folder' ? 'Shared folder' : 'One';
+        await owner.getByRole('button', { name: `Actions for ${name}`, exact: true }).click();
+        await owner.getByRole('menuitem', { name: 'Delete', exact: true }).click();
+        const dialog = owner.getByRole('dialog', { name: `Delete "${name}"?`, exact: true });
+        await expect(dialog).toContainText(
+          kind === 'folder' ? 'The documents in this folder have 2 live links.' : 'The document has 2 live links.',
+        );
+        await expect(dialog.locator('#marsModalBody strong')).toHaveText('2');
+        await expect(dialog).toContainText('any saved local copies on other devices remain.');
+        await expect(dialog).not.toContainText(/Live|collection|Delete local copy/);
+        await expect(dialog.locator('footer button')).toHaveCount(2);
+        for (const width of [320, 1280])
+          for (const theme of ['light', 'dark']) {
+            await owner.setViewportSize({ width, height: 800 });
+            await owner.evaluate((theme) => {
+              document.documentElement.dataset.theme = theme;
+            }, theme);
+            const bounds = (await dialog.boundingBox())!;
+            expect(bounds.x).toBeGreaterThanOrEqual(15);
+            expect(bounds.x + bounds.width).toBeLessThanOrEqual(width - 15);
+            expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+            await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+          }
+        await dialog.getByRole('button', { name: `Delete ${kind}`, exact: true }).click();
+        await expect(owner.locator('#tree .tree-link')).toHaveCount(0, { timeout: 30000 });
+        await expect(owner.getByRole('button', { name: 'Undo', exact: true })).toBeHidden();
+        expect(purged.size).toBe(kind === 'folder' ? 2 : 1);
+        expect(fences).toBe(0);
+        for (const recipient of [temporary, saved]) {
+          await recipient.bringToFront();
+          await expect(recipient.locator('#tree [data-phase="ended"]')).toHaveCount(1, { timeout: 30000 });
+          await expect(
+            recipient.getByRole('button', { name: 'Local document: Local copy · connection ended', exact: true }),
+          ).toBeVisible();
+          await expect(recipient.locator('#tree .tree-connection svg path')).toHaveAttribute(
+            'd',
+            /^m15\.354 1\.354-14 14/,
+          );
+        }
+        await saved.reload();
+        await expect(saved.locator('#previewArticle')).toContainText(
+          kind === 'folder' ? 'Retain the second document.' : 'Retain this shared content.',
+        );
+        await expect(saved.locator('#tree [data-phase="ended"]')).toHaveCount(1);
+        await owner.reload();
+        await expect(owner.locator('#emptyState')).toBeVisible();
+      } catch (error) {
+        const path = test.info().outputPath('deletion-connection-states.json');
+        await writeFile(
+          path,
+          JSON.stringify({
+            failures,
+            pages: await Promise.all(
+              c.pages.map((page) =>
+                page.evaluate(() => ({
+                  visibility: document.visibilityState,
+                  phases: [...document.querySelectorAll('#tree [data-phase]')].map((element) =>
+                    element.getAttribute('data-phase'),
+                  ),
+                  status: document.querySelector('#saveState')?.textContent,
+                  toast: document.querySelector('#toastMsg')?.textContent,
+                })),
+              ),
+            ),
+          }),
+        );
+        await test.info().attach('Deletion connection states', {
+          contentType: 'application/json',
+          path,
+        });
+        throw error;
+      } finally {
+        await c.close();
+      }
+    });
 
   for (const permission of ['view', 'comment', 'edit'] as const)
     test(`opening a ${permission} Live document with an empty retained thread does not publish deletion`, async ({

@@ -634,6 +634,11 @@ test.describe('sync user experience sharing', () => {
     await expect(page.getByRole('menuitem', { name: 'Download .zip', exact: true })).toHaveCount(0);
     await page.getByRole('menuitem', { name: 'Copy link', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Copy link', exact: true });
-    await expect(dialog.getByRole('radio', { name: 'Live', exact: true })).toBeDisabled();
+    await expect(dialog.getByRole('radio', { name: 'Live', exact: true })).toHaveCount(0);
+    await expect(dialog.getByRole('radio', { name: 'Snapshot', exact: true })).toHaveCount(0);
+    await expect(dialog).toContainText('A snapshot of this folder and its documents.');
+    await expect(dialog.getByRole('radio', { name: 'Full', exact: true })).toBeChecked();
+    expect(new URL(await configureCopyLink(page, { format: 'full', close: false })).hash).toMatch(/^#b=/);
+    expect(new URL(await configureCopyLink(page, { format: 'short', close: false })).hash).toMatch(/^#s=/);
   });
 });

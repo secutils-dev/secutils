@@ -26,7 +26,9 @@ export async function configureCopyLink(
 ) {
   const dialog = page.getByRole('dialog', { name: 'Copy link', exact: true });
   await expect(dialog).toBeVisible();
-  await dialog.getByRole('radio', { name: options.mode === 'live' ? 'Live' : 'Snapshot', exact: true }).check();
+  const mode = dialog.getByRole('radio', { name: options.mode === 'live' ? 'Live' : 'Snapshot', exact: true });
+  // Folder links are snapshots and have no mode selector.
+  if (options.mode === 'live' || (await mode.count())) await mode.check();
   const forwarding = await dialog.locator('#copyForwardInfo').isVisible();
   if (!forwarding) {
     await dialog.getByRole('radio', { name: options.format === 'full' ? 'Full' : 'Short', exact: true }).check();

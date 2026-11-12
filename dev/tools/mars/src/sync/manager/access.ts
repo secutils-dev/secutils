@@ -37,7 +37,8 @@ import {
     rotationKey,
 } from './state.ts';
 import { initialize, start } from './engine.ts';
-import { personalSync } from './deletion.ts';
+import { personalSync, deleteEverywhere } from './deletion.ts';
+import { continueCleanup } from './live-links.ts';
 import { deletionAllowed } from '../deletion.ts';
 
 /**
@@ -172,16 +173,16 @@ export async function disconnect(scope: Scope, nodes: TreeNode[]) {
     } else driverFor(scope)?.retry();
 }
 /**
- * Detaches node `id` and its subtree from their connections before the caller deletes the local nodes.
- * This function does not delete a local node.
+ * Ends connections and owned remote access before the caller deletes the remaining local selection.
+ * Personal Sync deletion also removes connected local nodes atomically and preserves pending edits.
  *
- * With `remote`, the owner also deletes each connected document from the collection. Local-only children
- * of a connected folder move to the top level first. A lost response is safe to retry: the service codes
- * for an ended or deleted document count as success.
+ * With `remote`, each owned Live-only scope in the selection enters durable cleanup before local removal.
+ * Personal Sync selections use signed deletion on all paired devices. Received Live copies only detach.
+ * The selection can span several scopes, including documents inside an independent folder.
  * Without `remote`, the nodes detach locally in every scope that the subtree touches.
  *
- * @throws Error when the editor holds a conflicting draft, when `remote` is set without the owner grant,
- * or when a deletion request fails. Documents that the service already deleted stay deleted.
+ * @throws Error when the editor holds a conflicting draft or a deletion request fails.
+ * Remote cleanup retains the local document on failure. Its saved job remains available for retry.
  */
 export async function remove(id: string, remote = false) {
     await initialize();
@@ -189,35 +190,25 @@ export async function remove(id: string, remote = false) {
     if (viewer.hasConnectionDraftConflict()) throw new Error('Save the draft before deleting this document.');
     const node = app.node(id);
     if (!node) return;
-    const scope = rootFor(node),
-        all = [node, ...(node.kind === 'folder' ? descendants(app.state.nodes, id) : [])];
-    if (remote) {
-        if (!scope || scope.member.grant.permission !== 'owner')
-            throw new Error('Only the owner can delete remote content.');
+    const all = [node, ...(node.kind === 'folder' ? descendants(app.state.nodes, id) : [])];
+    for (const scope of scopes.values()) {
         const connected = all.filter((item) => belongs(item, scope));
-        // Items outside this scope are not part of the collection. Keep them: move each one that sits
-        // directly inside a connected folder to the top level, together with its own subtree.
-        for (const item of all.filter((item) => !belongs(item, scope)))
-            if (item.parentId && connected.some((parent) => parent.id === item.parentId)) await app.move(item.id, null);
-        for (const item of connected) {
-            try {
-                await scoped(scope, 'delete-document', { document: item.connection!.document });
-            } catch (error) {
-                // Expiry/deletion already ended remote access, including a lost response
-                // to an earlier delete. Still let the reader remove the retained copy.
-                if (
-                    !['connection-ended', 'connection-expired', 'document-deleted', 'document-expired'].includes(
-                        errorText(error),
-                    )
-                )
-                    throw error;
-            }
-        }
-        await disconnect(scope, connected);
-    } else {
-        for (const scope of scopes.values()) {
-            const connected = all.filter((item) => belongs(item, scope));
-            if (connected.length) await disconnect(scope, connected);
+        if (!connected.length) continue;
+        const active = connected.some((item) => item.connection!.phase !== 'ended');
+        if (remote && active && personalSync(scope) && deletionAllowed(scope.member, scope.owner)) {
+            // Parent-first removal also removes its connected descendants. Independent descendants
+            // retain the personal-Sync recovery rules rather than being silently erased.
+            for (const item of connected) if (app.node(item.id)?.connection) await deleteEverywhere(item.id);
+        } else if (remote && (active || scope.cleanup) && scope.member.grant.permission === 'owner') {
+            scope.cleanup ??= { document: scope.root };
+            await saveScope(scope);
+            await continueCleanup(scope);
+            // Pairing can win a race with Live-only cleanup. The responder refuses to purge a personal
+            // collection; use the signed personal deletion path instead.
+            if (personalSync(scope))
+                for (const item of connected) if (app.node(item.id)?.connection) await deleteEverywhere(item.id);
+        } else {
+            await disconnect(scope, connected);
         }
     }
 }
@@ -226,6 +217,7 @@ export async function remove(id: string, remote = false) {
  *
  * @returns `synced`: selected documents in a personal Sync scope with an active connection.
  * `liveLinks`: owned Live links for the selected documents that are unexpired and not revoked.
+ * `remote`: the selection permits remote deletion or contains a pending Live-only cleanup.
  */
 export async function deletionInfo(ids: string[]) {
     await initialize();
@@ -255,7 +247,16 @@ export async function deletionInfo(ids: string[]) {
         personalSync(scope) &&
         deletionAllowed(scope.member, scope.owner)
     );
-    return { liveLinks, synced, shared };
+    const remote = selected.some((node) => {
+        const scope = rootFor(node);
+        return !!(
+            scope &&
+            (node.connection!.phase !== 'ended' || scope.cleanup) &&
+            (scope.member.grant.permission === 'owner' ||
+                (personalSync(scope) && deletionAllowed(scope.member, scope.owner)))
+        );
+    });
+    return { liveLinks, synced, shared, remote };
 }
 /**
  * Decides whether the tree can move node `id` under `parent` (`null` is the top level). `app.move` calls
