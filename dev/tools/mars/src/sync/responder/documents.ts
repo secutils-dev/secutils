@@ -1,7 +1,7 @@
 // Member actions for the documents of a collection: registration, the directory, deletion, and
 // the stepwise purge of a Live-only collection. A deletion is a persistent fence, so a late
 // request cannot restore the document.
-import { fail, LIMITS, permitted } from '../protocol.ts';
+import { canonical, fail, LIMITS, permitted } from '../protocol.ts';
 import type { Member, InviteRecord, Stored } from './types.ts';
 import {
     json,
@@ -20,6 +20,8 @@ import {
 } from './store.ts';
 import { release } from './quota.ts';
 import type { MemberSession } from './session.ts';
+import { deletionAllowed, validDeletion, type SignedDeletion } from '../deletion.ts';
+import { signatureValid } from './store.ts';
 
 /**
  * Returns the registered documents and folders of the collection, for a grant on the whole collection.
@@ -31,18 +33,56 @@ export async function directory(session: MemberSession) {
 }
 /**
  * Marks a registered document as deleted with a persistent fence. Reads, joins, and writes of that document fail
- * afterwards. Owner only.
+ * afterwards. Signed personal receipts permit the owner and paired editors. Legacy unsigned deletion is owner-only.
  */
 export async function deleteDocument(session: MemberSession) {
-    const { kv, request, grant, scope, owner } = session;
+    const { kv, request, grant, scope, owner, member, collection } = session;
 
-    owner();
     const id = scope(request.document);
+    if (request.deletion !== undefined) {
+        const packet = request.deletion;
+        if (
+            !validDeletion(packet) ||
+            packet.deletion.document !== id ||
+            packet.deletion.member !== grant.member ||
+            canonical(packet.author) !== canonical(member.signed) ||
+            !deletionAllowed(member.signed, collection.owner) ||
+            !signatureValid(packet.deletion, packet.signature, grant.publicKey)
+        )
+            return fail('invalid-deletion', 403);
+        const key = deletedKey(grant.collection, id);
+        if (!(await kv.get(docKey(grant.collection, id))) && !(await kv.get(key))) return fail('document-expired', 410);
+        // Different authorized devices may delete the same identity. The first signed fence wins;
+        // all later deletions succeed without replacing that receipt or extending access.
+        await kv.set(key, b64json({ deleted: true, receipt: packet }), { ifAbsent: true });
+        const stored = await kv.getEntry(key);
+        if (!stored.value) return fail('deletion-not-stored', 503);
+        if (stored.expiresAt !== null) return fail('persistent-deletions-unavailable', 503);
+        return json(200, { deleted: id });
+    }
+    owner();
     // The fence never expires. Write it only for a registered document, so requests with
     // random ids cannot add permanent records.
     if ((await kv.get(docKey(grant.collection, id))) || (await kv.get(deletedKey(grant.collection, id))))
         await first(kv, deletedKey(grant.collection, id), b64json({ deleted: true }), null);
     return json(200, { deleted: id });
+}
+
+/** Lists signed deletion receipts for personal devices, including after the collection root is deleted. */
+export async function deletions(session: MemberSession) {
+    const { kv, grant, member, collection } = session;
+    if (!deletionAllowed(member.signed, collection.owner)) return fail('forbidden-deletions', 403);
+    const page = await kv.list({
+        prefix: `${NS}c/${grant.collection}/deleted/`,
+        limit: LIMITS.documents,
+        valuesIncluded: true,
+    });
+    const receipts: SignedDeletion[] = [];
+    for (const entry of page.entries) {
+        const record = entry.value ? parse<{ receipt?: SignedDeletion }>(entry.value) : undefined;
+        if (record?.receipt) receipts.push(record.receipt);
+    }
+    return json(200, { deletions: receipts });
 }
 /**
  * Deletes a Live-only collection in bounded steps: fence first, then checkpoints, reservations, invitations, budget,

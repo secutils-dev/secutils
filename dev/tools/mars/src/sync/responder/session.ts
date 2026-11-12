@@ -99,7 +99,7 @@ export async function authenticate(context: Context, runtime: Runtime, request: 
         return { documents, root: collection.root };
     };
     if (
-        action !== 'purge-live-document' &&
+        !['purge-live-document', 'deletions', 'delete-document'].includes(action) &&
         collection.root?.kind === 'doc' &&
         (await kv.get(deletedKey(grant.collection, collection.root.document)))
     )

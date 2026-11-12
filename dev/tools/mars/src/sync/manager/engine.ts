@@ -53,6 +53,7 @@ import {
     saveScope,
 } from './state.ts';
 import { continueCleanup } from './live-links.ts';
+import { synchronizeDeletions, resumeDeletions, personalSync } from './deletion.ts';
 
 // True after the first `initialize` call starts. The call sets it before its first await.
 let initialized = false;
@@ -171,6 +172,12 @@ export function start(scope: Scope) {
         // Accepts a grant that the owner signed, or a Live grant under an invitation that the owner signed.
         authorValid: (author) => verifyGrant(author, scope.owner.grant),
         directory: scope.kind === 'folder',
+        beforeUpload: personalSync(scope)
+            ? async (signal) => {
+                  await synchronizeDeletions(scope, signal);
+              }
+            : undefined,
+        deleted: personalSync(scope) ? (signal) => synchronizeDeletions(scope, signal) : undefined,
         // A document without a local session waits for its folder manifest. Its ciphertext stays on the service.
         wanted: (key) => {
             const checkpoint = checkpointKey(key);
@@ -295,6 +302,7 @@ export function start(scope: Scope) {
 export async function initialize(force = false) {
     if (initialized && !force) return;
     initialized = true;
+    resumeDeletions();
     if (await db.repairDuplicateConnections()) await app.load();
     const records = await db.allSides<SessionRecord>('sync');
     for (const record of records) {

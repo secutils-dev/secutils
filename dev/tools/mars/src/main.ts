@@ -222,7 +222,8 @@ const startupError = (action: string) => (error: unknown) => {
 };
 // The connection manager is a lazy module. It loads only when the library holds connected
 // content, and it starts before the first document opens.
-if (app.state.nodes.some((n) => n.connection)) await sync.initialize().catch(startupError('Sync could not start'));
+if (app.state.nodes.some((n) => n.connection) || (await db.allSides('sync-delete')).length)
+    await sync.initialize().catch(startupError('Sync could not start'));
 // The shell hides the body with `html.mars-boot`. Reveal it when the styles, the tree, and the
 // connection state are ready.
 document.documentElement.classList.remove('mars-boot');
@@ -270,11 +271,50 @@ try {
 // refresh connected sessions. The persistence queue keeps this work apart from a save of this tab.
 // Registered last: the handler needs the loaded tree. An earlier broadcast is not replayed.
 db.onRemoteChange((ids) => {
+    let recovered: string | undefined;
+    let deleted = false;
     void app
         .serializePersistence(async () => {
+            const previous = app.current();
             await app.load();
+            if (
+                previous?.connection?.kind === 'sync' &&
+                !app.node(previous.id) &&
+                !app.state.currentId &&
+                ids.includes(previous.id)
+            ) {
+                if (!viewer.canPublishConnection() || viewer.isEditing()) {
+                    // Another tab cannot see this tab's editor draft. Keep it separately rather than
+                    // letting the tree refresh close the document or recreate its remote identity.
+                    const text = viewer.connectionDraft()?.text ?? viewer.currentText();
+                    const folder =
+                        app.state.nodes.find(
+                            (node) =>
+                                node.kind === 'folder' &&
+                                node.parentId === null &&
+                                !node.connection &&
+                                node.name === 'Recovered Sync copies',
+                        ) ?? (await app.createFolder('Recovered Sync copies', null));
+                    recovered = (
+                        await app.createDoc({
+                            name: previous.name,
+                            text,
+                            parentId: folder.id,
+                            open: false,
+                            readingWidth: previous.readingWidth,
+                        })
+                    ).id;
+                    app.state.currentId = recovered;
+                } else deleted = true;
+            }
             await app.adoptRemoteChange(ids);
             if (app.state.nodes.some((node) => node.connection)) await sync.refresh(ids);
+        })
+        .then(async () => {
+            if (recovered && app.state.currentId === recovered) {
+                await app.openDoc(recovered);
+                viewer.toast('Sync deleted this content. Your draft is saved under Recovered Sync copies.');
+            } else if (deleted && !app.state.currentId) app.closeDoc();
         })
         .catch((error) => viewer.toast(`Could not refresh this library: ${error.message}. Local edits are retained.`));
 });

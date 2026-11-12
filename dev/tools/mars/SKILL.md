@@ -225,7 +225,8 @@ Use this reference when the user asks how to do a task in MARS. Each row is one 
 | Work without storage | **New > New temporary document**, or **Document options > Read temporarily** | The header shows **Temporary**. Only the current document returns after a reload. |
 | Export | **Export…** beside **Share**, or `Ctrl/Cmd+P` for PDF | HTML, PDF (A4 or Letter), or Markdown. HTML and PDF exclude review threads. |
 | Back up everything | Sidebar > **Export all** | A ZIP with readable Markdown. **Include connections and pending changes** adds an encrypted recovery file with a separate password. |
-| Delete | Document or folder menu > **Delete** | **Delete local copy** keeps other devices and shared links active. The owner-only **Delete from collection** ends Sync and Live access. |
+| Delete synced content | Document or folder menu > **Delete > Delete everywhere** | Any paired personal device can delete synced content. Offline devices apply the deletion after reconnect. Unsent edits stay under **Recovered Sync copies**. |
+| Delete a Live copy | Document menu > **Delete** | **Delete local copy** affects this browser only. The owner-only **Delete from collection** ends Live access but retains recipients' saved copies. |
 | Send threads to an agent or GitHub | **Share > Copy for agent**, **Copy for GitHub**, **Copy threads for GitHub** | **Copy for GitHub** needs a short link. |
 
 Limits and behavior that users ask about:
@@ -237,6 +238,8 @@ Limits and behavior that users ask about:
 - **Can edit** permits deletion of comments and threads. Only the author can edit a comment.
   **Can comment** permits deletion of the participant's own comments only.
 - Remote edits never write to a linked file on disk. A connected document needs an explicit **Save**.
+- **Delete everywhere** is permanent and has no **Undo** action. Independent copies, snapshots, and downloaded files remain.
+- **Disconnect this device** retains a local copy without deleting content on other devices.
 - HTML and PDF exports contain the same sanitized HTML as the preview: no document-supplied scripts, styles, forms, iframes,
   event-handler attributes, or `javascript:` URLs. Images and links in an export can still load from the network.
 - Embedded Markdown source in an HTML export contains the document body only, without frontmatter or review threads.

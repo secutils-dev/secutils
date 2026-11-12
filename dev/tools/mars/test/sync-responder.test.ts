@@ -15,6 +15,7 @@ import {
 } from '../src/sync/crypto.ts';
 import { liveAccess, newLiveSecret, openLiveBootstrap, sealLiveBootstrap } from '../src/sync/live-link.ts';
 import { newSyncSecret, syncAccess, sealSyncBootstrap, openSyncBootstrap } from '../src/sync/sync-link.ts';
+import { verifyDeletion, type SignedDeletion } from '../src/sync/deletion.ts';
 
 class TestKv implements Kv {
     values = new Map<string, { value: string; expiresAt: number | null }>();
@@ -142,6 +143,131 @@ async function fixture(root: boolean | 'folder' = false, kv = new TestKv()) {
         );
     return { kv, who, token, owner, signed, document, dataKey, request, checkpoint };
 }
+
+test('personal devices delete with signed permanent receipts; guests, forgeries, and stale writes cannot delete or resurrect content', async () => {
+    const f = await fixture('folder');
+    const makePacket = async (document: string, author = f.signed, who = f.who): Promise<SignedDeletion> => {
+        const deletion: SignedDeletion['deletion'] = {
+            v: 1,
+            kind: 'mars-sync-delete',
+            collection: f.owner.collection,
+            member: author.grant.member,
+            document,
+            operation: id(),
+        };
+        return { deletion, author, signature: await sign(deletion, who) };
+    };
+    const peer = await identity(),
+        token = randomSecret();
+    const author = await signGrant(
+        {
+            ...f.owner,
+            permission: 'edit',
+            member: id(),
+            publicKey: peer.publicKey,
+            boxKey: peer.boxKey,
+            tokenHash: await tokenHash(token),
+        },
+        f.who,
+    );
+    assert.equal((await f.request('grant', { signed: author })).status, 201);
+    const child = id();
+    await f.request('document', { document: child, kind: 'doc' });
+    const packet = await makePacket(child, author, peer);
+    assert.equal(await verifyDeletion(packet, f.signed), true);
+    const forged = { ...packet, deletion: { ...packet.deletion, document: f.document } };
+    assert.equal(await verifyDeletion(forged, f.signed), false);
+    assert.equal(
+        (
+            await f.request(
+                'delete-document',
+                { member: author.grant.member, document: f.document, deletion: forged },
+                token,
+            )
+        ).status,
+        403,
+    );
+    // Edit access to one Live document does not grant shared deletion, even when owner-signed.
+    const guest = await signGrant({ ...author.grant, member: id(), document: child }, f.who);
+    await f.request('grant', { signed: guest });
+    assert.equal(
+        (
+            await f.request(
+                'delete-document',
+                { member: guest.grant.member, document: child, deletion: await makePacket(child, guest, peer) },
+                token,
+            )
+        ).status,
+        403,
+    );
+    assert.equal((await f.request('deletions', { member: guest.grant.member }, token)).status, 403);
+    for (let retry = 0; retry < 2; retry++)
+        assert.equal(
+            (
+                await f.request(
+                    'delete-document',
+                    { member: author.grant.member, document: child, deletion: packet },
+                    token,
+                )
+            ).status,
+            200,
+        );
+    // Concurrent authorized deletion keeps the first receipt, rather than causing immutable-write conflicts.
+    assert.equal(
+        (await f.request('delete-document', { document: child, deletion: await makePacket(child) })).status,
+        200,
+    );
+    assert.equal((await f.request('document', { document: child, kind: 'doc' })).status, 410);
+    const root = await makePacket(f.document);
+    assert.equal((await f.request('delete-document', { document: f.document, deletion: root })).status, 200);
+    assert.equal((await f.request('index')).status, 410);
+    const receipts = await f.request('deletions', { member: author.grant.member }, token);
+    assert.equal(receipts.status, 200);
+    assert.equal(receipts.body.deletions.length, 2);
+    assert.deepEqual(
+        receipts.body.deletions.find((p: SignedDeletion) => p.deletion.document === child),
+        packet,
+    );
+    assert.ok(receipts.operations < 20);
+    assert.equal((await f.request('delete-document', { document: f.document, deletion: root })).status, 200);
+    assert.equal((await f.request('append', { envelope: await f.checkpoint(3) })).status, 410);
+    const unknown = id();
+    assert.equal(
+        (await f.request('delete-document', { document: unknown, deletion: await makePacket(unknown) })).status,
+        410,
+    );
+    assert.equal(await f.kv.get(`sync/v1/c/${f.owner.collection}/deleted/${unknown}`), null);
+});
+
+test('deletion receipt listing remains bounded at 100 items and legacy fences never become signed deletion authority', async () => {
+    const f = await fixture('folder');
+    for (let i = 1; i < LIMITS.documents; i++) {
+        const document = id();
+        await f.request('document', { document, kind: 'doc' });
+        const deletion: SignedDeletion['deletion'] = {
+            v: 1,
+            kind: 'mars-sync-delete',
+            collection: f.owner.collection,
+            member: f.owner.member,
+            document,
+            operation: id(),
+        };
+        assert.equal(
+            (
+                await f.request('delete-document', {
+                    document,
+                    deletion: { deletion, author: f.signed, signature: await sign(deletion, f.who) },
+                })
+            ).status,
+            200,
+        );
+    }
+    await f.request('delete-document', { document: f.document });
+    const result = await f.request('deletions');
+    assert.equal(result.status, 200);
+    assert.equal(result.body.deletions.length, LIMITS.documents - 1);
+    assert.ok(result.operations <= 200);
+});
 
 test('collection creation permits 50 per IP per hour, reports a distinct error, and does not block existing sync', async (t) => {
     let now = Math.floor(Date.now() / 3600000) * 3600 + 1;

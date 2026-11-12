@@ -49,7 +49,7 @@ Link-click, file-download, form, and hash-route tracking are off. The tracker ha
 - New files, links, and URLs go to the default folder. The folder action **Use as default** changes it. A star marks the default folder.
 - Right-click a document for MARS actions. **Shift + right-click** shows the browser link menu. The `⋮` button always opens MARS actions.
 - Each document has a link of the form `#doc=<id>`. The link works only in the same browser profile.
-- Every deletion asks for confirmation. **Undo** restores a deleted document as a local copy.
+- Every deletion asks for confirmation. **Undo** restores a locally deleted document as a local copy.
 
 An HTML file that MARS exported with embedded source opens as editable Markdown. Other HTML stays raw HTML.
 
@@ -82,6 +82,8 @@ Folders support snapshot links only. A link also carries the reading width and t
 
 After setup, the first window can close. New documents in a synced folder join Sync automatically.
 **Disconnect this device** keeps the local copy and leaves other devices connected.
+**Delete everywhere** deletes a synced document or folder from every paired device, including when a paired device starts the deletion.
+Offline devices apply the deletion after they reconnect. Unsent edits stay separately under **Recovered Sync copies**.
 
 Limits: one IP address can create 50 Sync collections each hour, and one selection holds at most 100 documents and folders.
 Connected content expires after 30 days without activity. When you open a document or folder, the period starts again.
@@ -112,8 +114,15 @@ CAUTION: Keep the backup password. Secutils.dev cannot recover it.
 
 | Choice | Result |
 |--------|--------|
+| **Delete everywhere** (personal Sync) | Deletes the document or folder and its synced contents from every paired device. Offline deletions remain queued after reload. |
 | **Delete local copy** | Removes the document from this browser. Other devices and shared links stay active. |
-| **Delete from collection** (owner only) | Ends Sync and Live access for everyone. Copies that other devices saved stay there. |
+| **Delete from collection** (Live-only owner) | Ends Live access. Copies that recipients saved stay there. |
+
+Personal Sync offers **Delete everywhere**, not **Delete local copy**. Shared deletion is permanent and has no **Undo** action.
+**Disconnect this device** keeps an independent copy instead. Independent descendants move outside a deleted synced folder.
+Unsent edits retain their review data and a connection archive under **Recovered Sync copies**.
+Live recipients, independent copies, snapshots, and downloaded files are not remotely deleted.
+Old deletions without signed receipts retain their existing local copies.
 
 Short snapshot links stay available until they expire. To delete one early, use **Share** before you delete the document.
 

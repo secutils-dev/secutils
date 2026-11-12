@@ -366,16 +366,24 @@ async function deleteNode(n: TreeNode) {
         const ids = selected.map((node) => node.id),
             connected = selected.some((node) => node.connection);
         const shortLinks = share.shortLinksForDeletion(ids);
-        const info = connected ? await sync.deletionInfo(ids) : { liveLinks: 0, synced: 0 };
+        const info = connected ? await sync.deletionInfo(ids) : { liveLinks: 0, synced: 0, shared: false };
         const active = selected.filter((node) => node.connection && node.connection.phase !== 'ended');
-        const remote = n.connection?.permission === 'owner' && n.connection.phase !== 'ended';
+        const remote = !info.shared && n.connection?.permission === 'owner' && n.connection.phase !== 'ended';
         const docs = selected.filter((node) => node.kind === 'doc').length;
         const paragraphs = [
-            n.kind === 'folder'
-                ? `This removes the folder and ${docs} document${docs === 1 ? '' : 's'} from this browser.`
-                : 'This removes the document from this browser.',
+            info.shared
+                ? n.kind === 'folder'
+                    ? `This deletes the folder and its synced contents from every connected device.`
+                    : 'This deletes the document from every connected device.'
+                : n.kind === 'folder'
+                  ? `This removes the folder and ${docs} document${docs === 1 ? '' : 's'} from this browser.`
+                  : 'This removes the document from this browser.',
         ];
-        if (info.synced)
+        if (info.shared)
+            paragraphs.push(
+                'Offline devices remove it when they next sync. Unsent edits are kept separately under Recovered Sync copies. Independent copies and downloaded files are not deleted.',
+            );
+        else if (info.synced)
             paragraphs.push(
                 `${info.synced === 1 ? 'This document syncs' : `${info.synced} documents sync`} across devices. Deleting the local copy leaves other devices connected.`,
             );
@@ -385,7 +393,9 @@ async function deleteNode(n: TreeNode) {
             paragraphs.push('The connection has ended. Only the saved local copy will be removed.');
         if (info.liveLinks)
             paragraphs.push(
-                `${info.liveLinks} active Live link${info.liveLinks === 1 ? '' : 's'}. Deleting the local copy leaves ${info.liveLinks === 1 ? 'it' : 'them'} active.${remote ? ' Deleting from the collection ends Live access. Saved copies on other devices remain.' : ''}`,
+                info.shared
+                    ? `${info.liveLinks} active Live link${info.liveLinks === 1 ? '' : 's'} will stop working. Copies that recipients saved remain.`
+                    : `${info.liveLinks} active Live link${info.liveLinks === 1 ? '' : 's'}. Deleting the local copy leaves ${info.liveLinks === 1 ? 'it' : 'them'} active.${remote ? ' Deleting from the collection ends Live access. Saved copies on other devices remain.' : ''}`,
             );
         if (remote && (!info.liveLinks || info.synced))
             paragraphs.push(
@@ -402,12 +412,14 @@ async function deleteNode(n: TreeNode) {
             buttons: [
                 { label: 'Cancel', value: '' },
                 {
-                    label: active.length
-                        ? 'Delete local copy'
-                        : n.kind === 'folder'
-                          ? 'Delete folder'
-                          : 'Delete document',
-                    value: 'local',
+                    label: info.shared
+                        ? 'Delete everywhere'
+                        : active.length
+                          ? 'Delete local copy'
+                          : n.kind === 'folder'
+                            ? 'Delete folder'
+                            : 'Delete document',
+                    value: info.shared ? 'shared' : 'local',
                     danger: true,
                 },
                 ...(remote ? [{ label: 'Delete from collection', value: 'remote', danger: true }] : []),
@@ -417,6 +429,11 @@ async function deleteNode(n: TreeNode) {
         if (connected) toast(`Deleting ${n.name}…`);
         // Hand pending edits to storage before the removal.
         await viewer.flush();
+        if (info.shared) {
+            await sync.deleteEverywhere(n.id);
+            toast(`Deleted ${n.name}. Deletion will sync to your other devices.`);
+            return;
+        }
         if (connected) await sync.remove(n.id, answer.value === 'remote');
         const undo = await app.remove(n.id);
         if (undo) toast(`Deleted ${n.name}`, { label: 'Undo', run: undo });

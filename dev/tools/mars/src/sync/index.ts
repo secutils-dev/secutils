@@ -56,6 +56,8 @@ export const liveLinkInfo = (id: string) => api().then((m) => m.liveLinkInfo(id)
 export const forwardLiveLink = (id: string) => api().then((m) => m.forwardLiveLink(id));
 export const saveLive = (id: string) => api().then((m) => m.saveLive(id));
 export const remove = (id: string, remote = false) => api().then((m) => m.remove(id, remote));
+/** Deletes personal Sync content on all paired devices, with durable offline delivery. */
+export const deleteEverywhere = (id: string) => api().then((m) => m.deleteEverywhere(id));
 export const deletionInfo = (ids: string[]) => api().then((m) => m.deletionInfo(ids));
 export const restoreRecovery = (file?: File) => api().then((m) => m.restoreRecovery(file));
 export const exportRecovery = (ids: string[], password: string) => api().then((m) => m.exportRecovery(ids, password));

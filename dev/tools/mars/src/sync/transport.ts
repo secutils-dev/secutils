@@ -81,6 +81,10 @@ export interface TransportOptions {
     cycle?(signal: AbortSignal, directory?: SyncDirectory): Promise<void>;
     exclude?(): string[];
     keyChanged?(envelope: SignedCheckpoint, signal: AbortSignal): Promise<void>;
+    /** Verifies resource deletions before any queued content is uploaded. Reads pause with visibility. */
+    beforeUpload?(signal: AbortSignal): Promise<void>;
+    /** Handles a deletion that raced with a read/upload. True keeps unrelated documents connected. */
+    deleted?(signal: AbortSignal): Promise<boolean>;
 }
 /**
  * Poll and upload loop of one scope. One poll runs at a time: upload the outbox, scan the checkpoint index, download
@@ -99,6 +103,7 @@ export class Transport {
     // Abort handles of the running poll and of a running key refresh.
     private reads: AbortController | null = null;
     private keyRead: AbortController | null = null;
+    private preflightRead: AbortController | null = null;
     private timer: ReturnType<typeof setTimeout> | undefined;
     private running = false;
     private sending: Promise<void> | null = null;
@@ -177,6 +182,8 @@ export class Transport {
         this.reads = null;
         this.keyRead?.abort();
         this.keyRead = null;
+        this.preflightRead?.abort();
+        this.preflightRead = null;
         clearTimeout(this.timer);
         this.timer = undefined;
         if (this.enabled && !this.environment.online()) this.options.status('offline');
@@ -292,6 +299,16 @@ export class Transport {
         this.sending = (async () => {
             let envelope: SignedCheckpoint | null = null;
             try {
+                if (this.options.beforeUpload) {
+                    const read = new AbortController();
+                    this.preflightRead = read;
+                    try {
+                        await this.options.beforeUpload(read.signal);
+                    } finally {
+                        if (this.preflightRead === read) this.preflightRead = null;
+                    }
+                    if (!this.enabled || !this.available()) return;
+                }
                 while (this.enabled && this.available() && (envelope = await this.options.replica.prepare())) {
                     if (!this.enabled || !this.available()) break;
                     this.options.status('working');
@@ -332,7 +349,7 @@ export class Transport {
                             if (this.keyRead === read) this.keyRead = null;
                         }
                     }
-                } else this.failure(error);
+                } else if (!(await this.handleDeletion(error))) this.failure(error);
             } finally {
                 this.sending = null;
             }
@@ -354,6 +371,29 @@ export class Transport {
             this.stop();
             this.options.status('attention', error.code);
         } else this.options.status(this.environment.online() ? 'waiting' : 'offline', (error as Error)?.message);
+    }
+    // A resource can be deleted after the preflight but before an append or GET.
+    // Require the host's verified receipt, not the unsigned HTTP 410, before erasing anything.
+    private async handleDeletion(error: unknown) {
+        if (
+            !(error instanceof SyncError) ||
+            error.status !== 410 ||
+            !['document-deleted', 'connection-ended'].includes(error.code) ||
+            !this.options.deleted
+        )
+            return false;
+        // An append already in flight may finish after pagehide. Its deletion remains discoverable
+        // on the next preflight; neither a new hidden-tab request nor a scope-wide end is necessary.
+        if (!this.enabled || !this.available()) return true;
+        const read = new AbortController();
+        this.preflightRead = read;
+        try {
+            return await this.options.deleted(read.signal);
+        } catch {
+            return false;
+        } finally {
+            if (this.preflightRead === read) this.preflightRead = null;
+        }
     }
     /**
      * Runs one cycle: upload, then scan each index page and download each checkpoint that is neither seen nor known. It
@@ -471,7 +511,7 @@ export class Transport {
             if (current()) syncDebug.record('poll.finished', { items: visited.size, downloads, rejected });
             this.failures = 0;
         } catch (error) {
-            this.failure(error);
+            if (!(await this.handleDeletion(error))) this.failure(error);
         } finally {
             if (this.reads === reads) this.reads = null;
             this.running = false;

@@ -23,6 +23,148 @@ const node = (id: string): TreeNode => ({
     updatedAt: 1,
 });
 
+test('shared deletion atomically removes clean rows, recovers pending work, retains independent children, and saves its outbox', async () => {
+    const collection = crypto.randomUUID(),
+        member = crypto.randomUUID();
+    const connected = (kind: 'folder' | 'doc', parentId: string | null): TreeNode => ({
+        ...node(crypto.randomUUID()),
+        kind,
+        parentId,
+        connection: { collection, member, document: crypto.randomUUID(), permission: 'edit', epoch: 1, kind: 'sync' },
+    });
+    const root = connected('folder', null),
+        folder = connected('folder', root.id);
+    const clean = connected('doc', folder.id),
+        pending = connected('doc', folder.id),
+        sibling = connected('doc', root.id);
+    const independent = { ...node(crypto.randomUUID()), parentId: folder.id };
+    const scope = `sync:scope:${collection}:${member}`;
+    await db.setMeta(scope, { localRoot: root.id, exclusions: [], token: 'saved-token' });
+    await db.putNodes([root, folder, clean, pending, sibling, independent], {
+        [clean.id]: 'Clean text',
+        [pending.id]: 'Offline edits',
+        [sibling.id]: 'Unaffected',
+        [independent.id]: 'Independent',
+    });
+    for (const n of [root, clean, pending, sibling])
+        await db.putSide('sync', n.id, {
+            revision: 1,
+            binding: n.connection,
+            projection: n.id === pending.id ? 'Offline edits' : 'Clean text',
+            outbox: n.id === pending.id ? [{ envelope: 'exact unsent packet' }] : [],
+        });
+    await db.putSide('base', pending.id, 'Review baseline');
+    await db.putSide('vec', sibling.id, { at: 1, chunks: [1] });
+    const job = { id: crypto.randomUUID(), value: { packets: ['exact deletion packet'], token: 'saved-token' } };
+    const result = await db.deleteConnected(
+        collection,
+        member,
+        [folder, clean, pending].map((node) => node.connection!.document),
+        job,
+    );
+    assert.equal(result.recovered, 1);
+    const all = await db.allNodes();
+    assert.equal(
+        all.some((n) => n.id === folder.id || n.id === clean.id),
+        false,
+    );
+    const copy = all.find((n) => n.id === pending.id)!;
+    assert.equal(copy.connection, undefined);
+    assert.equal(all.find((n) => n.id === copy.parentId)?.name, 'Recovered Sync copies');
+    assert.equal(await db.getText(copy.id), 'Offline edits');
+    assert.equal(await db.getSide('base', copy.id), 'Review baseline');
+    assert.equal(await db.getSide('sync', copy.id), undefined);
+    assert.equal(all.find((n) => n.id === independent.id)?.parentId, null);
+    assert.equal(await db.getText(independent.id), 'Independent');
+    assert.deepEqual(await db.getSide('vec', sibling.id), { at: 1, chunks: [1] });
+    assert.deepEqual(await db.getSide('sync-delete', job.id), job.value);
+    const archives = await db.getMeta<UnfinishedSetupBackup[]>(db.unfinishedSetupIndex(copy.parentId!));
+    const archived = await db.getMeta<SavedUnfinishedSetup>(archives![0].key);
+    assert.deepEqual((archived!.snapshot.records[copy.id] as { outbox: unknown[] }).outbox, [
+        { envelope: 'exact unsent packet' },
+    ]);
+    assert.ok((await db.getMeta<{ exclusions: string[] }>(scope))!.exclusions.includes(clean.connection!.document));
+    // Retrying a receipt does not create another recovery copy or archive.
+    assert.equal((await db.deleteConnected(collection, member, [folder.connection!.document])).recovered, 0);
+    assert.equal((await db.getMeta<UnfinishedSetupBackup[]>(db.unfinishedSetupIndex(copy.parentId!)))!.length, 1);
+});
+
+test('failed shared deletion keeps the complete tree and does not enqueue an unsaved intent', async () => {
+    const n = node(crypto.randomUUID());
+    n.connection = {
+        collection: crypto.randomUUID(),
+        member: crypto.randomUUID(),
+        document: crypto.randomUUID(),
+        kind: 'sync',
+        permission: 'owner',
+        epoch: 1,
+    };
+    await db.putNodes([n], { [n.id]: 'Retain on rollback' });
+    await db.setMeta(`sync:scope:${n.connection.collection}:${n.connection.member}`, { exclusions: [] });
+    const job = { id: crypto.randomUUID(), value: { uncloneable: () => {} } };
+    await assert.rejects(
+        db.deleteConnected(n.connection.collection, n.connection.member, [n.connection.document], job),
+    );
+    assert.deepEqual(
+        (await db.allNodes()).find((row) => row.id === n.id),
+        n,
+    );
+    assert.equal(await db.getText(n.id), 'Retain on rollback');
+    assert.equal(await db.getSide('sync-delete', job.id), undefined);
+});
+
+test('a keystroke arriving during deletion is captured after storage reads and becomes an independent recovery copy', async () => {
+    const n = node(crypto.randomUUID());
+    n.connection = {
+        collection: crypto.randomUUID(),
+        member: crypto.randomUUID(),
+        document: crypto.randomUUID(),
+        kind: 'sync',
+        permission: 'owner',
+        epoch: 1,
+    };
+    await db.putNodes([n], { [n.id]: 'Acknowledged text' });
+    await db.putSide('sync', n.id, { revision: 1, binding: n.connection, projection: 'Acknowledged text', outbox: [] });
+    await db.setMeta(`sync:scope:${n.connection.collection}:${n.connection.member}`, { exclusions: [] });
+    const result = await db.deleteConnected(
+        n.connection.collection,
+        n.connection.member,
+        [n.connection.document],
+        undefined,
+        () => ({ id: n.id, text: 'Latest unpersisted keystroke' }),
+    );
+    assert.equal(result.recovered, 1);
+    assert.equal(await db.getText(n.id), 'Latest unpersisted keystroke');
+    assert.equal((await db.allNodes()).find((row) => row.id === n.id)?.connection, undefined);
+    assert.equal(await db.getSide('sync', n.id), undefined);
+});
+
+test('an outgoing folder deletion rejects a newly connected child missing from its signed outbox', async () => {
+    const folder = { ...node(crypto.randomUUID()), kind: 'folder' as const };
+    folder.connection = {
+        collection: crypto.randomUUID(),
+        member: crypto.randomUUID(),
+        document: crypto.randomUUID(),
+        kind: 'sync',
+        permission: 'owner',
+        epoch: 1,
+    };
+    const child = {
+        ...node(crypto.randomUUID()),
+        parentId: folder.id,
+        connection: { ...folder.connection, document: crypto.randomUUID() },
+    };
+    await db.putNodes([folder, child], { [child.id]: 'New child stays' });
+    await db.setMeta(`sync:scope:${folder.connection.collection}:${folder.connection.member}`, { exclusions: [] });
+    const job = { id: crypto.randomUUID(), value: { packets: ['root only'] } };
+    await assert.rejects(
+        db.deleteConnected(folder.connection.collection, folder.connection.member, [folder.connection.document], job),
+        db.ReplicaConflict,
+    );
+    assert.equal(await db.getText(child.id), 'New child stays');
+    assert.equal(await db.getSide('sync-delete', job.id), undefined);
+});
+
 test('enrollment publishes the complete selection atomically and preserves cached vectors and timestamps', async () => {
     const nodes = [node(crypto.randomUUID()), node(crypto.randomUUID())],
         texts = Object.fromEntries(nodes.map((node) => [node.id, 'Original bytes']));

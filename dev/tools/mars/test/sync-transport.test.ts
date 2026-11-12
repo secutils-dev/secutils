@@ -12,7 +12,14 @@ import {
     verifyGrant,
 } from '../src/sync/crypto.ts';
 import { BodyReplica } from '../src/sync/replica.ts';
-import { checkpointKey, decode, jsonBytes, reverseSequence, type SyncBinding } from '../src/sync/protocol.ts';
+import {
+    checkpointKey,
+    decode,
+    jsonBytes,
+    reverseSequence,
+    SyncError,
+    type SyncBinding,
+} from '../src/sync/protocol.ts';
 import { Session } from '../src/sync/session.ts';
 import { Transport, type ConnectionStatus } from '../src/sync/transport.ts';
 
@@ -227,6 +234,88 @@ test('an already-started upload finishes when hidden, but later pending work rem
         assert.equal(states.at(-1), 'waiting');
     } finally {
         transport.dispose();
+    }
+});
+
+test('deletion preflight aborts on pagehide and preserves pending packets before any append', async () => {
+    const f = await replica(true),
+        visibility = new EventTarget(),
+        connectivity = new EventTarget();
+    const started = deferred<void>();
+    let aborted = false,
+        uploads = 0;
+    const transport = new Transport({
+        origin: 'https://mars.test',
+        token: 'private token',
+        ownerPublicKey: f.who.publicKey,
+        replica: f.client,
+        environment: { visible: () => true, online: () => true, visibility, connectivity },
+        beforeUpload: (signal) =>
+            new Promise((_, reject) => {
+                started.resolve();
+                signal.addEventListener('abort', () => {
+                    aborted = true;
+                    reject(new DOMException('Paused', 'AbortError'));
+                });
+            }),
+        fetch: async () => {
+            uploads++;
+            return response({});
+        },
+        status: () => {},
+        projection: () => {},
+    });
+    try {
+        transport.start();
+        const upload = transport.upload();
+        await started.promise;
+        connectivity.dispatchEvent(new Event('pagehide'));
+        await upload;
+        assert.equal(aborted, true);
+        assert.equal(uploads, 0);
+        assert.ok((await f.client.pending()) > 0);
+    } finally {
+        transport.dispose();
+    }
+});
+
+test('a verified deletion that races an upload does not end siblings; an unsigned 410 still retains the replica', async () => {
+    for (const verified of [true, false]) {
+        const f = await replica(true),
+            states: ConnectionStatus[] = [];
+        let checks = 0;
+        const transport = new Transport({
+            origin: 'https://mars.test',
+            token: 'private token',
+            ownerPublicKey: f.who.publicKey,
+            replica: f.client,
+            environment: {
+                visible: () => true,
+                online: () => true,
+                visibility: new EventTarget(),
+                connectivity: new EventTarget(),
+            },
+            fetch: async () => {
+                throw new SyncError('document-deleted', 410);
+            },
+            deleted: async () => {
+                checks++;
+                return verified;
+            },
+            status: (state) => {
+                states.push(state);
+            },
+            projection: () => {},
+        });
+        try {
+            transport.start();
+            await transport.upload();
+            assert.equal(checks, 1);
+            assert.equal(states.includes('ended'), !verified);
+            assert.ok((await f.client.pending()) > 0);
+        } finally {
+            transport.dispose();
+        }
     }
 });
 

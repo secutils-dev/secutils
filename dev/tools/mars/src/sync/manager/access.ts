@@ -37,6 +37,8 @@ import {
     rotationKey,
 } from './state.ts';
 import { initialize, start } from './engine.ts';
+import { personalSync } from './deletion.ts';
+import { deletionAllowed } from '../deletion.ts';
 
 /**
  * Detaches node `id`, and its descendants in the same scope, from the connection without a confirmation.
@@ -244,7 +246,16 @@ export async function deletionInfo(ids: string[]) {
             (link) => documents.has(link.document) && link.expires > now && !revoked?.invitations.includes(link.id),
         ).length;
     }
-    return { liveLinks, synced };
+    const root = selected.find((node) => node.id === ids[0]);
+    const scope = root ? rootFor(root) : undefined;
+    const shared = !!(
+        root?.connection &&
+        root.connection.phase !== 'ended' &&
+        scope &&
+        personalSync(scope) &&
+        deletionAllowed(scope.member, scope.owner)
+    );
+    return { liveLinks, synced, shared };
 }
 /**
  * Decides whether the tree can move node `id` under `parent` (`null` is the top level). `app.move` calls

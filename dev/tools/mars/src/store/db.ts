@@ -249,10 +249,11 @@ export async function deleteNodes(ids: string[]) {
  * - `opened`: the source text as MARS last received it.
  * - `vec`: the smart-search index entry.
  * - `sync`: the replica record of a connected node (state, outbox, keys, and progress).
+ * - `sync-delete`: a durable deletion job, keyed by its own UUID rather than a document ID.
  */
-export type Side = 'base' | 'opened' | 'vec' | 'sync';
+export type Side = 'base' | 'opened' | 'vec' | 'sync' | 'sync-delete';
 // Every kind. `deleteNodes` uses the list, so a new kind must be added here.
-const SIDES: Side[] = ['base', 'opened', 'vec', 'sync'];
+const SIDES: Side[] = ['base', 'opened', 'vec', 'sync', 'sync-delete'];
 // The key of a side record in the `docs` store: `<kind>:<id>`.
 const sideKey = (kind: Side, id: string) => `${kind}:${id}`;
 /** One side record, or undefined. */
@@ -311,6 +312,188 @@ export const setMeta = async (key: string, value: unknown, broadcast = false) =>
         });
     if (broadcast) announce([]);
 };
+
+/**
+ * Applies verified personal-Sync deletions in one transaction. Only this collection/member is affected.
+ * Connected descendants of deleted folders also leave Sync. Independent descendants move to the top level.
+ * Pending work keeps its text, review side data, and vector under Recovered Sync copies, with a complete
+ * encrypted-recovery-compatible scope archive. An optional durable upload job commits with the deletion.
+ * Storage or archive failure writes nothing. The caller verifies all remote receipts before calling.
+ * `draft` synchronously captures current editor text after storage reads, before the first write.
+ */
+export async function deleteConnected(
+    collection: string,
+    member: string,
+    documents: string[],
+    job?: { id: string; value: unknown },
+    draft?: () => { id: string; text: string } | undefined,
+) {
+    const scopeKey = `sync:scope:${collection}:${member}`;
+    const run = async (
+        all: TreeNode[],
+        read: (store: 'docs' | 'meta', key: string) => Promise<any>,
+        put: (store: 'nodes' | 'docs' | 'meta', key: string, value: unknown) => void,
+        remove: (store: 'nodes' | 'docs', key: string) => void,
+    ) => {
+        const matches = (node: TreeNode) =>
+            node.connection?.collection === collection && node.connection.member === member;
+        const targets = new Set(documents);
+        const gone = new Set(
+            all.filter((node) => matches(node) && targets.has(node.connection!.document)).map((node) => node.id),
+        );
+        for (const node of all.filter((node) => gone.has(node.id) && node.kind === 'folder'))
+            for (const child of descendants(all, node.id)) if (matches(child)) gone.add(child.id);
+        const scoped = all.filter(matches);
+        // A new connected child can appear while the caller signs the subtree. Retain the complete
+        // selection and ask for a retry rather than silently deleting an item with no queued receipt.
+        if (job && scoped.some((node) => gone.has(node.id) && !targets.has(node.connection!.document)))
+            throw new ReplicaConflict();
+        const scope = await read('meta', scopeKey);
+        if (!scope) throw new ReplicaConflict('missing-node');
+        const records = new Map<string, SessionRecord>();
+        const texts: Record<string, string> = {};
+        for (const node of scoped) {
+            const [record, text] = await Promise.all([read('docs', sideKey('sync', node.id)), read('docs', node.id)]);
+            if (record) records.set(node.id, record);
+            if (typeof text === 'string') texts[node.id] = text;
+        }
+        let recovery = all.find(
+            (node) =>
+                node.kind === 'folder' &&
+                !node.connection &&
+                node.parentId === null &&
+                node.name === 'Recovered Sync copies',
+        );
+        const metadata: Record<string, unknown> = { [scopeKey]: scope };
+        let backups: UnfinishedSetupBackup[] = [];
+        if (gone.size) {
+            recovery ??= {
+                id: crypto.randomUUID(),
+                kind: 'folder',
+                name: 'Recovered Sync copies',
+                parentId: null,
+                open: true,
+                order: all.length,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+            };
+            for (const key of [
+                `sync:links:${scopeKey}`,
+                `sync:rotation:${scopeKey}`,
+                `sync:revoked-access:${scopeKey}`,
+            ]) {
+                const value = await read('meta', key);
+                if (value !== undefined) metadata[key] = value;
+            }
+            backups = (await read('meta', unfinishedSetupIndex(recovery.id))) ?? [];
+        }
+        // Read the current editor only after the last asynchronous read. No event can add another
+        // keystroke between this snapshot and the transaction's writes.
+        const view = draft?.();
+        const draftId = view && gone.has(view.id) && view.text !== texts[view.id] ? view.id : undefined;
+        if (draftId) texts[draftId] = view!.text;
+        const pending = scoped.filter(
+            (node) =>
+                gone.has(node.id) &&
+                node.kind === 'doc' &&
+                (records.get(node.id)?.outbox.length || node.id === draftId),
+        );
+        const writes: { store: 'nodes' | 'docs' | 'meta'; key: string; value: unknown }[] = [];
+        if (pending.length) {
+            const key = `sync:unfinished-setup:${crypto.randomUUID()}`,
+                at = Date.now();
+            const snapshot: SavedUnfinishedSetup = {
+                v: 1,
+                kind: 'mars-unfinished-sync',
+                at,
+                snapshot: { nodes: scoped, texts, records: Object.fromEntries(records), metadata },
+            };
+            const index = unfinishedSetupIndex(recovery!.id);
+            writes.push(
+                { store: 'meta', key, value: snapshot },
+                { store: 'meta', key: index, value: [...backups, { key, at, records: records.size }] },
+                { store: 'nodes', key: recovery!.id, value: recovery },
+            );
+        }
+        for (const node of pending) {
+            const record = records.get(node.id)!;
+            const text = texts[node.id] ?? record.projection;
+            const copy = {
+                ...node,
+                parentId: recovery!.id,
+                originId: crypto.randomUUID(),
+                manualFileSave: true,
+                size: textBytes(text),
+                threads: openThreads(text),
+                updatedAt: node.id === draftId ? Date.now() : node.updatedAt,
+            };
+            delete copy.connection;
+            writes.push({ store: 'nodes', key: node.id, value: copy }, { store: 'docs', key: node.id, value: text });
+            // A remote commit can have advanced the projection while the visible text held a draft.
+            if (record.outbox.length && record.projection !== texts[node.id]) {
+                const id = crypto.randomUUID();
+                writes.push(
+                    {
+                        store: 'nodes',
+                        key: id,
+                        value: {
+                            ...copy,
+                            id,
+                            originId: id,
+                            handle: undefined,
+                            name: `${copy.name} (pending projection)`,
+                            size: textBytes(record.projection),
+                            threads: openThreads(record.projection),
+                        },
+                    },
+                    { store: 'docs', key: id, value: record.projection },
+                );
+            }
+        }
+        for (const node of all)
+            if (!gone.has(node.id) && node.parentId && gone.has(node.parentId))
+                writes.push({ store: 'nodes', key: node.id, value: { ...node, parentId: null } });
+        for (const node of scoped.filter((node) => gone.has(node.id))) targets.add(node.connection!.document);
+        const exclusions = [...new Set([...scope.exclusions, ...targets])];
+        writes.push({ store: 'meta', key: scopeKey, value: { ...scope, exclusions } });
+        if (job) writes.push({ store: 'docs', key: sideKey('sync-delete', job.id), value: job.value });
+        // Plan first, including cloneability, so the memory backend has the same all-or-nothing contract.
+        structuredClone(writes);
+        const kept = new Set(pending.map((node) => node.id));
+        for (const id of gone) {
+            remove('docs', sideKey('sync', id));
+            if (kept.has(id)) continue;
+            remove('nodes', id);
+            remove('docs', id);
+            for (const side of SIDES) remove('docs', sideKey(side, id));
+        }
+        for (const write of writes) put(write.store, write.key, write.value);
+        return { removed: [...gone], recovered: pending.length, exclusions };
+    };
+    const result = temporary
+        ? await run(
+              memory.all('nodes'),
+              async (store, key) => memory.get(store, key),
+              (store, key, value) => memory.put(store, key, value),
+              (store, key) => {
+                  memory.delete(store, key);
+              },
+          )
+        : await tx(['nodes', 'docs', 'meta'], 'readwrite', async (t) =>
+              run(
+                  await req(t.objectStore('nodes').getAll()),
+                  (store, key) => req(t.objectStore(store).get(key)),
+                  (store, key, value) => {
+                      store === 'nodes' ? t.objectStore(store).put(value) : t.objectStore(store).put(value, key);
+                  },
+                  (store, key) => {
+                      t.objectStore(store).delete(key);
+                  },
+              ),
+          );
+    announce(result.removed);
+    return result;
+}
 /**
  * Reads a consistent snapshot of one connection (collection and member) for a recovery export.
  * One read-only transaction supplies every part, so the parts match each other.
@@ -477,7 +660,13 @@ export async function materializeConnected(
         nodes = await tx(['nodes', 'docs', 'meta'], 'readwrite', async (t) => {
             const store = t.objectStore('nodes'),
                 docs = t.objectStore('docs');
-            const [all, record] = await Promise.all([req(store.getAll()), req(docs.get(sideKey('sync', root.id)))]);
+            const [all, record, scope] = await Promise.all([
+                req(store.getAll()),
+                req(docs.get(sideKey('sync', root.id))),
+                req(t.objectStore('meta').get(`sync:scope:${binding.collection}:${binding.member}`)),
+            ]);
+            if (entries.some((entry) => scope?.exclusions?.includes(entry.node.connection!.document)))
+                throw new ReplicaConflict();
             return publish(
                 all,
                 record?.body,

@@ -44,7 +44,14 @@ import {
     revokeMember,
 } from './responder/membership.ts';
 import { writeKeys, readKeys, readEpoch, rotateDocument, writeLiveKey } from './responder/keys.ts';
-import { directory, deleteDocument, purgeLiveDocument, registerDocument, documentInfo } from './responder/documents.ts';
+import {
+    directory,
+    deleteDocument,
+    deletions,
+    purgeLiveDocument,
+    registerDocument,
+    documentInfo,
+} from './responder/documents.ts';
 import { listCheckpoints, readCheckpoint, appendCheckpoint } from './responder/checkpoints.ts';
 import { renewFolder, renewCheckpoint, renewDocument } from './responder/renewal.ts';
 
@@ -70,6 +77,7 @@ const MEMBER_ACTIONS = new Map<string, (session: MemberSession) => Promise<SyncR
     ['invite-revoke', revokeInvitation],
     ['directory', directory],
     ['delete-document', deleteDocument],
+    ['deletions', deletions],
     ['purge-live-document', purgeLiveDocument],
     ['grant', grantAccess],
     ['revoke', revokeMember],

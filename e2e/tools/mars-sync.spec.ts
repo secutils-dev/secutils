@@ -1397,10 +1397,168 @@ test.describe('sync protocol', () => {
       await b.close();
     }
   });
-  test('remote deletion retains another client’s offline replica and prevents implicit resurrection', async ({
+  test('shared folder deletion works from either personal device and keeps siblings connected', async ({ browser }) => {
+    test.setTimeout(90000);
+    const a = await browser.newContext(),
+      b = await browser.newContext();
+    const owner = await a.newPage(),
+      peer = await b.newPage();
+    try {
+      await owner.goto(MARS_BASE_URL);
+      await expect(owner.locator('#emptyState')).toBeVisible();
+      await owner.locator('#importInput').setInputFiles({
+        name: 'Drive.zip',
+        mimeType: 'application/zip',
+        buffer: Buffer.from(
+          zipSync({
+            'Drive/First/Nested/One.md': Buffer.from('# One\n\nFirst subtree.'),
+            'Drive/Second/Two.md': Buffer.from('# Two\n\nSecond subtree.'),
+            'Drive/Keep.md': Buffer.from('# Keep\n\nKeep syncing.'),
+          }),
+        ),
+      });
+      await expect(owner.locator('#toast')).toContainText('Imported 3 documents');
+      await owner.getByRole('button', { name: 'Actions for Drive', exact: true }).click();
+      await owner.getByRole('menuitem', { name: 'Sync', exact: true }).click();
+      await owner.getByRole('button', { name: 'Turn on sync', exact: true }).click();
+      await pair(owner, peer, 'Drive');
+      await expect(peer.getByRole('button', { name: 'Actions for Keep', exact: true })).toBeVisible({ timeout: 30000 });
+      for (const [actor, other, name] of [
+        [owner, peer, 'First'],
+        [peer, owner, 'Second'],
+      ] as const) {
+        await actor.getByRole('button', { name: `Actions for ${name}`, exact: true }).click();
+        await actor.getByRole('menuitem', { name: 'Delete', exact: true }).click();
+        const dialog = actor.getByRole('dialog', { name: `Delete "${name}"?` });
+        await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+        await expect(dialog.getByRole('button', { name: 'Delete local copy', exact: true })).toHaveCount(0);
+        await dialog.getByRole('button', { name: 'Delete everywhere', exact: true }).click();
+        await expect(other.getByRole('button', { name: `Actions for ${name}`, exact: true })).toHaveCount(0, {
+          timeout: 15000,
+        });
+        await other.reload();
+        await expect(other.getByRole('button', { name: 'Actions for Keep', exact: true })).toBeVisible();
+        await expect(other.getByRole('button', { name: `Actions for ${name}`, exact: true })).toHaveCount(0);
+      }
+      await peer.getByRole('link', { name: 'Keep', exact: true }).click();
+      await sourceText(peer, '# Keep\n\nStill connected after both deletions.');
+      await owner.getByRole('link', { name: 'Keep', exact: true }).click();
+      await expect(owner.locator('#previewArticle')).toContainText('Still connected after both deletions.', {
+        timeout: 15000,
+      });
+    } finally {
+      await a.close();
+      await b.close();
+    }
+  });
+
+  test('deleting the last Sync root survives lost writes and reload, then reaches an offline device', async ({
     browser,
   }) => {
-    test.skip(!/^http:\/\/(localhost|127\.0\.0\.1):/.test(MARS_BASE_URL), 'Requires the changed local responder');
+    test.setTimeout(90000);
+    const a = await browser.newContext(),
+      b = await browser.newContext();
+    const owner = await a.newPage(),
+      peer = await b.newPage();
+    const queued = () =>
+      peer.evaluate(async () => {
+        const database = await new Promise<IDBDatabase>((resolve) => {
+          const open = indexedDB.open('mars');
+          open.onsuccess = () => resolve(open.result);
+        });
+        const tx = database.transaction('docs'),
+          read = tx.objectStore('docs').getAll(IDBKeyRange.bound('sync-delete:', 'sync-delete:\uffff'));
+        const count = await new Promise<number>((resolve) => {
+          read.onsuccess = () => resolve(read.result.length);
+        });
+        database.close();
+        return count;
+      });
+    try {
+      await syncedDocument(owner, 'Gone everywhere', '# Gone everywhere\n\nClean copy.');
+      await pair(owner, peer, 'Gone everywhere');
+      await expect(peer.locator('#saveState')).toContainText('Up to date', { timeout: 15000 });
+      await a.setOffline(true);
+      // The server stores the fence, but the acknowledgement is lost. Retry must retain the same intent.
+      let fetched = false;
+      let firstLost!: () => void;
+      const lost = new Promise<void>((resolve) => {
+        firstLost = resolve;
+      });
+      await peer.route('**/sync/delete-document', async (route) => {
+        if (!fetched) {
+          fetched = true;
+          const response = await route.fetch();
+          expect(response.status()).toBe(200);
+          await route.abort();
+          firstLost();
+          return;
+        }
+        // Later retries remain offline without a long-running route.fetch that reload can supersede.
+        await route.abort();
+      });
+      await peer.getByRole('button', { name: 'Actions for Gone everywhere', exact: true }).click();
+      await peer.getByRole('menuitem', { name: 'Delete', exact: true }).click();
+      await peer.getByRole('button', { name: 'Delete everywhere', exact: true }).click();
+      await expect(peer.locator('#tree [data-connection]')).toHaveCount(0);
+      await lost;
+      await expect.poll(queued).toBe(1);
+      await peer.reload();
+      await expect(peer.locator('#emptyState')).toBeVisible();
+      await expect.poll(queued).toBe(1);
+      await peer.unrouteAll({ behavior: 'wait' });
+      await expect.poll(queued, { timeout: 15000 }).toBe(0);
+      await a.setOffline(false);
+      await expect(owner.locator('#tree .tree-link')).toHaveCount(0, { timeout: 15000 });
+      await owner.reload();
+      await expect(owner.locator('#emptyState')).toBeVisible();
+    } finally {
+      await a.close();
+      await b.close();
+    }
+  });
+
+  test('shared deletion in another tab keeps an uncommitted cell draft as a separate local document', async ({
+    browser,
+  }) => {
+    const context = await browser.newContext();
+    const owner = await context.newPage(),
+      draft = await context.newPage();
+    try {
+      await syncedDocument(owner, 'Tab draft', '# Tab draft\n\n| A | B |\n| --- | --- |\n| Old | Kept |\n');
+      await draft.goto(owner.url());
+      await expect(draft.locator('#previewArticle')).toContainText('Old');
+      // Firefox can commit a cell when another page takes focus. Hold that commit so the test
+      // exercises an actual unpersisted draft, not an already acknowledged edit.
+      await draft.evaluate(() => {
+        const original = IDBObjectStore.prototype.put;
+        IDBObjectStore.prototype.put = function (...args) {
+          if (typeof args[1] === 'string' && args[1].startsWith('sync:'))
+            throw new DOMException('Draft storage is unavailable', 'UnknownError');
+          return original.apply(this, args);
+        };
+      });
+      await draft.locator('#previewArticle td').filter({ hasText: /^Old$/ }).dblclick();
+      await draft.getByRole('textbox', { name: 'Edit table cell', exact: true }).fill('Uncommitted tab draft');
+      await owner.getByRole('button', { name: 'Actions for Tab draft', exact: true }).click();
+      await owner.getByRole('menuitem', { name: 'Delete', exact: true }).click();
+      await owner.getByRole('button', { name: 'Delete everywhere', exact: true }).click();
+      await expect(draft.getByRole('button', { name: 'Actions for Recovered Sync copies', exact: true })).toBeVisible({
+        timeout: 15000,
+      });
+      await expect(draft.locator('#previewArticle')).toContainText('Uncommitted tab draft');
+      await expect(draft.locator('#tree [data-connection]')).toHaveCount(0);
+      await draft.reload();
+      await expect(draft.locator('#previewArticle')).toContainText('Uncommitted tab draft');
+      await expect(draft.locator('#previewArticle')).toContainText('Kept');
+    } finally {
+      await context.close();
+    }
+  });
+
+  test('remote deletion recovers another client’s unsent edits separately and prevents implicit resurrection', async ({
+    browser,
+  }) => {
     const headers = { 'x-mars-test-client': crypto.randomUUID() };
     const a = await isolatedContext(browser, headers),
       b = await isolatedContext(browser, headers);
@@ -1414,16 +1572,17 @@ test.describe('sync protocol', () => {
       await sourceText(peer, 'Retained offline branch');
       await owner.getByRole('button', { name: 'Actions for Deleted', exact: true }).click();
       await owner.getByRole('menuitem', { name: 'Delete', exact: true }).click();
-      await owner.getByRole('button', { name: 'Delete from collection', exact: true }).click();
+      await owner.getByRole('button', { name: 'Delete everywhere', exact: true }).click();
       await expect(owner.locator('#tree .tree-link')).toHaveCount(0);
       await b.setOffline(false);
-      await expect(peer.locator('#saveState')).toContainText('Local copy · connection ended', { timeout: 15000 });
+      await expect(peer.locator('#tree [data-connection]')).toHaveCount(0, { timeout: 15000 });
+      await expect(peer.getByRole('button', { name: 'Actions for Recovered Sync copies', exact: true })).toBeVisible();
       await peer.reload();
       await expect(peer.locator('#previewArticle')).toContainText('Retained offline branch');
-      await expect(peer.locator('#saveState')).toContainText('Local copy · connection ended', { timeout: 15000 });
+      await expect(peer.locator('#tree [data-connection]')).toHaveCount(0);
       await sourceText(peer, 'Further local recovery work');
       await expect(peer.locator('#previewArticle')).toContainText('Further local recovery work');
-      await expect(peer.locator('#saveState')).toContainText('Local copy · connection ended', { timeout: 15000 });
+      await expect(peer.locator('#tree [data-connection]')).toHaveCount(0);
     } finally {
       await owner.goto('about:blank').catch(() => {});
       await peer.goto('about:blank').catch(() => {});

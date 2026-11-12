@@ -16,6 +16,7 @@ Local preview and deployment assemble the same responder through `dev/tools/mars
   - `pairing.ts`: Sync links, the code confirmation on both devices, and matches with existing local documents.
   - `live-links.ts`: Live link creation, receipt, forwarding, library promotion, and Live-only teardown.
   - `access.ts`: disconnection, revocation with key rotation, deletion, and moves.
+  - `deletion.ts`: signed personal-Sync deletion receipts, local recovery, and durable deletion uploads.
   - `recovery.ts`: encrypted connection backups.
   - `dialogs.ts`: the Sync dialog screens.
 - `reviews.ts` separates signed review operations from body state. Concurrent comment versions remain visible.
@@ -104,6 +105,26 @@ The runner accepts three paths: the script, the JSON context, and the binary req
 It returns the script's string result on stdout. A runtime error produces a nonzero exit code.
 
 ## KV rules
+
+### Personal Sync deletion
+
+Personal devices share deletion rights. A directly paired whole-collection editor can delete content, but a Live editor cannot.
+`delete-document` accepts a signed `mars-sync-delete` receipt and retains the first receipt as a permanent fence.
+Concurrent deletions and exact retries keep that first receipt. Unregistered identities cannot create fences.
+The bounded `deletions` action remains available after root deletion, so other personal devices can obtain the signed receipts.
+
+Clients verify each receipt against the trusted owner key before deleting local content.
+Unsigned directory flags, HTTP errors, inactivity expiry, and legacy unsigned fences retain local copies.
+Receipt checks precede uploads. A deletion during an upload or download affects its document, not unrelated siblings.
+
+`db.deleteConnected` commits tree removal, exclusions, recovered edits, their scope archive, and an optional deletion job together.
+Pending document edits keep their text, review side data, and vectors under **Recovered Sync copies**.
+Independent descendants move to the top level. A stale materialization cannot recreate an excluded identity.
+Deletion jobs live under `sync-delete:<job-id>` in the existing docs store, with credentials and exact signed receipts.
+Startup resumes these jobs even without connected tree rows. Visibility, connectivity, and pagehide stop requests until the page resumes.
+Shared deletion is permanent. Local deletion and Live-recipient retention keep their existing behavior.
+
+### Storage and leases
 
 Invitation records share one namespace across collections (`invitations/<id>`).
 A delegated member is valid only while the record of exactly its invitation exists and its collection holds no revocation fence for it.
