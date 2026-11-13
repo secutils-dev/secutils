@@ -41,10 +41,13 @@ function setCollapsed(collapsed: boolean, remember = true) {
     document.body.classList.toggle('sb-collapsed', collapsed);
     $('navToggle').setAttribute('aria-expanded', String(!collapsed));
     $('sbBackdrop').hidden = collapsed || !NARROW.matches;
-    if (remember && !NARROW.matches)
+    if (remember && !NARROW.matches) {
+        // Breakpoint changes restore the latest docked choice, even if storage rejects the write.
+        storedCollapsed = collapsed;
         try {
             localStorage.setItem(COLLAPSED_KEY, collapsed ? '1' : '');
         } catch {}
+    }
 }
 const isCollapsed = () => document.body.classList.contains('sb-collapsed');
 /** Shows the sidebar and saves that choice for the docked layout. */

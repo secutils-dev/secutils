@@ -217,6 +217,7 @@ Use this reference when the user asks how to do a task in MARS. Each row is one 
 | Task | Where | Facts |
 |------|-------|-------|
 | Read and edit | **Preview**, **Source**, or double-click a block in Preview | The header shows **Saved** after an edit. |
+| Show or hide documents | Header > **Toggle documents sidebar** | The latest docked choice survives resizing and reloads. The narrow-screen overlay does not change that choice. |
 | Comment | Select rendered text in Preview | Threads stay in the file. |
 | Share a copy | **Share > Copy link > Snapshot** | **Full** puts the unencrypted document in the link and does not expire. **Short** uploads an encrypted copy that expires after 1, 7, 14, or 30 days. |
 | Share live access | **Share > Copy link > Live** | One document. **Can view**, **Can comment**, or **Can edit**. Expires after 1, 7, 14, or 30 days (default 7). Folders support snapshots only. |

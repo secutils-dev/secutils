@@ -55,6 +55,11 @@ Link-click, file-download, form, and hash-route tracking are off. The tracker ha
 - Each document has a link of the form `#doc=<id>`. The link works only in the same browser profile.
 - Every deletion asks for confirmation. **Undo** restores a locally deleted document as a local copy.
 
+The header menu button shows or hides the documents sidebar.
+MARS remembers the latest choice for the docked sidebar across window resizing and reloads.
+At 900px or narrower, the sidebar starts hidden and opens as an overlay.
+Overlay actions do not change the docked choice.
+
 An HTML file that MARS exported with embedded source opens as editable Markdown. Other HTML stays raw HTML.
 
 ### Review

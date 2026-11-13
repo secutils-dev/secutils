@@ -188,6 +188,57 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     }
   });
 
+  test('documents sidebar keeps the latest docked toggle across resizing and reloads', async ({ page }) => {
+    await page.goto(tool.path);
+    const sidebar = page.getByRole('complementary', { name: 'Documents', exact: true });
+    const toggle = page.getByRole('button', { name: 'Toggle documents sidebar' });
+    await expect(sidebar).toBeVisible();
+    await toggle.click();
+    for (const width of [1100, 901, 900, 650, 900, 901, 1280, 899, 902]) {
+      await page.setViewportSize({ width, height: 800 });
+      await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+      await expect(sidebar).toBeHidden();
+      await expect(page.locator('#sbBackdrop')).toBeHidden();
+    }
+    await page.reload();
+    await expect(sidebar).toBeHidden();
+    await toggle.click();
+    for (const width of [900, 650, 901, 1280, 899, 902]) {
+      await page.setViewportSize({ width, height: 800 });
+      await expect(toggle).toHaveAttribute('aria-expanded', String(width > 900));
+      if (width > 900) await expect(sidebar).toBeVisible();
+      else await expect(sidebar).toBeHidden();
+      await expect(page.locator('#sbBackdrop')).toBeHidden();
+    }
+    await page.reload();
+    await expect(sidebar).toBeVisible();
+  });
+
+  test('documents sidebar overlay actions preserve the latest docked choice', async ({ page }) => {
+    await page.goto(tool.path);
+    await newDoc(page, '# Sidebar layout');
+    const toggle = page.getByRole('button', { name: 'Toggle documents sidebar' });
+    const sidebar = page.getByRole('complementary', { name: 'Documents', exact: true });
+    for (const collapsed of [true, false]) {
+      await toggle.click();
+      await expect(toggle).toHaveAttribute('aria-expanded', String(!collapsed));
+      await page.setViewportSize({ width: 650, height: 800 });
+      await expect(sidebar).toBeHidden();
+      await toggle.click();
+      await expect(sidebar).toBeVisible();
+      await expect(page.locator('#sbBackdrop')).toBeVisible();
+      await page.locator('#sbBackdrop').click({ position: { x: 500, y: 100 } });
+      await expect(sidebar).toBeHidden();
+      await toggle.click();
+      await row(page, 'Untitled').getByRole('link').click();
+      await expect(sidebar).toBeHidden();
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await expect(toggle).toHaveAttribute('aria-expanded', String(!collapsed));
+      if (collapsed) await expect(sidebar).toBeHidden();
+      else await expect(sidebar).toBeVisible();
+    }
+  });
+
   test('documents persist in the sidebar across reloads', async ({ page }) => {
     await page.goto(tool.path);
     await expect(page.locator('#emptyState')).toBeVisible();
