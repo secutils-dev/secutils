@@ -28,3 +28,9 @@ test('ordinary folder icons remain byte-identical to their existing EUI glyphs',
     assert.equal(folderIcon(false), icon('folder'));
     assert.equal(folderIcon(true), icon('folderOpen'));
 });
+test('opened folders use a centered 5px Sync mark while closed folders and documents keep their 6px mark', () => {
+    assert.match(folderIcon(true, false, true), /transform="translate\(5\.5 7\.5\) scale\(0\.3125\)"/);
+    assert.match(folderIcon(false, false, true), /transform="translate\(5 6\) scale\(0\.375\)"/);
+    assert.match(documentIcon(true), /transform="translate\(5 7\) scale\(0\.375\)"/);
+    assert.equal(folderIcon(true, true, true), folderIcon(true, true));
+});
