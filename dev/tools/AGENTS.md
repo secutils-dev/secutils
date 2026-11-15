@@ -18,6 +18,8 @@ Run the tool verification and browser gates below locally.
 - **Metadata**: the `su-tool-path`, `su-tool-name`, `su-tool-description`, and `su-tool-promote` `<meta>` tags
   are the source of truth for `deploy.ts`, `scripts/tools-check.ts`, and the marketing site.
   `e2e/tools/registry.ts` repeats those four fields beside its OG and E2E data, so update its row in the same change.
+- **Documentation**: keep detailed tool behavior and operations in app-local documentation.
+  The root README lists approved public tools, with a link and short description per row.
 - **Hosts**: write `{{TOOLS_HOST}}` (and `{{MARS_HOST}}` in MARS) wherever a page or skill names its host; `deploy.ts` substitutes them.
   The Plausible script URL is the one literal host ([shared/guides/chrome.md](shared/guides/chrome.md#analytics-plausible)).
 - **Dependencies**: CDN-hosted libraries, or an npm package bundled through `data-su-bundle` ([shared/guides/platform.md](shared/guides/platform.md)). Deployment inlines shared styles and glyphs for migrated tools.
@@ -62,7 +64,8 @@ Read every guide whose surface the change touches.
 6. Deploy when the user asks: `make deploy-tools ARGS="<name>"`. Every run also refreshes the tools-host aggregates.
 7. After a deploy, run the tool's spec against the live host: `make e2e-tools-test ARGS="<slug>.spec.ts"`.
 
-Completion: steps 2-5 pass, step 7 passes after a deploy, and the skill, registry row, and README describe the changed behavior.
+Completion: steps 2-5 pass, and step 7 passes after a deploy.
+The skill, registry row, and any existing app-local README describe the changed behavior.
 Report any step you could not run as unverified.
 
 ## Add a tool
@@ -75,11 +78,15 @@ Report any step you could not run as unverified.
    and the Skill button ([shared/guides/agent-surface.md](shared/guides/agent-surface.md)).
 3. Write `<app>/SKILL.md` ([shared/guides/agent-surface.md](shared/guides/agent-surface.md)).
 4. Add the `e2e/tools/registry.ts` row and `e2e/tools/<slug>.spec.ts`, starting from `jwt.spec.ts`.
-5. For a promoted tool, add an `index.html` card with its JSON-LD `ItemList` entry, a README "Free single-page tools" row,
-   and a card in the marketing site's `#free-tools` section (path in `SECUTILS_TOOLS_PROMO_HOME_INDEX`).
+5. Ask the user whether to list the new tool in the root README's "Free single-page tools" table.
+   If the user approves a public listing, add a row with the tool link and a concise description.
+   For a private tool, keep it outside the table. MARS Observatory is private.
+6. For a promoted tool, add an `index.html` card with its JSON-LD `ItemList` entry.
+   Add a card in the marketing site's `#free-tools` section (path in `SECUTILS_TOOLS_PROMO_HOME_INDEX`).
    The aggregates regenerate on deploy.
-6. Generate the OG pair: `make tools-og ARGS='-g "OG image for <slug>"'`.
-7. Run steps 2-7 of "Change a tool".
+7. Generate the OG pair: `make tools-og ARGS='-g "OG image for <slug>"'`.
+8. Run steps 2-7 of "Change a tool".
 
-Completion: `make tools-check` passes, the new spec passes against the deployed tool,
+Completion: the user decided whether to list the tool in the root README.
+`make tools-check` passes, the new spec passes against the deployed tool,
 and `og-<slug>.png` and `og-<slug>-light.png` exist in `components/secutils-docs/static/img/og/`.

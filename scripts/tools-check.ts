@@ -13,10 +13,8 @@
 //     relative to this repo root). When the env var is unset, this check is
 //     skipped with a warning so contributors without the marketing checkout
 //     can still run `make tools-check`.
-//  2. Every promoted tool is listed in the README's "Free single-page tools"
-//     table (`README.md`).
-//  3. Every promoted tool has a corresponding companion skill.
-//  4. No non-promoted tool (e.g. mock-saml-idp) is referenced in the promo
+//  2. Every promoted tool has a corresponding companion skill.
+//  3. No non-promoted tool (e.g. mock-saml-idp) is referenced in the promo
 //     home strip / cards section - those tools live on the index page only.
 //
 // Read-only, no browser, no Docker. Run with `make tools-check` (or
@@ -36,7 +34,6 @@ const TOOLS_DIR = resolve(REPO_ROOT, "dev/tools");
 const PROMO_INDEX_ENV = "SECUTILS_TOOLS_PROMO_HOME_INDEX";
 const PROMO_INDEX_RAW = process.env[PROMO_INDEX_ENV];
 const PROMO_INDEX = PROMO_INDEX_RAW ? resolve(REPO_ROOT, PROMO_INDEX_RAW) : null;
-const README = resolve(REPO_ROOT, "README.md");
 
 type Tool = {
   file: string;
@@ -48,9 +45,8 @@ type Tool = {
 };
 
 const MARS_HOST = process.env.SECUTILS_MARS_PUBLIC_HOST?.trim() || "mars.secutils.dev";
-// How the promo home page (Parcel-templated) and README link to a tool.
+// How the promo home page (Parcel-templated) links to a tool.
 const promoUrl = (t: Tool) => (t.host ? `https://${t.host}/` : `https://{{TOOLS_HOST}}${t.path}`);
-const readmeUrl = (t: Tool) => (t.host ? `https://${t.host}/` : `https://tools.secutils.dev${t.path}`);
 
 const META_RE = (name: string): RegExp =>
   new RegExp(`<meta\\s+name=["']${name}["']\\s+content=["']([^"']*)["']`, "i");
@@ -94,13 +90,6 @@ async function main(): Promise<void> {
     }
   }
 
-  let readme = "";
-  try {
-    readme = await readFile(README, "utf8");
-  } catch (err) {
-    errors.push(`Could not read README.md: ${(err as Error).message}`);
-  }
-
   // (1) every promoted tool appears at least once in the promo home page.
   if (promoHtml) {
     for (const t of promoted) {
@@ -112,7 +101,7 @@ async function main(): Promise<void> {
       }
     }
 
-    // (4) no non-promoted tool is linked from the promo home strip. The
+    // (3) no non-promoted tool is linked from the promo home strip. The
     // index page itself (path `/`) is always linked from the home page via
     // "See all" / "Browse all tools" anchors, so we skip it here.
     for (const t of nonPromoted) {
@@ -126,19 +115,7 @@ async function main(): Promise<void> {
     }
   }
 
-  // (2) every promoted tool is listed in the README table.
-  if (readme) {
-    for (const t of promoted) {
-      const needle = readmeUrl(t);
-      if (!readme.includes(needle)) {
-        errors.push(
-          `Promoted tool "${t.name}" (${t.path}) is NOT listed in README.md "Free single-page tools" subsection (expected an absolute "${needle}" link).`,
-        );
-      }
-    }
-  }
-
-  // (3) every promoted tool has a sibling skill .md.
+  // (2) every promoted tool has a sibling skill .md.
   const sources = discoverTools();
   for (const t of promoted) {
     const expected = sources.find((source) => source.html === t.file)?.skill;

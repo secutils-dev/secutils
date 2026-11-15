@@ -78,16 +78,19 @@ When a tool is added, removed, or renamed, update in one change: its `<meta>` ta
 
 ## Promotion (`su-tool-promote`)
 
-- `true`: listed on `index.html` (card and JSON-LD `ItemList`), in the README "Free single-page tools" table, on the
+- `true`: listed on `index.html` (card and JSON-LD `ItemList`), on the
   marketing site's `#free-tools` cards, and in the aggregates `deploy.ts` generates (`llms.txt`, `sitemap.xml`,
   `.well-known/agent-skills/index.json`). Use it for every user-facing tool.
 - `false`: listed nowhere, and the page carries `<meta name="robots" content="noindex, nofollow">`. The page, its skill,
   and Markdown negotiation still deploy, so a shared direct link keeps working. Use it for niche tools such as
   `mock-saml-idp` (Elasticsearch and Kibana SSO testing).
 
-`make tools-check` asserts the marketing and README side: every promoted tool is linked from both and has a sibling skill,
-and no unpromoted tool leaks onto the marketing page. Point `SECUTILS_TOOLS_PROMO_HOME_INDEX` at the marketing site's
-`index.html` (a sibling checkout); without it, that part of the check is skipped with a warning.
+For root README additions, use the approval step in [Add a tool](../../AGENTS.md#add-a-tool).
+
+`make tools-check` requires a companion skill for every promoted tool and checks promotion on the marketing page.
+Every promoted tool needs a link. The tools index is the only unpromoted page permitted there.
+For marketing checks, point `SECUTILS_TOOLS_PROMO_HOME_INDEX` at the marketing site's `index.html` (a sibling checkout).
+Without that path, the command skips the marketing check with a warning.
 `e2e/tools/index.spec.ts` and `registry.spec.ts` assert the deployed side: the index page and every aggregate list exactly
 the promoted tools.
 
