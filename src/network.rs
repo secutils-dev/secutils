@@ -34,8 +34,8 @@ pub struct Network<DR: DnsResolver, ET: EmailTransport> {
 }
 
 impl<DR: DnsResolver, ET: EmailTransport> PublicUrlValidator for Network<DR, ET> {
-    fn is_public_web_url<'a>(&'a self, url: &'a Url) -> BoxFuture<'a, bool> {
-        Box::pin(self.is_public_web_url(url))
+    fn is_public_web_url<'a>(&'a self, url: &'a Url) -> BoxFuture<'a, anyhow::Result<bool>> {
+        Box::pin(Network::is_public_web_url(self, url))
     }
 }
 
@@ -49,24 +49,25 @@ impl<DR: DnsResolver, ET: EmailTransport> Network<DR, ET> {
         }
     }
 
-    /// Checks if the provided URL is a publicly accessible web URL.
-    pub async fn is_public_web_url(&self, url: &Url) -> bool {
+    /// Returns whether an HTTP(S) URL has only public addresses. DNS failures return an error.
+    pub async fn is_public_web_url(&self, url: &Url) -> anyhow::Result<bool> {
         if url.scheme() != "http" && url.scheme() != "https" {
-            return false;
+            return Ok(false);
         }
 
         // Checks if the specific hostname is a domain and public (not pointing to the local network).
         match url.host() {
             Some(Host::Domain(domain)) => match self.resolver.lookup_ip(domain).await {
-                Ok(lookup) => lookup.iter().all(|ip| IpAddrExt::is_global(&ip)),
+                Ok(lookup) => Ok(lookup.iter().next().is_some()
+                    && lookup.iter().all(|ip| IpAddrExt::is_global(&ip))),
                 Err(err) => {
                     error!("Cannot resolve domain ({domain}) to IP: {err}");
-                    false
+                    Err(err.into())
                 }
             },
-            Some(Host::Ipv4(ip)) => IpAddrExt::is_global(&IpAddr::V4(ip)),
-            Some(Host::Ipv6(ip)) => IpAddrExt::is_global(&IpAddr::V6(ip)),
-            None => false,
+            Some(Host::Ipv4(ip)) => Ok(IpAddrExt::is_global(&IpAddr::V4(ip))),
+            Some(Host::Ipv6(ip)) => Ok(IpAddrExt::is_global(&IpAddr::V6(ip))),
+            None => Ok(false),
         }
     }
 }
@@ -189,7 +190,7 @@ pub mod tests {
             ("https", true),
         ] {
             let url = Url::parse(&format!("{}://secutils.dev/my-page", protocol))?;
-            assert_eq!(public_network.is_public_web_url(&url).await, is_supported);
+            assert_eq!(public_network.is_public_web_url(&url).await?, is_supported);
         }
 
         // Hosts that resolve to local IPs aren't supported.
@@ -204,16 +205,16 @@ pub mod tests {
             Client::new().into(),
         );
         for (network, is_supported) in [(public_network, true), (local_network, false)] {
-            assert_eq!(network.is_public_web_url(&url).await, is_supported);
+            assert_eq!(network.is_public_web_url(&url).await?, is_supported);
         }
 
-        // Hosts that fail to resolve aren't supported and gracefully handled.
+        // DNS failures stay distinct from policy rejections.
         let broken_network = Network::new(
             MockResolver::new_with_error(NetError::from("can not lookup IPs")),
             AsyncStubTransport::new_ok(),
             Client::new().into(),
         );
-        assert!(!broken_network.is_public_web_url(&url).await);
+        assert!(broken_network.is_public_web_url(&url).await.is_err());
 
         Ok(())
     }
@@ -236,9 +237,35 @@ pub mod tests {
             ("[2001:1234:abcd:5678:0221:2fff:feb5:6e10]", true),
         ] {
             let url = Url::parse(&format!("http://{}/my-page", ip))?;
-            assert_eq!(network.is_public_web_url(&url).await, is_supported);
+            assert_eq!(network.is_public_web_url(&url).await?, is_supported);
         }
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn rejects_empty_or_mixed_dns_answers() -> anyhow::Result<()> {
+        let url = Url::parse("https://secutils.dev/")?;
+        let empty = Network::new(
+            MockResolver::new(),
+            AsyncStubTransport::new_ok(),
+            Client::new().into(),
+        );
+        assert!(!empty.is_public_web_url(&url).await?);
+
+        let mixed = Network::new(
+            MockResolver::new_with_records::<2>(vec![
+                Record::from_rdata(
+                    Name::new(),
+                    300,
+                    RData::A(A(Ipv4Addr::new(132, 226, 202, 19))),
+                ),
+                Record::from_rdata(Name::new(), 300, RData::A(A(Ipv4Addr::LOCALHOST))),
+            ]),
+            AsyncStubTransport::new_ok(),
+            Client::new().into(),
+        );
+        assert!(!mixed.is_public_web_url(&url).await?);
         Ok(())
     }
 }

@@ -92,8 +92,9 @@
         // Classify failures without exposing raw URLs, response bodies, credentials, or error text.
         const message = String(error?.message ?? '');
         const code = /non-public address/.test(message) ? 'upstream-url-validation'
+          : /Failed to resolve upstream hostname/.test(message) ? 'upstream-dns'
           : /timed out|timeout/i.test(message) ? 'upstream-timeout' : 'upstream-network';
-        throw failure(code, endpoint);
+        throw failure(code, endpoint, code !== 'upstream-url-validation');
       }
       if (response.statusCode !== 200) {
         throw failure(`upstream-http-${response.statusCode}`, endpoint,
@@ -157,7 +158,7 @@
     } catch {}
     return json(200, action === 'sample' ? { sampled: true, at: now } : current);
   } catch (error) {
-    const known = ['upstream-url-validation', 'upstream-timeout', 'upstream-network', 'upstream-invalid-json'];
+    const known = ['upstream-url-validation', 'upstream-dns', 'upstream-timeout', 'upstream-network', 'upstream-invalid-json'];
     const detail = known.includes(error?.code) || /^upstream-http-\d{3}$/.test(error?.code ?? '')
       ? error : failure(stage === 'snapshot-write' ? 'storage-write-failed' : 'statistics-read-failed', stage, false);
     const body = { error: `Statistics are unavailable (${detail.stage}: ${detail.code}). Retry the request.`, ...detail };

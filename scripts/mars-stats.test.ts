@@ -196,6 +196,7 @@ test('upstream failures, malformed schemas, missing secrets, and quota failures 
 test('network and validation errors are classified without disclosing raw error text', async () => {
     for (const [message, code] of [
         [`URL not allowed (non-public address): ${apiKey}`, 'upstream-url-validation'],
+        [`Failed to resolve upstream hostname: ${apiKey}`, 'upstream-dns'],
         [`Upstream request timed out: ${apiKey}`, 'upstream-timeout'],
         [`Failed to connect to upstream: ${apiKey}`, 'upstream-network'],
     ]) {
@@ -204,7 +205,7 @@ test('network and validation errors are classified without disclosing raw error 
         assert.equal(response.statusCode, 502);
         assert.equal(response.data.code, code);
         assert.equal(response.data.stage, 'storage-api');
-        assert.equal(response.data.retryable, true);
+        assert.equal(response.data.retryable, code !== 'upstream-url-validation');
         assert.equal(h.values.size, 0);
     }
 });

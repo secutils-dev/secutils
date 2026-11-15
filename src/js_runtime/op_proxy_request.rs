@@ -17,7 +17,8 @@ use url::Url;
 /// private/internal networks). Implemented by `Network<DR, ET>` so we can
 /// erase the generic parameters for storage in [`ProxyState`].
 pub trait PublicUrlValidator: Send + Sync {
-    fn is_public_web_url<'a>(&'a self, url: &'a Url) -> BoxFuture<'a, bool>;
+    /// Returns `false` for a disallowed URL, and an error when DNS validation could not complete.
+    fn is_public_web_url<'a>(&'a self, url: &'a Url) -> BoxFuture<'a, anyhow::Result<bool>>;
 }
 
 /// State injected into Deno's `OpState` before script execution.
@@ -199,10 +200,19 @@ pub async fn op_proxy_request(
     let url = Url::parse(&request.url)
         .map_err(|e| JsErrorBox::generic(format!("Invalid URL '{}': {e}", request.url)))?;
 
-    if proxy.restrict_to_public_urls && !proxy.url_validator.is_public_web_url(&url).await {
-        return Err(JsErrorBox::generic(format!(
-            "URL not allowed (non-public address): {url}"
-        )));
+    if proxy.restrict_to_public_urls {
+        let is_public = proxy
+            .url_validator
+            .is_public_web_url(&url)
+            .await
+            .map_err(|err| {
+                JsErrorBox::generic(format!("Failed to resolve upstream hostname: {err}"))
+            })?;
+        if !is_public {
+            return Err(JsErrorBox::generic(format!(
+                "URL not allowed (non-public address): {url}"
+            )));
+        }
     }
 
     let method: http::Method = request

@@ -29,8 +29,8 @@ pub fn default_config() -> JsRuntimeConfig {
 pub struct AllowAll;
 
 impl PublicUrlValidator for AllowAll {
-    fn is_public_web_url<'a>(&'a self, _url: &'a Url) -> BoxFuture<'a, bool> {
-        Box::pin(futures::future::ready(true))
+    fn is_public_web_url<'a>(&'a self, _url: &'a Url) -> BoxFuture<'a, anyhow::Result<bool>> {
+        Box::pin(futures::future::ready(Ok(true)))
     }
 }
 

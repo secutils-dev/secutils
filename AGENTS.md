@@ -41,6 +41,12 @@ Run the checks for the changed surface and any additional checks in its task gui
 Completion requires passing checks, reviewed generated artifacts, and a diff limited to the intended changes.
 If a required check is blocked, report the command and blocker as incomplete verification.
 
+## API evolution
+
+Before adding a variant for correctness, safety, or performance, inspect the existing method and every consumer.
+Prefer improving the existing contract and migrating all consumers, even when this requires a broader change.
+Keep a separate method only for distinct semantics or a documented compatibility constraint.
+
 ## Repository boundaries
 
 Retrack is a separate Git repository. Inspect its status before changes there.

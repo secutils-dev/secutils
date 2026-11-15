@@ -134,7 +134,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebSecurityApiExt<'a, 'u, DR, 
                 follow_redirects,
                 source,
             } => {
-                if !self.api.network.is_public_web_url(&url).await {
+                if !self.api.network.is_public_web_url(&url).await? {
                     bail!(SecutilsError::client(format!(
                         "Remote URL must be either `http` or `https` and have a valid public reachable domain name, but received {url}."
                     )));
@@ -1510,6 +1510,58 @@ mod tests {
                 .is_empty()
         );
 
+        Ok(())
+    }
+
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
+    async fn csp_import_propagates_dns_failure_without_fetching(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        use crate::{network::Network, tests::MockResolver};
+        use hickory_resolver::net::NetError;
+        use lettre::transport::stub::AsyncStubTransport;
+
+        let api = mock_api_with_network(
+            pool,
+            Network::new(
+                MockResolver::new_with_error(NetError::Timeout),
+                AsyncStubTransport::new_ok(),
+                reqwest::Client::new().into(),
+            ),
+        )
+        .await?;
+        let user = mock_user()?;
+        api.db.insert_user(&user).await?;
+        let server = MockServer::start_async().await;
+        let request = server
+            .mock_async(|when, then| {
+                when.path("/");
+                then.status(200)
+                    .header("Content-Security-Policy", "script-src 'none'");
+            })
+            .await;
+        let web_security = api.web_security(&user);
+        let error = web_security
+            .create_content_security_policy(ContentSecurityPoliciesCreateParams {
+                name: "policy".to_string(),
+                content: ContentSecurityPolicyContent::Remote {
+                    url: Url::parse(&format!("http://localhost:{}/", server.port()))?,
+                    follow_redirects: false,
+                    source: ContentSecurityPolicySource::EnforcingHeader,
+                },
+                tag_ids: vec![],
+            })
+            .await
+            .unwrap_err()
+            .downcast::<NetError>()?;
+        assert!(matches!(error, NetError::Timeout));
+        request.assert_calls_async(0).await;
+        assert!(
+            web_security
+                .get_content_security_policies()
+                .await?
+                .is_empty()
+        );
         Ok(())
     }
 

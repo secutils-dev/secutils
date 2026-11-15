@@ -590,7 +590,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, 'u, DR,
             )));
         }
 
-        if !self.api.network.is_public_web_url(url).await {
+        if !self.api.network.is_public_web_url(url).await? {
             bail!(SecutilsError::client(format!(
                 "URL must have a valid public reachable domain name, but received {url}."
             )));
@@ -2341,6 +2341,31 @@ mod tests {
         "###
         );
 
+        Ok(())
+    }
+
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
+    async fn peer_certificates_propagates_dns_failure(pool: PgPool) -> anyhow::Result<()> {
+        use crate::{network::Network, tests::mock_api_with_network};
+        use hickory_resolver::net::NetError;
+
+        let api = mock_api_with_network(
+            pool,
+            Network::new(
+                MockResolver::new_with_error(NetError::Timeout),
+                AsyncStubTransport::new_ok(),
+                reqwest::Client::new().into(),
+            ),
+        )
+        .await?;
+        let user = mock_user()?;
+        let error = api
+            .certificates(&user)
+            .get_peer_certificates(&Url::parse("https://example.invalid/")?)
+            .await
+            .unwrap_err()
+            .downcast::<NetError>()?;
+        assert!(matches!(error, NetError::Timeout));
         Ok(())
     }
 }

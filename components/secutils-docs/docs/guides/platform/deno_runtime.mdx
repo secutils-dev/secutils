@@ -334,18 +334,19 @@ const resp = await Deno.core.ops.op_proxy_request({
 
 Possible error messages include:
 
-| Error                                             | Meaning                                                                               |
-|---------------------------------------------------|---------------------------------------------------------------------------------------|
-| `Invalid URL '…': …`                              | The `url` field could not be parsed.                                                  |
-| `URL not allowed (non-public address): …`         | SSRF protection blocked the URL because it resolves to a private/internal IP address. |
-| `Invalid HTTP method: '…'`                        | The `method` value is not a valid HTTP method token.                                  |
-| `Invalid header name: '…'`                        | A key in `headers` is not a valid HTTP header name.                                   |
-| `Invalid header value for '…'`                    | A value in `headers` contains invalid characters.                                     |
-| `Upstream request timed out: …`                   | The upstream server did not respond within the configured timeout.                    |
-| `Failed to connect to upstream: …`                | Could not establish a TCP connection to the upstream server.                          |
-| `Upstream request failed: …`                      | A general upstream request failure (DNS, TLS, etc.).                                  |
-| `Upstream response body too large: …`             | The response body exceeded the configured size limit.                                 |
-| `Failed to decompress gzip/deflate/brotli/zstd …` | The response body claimed a content-encoding but the data was invalid.                |
+| Error                                             | Meaning                                                                                      |
+|---------------------------------------------------|----------------------------------------------------------------------------------------------|
+| `Invalid URL '…': …`                              | The `url` field could not be parsed.                                                         |
+| `URL not allowed (non-public address): …`         | SSRF protection blocked the URL because it resolves to a private/internal IP address.        |
+| `Failed to resolve upstream hostname: …`          | DNS resolution failed before the HTTP request.                                               |
+| `Invalid HTTP method: '…'`                        | The `method` value is not a valid HTTP method token.                                         |
+| `Invalid header name: '…'`                        | A key in `headers` is not a valid HTTP header name.                                          |
+| `Invalid header value for '…'`                    | A value in `headers` contains invalid characters.                                            |
+| `Upstream request timed out: …`                   | The upstream server did not respond within the configured timeout.                           |
+| `Failed to connect to upstream: …`                | Could not establish a TCP connection to the upstream server.                                 |
+| `Upstream request failed: …`                      | A general upstream request failure (DNS, TLS, etc.).                                         |
+| `Upstream response body too large: …`             | The response body exceeded the configured size limit.                                        |
+| `Failed to decompress gzip/deflate/brotli/zstd …` | The response body claimed a content-encoding but the data was invalid.                       |
 
 :::caution Security
 By default, `op_proxy_request` only allows requests to **publicly routable** IP addresses. URLs that resolve to private or loopback addresses (e.g. `127.0.0.1`, `10.x.x.x`, `192.168.x.x`) are rejected to prevent [Server-Side Request Forgery (SSRF)](https://owasp.org/www-community/attacks/Server-Side_Request_Forgery). This restriction can be relaxed per subscription tier for local development scenarios.

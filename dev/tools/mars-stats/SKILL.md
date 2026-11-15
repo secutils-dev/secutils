@@ -86,14 +86,15 @@ Read requests also collect a snapshot when the sixty-second cache expires.
 
 The responder stores one immutable sample per thirty-minute bucket.
 Samples expire after thirty days, so new history remains bounded at approximately 1,440 entries.
-Earlier five-minute samples remain available until their original expiration.
-The collector keeps one revision and sends no change notifications.
+The collector keeps one revision and sends no change notifications. Exhausted retries can still trigger operator alerts.
 The tracker retries failed scheduled runs after one, two, and four minutes.
 Three retries are the limit, and the normal schedule remains every thirty minutes.
 Retries use the same thirty-minute storage bucket, so a successful retry fills that sample without duplicates.
 The collector returns an error for a failed measurement, never a cached measurement as a new sample.
 
 Errors contain sanitized `code`, `stage`, and `retryable` fields instead of raw upstream responses or credentials.
+`upstream-dns` means that hostname resolution failed before the HTTP request.
+`upstream-url-validation` means that the address policy rejected the URL, and carries `retryable: false`.
 Scheduler retries depend on the job settings, not the `retryable` response field.
 Optional cache-write failures do not invalidate a successfully stored sample.
 

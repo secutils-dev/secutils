@@ -484,8 +484,8 @@ pub mod tests {
     #[derive(Clone)]
     struct AllowAllValidator;
     impl PublicUrlValidator for AllowAllValidator {
-        fn is_public_web_url<'a>(&'a self, _url: &'a Url) -> BoxFuture<'a, bool> {
-            Box::pin(futures::future::ready(true))
+        fn is_public_web_url<'a>(&'a self, _url: &'a Url) -> BoxFuture<'a, anyhow::Result<bool>> {
+            Box::pin(futures::future::ready(Ok(true)))
         }
     }
 
@@ -493,8 +493,8 @@ pub mod tests {
     #[derive(Clone)]
     struct DenyAllValidator;
     impl PublicUrlValidator for DenyAllValidator {
-        fn is_public_web_url<'a>(&'a self, _url: &'a Url) -> BoxFuture<'a, bool> {
-            Box::pin(futures::future::ready(false))
+        fn is_public_web_url<'a>(&'a self, _url: &'a Url) -> BoxFuture<'a, anyhow::Result<bool>> {
+            Box::pin(futures::future::ready(Ok(false)))
         }
     }
 
@@ -1092,6 +1092,55 @@ pub mod tests {
             "Expected SSRF rejection in: {err_msg}"
         );
 
+        Ok(())
+    }
+
+    #[cfg(feature = "bin-tests")]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn proxy_op_dns_failure_stays_fail_closed_without_ssrf_misclassification()
+    -> anyhow::Result<()> {
+        use crate::network::{Network, tests::MockResolver};
+        use hickory_resolver::net::NetError;
+        use lettre::transport::stub::AsyncStubTransport;
+
+        let mock_server = httpmock::MockServer::start_async().await;
+        let mock = mock_server
+            .mock_async(|when, then| {
+                when.method("GET").path("/");
+                then.status(200);
+            })
+            .await;
+        let network = Network::new(
+            MockResolver::new_with_error(NetError::Timeout),
+            AsyncStubTransport::new_ok(),
+            reqwest::Client::new().into(),
+        );
+        let proxy = test_proxy_state_with_validator(Arc::new(network), true);
+        let url = mock_server.base_url().replace("127.0.0.1", "localhost");
+        let script = format!(
+            r#"(async () => {{
+            try {{
+                await Deno.core.ops.op_proxy_request({{ url: "{url}" }});
+                return "unexpected success";
+            }} catch (error) {{ return error.message; }}
+        }})()"#
+        );
+        let (error, _) = JsRuntime::execute_script::<String>(
+            JsRuntimeConfig {
+                max_heap_size: 10 * 1024 * 1024,
+                max_user_script_execution_time: std::time::Duration::from_secs(10),
+            },
+            script,
+            None,
+            Some(proxy),
+        )
+        .await?;
+        assert!(
+            error.contains("Failed to resolve upstream hostname"),
+            "{error}"
+        );
+        assert!(!error.contains("non-public address"), "{error}");
+        mock.assert_calls_async(0).await;
         Ok(())
     }
 
