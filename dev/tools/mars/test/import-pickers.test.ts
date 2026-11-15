@@ -104,6 +104,7 @@ test('shared import actions target the requested folder and reject read-only or 
     for (const parentId of [null, child.id]) {
         const entries = menuFor(parentId);
         assert.equal(entries[0].label, 'Import files…');
+        assert.equal('sub' in entries[0], false);
         assert.equal(entries[1].label, 'Import a folder…');
         assert.equal(entries[0].disabled, false);
         entries[0].run();

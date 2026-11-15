@@ -213,10 +213,10 @@ floor or `min` is explained in the change description.
 
 ## Keeping the index current
 
-An entry is current when its `at` equals the document's `updatedAt` and its model is the
-selected model. Every tree change schedules one pass over the stale documents, 2 seconds
-after the last change. Passes never overlap: a change during a pass queues one more pass after it.
-A pass skips documents deleted since it started and writes no entry for them.
+Document changes schedule an index check after two seconds. Each entry stores a hash of its exact, ordered model inputs.
+A changed timestamp alone does not require new vectors. Unchanged inputs retain their vectors and update source positions and display snippets.
+One pass runs per tab. A document lock serializes inference across tabs, which read the shared cache again after acquiring the lock.
+A pass retains no result for a document that changes or disappears during inference.
 
 ```mermaid
 flowchart TD
@@ -226,7 +226,10 @@ flowchart TD
     change["app.onChange"] --> wait["Wait 2 s after the last change"]
     wait --> pass["reindex(): one pass at a time"]
     pass --> stale{"Entry missing, at differs from updatedAt, or another model?"}
-    stale -- yes --> embed["Chunk, embed, put vec:id"]
+    stale -- yes --> lock["Document lock, read shared cache, hash exact inputs"]
+    lock --> changed{"Model inputs changed?"}
+    changed -- yes --> embed["Embed, put vec:id"]
+    changed -- no --> reuse["Reuse vectors, update positions and timestamp"]
     stale -- no --> skip["Keep the entry"]
     del["Delete a document or folder"] --> drop["Leaves the tree, then db.deleteNodes removes vec:id"]
     drop --> prune["Next pass drops it from memory"]
@@ -236,9 +239,10 @@ flowchart TD
 - **Edits**: autosave updates `updatedAt`, so a document re-embeds once you stop typing for
   2 seconds. ponytail: the whole document re-embeds; per-chunk reuse would matter only for
   very long documents.
-- **Renames** re-embed, because EmbeddingGemma prefixes each chunk with the document name.
-- **Other tabs**: each tab runs its own worker and indexes on its own. Two open tabs may embed
-  the same change twice; the result is the same entry.
+- **Renames**: GTE ignores the document name and retains its vectors. EmbeddingGemma includes the name in every passage and requires new vectors.
+- **Other tabs**: a browser lock permits one inference job per document. Other tabs reuse the resulting shared cache entry.
+  Vector notifications refresh search without replacing the document tree or scheduling another inference pass.
+  Browsers without Web Locks retain cache reuse, but concurrent tabs can duplicate inference.
 - **Pause**: **Pause indexing** in the sparkles menu stops a pass after the current document, and
   the status badge says "Paused". The pause survives reloads and applies to all MARS tabs
   in this browser (`localStorage["mars.indexingPaused"]`). Search keeps using the entries already stored.

@@ -35,7 +35,8 @@ export async function mockWorker(context: BrowserContext) {
                   data: new Float32Array((msg.texts?.length ?? 0) * 384).fill(1),
                 },
               } as MessageEvent);
-            if (state.hold) waiting.push(reply);
+            // Hold inference, not model setup: any tab can win a document's Web Lock.
+            if (state.hold && msg.type === 'embed') waiting.push(reply);
             else setTimeout(reply, 0);
           },
           terminate() {
@@ -160,17 +161,18 @@ export function indexingTests(path: string) {
       expect(await indexedNames(page)).toEqual(['Original']);
       for (const tab of [other, newest]) expect(await calls(tab)).toBe(0);
 
-      // Hold replies so each tab must visibly start its own catch-up pass on remote resume.
+      // Hold inference: one tab does the work and the others reuse its shared cache entry.
       for (const tab of [page, other, newest]) await hold(tab);
       await toggle(other, 'Resume');
-      for (const tab of [page, other, newest])
-        await expect(tab.locator('#sbSmartStatus')).toHaveText(/Preparing|Indexing/);
+      const total = async () => (await Promise.all([page, other, newest].map(calls))).reduce((a, b) => a + b, 0);
+      await expect.poll(total).toBe(2);
       await Promise.all([page, other, newest].map(release));
       for (const tab of [page, other, newest]) {
-        await expect.poll(() => calls(tab)).toBeGreaterThan(0);
         await expect(tab.locator('#sbSmartStatus')).toBeHidden();
       }
       await expect.poll(() => indexedNames(page)).toEqual(['Later', 'Original']);
+      await page.waitForTimeout(2500);
+      expect(await total()).toBe(2);
     });
 
     test('a remote pause stops an active pass after its current document', async ({ page, context }) => {
@@ -180,17 +182,20 @@ export function indexingTests(path: string) {
       const other = await context.newPage();
       await other.goto(path);
       await expect(other.locator('#sbSmartBtn')).toHaveAttribute('aria-pressed', 'true');
-      await hold(page);
+      await Promise.all([page, other].map(hold));
       await importDoc(page, 'First');
+      const total = async () => (await Promise.all([page, other].map(calls))).reduce((a, b) => a + b, 0);
+      await expect.poll(total).toBe(2); // Original, then one held First document across both tabs.
+      // Add the next document only after the first inference is held. Otherwise different
+      // tabs can legitimately start both documents before Pause reaches either tab.
       await importDoc(page, 'Second');
-      await expect.poll(() => calls(page)).toBe(2); // Original, then the held First document.
       await toggle(other, 'Pause');
       await expect(page.locator('#sbSmartStatus')).toHaveText('Paused');
-      await release(page);
+      await Promise.all([page, other].map(release));
       await page.waitForTimeout(2500);
-      expect(await calls(page)).toBe(2);
+      expect(await total()).toBe(2);
       await toggle(other, 'Resume');
-      await expect.poll(() => calls(page)).toBe(3);
+      await expect.poll(total).toBe(3);
     });
 
     test('rebuilding respects pause and turning smart search off clears it', async ({ page }) => {

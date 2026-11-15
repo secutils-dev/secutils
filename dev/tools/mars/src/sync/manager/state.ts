@@ -80,8 +80,6 @@ export const cleanupTasks = new Map<string, Promise<void>>();
 export const materializations = new Map<string, Promise<void>>();
 /** The `materializationVersion` that the local tree of each scope ID matches. */
 export const materializedViews = new Map<string, string>();
-/** The enrollment in progress for each newly created local node ID. */
-export const creations = new Map<string, Promise<void>>();
 /** `meta` store key of a saved scope. It is also the scope ID in every registry. */
 export const scopeKey = (collection: string, member: string) => `sync:scope:${collection}:${member}`;
 export const scopeId = (scope: Scope) => scopeKey(scope.collection, scope.member.grant.member);
@@ -128,8 +126,10 @@ export const belongs = (node: TreeNode, scope: Scope) =>
 export const driverFor = (scope?: Scope) => (scope ? drivers.get(scopeId(scope)) : undefined);
 export const errorText = (error: unknown) => (error as Error)?.message ?? String(error);
 /** The loaded scope of a connected node. Returns `undefined` for an unconnected node or an unloaded scope. */
-export const rootFor = (node: TreeNode) =>
-    node.connection ? scopes.get(scopeKey(node.connection.collection, node.connection.member)) : undefined;
+export const rootFor = (node: TreeNode) => {
+    const binding = node.connection ?? node.syncPending;
+    return binding ? scopes.get(scopeKey(binding.collection, binding.member)) : undefined;
+};
 /**
  * Storage adapter for the session of local node `id`.
  * `commit` saves the replica record, the tree node, and the Markdown projection in one transaction.
@@ -194,7 +194,7 @@ export const repository = (id: string) => ({
             delete updated.pending;
             delete extras[`base:${id}`];
         }
-        await db.commitReplica(
+        const committed = await db.commitReplica(
             id,
             expected,
             record,
@@ -205,9 +205,12 @@ export const repository = (id: string) => ({
             reviewed ? [`base:${id}`] : [],
             record.binding,
         );
-        Object.assign(node, updated);
-        connectionStates.restore([node]);
-        if (reviewed) delete node.pending;
+        const displayed = app.node(id);
+        if (displayed) {
+            Object.assign(displayed, committed[0] ?? updated);
+            connectionStates.restore([displayed]);
+            if (reviewed) delete displayed.pending;
+        }
         app.notify();
     },
 });

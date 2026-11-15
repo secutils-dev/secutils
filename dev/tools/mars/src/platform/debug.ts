@@ -45,7 +45,7 @@ export function debugReport() {
     return JSON.stringify(
         {
             format: 2,
-            build: '2026-11-10-reload-network-zoom-1',
+            build: '2026-11-15-contextual-sync-glyphs-3',
             tab,
             flags: reportFlags(),
             environment: {

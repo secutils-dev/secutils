@@ -11,7 +11,7 @@ import * as db from '../../store/db.ts';
 import * as viewer from '../../doc/viewer.js';
 import { descendants, newId, textBytes, type TreeNode } from '../../tree/model.ts';
 import { openThreads } from '../../share/merge.ts';
-import { keyBytes, unwrapKey, verify, verifyGrant, openJson, openCheckpoint } from '../crypto.ts';
+import { unwrapKey, verify, verifyGrant, openJson, openCheckpoint } from '../crypto.ts';
 import {
     encode,
     decode,
@@ -21,7 +21,6 @@ import {
     validCheckpoint,
     checkpointKey,
     type SignedGrant,
-    type SyncBinding,
     type SyncDirectory,
 } from '../protocol.ts';
 import { Session, stagedSession, type SessionRecord, type ManifestNode } from '../session.ts';
@@ -48,15 +47,16 @@ import {
     rotationTasks,
     materializations,
     rootFor,
-    creations,
     renewing,
     saveScope,
 } from './state.ts';
 import { continueCleanup } from './live-links.ts';
 import { synchronizeDeletions, resumeDeletions, personalSync } from './deletion.ts';
+import { resumeCreations, pendingCreations } from './creation.ts';
 
 // True after the first `initialize` call starts. The call sets it before its first await.
 let initialized = false;
+let initialization: Promise<void> | undefined;
 /**
  * Binds a local node to a seeded replica record and registers its session.
  * One transaction saves the record, the node, and the projection of a document.
@@ -70,6 +70,11 @@ export async function createSession(node: TreeNode, record: SessionRecord) {
     // Remote edits never write to a linked file. A connected document needs an explicit disk Save.
     if (node.handle) node.manualFileSave = true;
     await db.commitReplica(node.id, null, record, [node], node.kind === 'doc' ? { [node.id]: record.projection } : {});
+    const current = app.node(node.id);
+    if (current) {
+        current.connection = node.connection;
+        if (node.manualFileSave) current.manualFileSave = true;
+    }
     const session = new Session(record, repository(node.id));
     sessions.set(node.id, session);
     return session;
@@ -146,7 +151,7 @@ export function start(scope: Scope) {
             return null;
         },
         async pending() {
-            let count = 0;
+            let count = pendingCreations(scope).length;
             for (const [, session] of list()) count += await session.pending();
             return count;
         },
@@ -296,12 +301,24 @@ export function start(scope: Scope) {
  * A forced call reloads scopes from storage, keeps existing sessions, and drops the sessions of
  * nodes that lost their binding.
  * Each run shows `attention` for a scope with a saved key-rotation plan, and resumes Live-only cleanup.
- * A call that arrives while the first load is in progress returns before sessions exist.
+ * Concurrent calls wait for the first load. Forced reloads run in order, rather than overlapping it.
  * Side effects: a duplicate-connection repair in storage, network polls, and lease renewal.
  */
-export async function initialize(force = false) {
-    if (initialized && !force) return;
-    initialized = true;
+export function initialize(force = false): Promise<void> {
+    if (initialization && !force) return initialization;
+    if (initialized && !force) return Promise.resolve();
+    const task = (initialization ?? Promise.resolve()).catch(() => {}).then(loadConnections);
+    initialization = task;
+    return task
+        .then(() => {
+            initialized = true;
+            resumeCreations();
+        })
+        .finally(() => {
+            if (initialization === task) initialization = undefined;
+        });
+}
+async function loadConnections() {
     resumeDeletions();
     if (await db.repairDuplicateConnections()) await app.load();
     const records = await db.allSides<SessionRecord>('sync');
@@ -522,8 +539,22 @@ export async function materialize(
             );
             // The manifest is content that any editor of the folder can write. `materializable`
             // keeps well-formed entries only, and never places an entry with a broken chain at the root.
-            const values = materializable(scope.root, manifest, registered, scope.exclusions);
-            const current = (await db.allNodes()).filter((node) => belongs(node, scope));
+            const all = await db.allNodes();
+            const stranded = new Set<string>();
+            // An old tab may have erased a binding while retaining its replica and local edits.
+            // Do not download a competing row while automatic recovery retains that identity.
+            for (const node of descendants(all, scope.localRoot).filter((node) => !node.connection)) {
+                const record = await db.getSide<SessionRecord>('sync', node.id);
+                if (
+                    record?.binding.collection === scope.collection &&
+                    record.binding.member === scope.member.grant.member
+                )
+                    stranded.add(record.binding.document);
+            }
+            const values = materializable(scope.root, manifest, registered, scope.exclusions).filter(
+                (item) => !stranded.has(item.id),
+            );
+            const current = all.filter((node) => belongs(node, scope));
             const mapping = new Map(current.map((node) => [node.connection!.document, node]));
             // The stored tree already matches: one node per remote ID, each with the right kind,
             // parent, name, and order. Record the version and skip the tree write and its broadcast.
@@ -712,90 +743,6 @@ async function updateManifest(scope: Scope) {
             parent: n.id === scope.localRoot ? null : (app.node(n.parentId)?.connection?.document ?? scope.root),
         }));
     await root.editManifest(values);
-}
-/**
- * Adds a node that was created in, or moved into, a synced folder to that folder's collection.
- * Concurrent calls for one node share one enrollment. The call does nothing when the node is gone,
- * is already connected, or has no parent in a folder scope.
- */
-export async function created(id: string) {
-    const active = creations.get(id);
-    if (active) return active;
-    const task = enrollCreated(id);
-    creations.set(id, task);
-    try {
-        await task;
-    } finally {
-        if (creations.get(id) === task) creations.delete(id);
-    }
-}
-/**
- * Registers a remote document for the node, binds the node, and adds it to the folder manifest.
- * A folder also enrolls its children. The registration request precedes every local write.
- */
-async function enrollCreated(id: string) {
-    await initialize();
-    const node = app.node(id),
-        parent = app.node(node?.parentId ?? null),
-        scope = parent ? rootFor(parent) : undefined;
-    if (!node || node.connection || !scope || scope.kind !== 'folder') return;
-    const remote = newId(),
-        key = encode(keyBytes());
-    await scoped(scope, 'document', { document: remote, kind: node.kind });
-    const binding: SyncBinding = {
-        collection: scope.collection,
-        document: remote,
-        member: scope.member.grant.member,
-        permission: scope.member.grant.permission,
-        kind: 'sync',
-        epoch: 1,
-        root: scope.root,
-    };
-    await app.serializePersistence(async () => {
-        // The tree can change during the registration request. Bind only a node that still exists,
-        // is still unconnected, and still has a parent in this collection.
-        if (
-            !app.node(id) ||
-            app.node(id)?.connection ||
-            app.node(node.parentId)?.connection?.collection !== scope.collection
-        )
-            return;
-        if (node.kind === 'doc') {
-            const record = Session.seed(
-                binding,
-                await app.docText(id),
-                scope.identity,
-                scope.token,
-                key,
-                scope.owner,
-                node.name,
-                scope.member,
-            );
-            const session = await createSession(node, record);
-            await session.initial();
-            // Publish a UUID origin only. A local file or URL identity stays on this device.
-            await session.metadataChanged({ origin: validId(node.originId) ? node.originId : node.id });
-        } else {
-            node.connection = { ...binding, phase: 'waiting' };
-            await db.putNodes([node]);
-        }
-    });
-    if (!node.connection) return;
-    // The manifest entry carries the document key. Other devices read it from the encrypted root replica.
-    const root = sessions.get(scope.localRoot)!;
-    await root.editManifest([
-        {
-            id: remote,
-            kind: node.kind,
-            parent: parent!.connection!.document,
-            name: node.name,
-            order: node.order,
-            ...(node.kind === 'doc' ? { key, origin: node.id } : {}),
-        },
-    ]);
-    if (node.kind === 'folder')
-        for (const child of app.state.nodes.filter((item) => item.parentId === node.id)) await created(child.id);
-    void driverFor(scope)?.upload();
 }
 /**
  * Starts the transport of the scope of a connected node, then renews the activity leases of the scope.

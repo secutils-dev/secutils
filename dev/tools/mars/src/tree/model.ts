@@ -47,6 +47,8 @@ export interface TreeNode {
     // The Sync or Live binding of a connected node. `phase` is display state of this tab; only
     // `ended` is meaningful in a stored node.
     connection?: SyncBinding & { phase?: 'waiting' | 'working' | 'current' | 'offline' | 'attention' | 'ended' };
+    // Explicit enrollment is durable even before registration succeeds. No credential belongs here.
+    syncPending?: { collection: string; member: string; root: string; phase: 'waiting' | 'attention' };
 }
 
 /** A random UUID. Node ids and new origin ids use it. */

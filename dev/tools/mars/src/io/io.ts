@@ -280,6 +280,7 @@ async function importIncoming(items: Incoming[], parentId: string | null, skippe
     const notes = [
         removed && `left out ${removed} deleted during the import`,
         skipped && `skipped ${skipped} other file${skipped === 1 ? '' : 's'}`,
+        docs.some((id) => app.node(id)?.syncPending) && 'Sync enrollment pending',
     ].filter(Boolean);
     const many = imported >= 20 && search.enabledModel() && !search.isPaused();
     toast(

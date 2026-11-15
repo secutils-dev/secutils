@@ -80,6 +80,11 @@ body.sb-collapsed .mars-sidebar { display: none; }
 .tree-row[data-kind="folder"] .tree-icon { color: var(--mars-500); }
 .tree-icon-default { display: inline-flex; }
 .tree-icon-default .tree-default-star { fill: var(--brand-text); }
+/* Static membership marks share their base glyph's SVG viewport; activity stays on root controls. */
+:root, [data-theme="dark"] { --mars-sync-mark: #79c0ff; }
+[data-theme="light"] { --mars-sync-mark: #1750ba; }
+.tree-sync-mark { fill: var(--mars-sync-mark); stroke: var(--mars-sync-mark); stroke-width: .5; }
+@media (forced-colors: active) { .tree-sync-mark { fill: CanvasText; stroke: CanvasText; } }
 .tree-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
 .tree-row.has-snippet { flex-wrap: wrap; height: auto; min-height: 30px; padding-block: 5px; row-gap: 2px; }
 .tree-snippet { flex-basis: 100%; padding-left: 44px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 400; color: var(--text-muted); }
@@ -198,7 +203,11 @@ body.sb-collapsed .mars-sidebar { display: none; }
 .sync-notice:empty { display: none; }
 .sync-dialog .mars-modal-foot { flex-wrap: wrap; }
 .sync-dialog:has(.sync-status) .mars-modal-foot { flex-wrap: nowrap; }
+.sync-dialog[data-inherited-context] .mars-modal-foot { flex-wrap: wrap; }
+.sync-dialog[data-inherited-context] p { overflow-wrap: anywhere; }
 @media (max-width: 480px) { .sync-dialog:has(.sync-status) .mars-modal-foot .btn { font-size: 12px; padding-inline: 8px; white-space: nowrap; } }
+/* The extra Back control must not push a long action beyond a narrow, zoomed dialog. */
+.sync-dialog[data-inherited-context] .mars-modal-foot .btn { max-inline-size: 100%; min-block-size: 32px; block-size: auto; white-space: normal; }
 .sync-footer-left { margin-inline-end: auto; }
 .sync-tools { display: flex; flex-wrap: wrap; gap: 8px; margin-block: 20px 12px; }
 .sync-tools .btn { gap: 6px; }

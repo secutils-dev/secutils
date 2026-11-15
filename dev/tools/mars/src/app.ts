@@ -168,8 +168,9 @@ export async function createFolder(name: string, parentId: string | null, origin
     };
     if (originId) n.originId = originId;
     state.nodes.push(n);
-    await save([n]);
-    if (node(parentId)?.connection)
+    const intent = sync.creationIntent(state.nodes, n);
+    await db.putNodes([n], {}, { creations: intent ? [intent] : [] });
+    if (intent)
         void sync.created(n.id).catch((error) => viewer.toast(`Could not enroll the new folder: ${error.message}`));
     emit();
     return n;
@@ -233,7 +234,8 @@ export async function createDoc(
         }
         checkInput(opts.input);
         state.nodes.push(n);
-        await save([n], { [id]: text });
+        const intent = sync.creationIntent(state.nodes, n);
+        await db.putNodes([n], { [id]: text }, { creations: intent ? [intent] : [] });
     } catch (error) {
         checkInput(opts.input);
         // Only a storage failure of the library falls back. The retry runs in the temporary session:
@@ -246,7 +248,7 @@ export async function createDoc(
     expandTo(parentId);
     if (opts.open !== false) await openDoc(id, opts.input);
     else emit();
-    if (node(parentId)?.connection)
+    if (n.syncPending)
         void sync
             .created(n.id)
             .catch((error) =>
@@ -643,16 +645,19 @@ async function persistOne(doc: PersistedDoc) {
  * Renames a node. A blank or unchanged name has no effect. A connected node publishes the name
  * through Sync. The open document updates in the viewer and in the temporary route.
  */
-export async function rename(id: string, name: string) {
-    const n = node(id);
-    if (!n || !name.trim() || n.name === name) return;
-    n.name = name.trim();
-    n.updatedAt = now();
-    if (n.connection) await sync.metadata(id);
-    else await save([n]);
-    if (id === state.currentId) viewer.renameDocument(n.name);
-    if (db.isTemporaryStorage() && id === state.currentId) await setRoute(id);
-    emit();
+export function rename(id: string, name: string) {
+    return serializePersistence(async () => {
+        // Registration must not bind the node between the local write and the decision to publish metadata.
+        const n = node(id);
+        if (!n || !name.trim() || n.name === name) return;
+        n.name = name.trim();
+        n.updatedAt = now();
+        if (n.connection) await sync.metadata(id);
+        else await save([n]);
+        if (id === state.currentId) viewer.renameDocument(n.name);
+        if (db.isTemporaryStorage() && id === state.currentId) await setRoute(id);
+        emit();
+    });
 }
 
 /**
@@ -662,12 +667,16 @@ export async function rename(id: string, name: string) {
  * folder joins the collection.
  */
 export async function move(id: string, parentId: string | null, beforeId: string | null = null) {
-    if ((node(id)?.connection || node(parentId)?.connection) && !(await sync.beforeMove(id, parentId))) return false;
+    if (
+        (node(id)?.connection || node(id)?.syncPending || node(parentId)?.connection || node(parentId)?.syncPending) &&
+        !(await sync.beforeMove(id, parentId))
+    )
+        return false;
     const changed = moveNode(state.nodes, id, parentId, beforeId);
     if (!changed.length) return false;
     await save(changed);
     if (node(id)?.connection) await sync.metadata(id);
-    else if (node(parentId)?.connection) await sync.created(id);
+    else if (node(parentId)?.connection || node(parentId)?.syncPending) await sync.created(id);
     expandTo(parentId);
     if (id === state.currentId) state.folderId = parentId;
     emit();

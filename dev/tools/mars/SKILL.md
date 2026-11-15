@@ -229,7 +229,8 @@ Use this reference when the user asks how to do a task in MARS. Each row is one 
 | Share live access | **Share > Copy link > Live** | One document. **Can view**, **Can comment**, or **Can edit**. Expires after 1, 7, 14, or 30 days (default 7). Folders support snapshots only. |
 | Stop live access | **Copy link > Live links** (bottom left) | **Stop sharing** disables every Live link of the document. Copies that recipients saved stay with them. |
 | Sync own devices | Document or folder menu > **Sync**, then **Sync link** | The Sync link expires after 10 minutes. Both devices must show the same code before approval. |
-| Disconnect a device | **Sync > Disconnect this device** | The local copy stays. Other devices and Live links stay connected. |
+| Inspect inherited Sync | Child menu > **Sync** | Shows the child status and its synced folder. **Manage folder Sync** opens folder settings. **Back** returns to the child. |
+| Disconnect a device | Root menu > **Sync > Disconnect this device** | For a child, select **Manage folder Sync** first. The complete synced folder disconnects. Local copies stay. Other devices and Live links stay connected. |
 | Keep a received Live document | **Save live document to library** | Live recipients start in a temporary session. **Keep as local copy** stops updates without an effect on the link of the owner. |
 | Work without storage | **New > New temporary document**, or **Document options > Read temporarily** | The header shows **Temporary**. Only the current document returns after a reload. |
 | Export | **Export…** beside **Share**, or `Ctrl/Cmd+P` for PDF | HTML, PDF (A4 or Letter), or Markdown. HTML and PDF exclude review threads. |
@@ -242,6 +243,11 @@ Limits and behavior that users ask about:
 
 - **Up to date** means that the service acknowledged the upload. It does not mean that another person read the document.
 - Local edits save in the browser before upload. Sync continues after the original window closes.
+- New files show pending enrollment until registration completes. Retry survives reloads and retains the same remote identity across tabs.
+- Incomplete folder imports recover automatically. Folder settings apply to the complete synced folder, not a separate child connection.
+- Synced icons contain a blue Sync mark. Default folders keep their star. Separate badges identify roots, pending files, Live links, and individually ended connections.
+- Legacy local-only copies stay outside synced folders under **Local copies**. MARS retains their saved text and connection data without uploading them again.
+- Best speed reuses vectors after a rename. Best quality includes the document name in its model input and requires new vectors.
 - One IP address can create 50 Sync collections each hour. One Sync selection holds at most 100 documents and folders.
 - Connected content expires after 30 days without activity. When the user opens it, the period starts again.
 - **Can edit** permits deletion of comments and threads. Only the author can edit a comment.

@@ -13,6 +13,7 @@ Local preview and deployment assemble the same responder through `dev/tools/mars
   - `state.ts`: scopes, sessions, transports, and the request helpers that the other modules share.
   - `engine.ts`: transport start, checkpoint receipt, projection, folder materialization, and lease renewal.
   - `enrollment.ts`: collection setup from a local selection, and restart of an unfinished setup.
+  - `creation.ts`: durable incremental enrollment, retry, and automatic reconciliation of folder descendants.
   - `pairing.ts`: Sync links, the code confirmation on both devices, and matches with existing local documents.
   - `live-links.ts`: Live link creation, receipt, forwarding, library promotion, and Live-only teardown.
   - `access.ts`: disconnection, revocation with key rotation, deletion, and moves.
@@ -42,6 +43,24 @@ Other tabs discover complete records, rather than a partially seeded folder.
 New scopes already have fresh activity leases, so renewal waits until those leases need extension.
 Sessions retain the latest 64 acknowledgement digests. Another tab can acknowledge the same ciphertext without an outbox mismatch.
 Unknown operations and different digests still fail acknowledgement checks.
+
+Incremental enrollment saves a `sync-create:<local-id>` job with the new node and its text, before registration.
+The job retains its portable document ID and key across retries and reloads.
+One browser lock per collection prevents competing seeds from tabs in the same profile.
+The job remains until the binding and encrypted manifest are saved. Pending jobs prevent a false **Up to date** status.
+Hidden tabs abort registration requests. Visible tabs and explicit retry resume unfinished jobs.
+
+Folder reconciliation automatically restores missing descendants to the original collection.
+An existing replica must match the collection and member and must not be ended or excluded.
+Recovery archives the previous text, replica, keys, and pending packets before restoring the binding.
+MARS applies distinct local text through the existing replica, rather than replacing its CRDT or pending packets.
+Materialization retains stranded local identities instead of downloading duplicate rows before recovery.
+Child Sync dialogs show item status first. **Manage folder Sync** opens root settings, and **Back** returns to the item.
+Folder settings act on the complete synced root. Explicitly disconnected subtrees leave any still-active synced ancestor.
+Legacy exclusions, ambiguous local-copy origins, and foreign saved state remain under a browser-local **Local copies** folder.
+Legacy child folders without portable identity retain their complete local subtree there instead of merging by name.
+Restored local-only backup entries also leave synced folders before automatic reconciliation starts.
+Ordinary node writes reject a stale binding. Explicit scoped disconnection is the only ordinary write that can detach it.
 
 ## Reload request budget
 
@@ -220,6 +239,10 @@ Source **Delete document** uses the same cleanup before local deletion, even whi
 Cleanup failure keeps the local document and its saved cleanup job. Source deletion has no Undo action.
 
 ## Activity and UI boundaries
+
+Static Sync marks share one SVG viewport with each file or folder glyph. Default folders keep their star instead.
+Separate badges identify connection roots, pending enrollment, independent Live links, and individually ended connections.
+Transport phases belong to the complete scope, so inherited rows do not repeat its activity or error badge.
 
 Sync, source Live links, and recipient Live document panels have separate controls over the shared replication engine.
 Recipients forward active links through Copy link → Live. The operation confirms invitation access and returns the original URL without creating a grant.

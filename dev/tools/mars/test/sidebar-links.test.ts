@@ -17,6 +17,7 @@ const linkFor = (pathname: string, currentId: string | null, temporary = false) 
         db: { isTemporaryStorage: () => temporary },
         esc,
         encodeURIComponent,
+        hasSyncGlyph: () => false,
     });
 
 test('document anchors use the local mount and ID, with no shared snapshot or forced target', () => {

@@ -40,9 +40,9 @@ test.describe('sync user experience', () => {
       await page.getByRole('button', { name: 'Actions for Rotating folder', exact: true }).click();
       await page.getByRole('menuitem', { name: 'Sync', exact: true }).click();
       await page.getByRole('button', { name: 'Turn on sync', exact: true }).click();
-      await expect(page.locator('#tree .tree-connection[data-phase="working"]')).toHaveCount(2);
+      await expect(page.locator('#tree .tree-connection[data-phase="working"]')).toHaveCount(1);
       const samples = await page.evaluate(async () => {
-        const history: { time: number; angle: number }[][] = [[], []],
+        const history: { time: number; angle: number }[][] = [[]],
           started = performance.now();
         let nextRender = started;
         while (performance.now() - started < 1300) {

@@ -214,7 +214,7 @@ const startupError = (action: string) => (error: unknown) => {
 };
 // The connection manager is a lazy module. It loads only when the library holds connected
 // content, and it starts before the first document opens.
-if (app.state.nodes.some((n) => n.connection) || (await db.allSides('sync-delete')).length)
+if (app.state.nodes.some((n) => n.connection || n.syncPending) || (await db.allSides('sync-delete')).length)
     await sync.initialize().catch(startupError('Sync could not start'));
 // The shell hides the body with `html.mars-boot`. Reveal it when the styles, the tree, and the
 // connection state are ready.

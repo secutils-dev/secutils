@@ -431,7 +431,7 @@ test.describe('sync protocol', () => {
     await page.getByRole('button', { name: 'Close', exact: true }).click();
     await page.getByRole('button', { name: 'Actions for Work', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Use as default', exact: true }).click();
-    await expect(page.getByTitle('Work · Default destination', { exact: true })).toBeVisible();
+    await expect(page.getByTitle('Work · Default destination · Sync configured', { exact: true })).toBeVisible();
     const depth =
       Number(
         await page
@@ -447,8 +447,28 @@ test.describe('sync protocol', () => {
       .getByRole('treeitem')
       .filter({ has: page.getByRole('link', { name: 'CLI document', exact: true }) });
     await expect(row).toHaveAttribute('aria-level', String(depth));
-    await expect(row.locator('[data-connection]')).toHaveCount(1);
-    await expect(row.locator('[data-connection]')).toHaveAttribute('data-phase', 'current', { timeout: 15000 });
+    await expect(row.locator('.tree-sync-mark')).toHaveCount(1, { timeout: 15000 });
+    await expect(row.locator('[data-connection]')).toHaveCount(0, { timeout: 15000 });
+    await expect(page.locator('#saveState')).toContainText('Up to date', { timeout: 15000 });
+    await expect
+      .poll(() =>
+        page.evaluate(async () => {
+          const db = await new Promise<IDBDatabase>((resolve) => {
+            const r = indexedDB.open('mars');
+            r.onsuccess = () => resolve(r.result);
+          });
+          const nodes = await new Promise<{ name: string; connection?: { kind: string }; syncPending?: unknown }[]>(
+            (resolve) => {
+              const r = db.transaction('nodes').objectStore('nodes').getAll();
+              r.onsuccess = () => resolve(r.result);
+            },
+          );
+          db.close();
+          const node = nodes.find((node) => node.name === 'CLI document');
+          return node?.connection?.kind === 'sync' && !node.syncPending;
+        }),
+      )
+      .toBe(true);
     await page.goto(link);
     await expect(page.locator('#docTitle')).toHaveText('CLI document');
     await expect(page.getByRole('link', { name: 'CLI document', exact: true })).toHaveCount(1);
@@ -789,14 +809,15 @@ test.describe('sync protocol', () => {
       await other.goto(MARS_BASE_URL);
       await expect(other.locator('#tree .tree-label').getByText('Cached 2', { exact: true })).toBeVisible();
       await owner.bringToFront();
-      await expect(other.locator('#tree [data-connection]')).toHaveCount(4);
+      await expect(other.locator('#tree [data-connection]')).toHaveCount(1);
       await owner.waitForTimeout(3500); // Past both startup and change indexing delays.
       expect(await calls(owner)).toBe(0);
       expect(await calls(other)).toBe(0);
       expect(await snapshot(owner)).toEqual(before);
       await owner.locator('#tree .tree-link').filter({ hasText: 'Cached 1' }).click();
       await sourceText(owner, '# Cached 1\n\nOnly this document changed its searchable content.');
-      await expect.poll(() => calls(owner)).toBe(1);
+      const totalCalls = async () => (await calls(owner)) + (await calls(other));
+      await expect.poll(totalCalls).toBe(1);
       await expect
         .poll(async () => (await snapshot(owner)).every((node) => node.vectorAt === node.updatedAt))
         .toBe(true);
@@ -811,10 +832,11 @@ test.describe('sync protocol', () => {
       await owner.getByRole('menuitem', { name: 'Rename', exact: true }).click();
       await owner.getByRole('textbox', { name: 'Name', exact: true }).fill('Cached 2 renamed');
       await owner.getByRole('textbox', { name: 'Name', exact: true }).press('Enter');
-      await expect.poll(() => calls(owner)).toBe(2);
+      // GTE does not use the name. Only index metadata changes on this rename.
       await expect
         .poll(async () => (await snapshot(owner)).every((node) => node.vectorAt === node.updatedAt))
         .toBe(true);
+      expect(await totalCalls()).toBe(1);
       expect((await snapshot(owner)).filter((node) => node.name !== 'Cached 2 renamed')).toEqual(
         after.filter((node) => node.name !== 'Cached 2'),
       );
@@ -862,7 +884,7 @@ test.describe('sync protocol', () => {
       await expect(owner.getByRole('textbox', { name: 'Sync link', exact: true })).toBeVisible({
         timeout: 30000,
       });
-      await expect(owner.locator('#tree [data-connection]')).toHaveCount(32);
+      await expect(owner.locator('#tree [data-connection]')).toHaveCount(1);
       await peer.addInitScript(() => {
         const errors: string[] = [],
           sizes: number[] = [];

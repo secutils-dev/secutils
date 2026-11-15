@@ -105,6 +105,7 @@ test.describe(`${tool.name} smart search`, () => {
     context = await launchWithModelCache(ARGS);
     page = context.pages()[0] ?? (await context.newPage());
     await openFresh(page, MARS_BASE_URL);
+    await expect(page.locator('#emptyState')).toBeVisible();
   });
   test.afterEach(async () => context?.close());
 
@@ -135,9 +136,9 @@ test.describe(`${tool.name} smart search`, () => {
           console.log(`  ${JSON.stringify(q)} -> ${(await meaningHits(page, q)).join(', ') || '(none)'}`);
         return;
       }
-      expect(await meaningHits(page, 'single sign-on')).toEqual(['Login']);
+      expect(await meaningHits(page, 'single sign-on')).toEqual(['login']);
       // Only the review comment is about credentials.
-      expect(await meaningHits(page, 'rotate passwords')).toEqual(['Releases']);
+      expect(await meaningHits(page, 'rotate passwords')).toEqual(['releases']);
       expect(await meaningHits(page, 'document')).toEqual([]);
 
       // The picker marks the model as downloaded.
@@ -150,7 +151,7 @@ test.describe(`${tool.name} smart search`, () => {
       // Waits out the startup index pass, which would hide the badge on its own.
       await page.reload();
       await page.waitForTimeout(3500);
-      expect(await meaningHits(page, 'single sign-on')).toEqual(['Login']);
+      expect(await meaningHits(page, 'single sign-on')).toEqual(['login']);
       await expect(page.locator('#sbSmartStatus')).toBeHidden();
     });
   }
@@ -183,7 +184,7 @@ test.describe(`${tool.name} smart search`, () => {
     await expect(status).toHaveText('Paused');
     await page.reload();
     await expect(status).toHaveText('Paused');
-    expect(await meaningHits(page, 'when invoices are due')).not.toContain('Billing');
+    expect(await meaningHits(page, 'when invoices are due')).not.toContain('billing');
     await expect(status).toHaveText('Paused');
 
     // The badge opens the smart-search menu.
@@ -192,6 +193,6 @@ test.describe(`${tool.name} smart search`, () => {
     await expect(status).toBeHidden({ timeout: 60_000 });
     await expect(page.locator('#sbSmartLive')).toHaveText('Smart-search index is up to date');
     // The same query again: matches made before the document was indexed must not be reused.
-    await expect.poll(() => meaningHits(page, 'when invoices are due')).toContain('Billing');
+    await expect.poll(() => meaningHits(page, 'when invoices are due')).toContain('billing');
   });
 });

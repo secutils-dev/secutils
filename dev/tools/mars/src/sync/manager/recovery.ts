@@ -7,6 +7,7 @@
 // A failed check writes nothing. Restored nodes get fresh local ids and cannot replace an existing node.
 import * as app from '../../app.ts';
 import * as db from '../../store/db.ts';
+import { insideSyncedFolder, localCopyPlan } from '../inheritance.ts';
 import * as viewer from '../../doc/viewer.js';
 import { descendants, newId, type TreeNode } from '../../tree/model.ts';
 import { modal } from '../../ui/ui.ts';
@@ -604,7 +605,20 @@ export async function restoreRecovery(selectedFile?: File) {
                     readingWidth: node.readingWidth,
                 });
             }
-            // Check placement again across the whole package: a local document can sit under a connected folder.
+            // Legacy backups can place explicit local copies inside connected folders. Retain them
+            // outside folder Sync before startup can infer any new enrollment intent.
+            const localIds = new Set(
+                allNodes
+                    .filter((node) => !node.connection && insideSyncedFolder(allNodes, node.id))
+                    .map((node) => node.id),
+            );
+            const localCopies = localCopyPlan(allNodes, localIds);
+            for (const copy of localCopies) {
+                const index = allNodes.findIndex((node) => node.id === copy.id);
+                if (index < 0) allNodes.push(copy);
+                else allNodes[index] = copy;
+            }
+            // Check placement again across the whole package.
             const placements = new Map(allNodes.map((node) => [node.id, node]));
             for (const node of allNodes) {
                 const parents = new Set([node.id]);

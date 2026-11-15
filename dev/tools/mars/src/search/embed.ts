@@ -4,11 +4,10 @@
 //
 // This module owns the worker, the model lifecycle, the stored index, and the on, off, and pause
 // settings. The model table, the input format, and ranking live in `models.ts`.
-// - An index entry is current when two conditions hold. Its `at` equals the `updatedAt` of the
-//   document. Its model and version equal `indexVersion` of the selected model. Every other
-//   entry is embedded again by the next pass. A search uses each entry of that model and
-//   version, also one whose `at` is behind.
-// - At most one indexing pass runs at a time. A change during a pass queues exactly one more.
+// - Modification timestamps schedule a check; the hash of exact model inputs decides whether
+//   vectors need replacement. Snippets and source positions can update without inference.
+// - One pass runs per tab. A Web Lock and a shared-cache recheck prevent duplicate inference
+//   across tabs. A change during a pass queues exactly one more.
 // - Network: the Transformers.js module comes from jsDelivr at a pinned version, and the model
 //   files come from Hugging Face. Document text never leaves the browser.
 import * as app from '../app.ts';
@@ -28,6 +27,7 @@ import {
     toVectors,
     TRANSFORMERS_VERSION,
 } from './models.ts';
+import { inputFingerprint } from './fingerprint.ts';
 
 export { MODELS, type Hit, type ModelKey };
 
@@ -38,10 +38,10 @@ const TRANSFORMERS_URL = `https://cdn.jsdelivr.net/npm/@huggingface/transformers
 // quantization for a key rebuilds too.
 const INDEX_VERSION = 5;
 /**
- * The version tag of an index entry: `INDEX_VERSION`, the model id, and the base quantization
- * (`dtype`) of the model. The WebGPU quantization (`gpuDtype`) is not part of it.
+ * The version tag includes the chunking version, model ID, and both supported quantizations.
  */
-const indexVersion = (key: ModelKey) => `${INDEX_VERSION}:${MODELS[key].id}:${MODELS[key].dtype}`;
+const indexVersion = (key: ModelKey) =>
+    `${INDEX_VERSION}:${MODELS[key].id}:${MODELS[key].dtype}:${MODELS[key].gpuDtype ?? ''}`;
 /** `localStorage` key: the selected `ModelKey`. Smart search is off when the key is absent or unknown. */
 const SETTING_KEY = 'mars.smartSearch';
 /** `localStorage` key: '1' while indexing is paused. It applies to every MARS tab of this browser. */
@@ -74,6 +74,7 @@ interface Entry {
     model: ModelKey;
     v?: number | string;
     at: number;
+    input?: string;
     chunks: { start: number; text: string; v: Float32Array }[];
 }
 
@@ -392,8 +393,6 @@ export function reindex() {
                 }
             const current = (e?: Entry) => e?.model === key && e.v === indexVersion(key);
             const stale = docs.filter((n) => index.get(n.id)?.at !== n.updatedAt || !current(index.get(n.id)));
-            // Load first, so the status shows the download before "Indexing".
-            if (stale.length) await loadModel(key);
             for (const [i, n] of stale.entries()) {
                 if (gen !== generation) return;
                 if (paused) {
@@ -401,41 +400,71 @@ export function reindex() {
                     return;
                 }
                 if (!app.node(n.id)) continue;
-                status({
-                    state: 'index',
-                    label: `Indexing ${i + 1}/${stale.length}`,
-                    text: `Indexing ${i + 1} of ${stale.length}…`,
-                });
-                // Read the timestamp before the text. A save during the awaits then leaves the entry
-                // stale, and the next pass embeds the new text.
-                const at = n.updatedAt;
-                const chunks = indexChunks((await db.getText(n.id)) ?? '');
-                const vectors: Float32Array[] = [];
-                for (let j = 0; j < chunks.length; j += 8)
-                    // One worker call embeds at most eight passages.
-                    vectors.push(
-                        ...(await embed(
-                            key,
-                            chunks.slice(j, j + 8).map((c) => passageInput(MODELS[key], n.name, c)),
-                        )),
-                    );
-                // The storage backend changed during the embedding. Write nothing to the new
-                // backend from this pass, and run again against it.
-                if (storage !== db.storageGeneration()) {
-                    queued = true;
-                    return;
-                }
-                if (gen !== generation || !app.node(n.id)) continue;
-                const entry: Entry = {
-                    id: n.id,
-                    model: key,
-                    v: indexVersion(key),
-                    at,
-                    chunks: chunks.map((c, j) => ({ start: c.start, text: c.text.slice(0, 220), v: vectors[j] })),
+                const run = async () => {
+                    if (gen !== generation || paused || enabledModel() !== key || storage !== db.storageGeneration())
+                        return;
+                    const snapshot = await db.getDocument(n.id);
+                    if (!snapshot) return;
+                    const { node, text } = snapshot;
+                    const chunks = indexChunks(text);
+                    const input = await inputFingerprint(MODELS[key], node.name, chunks);
+                    // Recheck shared storage *inside* the lock. Another tab may already have done the inference.
+                    const cached = await db.getSide<Entry>('vec', node.id);
+                    const reuse = current(cached) && cached!.input === input && cached!.chunks.length === chunks.length;
+                    let vectors: Float32Array[];
+                    if (reuse) vectors = cached!.chunks.map((chunk) => chunk.v);
+                    else {
+                        if (paused || readPaused()) return;
+                        await loadModel(key);
+                        // Another tab can pause while this tab waits for model preparation.
+                        // Finish inference already in flight, but do not start it after that pause.
+                        if (paused || readPaused() || gen !== generation || enabledModel() !== key) return;
+                        status({
+                            state: 'index',
+                            label: `Indexing ${i + 1}/${stale.length}`,
+                            text: `Indexing ${i + 1} of ${stale.length}…`,
+                        });
+                        vectors = [];
+                        for (let j = 0; j < chunks.length; j += 8)
+                            vectors.push(
+                                ...(await embed(
+                                    key,
+                                    chunks.slice(j, j + 8).map((c) => passageInput(MODELS[key], node.name, c)),
+                                )),
+                            );
+                    }
+                    if (storage !== db.storageGeneration() || gen !== generation || enabledModel() !== key) return;
+                    const latest = await db.getDocument(node.id);
+                    if (!latest) return;
+                    if (
+                        latest.node.updatedAt !== node.updatedAt ||
+                        latest.node.name !== node.name ||
+                        latest.text !== text
+                    ) {
+                        queued = true;
+                        return;
+                    }
+                    const entry: Entry = {
+                        id: node.id,
+                        model: key,
+                        v: indexVersion(key),
+                        at: node.updatedAt,
+                        input,
+                        chunks: chunks.map((c, j) => ({ start: c.start, text: c.text.slice(0, 220), v: vectors[j] })),
+                    };
+                    index.set(node.id, entry);
+                    changed = true;
+                    if (
+                        !reuse ||
+                        cached!.at !== entry.at ||
+                        JSON.stringify(cached!.chunks.map((c) => [c.start, c.text])) !==
+                            JSON.stringify(entry.chunks.map((c) => [c.start, c.text]))
+                    )
+                        await db.putSide('vec', node.id, entry);
                 };
-                index.set(n.id, entry);
-                changed = true;
-                await db.putSide('vec', n.id, entry);
+                if (!db.isTemporaryStorage() && navigator.locks)
+                    await navigator.locks.request(`mars:index:${n.id}`, run);
+                else await run();
             }
             status(paused ? PAUSED : null);
         } catch (err) {
@@ -469,6 +498,14 @@ export async function search(query: string, limit = 6): Promise<Hit[]> {
 }
 
 // ---- Downloaded models ----
+// Vector notifications refresh search without replacing tree nodes or scheduling inference.
+db.onSideChange((kind) => {
+    if (kind !== 'vec') return;
+    indexStorage = -1;
+    revision++;
+    for (const fn of indexedListeners) fn();
+});
+
 // Transformers.js keeps model files in Cache Storage, keyed by their Hugging Face URL.
 const MODEL_CACHE = 'transformers-cache';
 /** The model that a cached file URL belongs to, by its repository id in the path. */

@@ -19,6 +19,7 @@ import { openThreads } from '../share/merge.ts';
 import { MemoryStore } from './memory.ts';
 import { syncDebug, type ConflictReason } from '../sync/debug.ts';
 import type { SessionRecord } from '../sync/session.ts';
+import type { CreationJob } from '../sync/creation.ts';
 
 const DB_NAME = 'mars';
 // The shared connection. Null before the first use, after a `versionchange`, and after a
@@ -129,6 +130,7 @@ async function tx<T>(
 // never names or text. A temporary session neither sends nor receives.
 let channel: BroadcastChannel | null = null;
 const remoteListeners = new Set<(ids: string[]) => void>();
+const sideListeners = new Set<(kind: Side, ids: string[]) => void>();
 function openChannel() {
     if (channel || temporary) return;
     try {
@@ -136,6 +138,10 @@ function openChannel() {
             channel = new BroadcastChannel('mars');
             channel.addEventListener('message', (e) => {
                 if (!temporary) {
+                    if (e.data?.side) {
+                        for (const fn of sideListeners) fn(e.data.side, e.data.ids ?? []);
+                        return;
+                    }
                     syncDebug.record('library.refresh', { changed: e.data?.ids?.length ?? 0 });
                     for (const fn of remoteListeners) fn(e.data?.ids ?? []);
                 }
@@ -150,6 +156,10 @@ openChannel();
  */
 export const onRemoteChange = (fn: (ids: string[]) => void) => {
     remoteListeners.add(fn);
+};
+/** Observes side-record updates without reloading the document tree. Temporary sessions never broadcast. */
+export const onSideChange = (fn: (kind: Side, ids: string[]) => void) => {
+    sideListeners.add(fn);
 };
 const announce = (ids: string[]) => {
     if (!temporary) {
@@ -203,18 +213,96 @@ export const getText = (id: string) =>
         ? Promise.resolve(memory.get<string>('docs', id))
         : tx(['docs'], 'readonly', (t) => req(t.objectStore('docs').get(id) as IDBRequest<string | undefined>));
 
+/** Reads a document node and its text from one snapshot. A missing or non-document node returns undefined. */
+export async function getDocument(id: string): Promise<{ node: TreeNode; text: string } | undefined> {
+    const assemble = (node?: TreeNode, text?: string) =>
+        node?.kind === 'doc' ? { node, text: text ?? '' } : undefined;
+    return temporary
+        ? assemble(memory.get('nodes', id), memory.get('docs', id))
+        : tx(['nodes', 'docs'], 'readonly', async (t) => {
+              const [node, text] = await Promise.all([
+                  req(t.objectStore('nodes').get(id)),
+                  req(t.objectStore('docs').get(id)),
+              ]);
+              return assemble(node, text);
+          });
+}
+
 /**
  * Inserts or replaces nodes and document texts (`texts`: id -> text) in one transaction, then
  * broadcasts the node ids. A node and its text therefore never disagree after a crash.
+ * Creation intent commits with the node. Ordinary writes retain pending intent and cannot erase
+ * a stored connection or revive completed enrollment. Scoped detachment atomically removes replica data.
  */
-export async function putNodes(nodes: TreeNode[], texts: Record<string, string> = {}) {
+export async function putNodes(
+    nodes: TreeNode[],
+    texts: Record<string, string> = {},
+    options: {
+        creations?: CreationJob[];
+        completeCreations?: string[];
+        detach?: { collection: string; member: string };
+    } = {},
+) {
+    const checked = (node: TreeNode, stored?: TreeNode) => {
+        const a = stored?.connection,
+            b = node.connection;
+        const previous = a ?? stored?.syncPending;
+        const detach =
+            !!previous &&
+            previous.collection === options.detach?.collection &&
+            previous.member === options.detach.member;
+        if (previous && options.detach && !detach) throw new ReplicaConflict('already-connected');
+        if (a && !detach && (!b || a.collection !== b.collection || a.member !== b.member || a.document !== b.document))
+            throw new ReplicaConflict('already-connected');
+        if (stored?.syncPending && !node.syncPending && !detach && stored.parentId !== node.parentId)
+            throw new ReplicaConflict('metadata-changed', 'parentId');
+        if (stored && !stored.syncPending && !options.creations?.some((job) => job.id === node.id))
+            return { ...node, syncPending: undefined };
+        return !detach && stored?.syncPending && !node.syncPending && !options.completeCreations?.includes(node.id)
+            ? { ...node, syncPending: stored.syncPending }
+            : node;
+    };
     if (temporary) {
-        for (const node of nodes) memory.put('nodes', node.id, node);
+        const updates = nodes.map((node) => checked(node, memory.get('nodes', node.id)));
+        structuredClone({ updates, texts, creations: options.creations });
+        for (const node of updates) {
+            memory.put('nodes', node.id, node);
+            if (options.detach) {
+                memory.delete('docs', sideKey('sync', node.id));
+                memory.delete('docs', sideKey('sync-create', node.id));
+            }
+            if (options.completeCreations?.includes(node.id)) memory.delete('docs', sideKey('sync-create', node.id));
+        }
+        for (const job of options.creations ?? [])
+            if (!memory.get('docs', sideKey('sync-create', job.id)))
+                memory.put('docs', sideKey('sync-create', job.id), job);
         for (const [id, text] of Object.entries(texts)) memory.put('docs', id, text);
         return;
     }
-    await tx(['nodes', 'docs'], 'readwrite', (t) => {
-        for (const n of nodes) t.objectStore('nodes').put(n);
+    await tx(['nodes', 'docs'], 'readwrite', async (t) => {
+        for (const n of nodes) {
+            const stored = await req(t.objectStore('nodes').get(n.id));
+            const enrolling = options.creations?.some((job) => job.id === n.id);
+            if (stored && enrolling && stored.parentId !== n.parentId)
+                throw new ReplicaConflict('metadata-changed', 'parentId');
+            // Adding intent to an existing row is not permission to replace its latest local metadata.
+            const updated = stored && enrolling ? { ...stored, syncPending: n.syncPending } : n;
+            t.objectStore('nodes').put(checked(updated, stored));
+            if (options.detach) {
+                t.objectStore('docs').delete(sideKey('sync-create', n.id));
+                t.objectStore('docs').delete(sideKey('sync', n.id));
+            }
+            if (options.completeCreations?.includes(n.id)) {
+                const job = (await req(t.objectStore('docs').get(sideKey('sync-create', n.id)))) as
+                    CreationJob | undefined;
+                if (job && n.connection && job.document !== n.connection.document) throw new ReplicaConflict();
+                t.objectStore('docs').delete(sideKey('sync-create', n.id));
+            }
+        }
+        for (const job of options.creations ?? []) {
+            const key = sideKey('sync-create', job.id);
+            if (!(await req(t.objectStore('docs').get(key)))) t.objectStore('docs').put(job, key);
+        }
         for (const [id, text] of Object.entries(texts)) t.objectStore('docs').put(text, id);
     });
     announce(nodes.map((n) => n.id));
@@ -250,10 +338,11 @@ export async function deleteNodes(ids: string[]) {
  * - `vec`: the smart-search index entry.
  * - `sync`: the replica record of a connected node (state, outbox, keys, and progress).
  * - `sync-delete`: a durable deletion job, keyed by its own UUID rather than a document ID.
+ * - `sync-create`: a pending registration, keyed by the local node ID.
  */
-export type Side = 'base' | 'opened' | 'vec' | 'sync' | 'sync-delete';
+export type Side = 'base' | 'opened' | 'vec' | 'sync' | 'sync-delete' | 'sync-create';
 // Every kind. `deleteNodes` uses the list, so a new kind must be added here.
-const SIDES: Side[] = ['base', 'opened', 'vec', 'sync', 'sync-delete'];
+const SIDES: Side[] = ['base', 'opened', 'vec', 'sync', 'sync-delete', 'sync-create'];
 // The key of a side record in the `docs` store: `<kind>:<id>`.
 const sideKey = (kind: Side, id: string) => `${kind}:${id}`;
 /** One side record, or undefined. */
@@ -270,6 +359,7 @@ export const putSide = async (kind: Side, id: string, value: unknown) => {
         await tx(['docs'], 'readwrite', (t) => {
             t.objectStore('docs').put(value, sideKey(kind, id));
         });
+    if (!temporary && kind === 'vec') channel?.postMessage({ side: kind, ids: [id] });
 };
 /** Deletes one side record. A missing record is not an error. */
 export const deleteSide = async (kind: Side, id: string) => {
@@ -940,8 +1030,9 @@ export async function enrollConnected(
     nodes: TreeNode[],
     records: Record<string, { revision: number }>,
     metadata: Record<string, unknown>,
-    previous?: UnfinishedSetupSnapshot,
+    options: { previous?: UnfinishedSetupSnapshot; incremental?: boolean } = {},
 ) {
+    const { previous } = options;
     if (temporary) throw new Error('Sync requires persistent library storage');
     await tx(['nodes', 'docs', 'meta'], 'readwrite', async (t) => {
         const nodeStore = t.objectStore('nodes'),
@@ -949,7 +1040,11 @@ export async function enrollConnected(
         const all = await req(nodeStore.getAll() as IDBRequest<TreeNode[]>),
             selected = new Set(expected.map((node) => node.id));
         // The folder gained a descendant after the caller read the selection.
-        if (expected[0]?.kind === 'folder' && descendants(all, expected[0].id).some((node) => !selected.has(node.id)))
+        if (
+            !options.incremental &&
+            expected[0]?.kind === 'folder' &&
+            descendants(all, expected[0].id).some((node) => !selected.has(node.id))
+        )
             throw new ReplicaConflict('selection-grown');
         const current = await Promise.all(
             expected.map(async (node) => {
@@ -960,6 +1055,19 @@ export async function enrollConnected(
                 ]);
                 if (!stored) throw new ReplicaConflict('missing-node');
                 if (stored.connection) throw new ReplicaConflict('already-connected');
+                if (options.incremental) {
+                    const job = (await req(docs.get(sideKey('sync-create', node.id)))) as CreationJob | undefined;
+                    const scope = job
+                        ? await req(t.objectStore('meta').get(`sync:scope:${job.collection}:${job.member}`))
+                        : undefined;
+                    if (
+                        !job ||
+                        !scope ||
+                        scope.exclusions?.includes(job.document) ||
+                        nodes.find((item) => item.id === node.id)?.connection?.document !== job.document
+                    )
+                        throw new ReplicaConflict('metadata-changed');
+                }
                 // A stored replica must be the record of the unfinished setup that the caller saw, or absent.
                 if (JSON.stringify(replica) !== JSON.stringify(previous?.records[node.id]))
                     throw new ReplicaConflict('orphan-replica');
@@ -993,6 +1101,7 @@ export async function enrollConnected(
             nodeStore.put({
                 ...current[index],
                 connection: node.connection,
+                syncPending: node.syncPending,
                 ...(node.manualFileSave ? { manualFileSave: true } : {}),
             });
         for (const [id, record] of Object.entries(records)) docs.put(record, sideKey('sync', id));
@@ -1058,6 +1167,7 @@ export async function commitMeta<T extends { revision: number }>(
  *   state, and local reading width.
  *
  * Throws `ReplicaConflict` and writes nothing on a mismatch. Broadcasts the ids of `nodes`.
+ * Returns the committed nodes, including their latest stored placement and enrollment state.
  */
 export async function commitReplica<T extends { revision: number }>(
     id: string,
@@ -1078,7 +1188,7 @@ export async function commitReplica<T extends { revision: number }>(
             (previous?.binding?.collection === binding.collection &&
                 previous.binding.document === binding.document &&
                 previous.binding.member === binding.member));
-    const updatedNode = (node: TreeNode, stored?: TreeNode) => {
+    const updatedNode = (node: TreeNode, stored?: TreeNode, storedText?: string) => {
         if (!binding || expectedRevision === null) return node;
         if (
             stored?.connection?.collection !== binding.collection ||
@@ -1095,26 +1205,41 @@ export async function commitReplica<T extends { revision: number }>(
             order: stored.order,
             open: stored.open,
             localReadingWidth: stored.localReadingWidth,
+            // A protocol-only commit preserves the latest timestamp, not a stale tab's timestamp.
+            updatedAt:
+                node.name === stored.name && (!Object.hasOwn(texts, node.id) || texts[node.id] === storedText)
+                    ? stored.updatedAt
+                    : node.updatedAt,
+            // Body and acknowledgement commits cannot revive a completed enrollment job.
+            syncPending: stored.syncPending,
         };
     };
     if (temporary) {
         const previous = memory.get<T>('docs', key);
         if (!matches(previous)) throw new ReplicaConflict();
-        const updates = nodes.map((node) => updatedNode(node, memory.get('nodes', node.id)));
+        const updates = nodes.map((node) =>
+            updatedNode(node, memory.get('nodes', node.id), memory.get('docs', node.id)),
+        );
         for (const node of updates) memory.put('nodes', node.id, node);
         for (const [doc, text] of Object.entries(texts)) memory.put('docs', doc, text);
         for (const [key, value] of Object.entries(extras)) memory.put('docs', key, value);
         for (const key of deletes) memory.delete('docs', key);
         for (const [name, value] of Object.entries(metadata)) memory.put('meta', name, value);
         memory.put('docs', key, replica);
-        return;
+        return updates;
     }
-    await tx(['nodes', 'docs', 'meta'], 'readwrite', async (t) => {
+    const updates = await tx(['nodes', 'docs', 'meta'], 'readwrite', async (t) => {
         const docs = t.objectStore('docs'),
             existing = await req(docs.get(key));
         if (!matches(existing)) throw new ReplicaConflict();
         const updates = await Promise.all(
-            nodes.map(async (node) => updatedNode(node, await req(t.objectStore('nodes').get(node.id)))),
+            nodes.map(async (node) => {
+                const [stored, text] = await Promise.all([
+                    req(t.objectStore('nodes').get(node.id)),
+                    req(docs.get(node.id)),
+                ]);
+                return updatedNode(node, stored, text);
+            }),
         );
         for (const node of updates) t.objectStore('nodes').put(node);
         for (const [doc, text] of Object.entries(texts)) docs.put(text, doc);
@@ -1122,8 +1247,10 @@ export async function commitReplica<T extends { revision: number }>(
         for (const key of deletes) docs.delete(key);
         for (const [name, value] of Object.entries(metadata)) t.objectStore('meta').put(value, name);
         docs.put(replica, key);
+        return updates;
     });
     announce(nodes.map((n) => n.id));
+    return updates;
 }
 
 /** Asks the browser not to evict reviews under storage pressure (granted silently in most browsers). */

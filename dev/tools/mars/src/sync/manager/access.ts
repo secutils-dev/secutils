@@ -9,6 +9,7 @@ import * as app from '../../app.ts';
 import * as db from '../../store/db.ts';
 import * as viewer from '../../doc/viewer.js';
 import { descendants, newId, type TreeNode } from '../../tree/model.ts';
+import { insideSyncedFolder } from '../inheritance.ts';
 import { esc, modal } from '../../ui/ui.ts';
 import { keyBytes, sign, wrapKey, verifyGrant, sealJson } from '../crypto.ts';
 import { encode, decode, validGrant, type SignedGrant } from '../protocol.ts';
@@ -48,13 +49,25 @@ import { deletionAllowed } from '../deletion.ts';
  * @throws Error when the editor holds a draft that conflicts with a remote change.
  */
 export async function stopHere(id: string) {
+    const selected = app.node(id),
+        inherited = selected ? rootFor(selected) : undefined;
+    if (
+        inherited?.kind === 'folder' &&
+        !inherited.selection &&
+        (selected?.id === inherited.localRoot ||
+            (selected?.connection?.phase !== 'ended' && insideSyncedFolder(app.state.nodes, id)))
+    )
+        id = inherited.localRoot;
     const node = app.node(id),
         scope = node ? rootFor(node) : undefined;
     if (!node || !scope) return;
     await viewer.flush();
     if (viewer.hasConnectionDraftConflict()) throw new Error('Save the draft before stopping sync');
-    const nodes = [node, ...(node.kind === 'folder' ? descendants(app.state.nodes, id) : [])].filter((item) =>
-        belongs(item, scope),
+    const nodes = [node, ...(node.kind === 'folder' ? descendants(app.state.nodes, id) : [])].filter(
+        (item) =>
+            belongs(item, scope) ||
+            (item.syncPending?.collection === scope.collection &&
+                item.syncPending.member === scope.member.grant.member),
     );
     await disconnect(scope, nodes);
     viewer.refreshConnection();
@@ -124,8 +137,10 @@ export async function unlink(id: string) {
         scope = node ? rootFor(node) : undefined;
     if (!node || !scope) return;
     await viewer.flush();
-    const nodes = [node, ...(node.kind === 'folder' ? descendants(app.state.nodes, id) : [])].filter((n) =>
-        belongs(n, scope),
+    const nodes = [node, ...(node.kind === 'folder' ? descendants(app.state.nodes, id) : [])].filter(
+        (n) =>
+            belongs(n, scope) ||
+            (n.syncPending?.collection === scope.collection && n.syncPending.member === scope.member.grant.member),
     );
     const answer = await modal({
         title: 'Stop sync?',
@@ -152,20 +167,48 @@ export async function unlink(id: string) {
 export async function disconnect(scope: Scope, nodes: TreeNode[]) {
     driverFor(scope)?.stop();
     // The exclusion list stops the engine from downloading or materializing these documents again.
-    for (const item of nodes)
-        if (!scope.exclusions.includes(item.connection!.document)) scope.exclusions.push(item.connection!.document);
+    for (const item of nodes) {
+        const document =
+            item.connection?.document ?? (await db.getSide<{ document: string }>('sync-create', item.id))?.document;
+        if (document && !scope.exclusions.includes(document)) scope.exclusions.push(document);
+    }
     await saveScope(scope);
-    // Run inside the persistence queue, so a pending document save cannot write between these steps.
+    // Persist the complete detachment first. A failed transaction must retain replicas and in-memory bindings.
     await app.serializePersistence(async () => {
-        for (const item of nodes) {
+        const detachedIds = new Set(nodes.map((item) => item.id));
+        const detached = nodes.map((item) => {
+            const copy = {
+                ...item,
+                originId: newId(),
+                ...(item.parentId &&
+                !detachedIds.has(item.parentId) &&
+                insideSyncedFolder(app.state.nodes, item.id, detachedIds)
+                    ? { parentId: null }
+                    : {}),
+                ...(item.handle ? { manualFileSave: true } : {}),
+            };
+            delete copy.connection;
+            delete copy.syncPending;
+            return copy;
+        });
+        await db.putNodes(
+            detached,
+            {},
+            { detach: { collection: scope.collection, member: scope.member.grant.member } },
+        );
+        for (const [index, item] of nodes.entries()) {
             sessions.get(item.id)?.destroy();
             sessions.delete(item.id);
-            await db.deleteSide('sync', item.id);
             delete item.connection;
-            item.originId = newId();
-            if (item.handle) item.manualFileSave = true;
+            delete item.syncPending;
+            Object.assign(item, detached[index]);
+            const current = app.node(item.id);
+            if (current && current !== item) {
+                delete current.connection;
+                delete current.syncPending;
+                Object.assign(current, detached[index]);
+            }
         }
-        await db.putNodes(nodes);
     });
     if (!app.state.nodes.some((n) => belongs(n, scope))) {
         driverFor(scope)?.dispose();
@@ -273,13 +316,27 @@ export async function beforeMove(id: string, parent: string | null) {
         target = app.node(parent),
         scope = node ? rootFor(node) : undefined;
     if (!node) return false;
+    const destination = target ? rootFor(target) : undefined;
+    if (
+        node.connection &&
+        destination?.kind === 'folder' &&
+        !destination.selection &&
+        (!scope ||
+            scope.collection !== destination.collection ||
+            scope.member.grant.member !== destination.member.grant.member)
+    ) {
+        viewer.toast(
+            'Connected content cannot move into another synced folder. Disconnect it first, or move an independent copy.',
+        );
+        return false;
+    }
     if (
         scope?.kind === 'folder' &&
         node.id !== scope.localRoot &&
-        target?.connection?.collection !== scope.collection
+        (target?.connection ?? target?.syncPending)?.collection !== scope.collection
     ) {
         await unlink(id);
-        if (node.connection) return false;
+        if (node.connection || node.syncPending) return false;
     }
     if (!node.connection && target?.connection) {
         const answer = await modal({

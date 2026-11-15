@@ -790,7 +790,7 @@ test.describe('sync protocol follow-up', () => {
     await expect(page.locator('#previewArticle')).toContainText('Keep this text.');
   });
 
-  test('an incomplete folder from an older release can restart setup without losing local documents', async ({
+  test('an incomplete legacy folder recovers automatically without replacing its collection or document identities', async ({
     page,
   }) => {
     await page.goto(baseURL);
@@ -821,8 +821,10 @@ test.describe('sync protocol follow-up', () => {
       });
       const tx = database.transaction(['nodes', 'docs'], 'readwrite');
       const nodes = tx.objectStore('nodes').getAll();
-      let root: { id: string; record: { body: string; outbox: unknown[] } };
+      let root: { id: string; record: { body: string; outbox: unknown[]; binding: { collection: string } } };
+      let identities: { local: string; remote: string }[] = [];
       nodes.onsuccess = () => {
+        identities = nodes.result.map((node) => ({ local: node.id, remote: node.connection.document }));
         for (const node of nodes.result) {
           if (node.kind === 'folder') {
             const read = tx.objectStore('docs').get(`sync:${node.id}`);
@@ -840,7 +842,7 @@ test.describe('sync protocol follow-up', () => {
         tx.oncomplete = () => resolve();
       });
       database.close();
-      return root!;
+      return { ...root!, identities };
     });
     const { Doc, applyUpdate, encodeStateAsUpdate } = require('yjs');
     const replica = new Doc();
@@ -863,12 +865,42 @@ test.describe('sync protocol follow-up', () => {
     }, root);
     await page.route('**/sync/index', (route) => route.fulfill({ json: { entries: [], complete: true } }));
     await page.goto(baseURL);
-    await page.getByRole('button', { name: 'Actions for Partial', exact: true }).click();
-    await page.getByRole('menuitem', { name: 'Sync', exact: true }).click();
-    await expect(page.getByRole('dialog', { name: 'Finish folder setup', exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Restart setup', exact: true }).click();
-    await expect(page.getByRole('textbox', { name: 'Sync link', exact: true })).toBeVisible();
-    await expect(page.locator('#tree [data-connection]')).toHaveCount(3);
+    await expect(page.locator('#tree [data-connection]')).toHaveCount(1, { timeout: 30000 });
+    await expect
+      .poll(
+        () =>
+          page.evaluate(
+            async ({ identities, collection }) => {
+              const db = await new Promise<IDBDatabase>((resolve) => {
+                const r = indexedDB.open('mars');
+                r.onsuccess = () => resolve(r.result);
+              });
+              const nodes = await new Promise<
+                { id: string; connection?: { collection: string; document: string }; syncPending?: unknown }[]
+              >((resolve) => {
+                const r = db.transaction('nodes').objectStore('nodes').getAll();
+                r.onsuccess = () => resolve(r.result);
+              });
+              db.close();
+              return identities.every((identity) =>
+                nodes.some(
+                  (node) =>
+                    node.id === identity.local &&
+                    node.connection?.document === identity.remote &&
+                    node.connection.collection === collection &&
+                    !node.syncPending,
+                ),
+              );
+            },
+            { identities: root.identities, collection: root.record.binding.collection },
+          ),
+        { timeout: 30000 },
+      )
+      .toBe(true);
+    await page.getByRole('link', { name: 'One', exact: true }).click();
+    await expect(page.locator('#previewArticle')).toContainText('Retain one.');
+    await page.getByRole('link', { name: 'Two', exact: true }).click();
+    await expect(page.locator('#previewArticle')).toContainText('Retain two.');
     await expect(page.locator('#sbUsage')).toContainText('2 documents');
   });
 

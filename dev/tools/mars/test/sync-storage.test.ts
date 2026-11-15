@@ -23,6 +23,114 @@ const node = (id: string): TreeNode => ({
     updatedAt: 1,
 });
 
+test('node writes cannot erase a binding from another tab; only explicit scoped disconnection can detach it', async () => {
+    const local = node(crypto.randomUUID()),
+        connected = {
+            ...local,
+            connection: {
+                collection: crypto.randomUUID(),
+                member: crypto.randomUUID(),
+                document: crypto.randomUUID(),
+                epoch: 1,
+                permission: 'owner' as const,
+                kind: 'sync' as const,
+            },
+        };
+    await db.putNodes([local], { [local.id]: 'Original source' });
+    await db.putNodes([connected]);
+    await assert.rejects(
+        db.putNodes([{ ...local, name: 'Stale rename' }], { [local.id]: 'Stale text' }),
+        db.ReplicaConflict,
+    );
+    assert.equal((await db.getDocument(local.id))!.text, 'Original source');
+    assert.deepEqual((await db.getDocument(local.id))!.node.connection, connected.connection);
+    await db.putNodes([local], {}, { detach: connected.connection });
+    assert.equal((await db.getDocument(local.id))!.node.connection, undefined);
+});
+
+test('new nodes and enrollment intents commit together, and a rename retains pending state', async () => {
+    const local = node(crypto.randomUUID());
+    const job = {
+        v: 1 as const,
+        id: local.id,
+        collection: crypto.randomUUID(),
+        member: crypto.randomUUID(),
+        root: crypto.randomUUID(),
+        document: crypto.randomUUID(),
+        key: 'saved-key',
+    };
+    local.syncPending = { collection: job.collection, member: job.member, root: job.root, phase: 'waiting' };
+    await db.putNodes([local], { [local.id]: 'Exact imported source' }, { creations: [job] });
+    const renamed = { ...local, name: 'New name' };
+    delete renamed.syncPending;
+    await db.putNodes([renamed]);
+    assert.ok((await db.getDocument(local.id))!.node.syncPending);
+    assert.deepEqual(await db.getSide('sync-create', local.id), job);
+    await db.putNodes([renamed], {}, { detach: { collection: job.collection, member: job.member } });
+    assert.equal((await db.getDocument(local.id))!.node.syncPending, undefined);
+    assert.equal(await db.getSide('sync-create', local.id), undefined);
+    const broken = node(crypto.randomUUID());
+    await assert.rejects(
+        db.putNodes(
+            [broken],
+            { [broken.id]: 'Never partly saved' },
+            { creations: [{ ...job, id: broken.id, key: (() => {}) as unknown as string }] },
+        ),
+    );
+    assert.equal(await db.getDocument(broken.id), undefined);
+    assert.equal(await db.getSide('sync-create', broken.id), undefined);
+});
+
+test('a stale acknowledgement or ordinary node write cannot revive completed enrollment', async () => {
+    const n = node(crypto.randomUUID());
+    n.connection = {
+        collection: crypto.randomUUID(),
+        member: crypto.randomUUID(),
+        document: crypto.randomUUID(),
+        permission: 'owner',
+        kind: 'sync',
+        epoch: 1,
+    };
+    n.syncPending = {
+        collection: n.connection.collection,
+        member: n.connection.member,
+        root: n.connection.document,
+        phase: 'waiting',
+    };
+    const job = {
+        v: 1 as const,
+        id: n.id,
+        collection: n.connection.collection,
+        member: n.connection.member,
+        root: n.connection.document,
+        document: n.connection.document,
+        key: 'saved-key',
+    };
+    await db.putNodes([n], { [n.id]: 'Stored body' }, { creations: [job] });
+    await db.commitReplica(n.id, null, { revision: 1, binding: n.connection }, [n]);
+    await db.putNodes([{ ...n, updatedAt: 20 }], { [n.id]: 'Latest text' });
+    const complete = { ...n, updatedAt: 20 };
+    delete complete.syncPending;
+    await db.putNodes([complete], {}, { completeCreations: [n.id] });
+    const committed = await db.commitReplica(
+        n.id,
+        1,
+        { revision: 2, binding: n.connection },
+        [n],
+        { [n.id]: 'Latest text' },
+        {},
+        {},
+        [],
+        n.connection,
+    );
+    assert.equal(committed[0].syncPending, undefined);
+    assert.equal(committed[0].updatedAt, 20);
+    assert.equal((await db.getDocument(n.id))!.node.syncPending, undefined);
+    await db.putNodes([n]);
+    assert.equal((await db.getDocument(n.id))!.node.syncPending, undefined);
+    assert.equal(await db.getSide('sync-create', n.id), undefined);
+});
+
 test('shared deletion atomically removes clean rows, recovers pending work, retains independent children, and saves its outbox', async () => {
     const collection = crypto.randomUUID(),
         member = crypto.randomUUID();
@@ -265,7 +373,7 @@ async function unfinishedFixture() {
 
 test('explicit restart atomically archives old replicas, keys, progress, and pending ciphertext without changing current text or vectors', async () => {
     const f = await unfinishedFixture();
-    await db.enrollConnected(f.previous.nodes, f.previous.texts, f.nodes, f.records, {}, f.previous);
+    await db.enrollConnected(f.previous.nodes, f.previous.texts, f.nodes, f.records, {}, { previous: f.previous });
     assert.equal(await db.getText(f.doc.id), 'Newer local text');
     assert.deepEqual(await db.getSide('vec', f.doc.id), { at: 1, chunks: [1, 2] });
     assert.deepEqual(await db.getSide('sync', f.doc.id), f.records[f.doc.id]);
@@ -286,7 +394,7 @@ test('restart refuses a replica changed after confirmation without publishing co
         latest = { ...f.old, revision: 18, outbox: [{ envelope: 'newer pending ciphertext', sequence: 5 }] };
     await db.putSide('sync', f.doc.id, latest);
     await assert.rejects(
-        db.enrollConnected(f.previous.nodes, f.previous.texts, f.nodes, f.records, {}, f.previous),
+        db.enrollConnected(f.previous.nodes, f.previous.texts, f.nodes, f.records, {}, { previous: f.previous }),
         db.ReplicaConflict,
     );
     assert.deepEqual(await db.getSide('sync', f.doc.id), latest);
@@ -297,7 +405,9 @@ test('restart refuses a replica changed after confirmation without publishing co
 test('a failed archive write rolls back the replacement and retains the original unfinished setup', async () => {
     const f = await unfinishedFixture();
     Object.assign(f.previous, { invalid: () => {} });
-    await assert.rejects(db.enrollConnected(f.previous.nodes, f.previous.texts, f.nodes, f.records, {}, f.previous));
+    await assert.rejects(
+        db.enrollConnected(f.previous.nodes, f.previous.texts, f.nodes, f.records, {}, { previous: f.previous }),
+    );
     assert.deepEqual(await db.getSide('sync', f.doc.id), f.old);
     assert.equal(await db.getText(f.doc.id), 'Newer local text');
     assert.equal(await db.getMeta(db.unfinishedSetupIndex(f.root.id)), undefined);

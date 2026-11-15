@@ -19,13 +19,13 @@ export {
     snapshot,
     persist,
     metadata,
-    created,
     opened,
     undo,
     markReviewed,
     undoReview,
     sharedWidth,
 } from './manager/engine.ts';
+export { created } from './manager/creation.ts';
 export { receiveLocation } from './manager/pairing.ts';
 export { liveLinks, liveLinkInfo, forwardLiveLink, createLiveLink, saveLive } from './manager/live-links.ts';
 export { unlink, remove, deletionInfo, beforeMove } from './manager/access.ts';

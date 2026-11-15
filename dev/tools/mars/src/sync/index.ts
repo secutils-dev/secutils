@@ -5,6 +5,7 @@
 import type { TreeNode } from '../tree/model.ts';
 import type { Thread } from '../share/merge.ts';
 export { connectionStates } from './status.ts';
+export { creationIntent } from './creation.ts';
 // The manager module loads on the first call. Later calls share that import.
 let module: Promise<typeof import('./manager.ts')> | null = null;
 const api = () => (module ??= import('./manager.ts'));
@@ -18,7 +19,14 @@ export const labels = {
     ended: 'Local copy · connection ended',
 };
 /** Status text of a node. Empty for a node without a connection. A missing phase reads as `waiting`. */
-export const label = (node?: TreeNode) => (node?.connection ? labels[node.connection.phase ?? 'waiting'] : '');
+export const label = (node?: TreeNode) =>
+    node?.syncPending
+        ? node.syncPending.phase === 'attention'
+            ? 'Saved locally · Sync enrollment needs attention'
+            : 'Saved locally · Sync enrollment pending'
+        : node?.connection
+          ? labels[node.connection.phase ?? 'waiting']
+          : '';
 // Forwards to the connection manager. The contract of each function is at its definition in `manager/`.
 export const enroll = (id: string) => api().then((m) => m.enroll(id));
 export const details = (id: string) => api().then((m) => m.details(id));

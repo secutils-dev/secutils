@@ -8,10 +8,9 @@
 import * as app from '../../app.ts';
 import * as db from '../../store/db.ts';
 import * as viewer from '../../doc/viewer.js';
-import { descendants } from '../../tree/model.ts';
+import { ancestors, descendants } from '../../tree/model.ts';
 import { esc } from '../../ui/ui.ts';
 import { LIMITS } from '../protocol.ts';
-import type { SessionRecord } from '../session.ts';
 import { SyncDialog } from '../dialog.ts';
 import { icon, type IconName } from '../../ui/icons.ts';
 import { syncDebug, safeError } from '../debug.ts';
@@ -20,7 +19,10 @@ import { initialize, start } from './engine.ts';
 import { SyncSetupError, enrollSelection, canRestartUnfinished } from './enrollment.ts';
 import { syncLinkPanel } from './pairing.ts';
 import { liveDocument, liveLinks, continueCleanup } from './live-links.ts';
-import { disconnect, accessPanel, continueRotation, stopHere } from './access.ts';
+import { accessPanel, continueRotation, stopHere } from './access.ts';
+import { pendingCreations, resumeCreations } from './creation.ts';
+import { insideSyncedFolder } from '../inheritance.ts';
+import { label as itemLabel } from '../index.ts';
 
 /** Opens the Sync dialog for node `id`: the setup offer for a local node, or the status of a connection. */
 export const enroll = (id: string) => syncDialog(id);
@@ -92,7 +94,6 @@ export const confirmationCode = (phrase: string) =>
  *
  * Each loop pass reads the current state and shows one screen:
  * - a received Live document hands over to `liveDocument`;
- * - an owner folder root with an empty manifest offers to finish its setup;
  * - a local node, or an owner document that only backs Live links, gets the offer to turn on Sync;
  * - a personal Sync connection shows its status with the device list, Sync link, retry, and disconnect actions.
  *
@@ -101,7 +102,27 @@ export const confirmationCode = (phrase: string) =>
  */
 async function syncDialog(id: string) {
     await initialize();
+    const selected = app.node(id);
+    const own = selected ? rootFor(selected) : undefined;
+    const inherited =
+        selected && !selected.connection
+            ? ancestors(app.state.nodes, selected.id)
+                  .reverse()
+                  .map(rootFor)
+                  .find((scope) => scope?.kind === 'folder' && !scope.selection)
+            : undefined;
+    const folderScope =
+        own?.kind === 'folder' &&
+        !own.selection &&
+        (selected?.id === own.localRoot ||
+            (selected?.connection?.phase !== 'ended' && insideSyncedFolder(app.state.nodes, id)))
+            ? own
+            : inherited;
+    const itemId = id;
+    const managedFolder = folderScope && folderScope.localRoot !== itemId ? folderScope.localRoot : undefined;
     const ui = new SyncDialog();
+    if (managedFolder) ui.element.dataset.inheritedContext = '';
+    let showingItem = !!managedFolder;
     // `openSyncLink` sends the owner to the Sync link screen on the next pass. `problem` is the sentence
     // for the next screen. `stopped` records that this dialog disconnected the device.
     let openSyncLink = false,
@@ -112,6 +133,32 @@ async function syncDialog(id: string) {
     try {
         while (ui.open) {
             try {
+                if (managedFolder && showingItem) {
+                    const item = app.node(itemId),
+                        folder = app.node(managedFolder);
+                    if (!item || !folder) break;
+                    const connected = !!folder.connection && folder.connection.phase !== 'ended';
+                    const state = item.syncPending?.phase ?? item.connection?.phase ?? 'waiting';
+                    const status = connected
+                        ? itemLabel(item) || 'Saved locally · Sync enrollment pending'
+                        : 'Local copy · folder Sync ended';
+                    const path = [...ancestors(app.state.nodes, folder.id), folder]
+                        .map((node) => node.name)
+                        .join(' / ');
+                    const answer = await ui.screen({
+                        title: 'Sync',
+                        html: `<p><strong>${esc(item.name)}</strong></p><p class="sync-status" data-state="${state}">${state === 'working' ? '<span class="su-spinner" aria-hidden="true"></span>' : icon(state === 'current' ? 'check' : state === 'ended' ? 'unlink' : state === 'attention' ? 'warning' : 'refresh')}<strong>${esc(status)}</strong></p>
+                            <p>${connected ? 'Sync inherited from' : 'Folder Sync is disconnected for'} <strong>${esc(path)}</strong>.</p>
+                            <p class="sync-fineprint">Device settings and Sync links apply to that folder and all its contents.</p>`,
+                        buttons: [{ label: 'Manage folder Sync', value: 'manage', primary: true }],
+                    });
+                    if (answer.value === 'close') break;
+                    if (answer.value === 'manage') {
+                        showingItem = false;
+                        id = managedFolder;
+                    }
+                    continue;
+                }
                 if (restart) {
                     const previous = restart;
                     restart = undefined;
@@ -127,49 +174,6 @@ async function syncDialog(id: string) {
                 if (node.connection?.kind === 'live') {
                     ui.close();
                     return liveDocument(id);
-                }
-                // Older releases exposed the root before finishing its folder manifest.
-                // Restart only after an explicit choice, keeping all saved content local.
-                if (
-                    scope?.kind === 'folder' &&
-                    scope.member.grant.permission === 'owner' &&
-                    id === scope.localRoot &&
-                    !scope.selection &&
-                    sessions.has(id) &&
-                    !sessions.get(id)!.manifest().length &&
-                    !app.state.nodes.some((item) => belongs(item, scope) && item.connection!.liveShared)
-                ) {
-                    const answer = await ui.screen({
-                        title: 'Finish folder setup',
-                        html: '<p>The previous Sync setup did not finish. Restart setup to include this folder and its documents. Your local documents and comments stay here.</p><p>Devices connected through the incomplete setup will need a new Sync link.</p>',
-                        buttons: [
-                            { label: 'Cancel', value: 'close' },
-                            { label: 'Restart setup', value: 'restart', primary: true },
-                        ],
-                    });
-                    if (answer.value !== 'restart') break;
-                    ui.busy('Restarting setup…');
-                    await viewer.flush();
-                    const selected = [node, ...descendants(app.state.nodes, id)];
-                    for (const item of selected)
-                        if (!item.connection) {
-                            // A stale tab in the old release could save an unconnected node
-                            // over its binding while leaving the atomic projection/outbox.
-                            const record = await db.getSide<SessionRecord>('sync', item.id);
-                            if (
-                                record?.binding.collection === scope.collection &&
-                                record.binding.member === scope.member.grant.member
-                            )
-                                item.connection = { ...record.binding, phase: 'attention' };
-                        }
-                    await disconnect(
-                        scope,
-                        selected.filter((item) => belongs(item, scope)),
-                    );
-                    await enrollSelection(id);
-                    problem = '';
-                    openSyncLink = true;
-                    continue;
                 }
                 // Personal Sync, as opposed to a document that only backs Live links. A non-owner connection
                 // and a folder are always personal. A scope without the flag counts as personal unless the
@@ -220,10 +224,18 @@ async function syncDialog(id: string) {
                 }
                 const owner = scope.member.grant.permission === 'owner',
                     current = app.node(app.state.currentId);
+                const enrolling = pendingCreations(scope);
                 // The open document cannot publish its latest edits yet. Show `attention`, whatever the
                 // transport reports.
                 const blocked = !!current && belongs(current, scope) && !viewer.canPublishConnection();
-                const status = blocked ? 'attention' : (node.connection!.phase ?? 'waiting');
+                const status =
+                    node.connection!.phase === 'ended'
+                        ? 'ended'
+                        : blocked || enrolling.some((item) => item.syncPending?.phase === 'attention')
+                          ? 'attention'
+                          : enrolling.length
+                            ? 'waiting'
+                            : (node.connection!.phase ?? 'waiting');
                 const rotating = !!(await rotationRepository(scope).get());
                 const label = {
                     current: 'Up to date',
@@ -251,9 +263,15 @@ async function syncDialog(id: string) {
                     scope.kind === 'folder' && node.id !== scope.localRoot
                         ? `<p>This document syncs with the <strong>${esc(rootName)}</strong> folder. Sync links connect the whole folder.</p>`
                         : '';
+                const scopeDescription =
+                    scope.kind === 'folder' && node.id === scope.localRoot
+                        ? '<p class="sync-fineprint">Folder settings apply to this folder and all its contents.</p>'
+                        : '';
                 const answer = await ui.screen({
                     title: 'Sync',
-                    html: `<p><strong>${esc(node.name)}</strong></p><p class="sync-status" data-state="${status}">${status === 'working' ? '<span class="su-spinner" aria-hidden="true"></span>' : icon(status === 'current' ? 'check' : status === 'ended' ? 'unlink' : status === 'attention' ? 'warning' : 'refresh')}<strong>${status === 'ended' ? 'Local copy · Sync ended' : label}</strong></p><p>${message}</p>${folder}${problem ? `<p role="alert">${esc(problem)}</p>` : ''}
+                    back: !!managedFolder,
+                    html: `<p><strong>${esc(node.name)}</strong></p>${scopeDescription}<p class="sync-status" data-state="${status}">${status === 'working' ? '<span class="su-spinner" aria-hidden="true"></span>' : icon(status === 'current' ? 'check' : status === 'ended' ? 'unlink' : status === 'attention' ? 'warning' : 'refresh')}<strong>${status === 'ended' ? 'Local copy · Sync ended' : label}</strong></p><p>${message}</p>${folder}${problem ? `<p role="alert">${esc(problem)}</p>` : ''}
+                ${enrolling.length ? `<p>${enrolling.length} ${enrolling.length === 1 ? 'item is' : 'items are'} saved locally and waiting to join Sync.</p>` : ''}
                 <nav class="sync-tools" aria-label="Sync settings">${owner && status !== 'ended' ? syncTool('Devices', 'access', 'refresh') : ''}</nav>
                 ${scope.selection ? '<p>To connect a new device, open the original synced folder.</p>' : ''}
                 <p class="sync-fineprint">${status === 'ended' ? 'Your local copies remain available.' : scope.kind === 'folder' ? 'Sync for this folder and its documents will stop after 30 days without opening the folder or a document inside. Local copies will remain.' : "Sync will stop if this document isn't opened for 30 days, but local copies will remain."}</p>`,
@@ -272,6 +290,11 @@ async function syncDialog(id: string) {
                     ],
                 });
                 problem = '';
+                if (answer.value === 'back' && managedFolder) {
+                    showingItem = true;
+                    id = itemId;
+                    continue;
+                }
                 if (answer.value === 'close') break;
                 if (answer.value === 'link') {
                     openSyncLink = true;
@@ -281,6 +304,7 @@ async function syncDialog(id: string) {
                 else if (answer.value === 'retry') {
                     ui.busy('Trying again…');
                     await viewer.flush();
+                    resumeCreations(true);
                     // Resume in this order: a remote cleanup, then a saved key rotation, then the transport.
                     if (scope.cleanup) await continueCleanup(scope, ui.signal);
                     else if (await rotationRepository(scope).get()) await continueRotation(scope);

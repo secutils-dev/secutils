@@ -11,7 +11,8 @@
 //   outside the anchor.
 import * as app from '../app.ts';
 import { ancestors, canMove, childrenOf, descendants, textBytes, type TreeNode } from '../tree/model.ts';
-import { icon, folderIcon } from '../ui/icons.ts';
+import { icon, folderIcon, documentIcon } from '../ui/icons.ts';
+import { connectionBadgeVisible, hasSyncGlyph, syncedAncestor } from '../ui/connection-indicator.ts';
 import { $, closeMenu, esc, modal, openMenu, type MenuEntry } from '../ui/ui.ts';
 import * as viewer from '../doc/viewer.js';
 import { setViewMode, toast } from '../doc/viewer.js';
@@ -163,9 +164,13 @@ function searchResults(q: string) {
 
 /** The connection badge of a row: a button that opens the Sync or Live details. */
 const connectionHtml = (n: TreeNode) =>
-    n.connection
-        ? `<button type="button" class="tree-connection" title="${esc(sync.label(n))}" data-connection="${n.id}" data-phase="${n.connection.phase ?? 'waiting'}" aria-label="${esc(n.connection.phase === 'ended' ? 'Local document' : n.connection.kind === 'live' ? 'Live document' : n.connection.liveShared ? 'Shared document' : 'Sync')}: ${esc(sync.label(n))}">${icon(n.connection.phase === 'ended' ? 'unlink' : n.connection.kind === 'live' || n.connection.liveShared ? 'link' : 'refresh')}</button>`
-        : '';
+    !connectionBadgeVisible(app.state.nodes, n)
+        ? ''
+        : n.syncPending
+          ? `<button type="button" class="tree-connection" title="${esc(sync.label(n))}" data-connection="${n.id}" data-phase="${n.syncPending.phase}" aria-label="Sync: ${esc(sync.label(n))}">${icon(n.syncPending.phase === 'attention' ? 'warning' : 'refresh')}</button>`
+          : n.connection
+            ? `<button type="button" class="tree-connection" title="${esc(sync.label(n))}" data-connection="${n.id}" data-phase="${n.connection.phase ?? 'waiting'}" aria-label="${esc(n.connection.phase === 'ended' ? 'Local document' : n.connection.kind === 'live' ? 'Live document' : n.connection.liveShared ? 'Shared document' : 'Sync')}: ${esc(sync.label(n))}">${icon(n.connection.phase === 'ended' ? 'unlink' : n.connection.kind === 'live' || n.connection.liveShared ? 'link' : 'refresh')}</button>`
+            : '';
 /** The folder that receives incoming documents: the chosen default, or the top-level shared folder. */
 const defaultFolder = () =>
     app.defaultIncomingFolder() ??
@@ -178,7 +183,7 @@ const isDefaultFolder = (n: TreeNode) => n.kind === 'folder' && n.id === rendere
 const labelHtml = (n: TreeNode) =>
     renaming === n.id
         ? `<input class="tree-rename" value="${esc(n.name)}" aria-label="Name" spellcheck="false">`
-        : `<span class="tree-label" title="${esc(n.name)}${isDefaultFolder(n) ? ' · Default destination' : ''}${n.handle ? ` · linked to ${esc(n.handle.name)}` : ''}">${esc(n.name)}</span>`;
+        : `<span class="tree-label" title="${esc(n.name)}${isDefaultFolder(n) ? ' · Default destination' : ''}${hasSyncGlyph(n) ? ` · ${esc(syncedAncestor(app.state.nodes, n) ? `Sync inherited from ${syncedAncestor(app.state.nodes, n)!.name}` : 'Sync configured')}` : ''}${n.handle ? ` · linked to ${esc(n.handle.name)}` : ''}">${esc(n.name)}</span>`;
 const badgesHtml = (n: TreeNode) =>
     `${n.pending ? '<span class="tree-dot" title="Changed since your last review" aria-label="Changed since your last review"></span>' : ''}${n.threads ? `<span class="tree-badge" title="${n.threads} open thread${n.threads === 1 ? '' : 's'}">${n.threads}</span>` : ''}`;
 const moreHtml = (n: TreeNode) =>
@@ -190,7 +195,7 @@ const moreHtml = (n: TreeNode) =>
 const docLink = (n: TreeNode, content: string) =>
     db.isTemporaryStorage()
         ? `<button type="button" class="tree-link" tabindex="-1" draggable="false" aria-label="${esc(n.name)}">${content}</button>`
-        : `<a class="tree-link" href="${esc(location.pathname)}#doc=${encodeURIComponent(n.id)}" tabindex="-1" draggable="false" aria-label="${esc(n.name)}"${n.id === app.state.currentId ? ' aria-current="page"' : ''}>${content}</a>`;
+        : `<a class="tree-link" href="${esc(location.pathname)}#doc=${encodeURIComponent(n.id)}" tabindex="-1" draggable="false" aria-label="${esc(n.name)}"${hasSyncGlyph(n) ? ` aria-description="${esc(syncedAncestor(app.state.nodes, n) ? `Sync inherited from ${syncedAncestor(app.state.nodes, n)!.name}` : 'Sync configured')}"` : ''}${n.id === app.state.currentId ? ' aria-current="page"' : ''}>${content}</a>`;
 
 function rowHtml({ n, depth }: { n: TreeNode; depth: number }) {
     const folder = n.kind === 'folder';
@@ -198,9 +203,19 @@ function rowHtml({ n, depth }: { n: TreeNode; depth: number }) {
     const hasKids = folder && app.state.nodes.some((c) => c.parentId === n.id);
     const selected = n.id === app.state.currentId || (folder && !app.state.currentId && n.id === app.state.folderId);
     const chevron = `<span class="tree-chevron${hasKids ? '' : ' leaf'}">${icon(n.open ? 'chevronDown' : 'chevronRight')}</span>`;
-    const glyph = `<span class="tree-icon${defaultFolder ? ' tree-icon-default' : ''}" aria-hidden="true">${folder ? folderIcon(!!n.open, defaultFolder) : icon('document')}</span>`;
+    const glyph = `<span class="tree-icon${defaultFolder ? ' tree-icon-default' : ''}" aria-hidden="true">${folder ? folderIcon(!!n.open, defaultFolder, hasSyncGlyph(n)) : documentIcon(hasSyncGlyph(n))}</span>`;
     const content = `${folder ? chevron : '<span class="tree-chevron leaf"></span>'}${glyph}${labelHtml(n)}${folder ? '' : badgesHtml(n)}`;
-    return `<div class="tree-row" role="treeitem"${defaultFolder ? ' aria-description="Default destination"' : ''} data-id="${n.id}" data-kind="${n.kind}" style="--depth:${depth}" tabindex="-1" draggable="${renaming === n.id ? 'false' : 'true'}"
+    const description = [
+        defaultFolder ? 'Default destination' : '',
+        hasSyncGlyph(n)
+            ? syncedAncestor(app.state.nodes, n)
+                ? `Sync inherited from ${syncedAncestor(app.state.nodes, n)!.name}`
+                : 'Sync configured'
+            : '',
+    ]
+        .filter(Boolean)
+        .join('. ');
+    return `<div class="tree-row" role="treeitem"${description ? ` aria-description="${esc(description)}"` : ''} data-id="${n.id}" data-kind="${n.kind}" style="--depth:${depth}" tabindex="-1" draggable="${renaming === n.id ? 'false' : 'true'}"
 ${folder ? `aria-expanded="${!!n.open}"` : ''} aria-selected="${selected}" aria-level="${depth + 1}">${!folder && renaming !== n.id ? docLink(n, content) : content}${connectionHtml(n)}${moreHtml(n)}</div>`;
 }
 
@@ -208,7 +223,7 @@ function resultHtml(r: Result) {
     const path = folderPath(r.n);
     const glyph = r.smart
         ? `<span class="tree-icon smart" title="Matches by meaning" aria-label="Matches by meaning">${icon('sparkles')}</span>`
-        : `<span class="tree-icon">${icon('document')}</span>`;
+        : `<span class="tree-icon">${documentIcon(hasSyncGlyph(r.n))}</span>`;
     const content = `${glyph}${labelHtml(r.n)}${path ? `<span class="tree-path" title="${esc(path)}">${esc(path)}</span>` : ''}${badgesHtml(r.n)}${r.snippet ? `<span class="tree-snippet">${esc(r.snippet)}</span>` : ''}`;
     return `<div class="tree-row result${r.snippet ? ' has-snippet' : ''}" role="treeitem" data-id="${r.n.id}" data-kind="doc"${r.start === undefined ? '' : ` data-start="${r.start}"`} tabindex="-1" draggable="false" aria-selected="${r.n.id === app.state.currentId}" aria-level="1">${renaming !== r.n.id ? docLink(r.n, content) : content}${connectionHtml(r.n)}${moreHtml(r.n)}</div>`;
 }
@@ -478,7 +493,6 @@ function importMenu(parentId: string | null): MenuEntry[] {
         {
             label: 'Import files…',
             icon: 'upload',
-            sub: 'Markdown, HTML, or ZIP files',
             disabled,
             run: () => pickImport('files', parentId),
         },

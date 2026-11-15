@@ -413,7 +413,7 @@ export async function enrollSelection(id: string, personalSync = true, previous?
         // One transaction publishes the bindings, the replicas, and the scope. It throws
         // `ReplicaConflict` when the selection, a text, or a node changed after the copy above.
         await app.serializePersistence(async () => {
-            await db.enrollConnected(selected, texts, connected, records, { [scopeId(scope)]: scope }, previous);
+            await db.enrollConnected(selected, texts, connected, records, { [scopeId(scope)]: scope }, { previous });
             scopes.set(scopeId(scope), scope);
             for (const item of connected) {
                 const current = app.node(item.id);

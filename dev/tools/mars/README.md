@@ -98,7 +98,23 @@ An existing snapshot stays unchanged. Create a new link to include a later renam
 4. On the other device, keep the download dialog open until **Sync connected** appears.
 
 After setup, the first window can close. New documents in a synced folder join Sync automatically.
+New files have a pending badge until registration and the folder manifest are complete.
+Registration retries retain the same remote identity and survive reloads. Multiple tabs share enrollment through browser locks.
+The Sync dialog shows unfinished enrollment and offers **Try again**.
+
+Recovery from incomplete imports is automatic. MARS retains local text and comments, and archives a saved replica before restoring its binding.
+The Sync dialog for a child shows its own status and the name of its synced folder.
+**Manage folder Sync** opens the folder settings. **Back** returns to the child status.
+Device settings and Sync links apply to the complete synced folder.
+Legacy disconnected copies and mismatched saved state remain outside synced folders, under **Local copies**.
+MARS preserves their saved data instead of uploading them again. A copy can explicitly move into Sync after disconnection.
+
+Synced files and folders have a small blue Sync mark inside their existing icon.
+The default folder keeps its star instead. Separate badges show on Sync roots, pending files, independent Live links, and individually ended connections.
+Healthy children have no separate badge. Their menus and status dialogs still show Sync details.
+
 **Disconnect this device** keeps the local copy and leaves other devices connected.
+For a synced folder, this action disconnects the complete folder. A copy that leaves folder Sync moves outside the synced folder.
 **Delete everywhere** deletes a synced document or folder from every paired device, including when a paired device starts the deletion.
 Offline devices apply the deletion after they reconnect. Unsent edits stay separately under **Recovered Sync copies**.
 
@@ -202,6 +218,8 @@ Raw HTML tables are read-only. Markdown Preview does not read the comment.
 The sidebar search box matches document names, folder names, document text, and review comments.
 Smart search is optional and off by default. It finds passages by meaning with an embedding model that runs in the browser.
 The model downloads from Hugging Face once. Document text and queries stay in the browser.
+Renames reuse vectors with **Best speed**. **Best quality** includes the document name in each passage, so a rename requires new vectors.
+Tabs share completed vectors and use browser locks to avoid duplicate inference.
 See [src/search/README.md](src/search/README.md) for models, devices, and index behavior.
 
 ### Linked files
