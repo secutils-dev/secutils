@@ -135,7 +135,7 @@ async function setRoute(id: string | null) {
         await temporaryRoute.update(
             n?.kind === 'doc'
                 ? {
-                      path: [],
+                      path: ancestors(state.nodes, n.id).map((folder) => folder.name),
                       name: n.name,
                       originId: n.originId ?? n.id,
                       text: (await db.getText(n.id)) ?? '',

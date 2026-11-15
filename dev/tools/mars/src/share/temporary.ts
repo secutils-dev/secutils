@@ -26,11 +26,13 @@ export type TemporaryLinkStatus = 'empty' | 'pending' | 'ready' | 'too-large' | 
 
 /**
  * Builds the fragment of a temporary document: a full link (`name`, `md`, `o`, optional `w`)
- * plus `t=1`. On reload, `t=1` selects the memory backend. `encode` is replaceable for tests.
+ * plus `t=1` and `p` for its parent-folder names. On reload, `t=1` selects the memory backend.
+ * `encode` is replaceable for tests.
  */
 export async function temporaryFragment(doc: SharedDoc, encode = encodeState) {
     const params = new URLSearchParams({ name: doc.name, md: await encode(doc.text), o: doc.originId, t: '1' });
     if (validWidth(doc.readingWidth)) params.set('w', String(doc.readingWidth));
+    params.set('p', await encode(JSON.stringify(doc.path)));
     return `#${params}`;
 }
 

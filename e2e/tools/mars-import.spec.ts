@@ -1,9 +1,11 @@
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { deflateRawSync } from 'node:zlib';
 
 import type { Page, Route } from '@playwright/test';
 import { expect } from '@playwright/test';
 
+import { copyLink } from './_mars_sharing';
 import { test } from './_mars_test';
 
 const MARS_BASE_URL = process.env.MARS_BASE_URL ?? 'https://mars.secutils.dev';
@@ -53,7 +55,7 @@ async function stored(page: Page) {
       transaction.onerror = () => reject(transaction.error);
     });
     database.close();
-    return { docs: result.nodes.filter((node) => node.kind === 'doc'), texts: result.texts };
+    return { nodes: result.nodes, docs: result.nodes.filter((node) => node.kind === 'doc'), texts: result.texts };
   });
 }
 async function downloadMarkdown(page: Page) {
@@ -79,6 +81,180 @@ async function edit(page: Page, text: string) {
 }
 
 test.describe('source import', () => {
+  for (const format of ['full', 'short'] as const) {
+    test(`${format} document snapshots preserve saved names and nested folder context without siblings`, async ({
+      page,
+      context,
+      browser,
+      browserName,
+    }, testInfo) => {
+      if (browserName === 'chromium') await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+      await boot(page);
+      const directory = testInfo.outputPath('Local');
+      const path = join(directory, 'Research', '研究 & evidence');
+      await mkdir(path, { recursive: true });
+      await writeFile(join(path, 'LETTERS.md'), RAW);
+      await writeFile(join(path, 'SIBLING.md'), '# Private sibling\n\nDo not include this document.');
+      await page.locator('#importFolderInput').setInputFiles(directory);
+      await expect(page.locator('#toast')).toContainText('Imported 2 documents');
+      await page.getByRole('link', { name: 'LETTERS', exact: true }).click();
+      await expect(page.locator('#docTitle')).toHaveText('LETTERS');
+      await page.getByRole('button', { name: 'Actions for LETTERS', exact: true }).click();
+      await page.getByRole('menuitem', { name: 'Rename', exact: true }).click();
+      const rename = page.getByRole('textbox', { name: 'Name', exact: true });
+      await rename.fill('Lease evidence.md');
+      await rename.press('Enter');
+      await expect(page.locator('#docTitle')).toHaveText('Lease evidence.md');
+      const link = await copyLink(page, { format });
+      if (format === 'full') expect(new URLSearchParams(new URL(link).hash.slice(1)).has('p')).toBe(true);
+      const other = await browser.newContext({ baseURL: MARS_BASE_URL });
+      try {
+        const recipient = await other.newPage();
+        await boot(recipient);
+        await recipient.getByRole('button', { name: 'New document, folder, or import', exact: true }).click();
+        await recipient.getByRole('menuitem', { name: 'New folder', exact: true }).click();
+        const name = recipient.getByRole('textbox', { name: 'Name', exact: true });
+        await name.fill('Inbox');
+        await name.press('Enter');
+        await recipient.getByRole('button', { name: 'Actions for Inbox', exact: true }).click();
+        await recipient.getByRole('menuitem', { name: 'Use as default', exact: true }).click();
+        await boot(recipient, link);
+        await expect(recipient.locator('#docTitle')).toHaveText('Lease evidence.md');
+        await expect(recipient.locator('#previewArticle')).toContainText('Original source text.');
+        const data = await stored(recipient);
+        expect(data.docs).toHaveLength(1);
+        expect(data.docs[0].name).toBe('Lease evidence.md');
+        const ancestors: string[] = [];
+        for (let parent = data.docs[0].parentId; parent;) {
+          const folder = data.nodes.find((node) => node.id === parent)!;
+          ancestors.unshift(folder.name);
+          parent = folder.parentId;
+        }
+        expect(ancestors).toEqual(['Inbox', 'Local', 'Research', '研究 & evidence']);
+        expect(data.texts).toContain(RAW);
+        expect(data.texts).not.toContain('# Private sibling\n\nDo not include this document.');
+        await recipient.reload();
+        await expect(recipient.locator('#docTitle')).toHaveText('Lease evidence.md');
+        await expect(recipient.locator('#crumbs')).toHaveText('InboxLocalResearch研究 & evidence');
+        await recipient.getByRole('button', { name: 'Actions for Lease evidence.md', exact: true }).click();
+        await recipient.getByRole('menuitem', { name: 'Rename', exact: true }).click();
+        const localName = recipient.getByRole('textbox', { name: 'Name', exact: true });
+        await localName.fill('My local label');
+        await localName.press('Enter');
+        await boot(recipient, link);
+        await expect(recipient.locator('#docTitle')).toHaveText('My local label');
+        expect((await stored(recipient)).docs).toHaveLength(1);
+        await expect(recipient.locator('#crumbs')).toHaveText('InboxLocalResearch研究 & evidence');
+        const temporary = await other.newPage();
+        const temporaryUrl = new URL(link);
+        temporaryUrl.searchParams.set('temporary', '1');
+        await boot(temporary, temporaryUrl.href);
+        await expect(temporary.locator('#docTitle')).toHaveText('Lease evidence.md');
+        await expect(temporary.locator('#crumbs')).toHaveText('LocalResearch研究 & evidence');
+        await temporary.waitForFunction(() => {
+          const params = new URLSearchParams(location.hash.slice(1));
+          return params.get('t') === '1' && params.has('md') && params.has('p');
+        });
+        await temporary.reload();
+        await expect(temporary.locator('#docTitle')).toHaveText('Lease evidence.md');
+        await expect(temporary.locator('#crumbs')).toHaveText('LocalResearch研究 & evidence');
+        await expect(temporary.locator('#tree .tree-row[data-kind="doc"]')).toHaveCount(1);
+        expect((await stored(recipient)).docs[0].name).toBe('My local label');
+      } finally {
+        await other.close();
+      }
+    });
+  }
+
+  test('a malformed full-link folder path cannot create documents or partial folders', async ({ page }) => {
+    await boot(page);
+    await file(page, '# Retained\n\nKeep this document.', 'Retained.md');
+    const before = await stored(page);
+    const encode = (text: string) => {
+      const bytes = Buffer.from(text);
+      const encoded = Buffer.concat([Buffer.alloc(4), deflateRawSync(bytes)]);
+      encoded.writeUInt32LE(bytes.length, 0);
+      return encoded.toString('base64url');
+    };
+    for (const path of ['["Local",1]', 'null', '{}', 'bad json']) {
+      await boot(page, `/#${new URLSearchParams({ name: 'Rejected', md: encode(RAW), p: encode(path) })}`);
+      await expect(page.locator('#toast')).toContainText('damaged or incomplete folder path');
+      expect((await stored(page)).nodes).toEqual(before.nodes);
+    }
+  });
+
+  test('every nested folder offers targeted file and folder imports without changing the default', async ({
+    page,
+  }, testInfo) => {
+    await boot(page);
+    const folderRow = (name: string) =>
+      page
+        .getByRole('treeitem')
+        .filter({ has: page.getByRole('button', { name: `Actions for ${name}`, exact: true }) });
+    let parent: string | null = null;
+    for (const name of ['Local', 'Research', 'Deep', 'Evidence']) {
+      if (parent) await page.getByRole('button', { name: `Actions for ${parent}`, exact: true }).click();
+      else await page.getByRole('button', { name: 'New document, folder, or import', exact: true }).click();
+      await page.getByRole('menuitem', { name: 'New folder', exact: true }).click();
+      const field = page.getByRole('textbox', { name: 'Name', exact: true });
+      await field.fill(name);
+      await field.press('Enter');
+      await page.getByRole('button', { name: `Actions for ${name}`, exact: true }).click();
+      await expect(page.getByRole('menuitem', { name: /^Import files…/ })).toBeEnabled();
+      await expect(page.getByRole('menuitem', { name: 'Import a folder…', exact: true })).toBeEnabled();
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('button', { name: `Actions for ${name}`, exact: true })).toBeFocused();
+      parent = name;
+    }
+    const target = (await folderRow('Evidence').getAttribute('data-id'))!;
+    await page.getByRole('button', { name: 'Actions for Local', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Use as default', exact: true }).click();
+    await expect(folderRow('Local')).toHaveAttribute('aria-description', 'Default destination');
+
+    // The context-menu target is not the selected folder or the default destination.
+    await folderRow('Research').getByText('Research', { exact: true }).click();
+    await folderRow('Research').getByText('Research', { exact: true }).click();
+    await folderRow('Evidence').click({ button: 'right' });
+    const picking = page.waitForEvent('filechooser');
+    await page.getByRole('menuitem', { name: /^Import files…/ }).click();
+    const chooser = await picking;
+    await folderRow('Local').getByText('Local', { exact: true }).click();
+    await chooser.setFiles([
+      { name: 'LETTERS.md', mimeType: 'text/markdown', buffer: Buffer.from('# Emails to resolve the meter error\n') },
+      { name: 'VALIDATION.md', mimeType: 'text/markdown', buffer: Buffer.from(RAW) },
+    ]);
+    await expect(page.locator('#toast')).toContainText('Imported 2 documents');
+    const imported = (await stored(page)).docs;
+    expect(
+      imported.map(({ name, parentId }) => ({ name, parentId })).sort((a, b) => a.name.localeCompare(b.name)),
+    ).toEqual([
+      { name: 'LETTERS', parentId: target },
+      { name: 'VALIDATION', parentId: target },
+    ]);
+
+    // Reopen the ancestor, then use the action button instead of right-click.
+    if ((await folderRow('Local').getAttribute('aria-expanded')) === 'false')
+      await folderRow('Local').getByText('Local', { exact: true }).click();
+    const directory = testInfo.outputPath('nebenkosten');
+    await mkdir(join(directory, 'proofs'), { recursive: true });
+    await writeFile(join(directory, 'LEGAL.md'), '# Legal assessment and practical risk\n');
+    await writeFile(join(directory, 'proofs', 'EVIDENCE.md'), '# Evidence record\n');
+    await page.getByRole('button', { name: 'Actions for Evidence', exact: true }).click();
+    const pickingFolder = page.waitForEvent('filechooser');
+    await page.getByRole('menuitem', { name: 'Import a folder…', exact: true }).click();
+    await (await pickingFolder).setFiles(directory);
+    await expect(page.locator('#toast')).toContainText('Imported 2 documents');
+    const importedFolder = folderRow('nebenkosten');
+    const folderId = (await importedFolder.getAttribute('data-id'))!;
+    const proofId = (await folderRow('proofs').getAttribute('data-id'))!;
+    await expect(importedFolder).toHaveAttribute('aria-level', '5');
+    await expect(folderRow('proofs')).toHaveAttribute('aria-level', '6');
+    const docs = (await stored(page)).docs;
+    expect(docs.find((doc) => doc.name === 'LEGAL')?.parentId).toBe(folderId);
+    expect(docs.find((doc) => doc.name === 'EVIDENCE')?.parentId).toBe(proofId);
+    await expect(folderRow('Local')).toHaveAttribute('aria-description', 'Default destination');
+  });
+
   test('default destination survives reload, follows profile changes across tabs, and keeps explicit import targets', async ({
     page,
   }, testInfo) => {
@@ -216,7 +392,7 @@ test.describe('source import', () => {
 
   test.setTimeout(60000);
   for (const entry of ['file', 'drop', 'form', 'query', 'library']) {
-    test(`${entry} preserves Markdown bytes and uses the frontmatter title`, async ({ page }) => {
+    test(`${entry} preserves Markdown bytes and uses the source name`, async ({ page }) => {
       const url = 'https://source.test/Filename.HTML';
       await remote(page, url, RAW);
       await boot(page, entry === 'query' ? `/?url=${encodeURIComponent(url)}` : '/');
@@ -234,7 +410,9 @@ test.describe('source import', () => {
             .dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));
         }, RAW);
       else if (entry === 'form') await form(page, url);
-      await expect(page.locator('#docTitle')).toHaveText('Preferred title');
+      await expect(page.locator('#docTitle')).toHaveText(
+        ['form', 'query'].includes(entry) ? 'Preferred title' : 'Filename',
+      );
       await expect(page.locator('#previewArticle')).toContainText('Original source text.');
       await expect(page.locator('#saveState')).toHaveText('Saved');
       expect((await stored(page)).texts).toContain(RAW);
@@ -260,7 +438,9 @@ test.describe('source import', () => {
             .dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));
         }, html);
       else if (entry === 'form') await form(page, url);
-      await expect(page.locator('#docTitle')).toHaveText('Reopened reader');
+      await expect(page.locator('#docTitle')).toHaveText(
+        ['form', 'query'].includes(entry) ? 'Reopened reader' : 'Reader',
+      );
       await expect(page.locator('#previewArticle')).toContainText('Editable Markdown');
       await expect(page.locator('#saveState')).toHaveText('Saved');
       const data = await stored(page);
@@ -300,7 +480,7 @@ test.describe('source import', () => {
       const reopened = await context.newPage();
       await boot(reopened);
       await file(reopened, html, 'Exported.html');
-      await expect(reopened.locator('#docTitle')).toHaveText('Body heading');
+      await expect(reopened.locator('#docTitle')).toHaveText('Exported');
       await expect(reopened.locator('#previewArticle')).toContainText('Original source text.');
       const source = await downloadMarkdown(reopened);
       expect(source).toBe('# Body heading\n\nOriginal source text.\n');
@@ -372,7 +552,7 @@ test.describe('source import', () => {
       .setInputFiles({ name: 'Reader.html', mimeType: 'text/html', buffer: Buffer.from(exported(BODY)) });
     const match = page.getByRole('dialog', { name: 'Is this an updated copy?', exact: true });
     await expect(match).toBeVisible();
-    await match.getByRole('button', { name: 'Update "Reopened reader"', exact: true }).click();
+    await match.getByRole('button', { name: 'Update "Reader"', exact: true }).click();
     await expect(page.locator('#toast')).toContainText('already up to date');
     expect((await stored(page)).docs.map((doc) => doc.id)).toEqual([original.id]);
   });
@@ -440,12 +620,12 @@ test.describe('source import', () => {
       if (next === 'URL') await form(page, fast);
       else if (next === 'file') await file(page, '# Winning file\n\nWinning text.', 'Winner.md');
       else {
-        const id = (await stored(page)).docs.find((doc) => doc.name === 'Stored winner')!.id;
+        const id = (await stored(page)).docs.find((doc) => doc.name === 'Stored')!.id;
         await page.evaluate((id) => {
           location.hash = `doc=${id}`;
         }, id);
       }
-      const name = next === 'URL' ? 'Winning URL' : next === 'file' ? 'Winning file' : 'Stored winner';
+      const name = next === 'URL' ? 'Winning URL' : next === 'file' ? 'Winner' : 'Stored';
       await expect(page.locator('#docTitle')).toHaveText(name);
       release();
       await finished;

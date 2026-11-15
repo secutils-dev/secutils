@@ -21,6 +21,7 @@ import * as share from '../share/share.ts';
 import * as db from '../store/db.ts';
 import * as sync from '../sync/index.ts';
 import { incomingFolder } from '../io/destination.ts';
+import { pickImport } from '../io/pickers.ts';
 
 const tree = $('tree');
 const filterInput = $<HTMLInputElement>('sbFilter');
@@ -470,6 +471,26 @@ async function unlinkDoc(n: TreeNode) {
     toast(`"${n.name}" is now an independent document`);
 }
 
+// Both menus use the same import actions, with an explicit target captured at activation.
+function importMenu(parentId: string | null): MenuEntry[] {
+    const disabled = parentId !== null && !incomingFolder(app.state.nodes, parentId);
+    return [
+        {
+            label: 'Import files…',
+            icon: 'upload',
+            sub: 'Markdown, HTML, or ZIP files',
+            disabled,
+            run: () => pickImport('files', parentId),
+        },
+        {
+            label: 'Import a folder…',
+            icon: 'folderOpen',
+            disabled,
+            run: () => pickImport('folder', parentId),
+        },
+    ];
+}
+
 /** The action menu of a folder or a document. Items that the session or the permission forbids are disabled. */
 function menuFor(n: TreeNode): MenuEntry[] {
     const dirPicker = 'showDirectoryPicker' in window;
@@ -478,6 +499,7 @@ function menuFor(n: TreeNode): MenuEntry[] {
         return [
             { label: 'New document', icon: 'document', run: () => newDoc(n.id) },
             { label: 'New folder', icon: 'folder', run: () => newFolder(n.id) },
+            ...importMenu(n.id),
             {
                 label: 'Use as default',
                 icon: 'folder',
@@ -743,13 +765,7 @@ $('sbNewBtn').addEventListener('click', (e) =>
             },
             { label: 'New folder', icon: 'folder', run: () => newFolder() },
             'separator',
-            {
-                label: 'Import files…',
-                icon: 'upload',
-                sub: 'Markdown, HTML, or ZIP files',
-                run: () => $('importInput').click(),
-            },
-            { label: 'Import a folder…', icon: 'folderOpen', run: () => $('importFolderInput').click() },
+            ...importMenu(app.state.folderId),
             {
                 label: 'Restore backup…',
                 icon: 'lock',

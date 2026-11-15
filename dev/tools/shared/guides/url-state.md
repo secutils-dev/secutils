@@ -148,3 +148,7 @@ not a fragment parameter: it travels inside the ciphertext, so the URL reveals n
   MARS bundle documents can include `readingWidth` (`full`, or an integer from 320 to 2400).
   Full document links carry this value as `w` in the fragment. An explicit `w` also supplies layout for legacy short links.
   Invalid or absent values retain the recipient's preference. The state encoding and responder script remain unchanged.
+  MARS document snapshots carry saved parent-folder names in the bundle document's `path`.
+  Full links encode that array as `p` in the fragment. Its presence also preserves the exact saved document label.
+  Markdown Preview ignores `p`. Legacy MARS links without it retain their existing name inference.
+  Temporary recovery fragments retain the same path and recreate it at the session root, without an incoming-folder wrapper.

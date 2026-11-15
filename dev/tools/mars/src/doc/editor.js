@@ -32,7 +32,7 @@ function textareaEditor(mount, text) {
     const ta = document.createElement('textarea');
     ta.className = 'editor-fallback';
     ta.spellcheck = false;
-    ta.placeholder = 'Type or paste Markdown here...';
+    ta.placeholder = 'Type or paste Markdown here…';
     ta.setAttribute('aria-label', 'Markdown source');
     ta.value = text;
     ta.addEventListener('input', () => window.__suOnEditorChange?.(ta.value));

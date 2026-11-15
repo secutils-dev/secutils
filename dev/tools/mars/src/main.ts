@@ -14,7 +14,7 @@ import './sidebar/sidebar.ts';
 import './doc/changes.ts';
 import './export/dialog.ts';
 import * as share from './share/share.ts';
-import * as io from './io/io.ts';
+import { installImportPickers } from './io/pickers.ts';
 import * as db from './store/db.ts';
 import { $ } from './ui/ui.ts';
 import * as sync from './sync/index.ts';
@@ -188,15 +188,7 @@ $('saveToLibraryBtn').addEventListener('click', async () => {
     location.assign(target.href);
 });
 
-// File and folder pickers of the sidebar. Reset the value so that the same selection fires `change` again.
-for (const id of ['importInput', 'importFolderInput']) {
-    const input = $<HTMLInputElement>(id);
-    input.addEventListener('change', () => {
-        const files = [...(input.files ?? [])];
-        input.value = '';
-        if (files.length) io.importFiles(files);
-    });
-}
+installImportPickers();
 
 // Starts a save of pending edits. The browser does not wait for it.
 window.addEventListener('pagehide', () => {

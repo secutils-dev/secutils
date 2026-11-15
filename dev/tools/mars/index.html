@@ -385,7 +385,7 @@
                         <div id="blockDropLine" class="block-drop-line" hidden></div>
                         <div id="loadingState" class="loading-state" aria-live="polite">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="9" opacity=".25"/><path d="M21 12a9 9 0 0 1-9 9" stroke-linecap="round"/></svg>
-                            <span class="loading-text">Opening the shared document&hellip;</span>
+                            <span class="loading-text">Opening the shared document…</span>
                         </div>
                         <div id="emptyState" class="empty-state">
                             <div id="shortLinkAlert" class="short-link-alert" role="alert" hidden>This link has expired or doesn't exist. Ask the sender for a new one.</div>
@@ -398,7 +398,7 @@
                                 <button id="emptyExampleBtn" type="button" class="btn btn-sm">Load example</button>
                             </div>
                             <form id="urlForm" class="url-form">
-                                <input id="urlInput" type="url" inputmode="url" placeholder="https://raw.githubusercontent.com/&hellip;/README.md" aria-label="Markdown URL to load">
+                                <input id="urlInput" type="url" inputmode="url" placeholder="https://raw.githubusercontent.com/…/README.md" aria-label="Markdown URL to load">
                                 <button type="submit" class="btn btn-sm">Load URL</button>
                             </form>
                         </div>
@@ -432,9 +432,10 @@
             <p><strong>Sidebar preference.</strong> MARS keeps your docked sidebar choice in this browser. Window resizing restores that choice. Narrow-screen overlay actions do not change it.</p>
             <p><strong>End-to-end encryption.</strong> Short snapshots, Sync, and Live links encrypt content, names, and comments in your browser (AES-256-GCM) before upload. The service stores ciphertext and cannot read it. Secutils.dev has no master decryption key or recovery key.</p>
             <p><strong>Links.</strong> A link contains its decryption secret, or the document itself. Anyone with the complete link can use it. Browser history, extensions, and services where you paste a link can read it.</p>
+            <p><strong>Snapshot names.</strong> A single-document snapshot includes its saved name and parent-folder names, but no sibling documents. Full links carry these in the fragment. Short links include them in the encrypted copy.</p>
             <ul class="su-credits-list">
                 <li><strong>Full snapshot:</strong> the compressed, <em>unencrypted</em> document after <code>#</code>. MARS does not upload it. It does not expire, and you cannot revoke it.</li>
-                <li><strong>Short snapshot:</strong> the secret stays in <code>#s=...</code>, and the service gets only the encrypted copy. It expires after 1, 7, 14, or 30 days. The browser that created it can delete it earlier.</li>
+                <li><strong>Short snapshot:</strong> the secret stays in <code>#s=…</code>, and the service gets only the encrypted copy. It expires after 1, 7, 14, or 30 days. The browser that created it can delete it earlier.</li>
                 <li><strong>Live link:</strong> view, comment, or edit access to one document until it expires or you disable it. Recipients can keep copies. Revocation cannot erase those copies.</li>
                 <li><strong>Sync:</strong> uploads only the documents and folders that you select. A device joins after you approve a matching code. A Sync link expires after 10 minutes.</li>
             </ul>
@@ -469,7 +470,7 @@
             <ul class="su-credits-list">
                 <li><a href="https://github.com/markedjs/marked" target="_blank" rel="noopener noreferrer"><strong>marked</strong></a> - Markdown parser and compiler, used to render the source into HTML.</li>
                 <li><a href="https://github.com/highlightjs/highlight.js" target="_blank" rel="noopener noreferrer"><strong>highlight.js</strong></a> - syntax highlighter, used to colourise fenced code blocks.</li>
-                <li><a href="https://github.com/KaTeX/KaTeX" target="_blank" rel="noopener noreferrer"><strong>KaTeX</strong></a> - math typesetting, used to render <code>$&hellip;$</code> and <code>$$&hellip;$$</code> formulas.</li>
+                <li><a href="https://github.com/KaTeX/KaTeX" target="_blank" rel="noopener noreferrer"><strong>KaTeX</strong></a> - math typesetting, used to render <code>$…$</code> and <code>$$…$$</code> formulas.</li>
                 <li><a href="https://github.com/mermaid-js/mermaid" target="_blank" rel="noopener noreferrer"><strong>Mermaid</strong></a> - diagram renderer, used to turn <code>```mermaid</code> code blocks into inline SVG diagrams.</li>
                 <li><a href="https://github.com/topojson/topojson-client" target="_blank" rel="noopener noreferrer"><strong>topojson-client</strong></a> - converts TopoJSON objects into GeoJSON for map display.</li>
                 <li><a href="https://github.com/codemirror/dev" target="_blank" rel="noopener noreferrer"><strong>CodeMirror</strong></a> - extensible code editor, powers the source editing mode.</li>
@@ -556,7 +557,7 @@
     <input type="file" id="importInput" accept=".md,.markdown,.txt,.mdx,.html,.htm,.zip" multiple hidden>
     <input type="file" id="importFolderInput" webkitdirectory hidden>
     <div id="modelImportStatus" class="toast" role="status" aria-live="polite" hidden>
-        <span>Importing 3MF model&hellip;</span><button id="cancelModelImport" class="btn btn-sm" type="button">Cancel import</button>
+        <span>Importing 3MF model…</span><button id="cancelModelImport" class="btn btn-sm" type="button">Cancel import</button>
     </div>
     <div id="toast" class="toast" style="display:none" role="status" aria-live="polite">
         <span id="toastMsg"></span>

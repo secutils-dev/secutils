@@ -11,7 +11,8 @@ import * as search from '../search/embed.ts';
 import { descendants, exportPaths } from '../tree/model.ts';
 import { download, fileSafe, esc, modal } from '../ui/ui.ts';
 import { captureExportSnapshot, flush, toast } from '../doc/viewer.js';
-import { readSource } from './source.ts';
+import { readFileSource } from './source.ts';
+import { incomingFolder } from './destination.ts';
 import { beginInput, type InputOperation } from './input.ts';
 import { receiveFile } from '../share/share.ts';
 import * as sync from '../sync/index.ts';
@@ -203,8 +204,8 @@ export async function exportToDirectory(rootId: string | null) {
 // One document of an import: the folder names above it, its name, and its text.
 type Incoming = { path: string[]; name: string; text: string };
 
-/** The document name for an imported file: see `sourceName` for the order of the sources. */
-export const docName = (file: string, text: string) => readSource(text, { fileName: file }).name;
+/** The document name for an imported file: its filename without the source extension. */
+export const docName = (file: string, text: string) => readFileSource(text, file).name;
 
 // Turns one picked or dropped file into documents. A ZIP gives each source file inside it,
 // and another source file gives one document. `relPath` supplies the folder names.
@@ -218,13 +219,12 @@ async function expand(file: File, relPath: string): Promise<Incoming[]> {
         });
         return Object.entries(entries).map(([path, bytes]) => {
             const parts = path.split('/').filter(Boolean);
-            // ZIP entry names are the saved document names from Export all, not inferred titles.
-            const source = readSource(strFromU8(bytes), { name: parts.at(-1)!, fileName: parts.at(-1)! });
+            const source = readFileSource(strFromU8(bytes), parts.at(-1)!);
             return { path: [...folders, ...parts.slice(0, -1)], name: source.name, text: source.text };
         });
     }
     if (!SOURCE_FILES_RE.test(file.name)) return [];
-    const source = readSource(await file.text(), { fileName: file.name });
+    const source = readFileSource(await file.text(), file.name);
     return [{ path: folders, name: source.name, text: source.text }];
 }
 
@@ -313,6 +313,8 @@ export async function importFiles(
 ) {
     input.check();
     try {
+        if (parentId !== null && !incomingFolder(app.state.nodes, parentId))
+            throw new Error('The destination folder is no longer available for imports. Choose another folder.');
         // Look only for the recovery file. Its uncompressed size limit is 512 MiB.
         if (files.length === 1 && /\.zip$/i.test(files[0].name) && !db.isTemporaryStorage()) {
             const recovery = unzipSync(new Uint8Array(await files[0].arrayBuffer()), {
@@ -345,7 +347,7 @@ export async function importFiles(
             !(files[0] as File & { webkitRelativePath?: string }).webkitRelativePath?.includes('/')
         ) {
             const file = files[0],
-                source = readSource(await file.text(), { fileName: file.name });
+                source = readFileSource(await file.text(), file.name);
             input.check();
             const previous = new Set(app.state.nodes.map((node) => node.id));
             await receiveFile({ ...source, handle: null, stamp: file.lastModified, parentId }, input);

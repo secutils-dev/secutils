@@ -70,7 +70,9 @@ Read each guide whose trigger matches the change.
 ### Incoming documents
 
 - Open, drops, imports, Load URL, and `?url=` share `src/io/source.ts` for source extraction and naming.
-  An explicit name wins over a frontmatter title, a Markdown heading, and the file name.
+  Local files and ZIP entries use `readFileSource`: the filename without its source extension wins over titles and headings.
+  Raw URLs and legacy links use `readSource`: an explicit name wins over a frontmatter title, a heading, and the URL filename.
+  Folder import menus capture their destination before the picker opens. Imports require an editable folder and editable ancestors.
 - `src/io/input.ts` owns input generations and abort signals. Pass the current operation through each receive and navigation step.
   Check it after each asynchronous read and before you select or change a document.
 - `share.updateExisting` matches an incoming copy by origin, by file handle (`isSameEntry`), or by content after the reader confirms (`share/match.ts`).
@@ -85,6 +87,10 @@ Read each guide whose trigger matches the change.
 ### Links
 
 - Full links are Markdown Preview-compatible: `#name=&md=`, plus `&o=<originId>` and optional `&w=<width>`.
+  New document snapshots add `&p=<state of the folder-name array>` and keep the exact saved document label.
+  Single-document bundles carry the same path in `docs[0].path`, without sibling documents.
+  New recipients recreate it under their incoming folder. Known copies keep their own placement and labels.
+  Temporary sessions recreate the path at the root and retain it in their recovery fragment, without sibling documents.
   Folders use `#b=<state of a JSON bundle>` with `readingWidth` on each document.
 - Short links use the Markdown Preview scheme with a different plaintext, in the MARS key-value store.
   MARS and Markdown Preview short links are not interchangeable.

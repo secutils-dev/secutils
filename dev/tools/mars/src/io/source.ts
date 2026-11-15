@@ -1,7 +1,7 @@
 // Source extraction and naming are independent of the viewer's document/review state.
 //
 // Open, drops, imports, Load URL, `?url=`, and links all read their source through this module.
-// One rule therefore decides the text and the name of an incoming document.
+// Local files keep their filenames; links and URLs can infer names from the source text.
 // The input is untrusted text. This module returns strings only: it never renders the text, and
 // it parses HTML with `DOMParser`, whose documents do not run scripts.
 import { marked, type Tokens } from 'marked';
@@ -97,6 +97,15 @@ export function readSource(text: string, options: { name?: string; fileName?: st
     const embedded = html ? extractEmbeddedMarkdown(text) : null;
     const source = embedded ?? text;
     return { text: source, name: sourceName(source, options), embedded: embedded !== null };
+}
+
+/**
+ * Reads a local file or ZIP entry with its filename as the document name, without the source extension.
+ * Frontmatter and headings stay in the text but never replace a nonempty filename.
+ * HTML source extraction is the same as `readSource`.
+ */
+export function readFileSource(text: string, fileName: string) {
+    return readSource(text, { name: fileName, fileName });
 }
 
 /** Parses a user-supplied address. Throws an `Error` with a display message unless it is an http(s) URL. */

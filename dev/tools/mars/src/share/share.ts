@@ -25,6 +25,7 @@ import {
     hashText,
     openSealed,
     parseBundle,
+    parseSharedPath,
     sealBundle,
     SHORT_MAX_CHARS,
     toBase64Url,
@@ -33,6 +34,7 @@ import { joinComments, mergeDocuments, openThreads, splitComments, type Thread }
 import { matchScore } from './match.ts';
 import { beginInput, checkInput, type InputOperation } from '../io/input.ts';
 import { readSource, sourceUrl, urlFileName } from '../io/source.ts';
+import { incomingFolder } from '../io/destination.ts';
 import { validWidth, type ReadingWidth } from '../export/settings.ts';
 import { temporaryFragment } from './temporary.ts';
 import * as sync from '../sync/index.ts';
@@ -89,7 +91,7 @@ async function bundleFor(id: string): Promise<Bundle | null> {
             name: n.name,
             docs: [
                 {
-                    path: [],
+                    path: ancestors(app.state.nodes, n.id).map((folder) => folder.name),
                     name: n.name,
                     originId: n.originId ?? n.id,
                     text: await app.docText(n.id),
@@ -120,13 +122,15 @@ async function bundleFor(id: string): Promise<Bundle | null> {
 
 /**
  * Builds a full link: the content travels in the fragment, and nothing is uploaded.
- * A document uses the Markdown Preview form (`name`, `md`, `o`, optional `w`). A folder uses `#b=`.
+ * A document uses the Markdown Preview form (`name`, `md`, `o`, optional `w`) plus `p` for its folder names.
+ * A folder uses `#b=`. Names and paths stay in the fragment, never in a server request.
  */
 async function fullLink(bundle: Bundle) {
     if (bundle.kind === 'doc') {
         const d = bundle.docs[0];
         const params = new URLSearchParams({ name: d.name, md: await encodeState(d.text), o: d.originId });
         if (validWidth(d.readingWidth)) params.set('w', String(d.readingWidth));
+        params.set('p', await encodeState(JSON.stringify(d.path)));
         if (bundle.temporary) params.set('t', '1');
         return `${base()}#${params}`;
     }
@@ -287,7 +291,7 @@ export async function copyNodeLink(id: string, kind: 'short' | 'full') {
         if (!b) throw new Error('Nothing to share');
         return kind === 'full' ? fullLink(b) : (await shortLink(sharedId, b)).url;
     });
-    if (kind === 'short') viewer.toast('Creating short link...');
+    if (kind === 'short') viewer.toast('Creating short link…');
     try {
         await copyRich(url);
         viewer.toast(kind === 'full' ? 'Full link copied' : `Short link copied · expires in ${ttlLabel(shortTtl)}`);
@@ -663,7 +667,7 @@ async function findLikely(name: string, text: string, originId?: string, input?:
 }
 
 // One shared document: update the stored document with the same origin or a confirmed likely
-// copy. Otherwise add it to the default folder, or to "Shared with me".
+// copy. Otherwise recreate its path under the incoming folder, or at the root in a temporary session.
 async function receiveDoc(doc: Bundle['docs'][0], input?: InputOperation) {
     const existing = findDoc(doc.originId) ?? (await findLikely(doc.name, doc.text, doc.originId, input));
     checkInput(input);
@@ -671,19 +675,27 @@ async function receiveDoc(doc: Bundle['docs'][0], input?: InputOperation) {
         await updateExisting(existing, doc.text, undefined, input, doc.readingWidth);
         return;
     }
-    const parent = app.defaultIncomingFolder() ?? (await sharedRoot());
+    const destination = db.isTemporaryStorage() ? null : (app.defaultIncomingFolder() ?? (await sharedRoot()));
+    let parentId = destination?.id ?? null;
     checkInput(input);
+    for (const name of doc.path) {
+        const parent = await app.findOrCreateFolder(name, parentId);
+        checkInput(input);
+        if (!incomingFolder(app.state.nodes, parent.id))
+            throw new Error('The shared folder path cannot receive documents. Choose another default folder.');
+        parentId = parent.id;
+    }
     await app.createDoc({
-        name: app.uniqueName(doc.name || 'Untitled', parent.id),
+        name: app.uniqueName(doc.name || 'Untitled', parentId),
         text: doc.text,
-        parentId: parent.id,
+        parentId,
         originId: doc.originId,
         opened: true,
         input,
         readingWidth: doc.readingWidth,
     });
     checkInput(input);
-    viewer.toast(`Added "${doc.name}" to ${parent.name}`);
+    viewer.toast(`Added "${doc.name}"${parentId ? ` to ${app.node(parentId)?.name}` : ''}`);
 }
 
 /**
@@ -930,13 +942,23 @@ export async function openFromLocation(address = location.href): Promise<boolean
             input.check();
             if (text === null) return fail('This link is damaged or incomplete.');
             const source = readSource(text, { name: params.get('name') ?? undefined });
+            let path: string[] = [];
+            if (params.has('p')) {
+                const json = await decodeState(params.get('p')!);
+                input.check();
+                const parsed = json === null ? null : parseSharedPath(json);
+                if (!parsed) return fail('This link has a damaged or incomplete folder path.');
+                path = parsed;
+                // MARS snapshots keep the exact saved label. Legacy/CLI names still strip source extensions.
+                source.name = params.get('name') || source.name;
+            }
             bundle = {
                 v: 1,
                 kind: 'doc',
                 name: source.name,
                 docs: [
                     {
-                        path: [],
+                        path,
                         name: source.name,
                         originId: params.get('o') || `link:${await hashText(text)}`,
                         text: source.text,

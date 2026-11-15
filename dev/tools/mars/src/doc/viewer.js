@@ -9,7 +9,7 @@ import { initDiagrams } from './diagrams.js';
 import { snapshot } from '../export/snapshot.ts';
 import { validWidth } from '../export/settings.ts';
 import { beginInput, cancelInput } from '../io/input.ts';
-import { FRONTMATTER_RE, isMarkdownFile, readSource } from '../io/source.ts';
+import { FRONTMATTER_RE, isMarkdownFile, readFileSource } from '../io/source.ts';
 import { installTableRanges } from './table-renderer.ts';
 import { applyTableLayouts, tableMetadataHtml } from './table-layout.ts';
 import { createTableEditor } from './table-editor.ts';
@@ -674,7 +674,7 @@ function normalizeModelView(value = {}) {
 function parseModelView(info) {
     const metadata = info.trim().replace(/^(?:stl|su-mesh)\b/i, '').trim();
     if (!metadata) return normalizeModelView();
-    if (!metadata.startsWith('view=')) throw new Error('Expected model fence metadata: view={...}');
+    if (!metadata.startsWith('view=')) throw new Error('Expected model fence metadata: view={…}');
     return normalizeModelView(JSON.parse(metadata.slice(5)));
 }
 async function parseStlMesh(src, signal) {
@@ -3020,7 +3020,7 @@ async function handleFile(file, handle = null, input = beginInput()) {
             setThreads([]);
             loadDocument(`${fence}stl\n${raw}\n${fence}\n`);
         } else {
-            const source = readSource(raw, { fileName: file.name });
+            const source = readFileSource(raw, file.name);
             const editable = !source.embedded && isMarkdownFile(file.name);
             if (host.openFile) {
                 await host.openFile({ name: source.name, text: source.text, handle: editable ? handle : null, stamp: file.lastModified }, input);
@@ -3073,7 +3073,7 @@ els.emptyExampleBtn.addEventListener('click', () => {
 
 async function loadFromUrl(url) {
     cancelFileImport();
-    toast('Fetching Markdown...');
+    toast('Fetching Markdown…');
     try { await host.openUrl?.(url); }
     catch (error) { if (error?.name !== 'AbortError') { endLoading(); toast(error?.message ?? 'Fetch failed (CORS or network). Try a raw, CORS-enabled URL.'); } }
 }

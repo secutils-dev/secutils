@@ -4,6 +4,7 @@ import {
     extractEmbeddedMarkdown,
     frontmatterTitle,
     readSource,
+    readFileSource,
     sourceName,
     sourceUrl,
     stripSourceExtension,
@@ -36,6 +37,20 @@ test('frontmatter titles support quoted scalars, CRLF, and empty/missing values'
     assert.equal(frontmatterTitle('---\ntitle: ""\n---\nBody.'), null);
     assert.equal(frontmatterTitle('---\ntitle: |\n  Multiple lines\n---\nBody.'), null);
     assert.equal(frontmatterTitle('# Heading'), null);
+});
+
+test('local filenames override frontmatter and headings without changing source bytes', () => {
+    const text = '---\r\ntitle: "Validation record"\r\n---\r\n# A different heading\r\n\r\nBody.\r\n';
+    for (const extension of ['md', 'MD', 'markdown', 'mdx', 'txt', 'html', 'HTM'])
+        assert.deepEqual(readFileSource(text, `VALIDATION.${extension}`), {
+            text,
+            name: 'VALIDATION',
+            embedded: false,
+        });
+    assert.equal(readFileSource('# Emails to resolve the hot-water meter error', 'LETTERS.md').name, 'LETTERS');
+    assert.equal(readFileSource('# Heading', '研究 notes.v2.md').name, '研究 notes.v2');
+    assert.equal(readFileSource('# Heading', '').name, 'Heading');
+    assert.equal(readSource(text, { fileName: 'Remote.md' }).name, 'Validation record');
 });
 
 test('ordinary Markdown retains exact CRLF and review metadata, including source-tag examples', () => {

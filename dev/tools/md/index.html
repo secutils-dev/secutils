@@ -988,7 +988,7 @@ html.su-loading #emptyState { display: none; }
             const ta = document.createElement('textarea');
             ta.className = 'editor-fallback';
             ta.spellcheck = false;
-            ta.placeholder = 'Type or paste Markdown here...';
+            ta.placeholder = 'Type or paste Markdown here…';
             ta.value = window.__suInitialDoc || '';
             ta.addEventListener('input', () => window.__suOnEditorChange?.(ta.value));
             mount.replaceChildren(ta);
@@ -1696,7 +1696,7 @@ function normalizeModelView(value = {}) {
 function parseModelView(info) {
     const metadata = info.trim().replace(/^(?:stl|su-mesh)\b/i, '').trim();
     if (!metadata) return normalizeModelView();
-    if (!metadata.startsWith('view=')) throw new Error('Expected model fence metadata: view={...}');
+    if (!metadata.startsWith('view=')) throw new Error('Expected model fence metadata: view={…}');
     return normalizeModelView(JSON.parse(metadata.slice(5)));
 }
 async function parseStlMesh(src) {
@@ -4318,7 +4318,7 @@ async function loadFromUrl(url) {
     let target;
     try { target = new URL(url); } catch { fail('Enter a valid URL'); return; }
     if (target.protocol !== 'https:' && target.protocol !== 'http:') { fail('Only http(s) URLs are supported'); return; }
-    toast('Fetching Markdown...');
+    toast('Fetching Markdown…');
     try {
         const res = await fetch(target.href, { redirect: 'follow' });
         if (!res.ok) { fail(`Fetch failed: HTTP ${res.status}`); return; }
@@ -4534,7 +4534,7 @@ els.copyFullLinkBtn.addEventListener('click', async () => {
 els.copyShortLinkBtn.addEventListener('click', async () => {
     if (!markdown.trim() || shareTooLarge) return;
     hidePopoverEl(els.shareMenu);
-    toast('Creating short link...');
+    toast('Creating short link…');
     const link = createShortLink();
     try {
         await copyText(link.then((l) => l.url));
@@ -4626,7 +4626,7 @@ async function exportPdf() {
     const btn = els.exportBtn;
     const orig = btn.innerHTML;
     btn.disabled = true;
-    btn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" style="animation:su-spin-edit 1s linear infinite"><circle cx="12" cy="12" r="9" opacity=".25"/><path d="M21 12a9 9 0 0 1-9 9" stroke-linecap="round"/></svg><span class="btn-label" style="margin-left:6px">Preparing...</span>';
+    btn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" style="animation:su-spin-edit 1s linear infinite"><circle cx="12" cy="12" r="9" opacity=".25"/><path d="M21 12a9 9 0 0 1-9 9" stroke-linecap="round"/></svg><span class="btn-label" style="margin-left:6px">Preparing…</span>';
 
     const content = await render(markdown);
     const printDoc = generatePrintDoc(content, extractTitle(content));
@@ -4640,7 +4640,7 @@ async function exportPdf() {
     let cleaned = false;
     const cleanup = () => { if (cleaned) return; cleaned = true; iframe.remove(); restore(); };
 
-    toast('Preparing PDF...');
+    toast('Preparing PDF…');
     try {
         await new Promise((resolve, reject) => {
             iframe.addEventListener('load', resolve, { once: true });

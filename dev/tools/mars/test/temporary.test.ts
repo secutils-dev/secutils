@@ -53,6 +53,16 @@ test('temporary fragments retain exact source, names, origins, reading width, an
     assert.equal(params.get('o'), doc.originId);
     assert.equal(params.get('w'), '1100');
     assert.equal(await decodeState(params.get('md')!), doc.text);
+    assert.deepEqual(JSON.parse((await decodeState(params.get('p')!))!), doc.path);
+});
+
+test('temporary reload fragments retain exact saved labels and parent-folder context without sibling content', async () => {
+    const snapshot = { ...doc, name: 'Lease evidence.md', path: ['Local', 'Research', '研究 & evidence'] };
+    const params = new URLSearchParams((await temporaryFragment(snapshot)).slice(1));
+    assert.equal(params.get('name'), snapshot.name);
+    assert.deepEqual(JSON.parse((await decodeState(params.get('p')!))!), snapshot.path);
+    assert.equal(await decodeState(params.get('md')!), snapshot.text);
+    assert.equal(params.get('t'), '1');
 });
 
 test('only the newest temporary document may replace the address bar', async () => {

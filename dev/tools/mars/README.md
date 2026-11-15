@@ -51,6 +51,9 @@ Link-click, file-download, form, and hash-route tracking are off. The tracker ha
 
 - **Open** a file, drop it on the page, paste Markdown, or use **Load URL**. The browser fetches a URL directly, without a proxy.
 - New files, links, and URLs go to the default folder. The folder action **Use as default** changes it. A star marks the default folder.
+- Each folder menu offers **Import files…** and **Import a folder…**, including nested folders. These actions import into that folder.
+- Local files use their filenames without source extensions as document names, not their frontmatter titles or headings.
+  Folder and ZIP imports preserve the subfolder structure. Duplicate names receive a numeric suffix.
 - Right-click a document for MARS actions. **Shift + right-click** shows the browser link menu. The `⋮` button always opens MARS actions.
 - Each document has a link of the form `#doc=<id>`. The link works only in the same browser profile.
 - Every deletion asks for confirmation. **Undo** restores a locally deleted document as a local copy.
@@ -82,6 +85,10 @@ An HTML file that MARS exported with embedded source opens as editable Markdown.
 
 Folders support snapshot links only. Their Copy link dialog omits the Live option.
 A link also carries the reading width and the table column widths.
+Single-document snapshots keep the saved document name and its parent-folder names, without sibling documents.
+Recipients get that path under their default folder, or **Shared with me**. Existing copies keep their placement and names.
+Temporary recipients recreate the path at the session root. Their reload link keeps the document and its folder names.
+An existing snapshot stays unchanged. Create a new link to include a later rename or move.
 
 ### Sync your devices
 

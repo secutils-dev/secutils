@@ -107,9 +107,19 @@ export const decodeState = async (str: string) => {
     }
 };
 
+/** Parses a snapshot's folder-name array. Returns null for malformed JSON or any non-string entry. */
+export function parseSharedPath(json: string): string[] | null {
+    try {
+        const path = JSON.parse(json);
+        return Array.isArray(path) && path.every((name) => typeof name === 'string') ? path : null;
+    } catch {
+        return null;
+    }
+}
+
 /** One document of a bundle. */
 export interface SharedDoc {
-    // Folder names from the shared root down to the document's parent.
+    // For one document: its complete parent-folder path. For a folder bundle: names below the shared folder.
     path: string[];
     name: string;
     originId: string;

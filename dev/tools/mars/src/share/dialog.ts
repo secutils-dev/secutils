@@ -157,7 +157,7 @@ export async function openShareDialog(id: string, initial: 'snapshot' | 'live' =
                   ? 'Receives later document changes. Choose what people can do.'
                   : node.kind === 'folder'
                     ? 'A snapshot of this folder and its documents. Later changes are not included.'
-                    : 'A copy of this document. Later changes are not included.';
+                    : 'A copy of this document and its parent-folder names, without sibling documents. Later changes are not included.';
             if (received && !original && !forwarding)
                 help.textContent += ' The Live link ended. Only snapshots can be shared.';
             else if (!canLive && node.kind === 'doc')
