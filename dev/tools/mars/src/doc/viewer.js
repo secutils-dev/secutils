@@ -1183,7 +1183,11 @@ els.docTitle.addEventListener('keydown', (e) => {
 });
 els.docTitle.addEventListener('blur', () => {
     const name = els.docTitle.textContent.trim().replace(MD_FILE_EXT, '');
-    if (name && name !== filename) { filename = name; persistSoon(); }
+    if (name && name !== filename) {
+        // MARS-only host hook: title and sidebar renames share persistence and Undo feedback.
+        if (host.rename && host.currentId?.()) void host.rename(name);
+        else { filename = name; persistSoon(); }
+    }
     setDocTitle();
 });
 

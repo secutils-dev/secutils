@@ -51,6 +51,28 @@ async function edit(page: Page) {
 test.describe('temporary sessions', () => {
   test.setTimeout(90000);
 
+  test('folder and document rename Undo restores the recovery URL and survives reload', async ({ page }) => {
+    await open(page, `${link(DOC, true)}&p=${state(JSON.stringify(['Folder']))}`);
+    const params = () => page.evaluate(() => Object.fromEntries(new URLSearchParams(location.hash.slice(1))));
+    for (const name of ['Folder', 'Temporary document']) {
+      const before = await params();
+      await page.getByRole('button', { name: `Actions for ${name}`, exact: true }).click();
+      await page.getByRole('menuitem', { name: 'Rename', exact: true }).click();
+      await page.getByRole('textbox', { name: 'Name', exact: true }).fill(`${name} changed`);
+      await page.keyboard.press('Enter');
+      await expect(page.locator('#toast')).toContainText(`Renamed to "${name} changed"`);
+      expect(await params()).not.toEqual(before);
+      await page.locator('#toast').getByRole('button', { name: 'Undo', exact: true }).click();
+      await expect(page.locator('#toast')).toContainText('Rename undone');
+      expect(await params()).toEqual(before);
+    }
+    await page.reload();
+    await expect(page.locator('#docTitle')).toHaveText('Temporary document');
+    await expect(page.locator('#crumbs')).toHaveText('Folder');
+    await expect(page.locator('#previewArticle')).toContainText('Original paragraph.');
+    await expect(page.locator('#saveState')).toHaveText('Temporary');
+  });
+
   test('New temporary document starts a named source editor in an isolated session', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('button', { name: 'New document, folder, or import' }).click();

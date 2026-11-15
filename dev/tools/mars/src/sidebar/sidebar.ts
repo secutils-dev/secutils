@@ -23,6 +23,7 @@ import * as db from '../store/db.ts';
 import * as sync from '../sync/index.ts';
 import { incomingFolder } from '../io/destination.ts';
 import { pickImport } from '../io/pickers.ts';
+import { renameNode } from '../ui/rename.ts';
 
 const tree = $('tree');
 const filterInput = $<HTMLInputElement>('sbFilter');
@@ -359,7 +360,7 @@ async function finishRename(commit: boolean) {
     const input = tree.querySelector<HTMLInputElement>('.tree-rename');
     const id = renaming;
     renaming = null;
-    if (id && input && commit) await app.rename(id, input.value);
+    if (id && input && commit) await renameNode(id, input.value);
     render();
     if (id) {
         focusId = id;
@@ -684,6 +685,7 @@ tree.addEventListener('keydown', (e) => {
     if ((e.target as HTMLElement).matches('.tree-rename')) {
         if (e.key === 'Enter') {
             e.preventDefault();
+            if (e.isComposing || e.keyCode === 229) return;
             finishRename(true);
         } else if (e.key === 'Escape') {
             e.preventDefault();

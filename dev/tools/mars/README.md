@@ -57,6 +57,8 @@ Link-click, file-download, form, and hash-route tracking are off. The tracker ha
 - Right-click a document for MARS actions. **Shift + right-click** shows the browser link menu. The `⋮` button always opens MARS actions.
 - Each document has a link of the form `#doc=<id>`. The link works only in the same browser profile.
 - Every deletion asks for confirmation. **Undo** restores a locally deleted document as a local copy.
+- A folder or document rename shows **Undo** in the notification for six seconds. Title edits use the same action.
+  Undo restores only the name. It keeps text edits and does not replace a later name from another tab or device.
 
 The header menu button shows or hides the documents sidebar.
 MARS remembers the latest choice for the docked sidebar across window resizing and reloads.

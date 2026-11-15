@@ -164,6 +164,53 @@ async function sourceText(page: Page, text: string, action: 'replace' | 'prepend
 }
 
 test.describe('sync protocol', () => {
+  test('folder and document rename Undo reaches paired devices without replacing text', async ({ browser }) => {
+    test.setTimeout(90000);
+    const a = await browser.newContext(),
+      b = await browser.newContext();
+    const owner = await a.newPage(),
+      peer = await b.newPage();
+    try {
+      await owner.goto(MARS_BASE_URL);
+      await expect(owner.locator('#emptyState')).toBeVisible();
+      await owner.locator('#importInput').setInputFiles({
+        name: 'Renames.zip',
+        mimeType: 'application/zip',
+        buffer: Buffer.from(zipSync({ 'Renames/Report.md': Buffer.from('# Report\n\nKeep this text.') })),
+      });
+      await expect(owner.locator('#toast')).toContainText('Imported 1 document');
+      await owner.getByRole('button', { name: 'Actions for Renames', exact: true }).click();
+      await owner.getByRole('menuitem', { name: 'Sync', exact: true }).click();
+      await owner.getByRole('button', { name: 'Turn on sync', exact: true }).click();
+      await pair(owner, peer, 'Renames');
+      await expect(peer.getByRole('button', { name: 'Actions for Report', exact: true })).toBeVisible({
+        timeout: 30000,
+      });
+      await owner.getByRole('link', { name: 'Report', exact: true }).click();
+      await peer.getByRole('link', { name: 'Report', exact: true }).click();
+      for (const name of ['Renames', 'Report']) {
+        await owner.getByRole('button', { name: `Actions for ${name}`, exact: true }).click();
+        await owner.getByRole('menuitem', { name: 'Rename', exact: true }).click();
+        await owner.getByRole('textbox', { name: 'Name', exact: true }).fill(`${name} changed`);
+        await owner.keyboard.press('Enter');
+        await expect(peer.getByRole('button', { name: `Actions for ${name} changed`, exact: true })).toBeVisible({
+          timeout: 15000,
+        });
+        await owner.locator('#toast').getByRole('button', { name: 'Undo', exact: true }).click();
+        await expect(peer.getByRole('button', { name: `Actions for ${name}`, exact: true })).toBeVisible({
+          timeout: 15000,
+        });
+        await expect(peer.locator('#previewArticle')).toContainText('Keep this text.');
+      }
+      await peer.reload();
+      await expect(peer.locator('#docTitle')).toHaveText('Report');
+      await expect(peer.locator('#crumbs')).toHaveText('Renames');
+    } finally {
+      await a.close();
+      await b.close();
+    }
+  });
+
   test('warm folder reload downloads no applied checkpoints, batches directory metadata, and loads the editor without CDN requests', async ({
     page,
   }) => {

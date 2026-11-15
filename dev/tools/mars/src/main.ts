@@ -22,6 +22,7 @@ import { installTooltips } from './ui/feedback.ts';
 import { installSyncDebug } from './sync/debug.ts';
 import { installDeveloperTools } from './ui/developer.ts';
 import { startAnalytics } from './platform/analytics.ts';
+import { renameNode } from './ui/rename.ts';
 
 // Setup that needs no storage runs first, so it is also in place when a later step fails.
 // `installDeveloperTools` parses the flags and removes their control parameters from the address bar.
@@ -41,6 +42,7 @@ const DEFAULT_EMPTY_HELP = $('emptyState').querySelector('.empty-state-sub')!.te
 viewer.setHost({
     currentId: () => app.state.currentId,
     persist: app.persist,
+    rename: (name) => (app.state.currentId ? renameNode(app.state.currentId, name) : Promise.resolve()),
     detach: app.detach,
     readingWidthChanged: app.setReadingWidth,
     openFile: share.receiveFile,

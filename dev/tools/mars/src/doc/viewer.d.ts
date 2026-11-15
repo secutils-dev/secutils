@@ -41,6 +41,8 @@ export interface ViewerHost {
      * rejection shows a toast, and the next change or `flush` calls it again.
      */
     persist(doc: ViewerDoc): Promise<void>;
+    /** Saves a title edit through the host's node rename flow, including its Undo feedback. */
+    rename?(name: string): Promise<void>;
     // New content is replacing a non-empty document; the next persist creates a new entry.
     detach(): void;
     /** The reader changed the width of a document that carries its own width. */

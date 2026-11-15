@@ -272,7 +272,7 @@ H<sub>2</sub>O keeps <kbd>inline</kbd> tags.
     await openDoc(page);
     await openExport(page);
     await expect(page.locator('.toolbar [role=tab]')).toHaveCount(0);
-    await expect(dlg(page).getByRole('heading')).toHaveText('Export “Internal title”');
+    await expect(dlg(page).getByRole('heading')).toHaveText('Export “Report”');
     await expect(dlg(page).locator('#exportDocumentName, details:not(.export-restrictions)')).toHaveCount(0);
     await expect(dlg(page).locator('#exportTocHint')).toHaveCount(0);
     await expect(dlg(page).getByRole('button', { name: 'Reset settings', exact: true })).toHaveCount(0);
@@ -385,12 +385,40 @@ H<sub>2</sub>O keeps <kbd>inline</kbd> tags.
     await dlg(page).getByLabel('In-page find', { exact: true }).uncheck();
     await expect(dlg(page).getByRole('button', { name: 'Download HTML', exact: true })).toBeEnabled();
     const output = await htmlDownload(page);
-    expect(output.name).toBe('Internal title.html');
+    expect(output.name).toBe('Escaped -title-.html');
+    expect(output.text).toContain('<title>Escaped &lt;title&gt;</title>');
     expect(output.text).toContain('<\\/script>');
     expect(output.text).not.toMatch(/PRIVATE REVIEW|id="pdf-btn"|id="find-btn"/);
     const source = await htmlFrame(page).locator('#su-md-source').textContent();
     expect(source).toContain('## One');
     expect(source).not.toMatch(/title:|su-comments/);
+  });
+
+  test('rename Undo restores export titles and filenames while keeping the original Markdown', async ({ page }) => {
+    await openDoc(page);
+    await page.getByRole('button', { name: 'Actions for Report', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Rename', exact: true }).click();
+    await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Renamed report');
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#docTitle')).toHaveText('Renamed report');
+    await openExport(page);
+    await expect(dlg(page).getByRole('heading')).toHaveText('Export “Renamed report”');
+    expect(
+      await htmlFrame(page)
+        .locator('html')
+        .evaluate((html) => html.ownerDocument.title),
+    ).toBe('Renamed report');
+    await dlg(page).getByRole('button', { name: 'Close export', exact: true }).click();
+    await page.locator('#toast').getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(page.locator('#docTitle')).toHaveText('Report');
+    await openExport(page);
+    await expect(dlg(page).getByRole('heading')).toHaveText('Export “Report”');
+    expect((await htmlDownload(page)).name).toBe('Report.html');
+    const pending = page.waitForEvent('download');
+    await dlg(page).getByRole('button', { name: 'Download Markdown', exact: true }).click();
+    const download = await pending;
+    expect(download.suggestedFilename()).toBe('Report.md');
+    expect(await readFile(await download.path(), 'utf8')).toBe(TEXT);
   });
 
   test('document menus download without navigation and advanced export stays in the document view', async ({

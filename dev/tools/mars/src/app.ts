@@ -644,20 +644,60 @@ async function persistOne(doc: PersistedDoc) {
 /**
  * Renames a node. A blank or unchanged name has no effect. A connected node publishes the name
  * through Sync. The open document updates in the viewer and in the temporary route.
+ * Returns a single-use undo, or null when nothing changes or access is read-only. Undo returns
+ * false if the node disappeared, its name changed again, storage switched, or edit access ended.
+ * Both writes share the persistence queue and leave document text and review history unchanged.
  */
 export function rename(id: string, name: string) {
     return serializePersistence(async () => {
         // Registration must not bind the node between the local write and the decision to publish metadata.
         const n = node(id);
-        if (!n || !name.trim() || n.name === name) return;
-        n.name = name.trim();
-        n.updatedAt = now();
-        if (n.connection) await sync.metadata(id);
-        else await save([n]);
-        if (id === state.currentId) viewer.renameDocument(n.name);
-        if (db.isTemporaryStorage() && id === state.currentId) await setRoute(id);
-        emit();
+        const next = name.trim();
+        if (!n || !next || n.name === next || !canRename(n)) return null;
+        const previous = n.name;
+        const generation = db.storageGeneration();
+        await saveName(n, next);
+        let undone = false;
+        return () =>
+            serializePersistence(async () => {
+                const current = node(id);
+                if (
+                    undone ||
+                    generation !== db.storageGeneration() ||
+                    !current ||
+                    current.name !== next ||
+                    !canRename(current)
+                )
+                    return false;
+                await saveName(current, previous);
+                undone = true;
+                return true;
+            });
     });
+}
+
+const canRename = (n: TreeNode) =>
+    !n.connection || (['owner', 'edit'].includes(n.connection.permission) && n.connection.phase !== 'ended');
+
+/** Stores a name through the node's current connection, without touching its text or side records. */
+async function saveName(n: TreeNode, name: string) {
+    const previous = { name: n.name, updatedAt: n.updatedAt };
+    n.name = name;
+    n.updatedAt = now();
+    try {
+        if (n.connection) await sync.metadata(n.id);
+        else await save([n]);
+    } catch (error) {
+        Object.assign(n, previous);
+        throw error;
+    }
+    if (n.id === state.currentId) viewer.renameDocument(n.name);
+    if (
+        db.isTemporaryStorage() &&
+        (n.id === state.currentId || ancestors(state.nodes, state.currentId).some((parent) => parent.id === n.id))
+    )
+        await setRoute(state.currentId);
+    emit();
 }
 
 /**

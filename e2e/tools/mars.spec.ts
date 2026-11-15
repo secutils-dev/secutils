@@ -480,6 +480,94 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     await expect(page.locator('#previewArticle h1')).toHaveText(/^Plan/);
   });
 
+  test('documents sidebar rename offers Undo for documents, folders, and title edits without losing text', async ({
+    page,
+  }) => {
+    await page.goto(tool.path);
+    await newDoc(page, '# Plan\n\nOriginal body.');
+    await row(page, 'Untitled').getByRole('button', { name: 'Actions for Untitled' }).click();
+    await page.getByRole('menuitem', { name: 'Rename', exact: true }).click();
+    await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Renamed document');
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#docTitle')).toHaveText('Renamed document');
+    await editSource(page, '# Plan\n\nBody edited after the rename.');
+    await page.locator('#toast').getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(page.locator('#docTitle')).toHaveText('Untitled');
+    await expect(page.locator('#previewArticle')).toContainText('Body edited after the rename.');
+
+    await page.locator('#docTitle').click();
+    await page.locator('#docTitle').press('ControlOrMeta+A');
+    await page.locator('#docTitle').pressSequentially('Title rename');
+    await page.locator('#docTitle').press('Enter');
+    await expect(row(page, 'Title rename')).toBeVisible();
+    const undo = page.locator('#toast').getByRole('button', { name: 'Undo', exact: true });
+    await undo.focus();
+    await undo.press('Enter');
+    await expect(row(page, 'Untitled')).toBeVisible();
+
+    await page.getByRole('button', { name: 'New document, folder, or import' }).click();
+    await page.getByRole('menuitem', { name: 'New folder', exact: true }).click();
+    await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Folder');
+    await page.keyboard.press('Enter');
+    await row(page, 'Untitled').dragTo(row(page, 'Folder'));
+    await row(page, 'Folder').press('F2');
+    await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Renamed folder');
+    await page.keyboard.press('Tab');
+    await expect(page.locator('#crumbs')).toHaveText('Renamed folder');
+    await undo.click();
+    await expect(row(page, 'Folder')).toBeVisible();
+    await expect(page.locator('#crumbs')).toHaveText('Folder');
+    await page.reload();
+    await expect(page.locator('#docTitle')).toHaveText('Untitled');
+    await expect(page.locator('#crumbs')).toHaveText('Folder');
+    await expect(page.locator('#previewArticle')).toContainText('Body edited after the rename.');
+  });
+
+  test('documents sidebar rename Undo never overwrites a later rename from another tab', async ({ page, context }) => {
+    await page.goto(tool.path);
+    await newDoc(page, '# Shared tabs');
+    await row(page, 'Untitled').press('F2');
+    await page.getByRole('textbox', { name: 'Name', exact: true }).fill('First rename');
+    await page.keyboard.press('Enter');
+    await expect(row(page, 'First rename')).toBeVisible();
+    const other = await context.newPage();
+    await other.goto(page.url());
+    await expect(other.locator('#docTitle')).toHaveText('First rename');
+    await other.getByRole('button', { name: 'Actions for First rename', exact: true }).click();
+    await other.getByRole('menuitem', { name: 'Rename', exact: true }).click();
+    await other.getByRole('textbox', { name: 'Name', exact: true }).fill('Later rename');
+    await other.keyboard.press('Enter');
+    await expect(row(page, 'Later rename')).toBeVisible();
+    await page.locator('#toast').getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(page.locator('#toast')).toContainText('Nothing was undone');
+    await expect(row(page, 'Later rename')).toBeVisible();
+    await page.reload();
+    await expect(row(page, 'Later rename')).toBeVisible();
+    await other.close();
+  });
+
+  test('documents sidebar rename ignores IME confirmation and cancelled or unchanged names', async ({ page }) => {
+    await page.goto(tool.path);
+    await newDoc(page, '# Rename safety');
+    const input = page.getByRole('textbox', { name: 'Name', exact: true });
+    await row(page, 'Untitled').press('F2');
+    await input.fill('研究');
+    for (const event of [{ isComposing: true }, { keyCode: 229 }]) {
+      await input.dispatchEvent('keydown', { key: 'Enter', bubbles: true, ...event });
+      await expect(input).toBeFocused();
+      await expect(page.locator('#toast').getByRole('button', { name: 'Undo', exact: true })).toBeHidden();
+    }
+    await input.press('Escape');
+    await expect(row(page, 'Untitled')).toBeVisible();
+    for (const name of ['  ', ' Untitled ']) {
+      await row(page, 'Untitled').press('F2');
+      await input.fill(name);
+      await input.press('Enter');
+      await expect(row(page, 'Untitled')).toBeVisible();
+      await expect(page.locator('#toast').getByRole('button', { name: 'Undo', exact: true })).toBeHidden();
+    }
+  });
+
   test('a folder deleted during an import stays deleted', async ({ page }) => {
     // `drop/` sorts first and is large, so the import is still filling it when it is deleted.
     const dir = test.info().outputPath('library');

@@ -224,6 +224,7 @@ Use this reference when the user asks how to do a task in MARS. Each row is one 
 | Read and edit | **Preview**, **Source**, or double-click a block in Preview | The header shows **Saved** after an edit. |
 | Show or hide documents | Header > **Toggle documents sidebar** | The latest docked choice survives resizing and reloads. The narrow-screen overlay does not change that choice. |
 | Import into a folder | Folder menu > **Import files…** or **Import a folder…** | Available at every depth for editable folders. Imports preserve filenames and subfolder structure. |
+| Undo a rename | **Undo** in the rename notification | Available for six seconds after a folder, document, or title rename. Restores only the name, unless the name changed again. |
 | Comment | Select rendered text in Preview | Threads stay in the file. |
 | Share a copy | **Share > Copy link > Snapshot** | Full and Short preserve saved document and parent-folder names without siblings. **Full** contains the unencrypted snapshot. **Short** encrypts it and expires after 1, 7, 14, or 30 days. |
 | Share live access | **Share > Copy link > Live** | One document. **Can view**, **Can comment**, or **Can edit**. Expires after 1, 7, 14, or 30 days (default 7). Folders support snapshots only. |
