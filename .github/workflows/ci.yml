@@ -35,6 +35,8 @@ jobs:
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v3.0.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       # Always install nightly toolchain for `Rustfmt`.
       - name: Install toolchains
@@ -134,6 +136,8 @@ jobs:
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v3.0.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Rust toolchain
         run: |
