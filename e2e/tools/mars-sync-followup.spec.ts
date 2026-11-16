@@ -1,4 +1,4 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 
@@ -55,6 +55,151 @@ async function connections(page: Page, name: string) {
 }
 
 test.describe('sync protocol follow-up', () => {
+  test('a 60-file folder import joins an existing 60-file Sync collection and pairs through directory pages', async ({
+    browser,
+  }, testInfo) => {
+    test.setTimeout(180000);
+    const setup = await clients(browser);
+    const [owner, peer] = setup.pages;
+    for (const context of setup.contexts)
+      await context.addInitScript(() => localStorage.setItem('mars.smartNudge', '{"never":true}'));
+    try {
+      await owner.goto(baseURL);
+      await expect(owner.locator('#emptyState')).toBeVisible();
+      await owner.locator('#importInput').setInputFiles({
+        name: 'Root.zip',
+        mimeType: 'application/zip',
+        buffer: Buffer.from(
+          zipSync(
+            Object.fromEntries(
+              Array.from({ length: 60 }, (_, index) => [
+                `Root/Existing ${index}.md`,
+                Buffer.from(`# Existing ${index}\n\nSaved text ${index}.`),
+              ]),
+            ),
+          ),
+        ),
+      });
+      await expect(owner.locator('#toast')).toContainText('Imported 60 documents');
+      await owner.getByRole('button', { name: 'Actions for Root', exact: true }).click();
+      await owner.getByRole('menuitem', { name: 'Sync', exact: true }).click();
+      await owner.getByRole('button', { name: 'Turn on sync', exact: true }).click();
+      await expect(owner.getByRole('textbox', { name: 'Sync link', exact: true })).toBeVisible({ timeout: 60000 });
+      await owner.getByRole('button', { name: 'Close', exact: true }).click();
+      const directory = testInfo.outputPath('2026-11-16');
+      await Promise.all(
+        Array.from({ length: 6 }, (_, index) => mkdir(`${directory}/Batch ${index}`, { recursive: true })),
+      );
+      await Promise.all(
+        Array.from({ length: 60 }, (_, index) =>
+          writeFile(
+            `${directory}/Batch ${index % 6}/Imported ${index}.md`,
+            `# Imported ${index}\n\nImported text ${index}.`,
+          ),
+        ),
+      );
+      await owner.getByRole('button', { name: 'Actions for Root', exact: true }).click();
+      const choosing = owner.waitForEvent('filechooser');
+      await owner.getByRole('menuitem', { name: 'Import a folder…', exact: true }).click();
+      await (await choosing).setFiles(directory);
+      await expect(owner.locator('#toast')).toContainText('Imported 60 documents');
+      await expect(owner.locator('#tree .tree-row[data-kind="doc"]')).toHaveCount(120);
+      await expect(owner.locator('#tree [data-phase="attention"]')).toHaveCount(0);
+      await expect(owner.locator('#tree [data-connection]')).toHaveCount(1, { timeout: 60000 });
+      await owner.getByRole('button', { name: 'Actions for Root', exact: true }).click();
+      await owner.getByRole('menuitem', { name: 'Sync', exact: true }).click();
+      await owner.getByRole('button', { name: 'Sync link', exact: true }).click();
+      const link = await owner.getByRole('textbox', { name: 'Sync link', exact: true }).inputValue();
+      await peer.goto(link);
+      await peer.getByRole('button', { name: 'Connect', exact: true }).click();
+      await expect(owner.getByRole('button', { name: 'Codes match', exact: true })).toBeVisible({ timeout: 15000 });
+      await owner.getByRole('button', { name: 'Codes match', exact: true }).click();
+      await expect(peer.locator('#toast')).toContainText('Sync connected', { timeout: 60000 });
+      // Pairing keeps nested folders collapsed. Expand them before counting visible document rows.
+      for (const name of ['2026-11-16', ...Array.from({ length: 6 }, (_, index) => `Batch ${index}`)]) {
+        const folder = peer
+          .getByRole('treeitem')
+          .filter({ has: peer.getByRole('button', { name: `Actions for ${name}`, exact: true }) });
+        await expect(folder).toBeVisible();
+        if ((await folder.getAttribute('aria-expanded')) === 'false')
+          await folder.getByText(name, { exact: true }).click();
+      }
+      await expect(peer.locator('#tree .tree-row[data-kind="doc"]')).toHaveCount(120);
+      await expect(peer.locator('#tree .tree-row[data-kind="folder"]')).toHaveCount(8);
+      for (const name of ['Existing 59', 'Imported 59']) {
+        await peer.getByRole('link', { name, exact: true }).click();
+        await expect(peer.locator('#previewArticle')).toContainText(
+          name === 'Existing 59' ? 'Saved text 59.' : 'Imported text 59.',
+        );
+      }
+      await peer.reload();
+      await expect(peer.locator('#tree .tree-row[data-kind="doc"]')).toHaveCount(120);
+    } finally {
+      await setup.close();
+    }
+  });
+
+  for (const code of ['document-limit', 'membership-or-document-limit']) {
+    test(`Sync item-limit feedback survives reload and retry (${code})`, async ({ page }) => {
+      test.setTimeout(60000);
+      await page.goto(baseURL);
+      await expect(page.locator('#emptyState')).toBeVisible();
+      await page.locator('#importInput').setInputFiles({
+        name: 'Root.zip',
+        mimeType: 'application/zip',
+        buffer: Buffer.from(zipSync({ 'Root/Existing.md': Buffer.from('# Existing\n\nSaved text.') })),
+      });
+      await expect(page.locator('#toast')).toContainText('Imported 1 document');
+      await page.getByRole('button', { name: 'Actions for Root', exact: true }).click();
+      await page.getByRole('menuitem', { name: 'Sync', exact: true }).click();
+      await page.getByRole('button', { name: 'Turn on sync', exact: true }).click();
+      await expect(page.getByRole('textbox', { name: 'Sync link', exact: true })).toBeVisible({ timeout: 15000 });
+      await page.getByRole('button', { name: 'Close', exact: true }).click();
+      let requests = 0;
+      await page.route('**/sync/document', (route) => {
+        requests++;
+        return route.fulfill({ status: 507, json: { error: code } });
+      });
+      await page.getByRole('button', { name: 'Actions for Root', exact: true }).click();
+      const choosing = page.waitForEvent('filechooser');
+      await page.getByRole('menuitem', { name: 'Import files…', exact: true }).click();
+      await (
+        await choosing
+      ).setFiles({
+        name: 'Pending.md',
+        mimeType: 'text/markdown',
+        buffer: Buffer.from('# Pending\n\nKeep this local text.'),
+      });
+      await expect(page.locator('#tree [data-phase="attention"]')).toHaveCount(1, { timeout: 15000 });
+      const open = async (name: string) => {
+        await page.getByRole('button', { name: `Actions for ${name}`, exact: true }).click();
+        await page.getByRole('menuitem', { name: 'Sync', exact: true }).click();
+      };
+      await open('Pending');
+      await expect(page.getByRole('alert')).toContainText('1,000');
+      await expect(page.getByRole('alert')).toContainText('saved locally');
+      await page.getByRole('button', { name: 'Manage folder Sync', exact: true }).click();
+      await expect(page.getByRole('alert')).toContainText('smaller folders');
+      const before = requests;
+      await page.getByRole('button', { name: 'Try again', exact: true }).click();
+      await expect.poll(() => requests).toBeGreaterThan(before);
+      await expect(page.getByRole('dialog', { name: 'Sync', exact: true })).not.toHaveAttribute('aria-busy', 'true');
+      await expect(page.getByRole('alert')).toContainText('1,000');
+      await page.getByRole('button', { name: 'Close', exact: true }).click();
+      await page.reload();
+      await expect(page.locator('#tree [data-phase="attention"]')).toHaveCount(1);
+      await open('Root');
+      await expect(page.getByRole('alert')).toContainText('1,000');
+      await page.unroute('**/sync/document');
+      await page.getByRole('button', { name: 'Try again', exact: true }).click();
+      await expect(page.getByRole('alert')).toHaveCount(0);
+      await expect(page.locator('#tree [data-phase="attention"]')).toHaveCount(0);
+      await page.getByRole('button', { name: 'Close', exact: true }).click();
+      await page.getByRole('link', { name: 'Pending', exact: true }).click();
+      await expect(page.locator('#previewArticle')).toContainText('Keep this local text.');
+    });
+  }
+
   test('duplicate identity repair keeps distinct local reviews and pending work through encrypted backup restoration', async ({
     browser,
   }) => {

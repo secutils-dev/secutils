@@ -27,9 +27,9 @@ import { signatureValid } from './store.ts';
  * Returns the registered documents and folders of the collection, for a grant on the whole collection.
  */
 export async function directory(session: MemberSession) {
-    const { readDirectory } = session;
+    const { readDirectory, request } = session;
 
-    return json(200, await readDirectory());
+    return json(200, await readDirectory(undefined, request.after));
 }
 /**
  * Marks a registered document as deleted with a persistent fence. Reads, joins, and writes of that document fail
@@ -235,7 +235,14 @@ export async function registerDocument(session: MemberSession) {
     if (await kv.get(deletedKey(grant.collection, id))) return fail('document-deleted', 410);
     if (!permitted(grant, id, 'tree') || !['doc', 'folder'].includes(request.kind))
         return fail('forbidden-document-create', 403);
-    const slot = await allocate(kv, `${NS}c/${grant.collection}/document-slots/`, id, LIMITS.documents);
+    const slot = await allocate(
+        kv,
+        `${NS}c/${grant.collection}/document-slots/`,
+        id,
+        LIMITS.documents,
+        LIMITS.inactiveSeconds,
+        'document-limit',
+    );
     await first(kv, docKey(grant.collection, id), b64json({ id, kind: request.kind, slot, creator: grant.member }));
     return json(201, { document: id });
 }

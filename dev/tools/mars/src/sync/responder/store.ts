@@ -58,6 +58,8 @@ export const inviteKey = (id: string) => `${NS}invitations/${id}`;
 export const revokedInviteKey = (collection: string, id: string) => `${NS}c/${collection}/revoked-invitations/${id}`;
 /** Key writes per request. The client sends 25 for each request; each write costs up to six KV operations. */
 export const MAX_KEY_WRITES = 25;
+/** Contended slot claims per request. Each attempt costs three KV operations, leaving room for authentication. */
+const MAX_SLOT_ATTEMPTS = 32;
 /** base64url limits for small sealed values: an encrypted device name and an encrypted Live key update. */
 export const MAX_LABEL_CHARS = 1024,
     MAX_LIVE_KEY_CHARS = 512;
@@ -162,15 +164,21 @@ export async function allocate(
     limitStatus = 507,
 ) {
     const encoded = b64json(id);
-    for (let i = 0; i < count; i++) {
-        const key = `${prefix}${String(i).padStart(3, '0')}`;
-        const existing = await kv.get(key);
-        if (existing === encoded) return key;
-        if (existing) continue;
+    for (let attempt = 0; attempt < MAX_SLOT_ATTEMPTS; attempt++) {
+        // Listing small slot values costs one operation even near the item limit. Refresh after
+        // a lost claim so a concurrent exact retry finds its existing slot rather than taking two.
+        const page = await kv.list({ prefix, limit: count, valuesIncluded: true });
+        const existing = page.entries.find((entry) => entry.value === encoded);
+        if (existing) return existing.key;
+        const occupied = new Set(page.entries.map((entry) => entry.key));
+        let index = 0;
+        while (index < count && occupied.has(`${prefix}${String(index).padStart(3, '0')}`)) index++;
+        if (index === count) return fail(limitError, limitStatus);
+        const key = `${prefix}${String(index).padStart(3, '0')}`;
         await kv.set(key, encoded, { ifAbsent: true, ttlSec });
         if ((await kv.get(key)) === encoded) return key;
     }
-    return fail(limitError, limitStatus);
+    return fail('slot-allocation-busy', 503);
 }
 /** The response of every action. */
 export type SyncResponse = ReturnType<typeof json>;

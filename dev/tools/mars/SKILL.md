@@ -246,13 +246,17 @@ Limits and behavior that users ask about:
 - **Up to date** means that the service acknowledged the upload. It does not mean that another person read the document.
 - Local edits save in the browser before upload. Sync continues after the original window closes.
 - New files show pending enrollment until registration completes. Retry survives reloads and retains the same remote identity across tabs.
+- The Sync dialog retains the enrollment failure reason after a reload.
+  At the item limit, local files remain safe. Disconnect the device, split the content, then sync smaller folders separately.
 - Incomplete folder imports recover automatically. Folder settings apply to the complete synced folder, not a separate child connection.
 - Synced icons contain a blue Sync mark. Default folders keep their star. Separate badges identify roots, pending files, Live links, and individually ended connections.
 - Legacy local-only copies stay outside synced folders under **Local copies**. MARS retains their saved text and connection data without uploading them again.
 - Best speed reuses vectors after a rename. Best quality includes the document name in its model input and requires new vectors.
 - Hidden tabs stop indexing after the current batch and resume when visible, unless manually paused.
   Incomplete-document vectors remain in the same open tab for resume. A reload keeps only complete, saved entries.
-- One IP address can create 50 Sync collections each hour. One Sync selection holds at most 100 documents and folders.
+- One IP address can create 50 Sync collections each hour.
+  One Sync collection holds at most 1,000 items, including its root folder, nested folders, and documents already connected.
+  Local imports do not have this Sync item limit.
 - Connected content expires after 30 days without activity. When the user opens it, the period starts again.
 - **Can edit** permits deletion of comments and threads. Only the author can edit a comment.
   **Can comment** permits deletion of the participant's own comments only.

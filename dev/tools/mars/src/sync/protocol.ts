@@ -22,10 +22,11 @@ export const DAY = 86400;
  * - `maxLiveSeconds`: longest lifetime of a Live invitation or a Live grant. `liveSeconds` is a shorter reference
  *   value.
  * - `pageSize`: checkpoint keys in one index page.
+ * - `directoryPageSize`: directory items per request, below the 200-operation KV budget.
  */
 export const LIMITS = Object.freeze({
     collections: 50,
-    documents: 100,
+    documents: 1000,
     members: 10,
     liveGrants: 50,
     collectionBytes: 100 * 1024 * 1024,
@@ -35,6 +36,7 @@ export const LIMITS = Object.freeze({
     liveSeconds: 7 * DAY,
     maxLiveSeconds: 30 * DAY,
     pageSize: 32,
+    directoryPageSize: 100,
 });
 /** Access level of a grant, from lowest to highest. `permitted` maps it to writable streams. */
 export type Permission = 'view' | 'comment' | 'edit' | 'owner';

@@ -48,7 +48,14 @@ export interface TreeNode {
     // `ended` is meaningful in a stored node.
     connection?: SyncBinding & { phase?: 'waiting' | 'working' | 'current' | 'offline' | 'attention' | 'ended' };
     // Explicit enrollment is durable even before registration succeeds. No credential belongs here.
-    syncPending?: { collection: string; member: string; root: string; phase: 'waiting' | 'attention' };
+    syncPending?: {
+        collection: string;
+        member: string;
+        root: string;
+        phase: 'waiting' | 'attention';
+        // Last failure code from the diagnostics allowlist. Never a raw service error or document content.
+        error?: string;
+    };
 }
 
 /** A random UUID. Node ids and new origin ids use it. */

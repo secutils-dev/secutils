@@ -26,6 +26,7 @@ import {
 import { Session, stagedSession, type SessionRecord, type ManifestNode } from '../session.ts';
 import { materializable, materializationVersion } from '../materialization.ts';
 import { Transport } from '../transport.ts';
+import { readDirectory } from '../directory.ts';
 import { BodyReplica } from '../replica.ts';
 import { linkWrappingKey, validLinkWrappingKey, type LiveLink } from '../live-link.ts';
 import {
@@ -272,7 +273,9 @@ export function start(scope: Scope) {
         // Runs after each complete poll, with the directory of the first index page when one arrived.
         cycle: async (signal, directory) => {
             if (scope.kind === 'folder') {
-                directory ??= await scoped(scope, 'directory', {}, signal);
+                directory ??= await readDirectory(scope.collection, (after) =>
+                    scoped(scope, 'directory', { after }, signal),
+                );
                 const root = sessions.get(scope.localRoot);
                 // A previous download can fail after its manifest was saved.
                 // Recover from that durable manifest even when no packet needs fetching.
@@ -532,7 +535,9 @@ export async function materialize(
             await rootSession.synchronize();
             const body = rootSession.record.body,
                 manifest = rootSession.manifest();
-            const directory = options.directory ?? (await scoped(scope, 'directory', {}, signal));
+            const directory =
+                options.directory ??
+                (await readDirectory(scope.collection, (after) => scoped(scope, 'directory', { after }, signal)));
             const version = materializationVersion(scope.localRoot, body, scope.exclusions, directory);
             const registered = new Map<string, { kind: string; deleted: boolean }>(
                 directory.documents.map((item: { id: string; kind: string; deleted: boolean }) => [item.id, item]),
@@ -677,7 +682,8 @@ export async function materialize(
  * The change is in memory only. It fetches the directory when the poll did not supply one.
  */
 async function reconcileDirectory(scope: Scope, signal?: AbortSignal, received?: SyncDirectory) {
-    const directory = received ?? (await scoped(scope, 'directory', {}, signal));
+    const directory =
+        received ?? (await readDirectory(scope.collection, (after) => scoped(scope, 'directory', { after }, signal)));
     for (const doc of directory.documents)
         if (doc.deleted) {
             const node = app.state.nodes.find((n) => belongs(n, scope) && n.connection!.document === doc.id);

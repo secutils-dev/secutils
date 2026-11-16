@@ -15,6 +15,7 @@ import {
 } from './protocol.ts';
 import { syncDebug, safeError } from './debug.ts';
 import type { Grant, SignedGrant, Stream, SyncBinding, SyncDirectory } from './protocol.ts';
+import { readDirectory } from './directory.ts';
 
 /**
  * Connection state for the UI.
@@ -438,19 +439,12 @@ export class Transport {
                     throw new SyncError('invalid-checkpoint-index', 503);
                 // The directory is unsigned service metadata. Check its size and each item before use.
                 if (page.directory !== undefined) {
-                    if (
-                        !Array.isArray(page.directory?.documents) ||
-                        page.directory.documents.length > LIMITS.documents ||
-                        page.directory.documents.some(
-                            (item: SyncDirectory['documents'][number]) =>
-                                !validId(item?.id) ||
-                                !['doc', 'folder'].includes(item.kind) ||
-                                typeof item.deleted !== 'boolean' ||
-                                !validId(item.creator),
-                        )
-                    )
-                        throw new SyncError('invalid-checkpoint-index', 503);
-                    directory = page.directory;
+                    directory = await readDirectory(
+                        this.options.replica.binding.collection,
+                        (after) => this.request('directory', { after }, reads.signal),
+                        page.directory,
+                    );
+                    if (!current()) return;
                 }
                 for (const entry of page.entries) {
                     if (!current()) return;

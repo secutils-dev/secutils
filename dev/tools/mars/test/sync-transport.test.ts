@@ -16,6 +16,7 @@ import {
     checkpointKey,
     decode,
     jsonBytes,
+    LIMITS,
     reverseSequence,
     SyncError,
     type SyncBinding,
@@ -129,6 +130,61 @@ test('warm polling skips applied checkpoints before GET and requests directory m
         assert.equal(calls.length, 2);
         assert.equal(calls[0].values.directory, true);
         assert.equal(calls[1].values.directory, undefined);
+    } finally {
+        transport.dispose();
+    }
+});
+
+test('polling gathers all directory pages before handing a hierarchy to the host', async () => {
+    const f = await replica();
+    const finished = deferred<void>();
+    const documents = Array.from({ length: 250 }, () => ({
+        id: crypto.randomUUID(),
+        kind: 'doc' as const,
+        creator: f.client.binding.member,
+        deleted: false,
+    })).sort((a, b) => a.id.localeCompare(b.id));
+    const prefix = `sync/v1/c/${f.client.binding.collection}/documents/`;
+    const calls: { action: string; after?: string }[] = [];
+    const transport = new Transport({
+        origin: 'https://mars.test',
+        token: 'private token',
+        ownerPublicKey: f.who.publicKey,
+        replica: f.client,
+        collectionScope: true,
+        directory: true,
+        environment: {
+            visible: () => true,
+            online: () => true,
+            visibility: new EventTarget(),
+            connectivity: new EventTarget(),
+        },
+        status: () => {},
+        projection: () => {},
+        fetch: async (url, options) => {
+            const action = new URL(String(url)).pathname.split('/').at(-1)!;
+            const { after } = JSON.parse(options!.body as string);
+            calls.push({ action, after });
+            const start = after ? documents.findIndex((item) => prefix + item.id === after) + 1 : 0;
+            const items = documents.slice(start, start + LIMITS.directoryPageSize);
+            const complete = start + items.length === documents.length;
+            const page = { documents: items, complete, cursor: complete ? null : prefix + items.at(-1)!.id };
+            return response(action === 'index' ? { entries: [], complete: true, cursor: null, directory: page } : page);
+        },
+        cycle: async (_signal, directory) => {
+            assert.deepEqual(directory, { documents });
+            finished.resolve();
+        },
+    });
+    try {
+        transport.start();
+        await finished.promise;
+        assert.deepEqual(
+            calls.map((call) => call.action),
+            ['index', 'directory', 'directory'],
+        );
+        assert.equal(calls[1].after, prefix + documents[99].id);
+        assert.equal(calls[2].after, prefix + documents[199].id);
     } finally {
         transport.dispose();
     }

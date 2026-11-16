@@ -16,6 +16,7 @@ import {
 import { liveAccess, newLiveSecret, openLiveBootstrap, sealLiveBootstrap } from '../src/sync/live-link.ts';
 import { newSyncSecret, syncAccess, sealSyncBootstrap, openSyncBootstrap } from '../src/sync/sync-link.ts';
 import { verifyDeletion, type SignedDeletion } from '../src/sync/deletion.ts';
+import { readDirectory } from '../src/sync/directory.ts';
 
 class TestKv implements Kv {
     values = new Map<string, { value: string; expiresAt: number | null }>();
@@ -239,7 +240,7 @@ test('personal devices delete with signed permanent receipts; guests, forgeries,
     assert.equal(await f.kv.get(`sync/v1/c/${f.owner.collection}/deleted/${unknown}`), null);
 });
 
-test('deletion receipt listing remains bounded at 100 items and legacy fences never become signed deletion authority', async () => {
+test('deletion receipt listing remains bounded at 1000 items and legacy fences never become signed deletion authority', async () => {
     const f = await fixture('folder');
     for (let i = 1; i < LIMITS.documents; i++) {
         const document = id();
@@ -295,23 +296,45 @@ test('collection creation permits 50 per IP per hour, reports a distinct error, 
     assert.equal((await f.request('create', { owner: await owner() })).status, 201);
 });
 
-test('the folder-item limit stays at 100 and is distinct from the hourly collection limit', async () => {
+test('the folder-item limit is 1000 and registrations and exact retries stay within the KV budget', async () => {
     const f = await fixture();
-    for (let i = 1; i < LIMITS.documents; i++)
-        assert.equal((await f.request('document', { document: id(), kind: i % 2 ? 'doc' : 'folder' })).status, 201);
+    assert.equal(LIMITS.documents, 1000);
+    let last = '';
+    for (let i = 1; i < LIMITS.documents; i++) {
+        last = id();
+        const result = await f.request('document', { document: last, kind: i % 2 ? 'doc' : 'folder' });
+        assert.equal(result.status, 201);
+        assert.ok(result.operations < 20);
+    }
+    const retry = await f.request('document', { document: last, kind: 'doc' });
+    assert.equal(retry.status, 201);
+    assert.ok(retry.operations < 20);
+    assert.equal([...f.kv.values.keys()].filter((key) => key.includes('/document-slots/')).length, LIMITS.documents);
     const rejected = await f.request('document', { document: id(), kind: 'doc' });
     assert.equal(rejected.status, 507);
-    assert.equal(rejected.body.error, 'membership-or-document-limit');
+    assert.equal(rejected.body.error, 'document-limit');
 });
 
-test('an index page can include the complete directory within the KV budget without exposing it to document-only grants', async () => {
+test('an index page starts a bounded directory read without exposing it to document-only grants', async () => {
     const f = await fixture('folder');
     for (let i = 1; i < LIMITS.documents; i++)
         assert.equal((await f.request('document', { document: id(), kind: i % 2 ? 'doc' : 'folder' })).status, 201);
     const page = await f.request('index', { directory: true });
     assert.equal(page.status, 200);
-    assert.equal(page.body.directory.documents.length, LIMITS.documents);
+    assert.equal(page.body.directory.documents.length, LIMITS.directoryPageSize);
     assert.ok(page.operations <= 200);
+    const directory = await readDirectory(
+        f.owner.collection,
+        async (after) => {
+            const result = await f.request('directory', { after });
+            assert.equal(result.status, 200);
+            assert.ok(result.operations <= 200);
+            return result.body;
+        },
+        page.body.directory,
+    );
+    assert.equal(directory.documents.length, LIMITS.documents);
+    assert.equal((await f.request('directory', { after: `sync/v1/c/${id()}/documents/${id()}` })).status, 400);
     assert.equal((await f.request('index')).body.directory, undefined);
     const who = await identity(),
         token = randomSecret(),
@@ -331,6 +354,19 @@ test('an index page can include the complete directory within the KV budget with
         );
     assert.equal((await f.request('grant', { signed: grant })).status, 201);
     assert.equal((await f.request('index', { member: grant.grant.member, directory: true }, token)).status, 403);
+});
+
+test('concurrent slot claims preserve capacity and exact retries share one slot', async () => {
+    const kv = new TestKv();
+    const prefix = 'slots/';
+    const ids = Array.from({ length: 12 }, id);
+    const claimed = await Promise.all(
+        ids.flatMap((value) => [value, value]).map((value) => responderInternals.allocate(kv, prefix, value, 12)),
+    );
+    for (let index = 0; index < ids.length; index++) assert.equal(claimed[index * 2], claimed[index * 2 + 1]);
+    assert.equal(new Set(claimed).size, 12);
+    assert.equal(kv.values.size, 12);
+    await assert.rejects(responderInternals.allocate(kv, prefix, id(), 12), /membership-or-document-limit/);
 });
 
 test('opening a folder can renew nested folder metadata along with unopened document replicas', async (t) => {

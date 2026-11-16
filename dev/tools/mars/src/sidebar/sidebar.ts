@@ -229,31 +229,37 @@ function resultHtml(r: Result) {
     return `<div class="tree-row result${r.snippet ? ' has-snippet' : ''}" role="treeitem" data-id="${r.n.id}" data-kind="doc"${r.start === undefined ? '' : ` data-start="${r.start}"`} tabindex="-1" draggable="false" aria-selected="${r.n.id === app.state.currentId}" aria-level="1">${renaming !== r.n.id ? docLink(r.n, content) : content}${connectionHtml(r.n)}${moreHtml(r.n)}</div>`;
 }
 
-// A render while a rename is in progress replaces the input; the typed name and the
-// selection carry over, and the focusout from removing the old input doesn't commit it.
+// A rename keeps its native input until it ends. Recreating a focused selection can trigger
+// delayed scrolling in Safari, even with focus({preventScroll: true}).
 let rendering = false;
-// `linkGesture` is true from pointerdown on a document link until its click was delivered.
+// `rowGesture` is true from pointerdown on any row control until its click was delivered.
 // `renderPending` records a render that was skipped during that time.
-let linkGesture = false,
+let rowGesture = false,
     renderPending = false;
 /**
  * Rebuilds the sidebar from the app state and the search box: the tree, or the result list when
- * a query is present. Keeps a rename draft, the keyboard focus, and the tab stop. During a
- * pointer gesture on a document link the render waits until the gesture ends.
+ * a query is present. Keeps keyboard focus and the tab stop. During a rename or a pointer
+ * gesture on a row, tree replacement waits until the interaction ends.
  */
 export function render() {
-    // A save must not replace the anchor between pointerdown and its native navigation.
-    if (linkGesture) {
+    // A save must not replace a row control between pointerdown and its click or native navigation.
+    if (rowGesture) {
         renderPending = true;
         return;
     }
+    if (renaming && !app.node(renaming)) renaming = null;
+    if (renaming && tree.querySelector('.tree-rename')) return;
     renderedDefaultFolder = defaultFolder()?.id;
     const q = filterText();
-    const typing = tree.querySelector<HTMLInputElement>('.tree-rename');
-    const draft = typing && { value: typing.value, start: typing.selectionStart, end: typing.selectionEnd };
-    // Background renders (saves, other tabs, search) keep keyboard focus on the same row.
-    const focusedRow = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>('#tree .tree-row')?.dataset
-        .id;
+    // A reader can scroll away from the focused row. Background updates must not reveal it again.
+    const scrollTop = tree.scrollTop;
+    const active = document.activeElement as HTMLElement | null;
+    const focusedRow = active?.closest<HTMLElement>('#tree .tree-row')?.dataset.id;
+    const focusedControl = active?.matches('.tree-more')
+        ? '.tree-more'
+        : active?.matches('[data-connection]')
+          ? '[data-connection]'
+          : null;
     rendering = true;
     try {
         if (!app.state.nodes.length) {
@@ -280,11 +286,14 @@ export function render() {
     const input = tree.querySelector<HTMLInputElement>('.tree-rename');
     if (input) {
         input.focus();
-        if (draft) {
-            input.value = draft.value;
-            input.setSelectionRange(draft.start, draft.end);
-        } else input.select();
-    } else if (focusedRow) focusTarget(rowEl(focusedRow))?.focus();
+        input.select();
+    } else if (focusedRow) {
+        const row = rowEl(focusedRow);
+        // A pending badge can disappear after enrollment. Keep focus on its row in that case.
+        const target = (focusedControl ? row?.querySelector<HTMLElement>(focusedControl) : null) ?? focusTarget(row);
+        target?.focus({ preventScroll: true });
+    }
+    if (!input) tree.scrollTop = scrollTop;
     const focus = focusTarget(rowEl(focusId ?? app.state.currentId) ?? tree.querySelector<HTMLElement>('.tree-row'));
     if (focus) focus.tabIndex = 0;
     renderCrumbs();
@@ -607,25 +616,26 @@ async function activate(n: TreeNode, row?: HTMLElement | null) {
 }
 
 tree.addEventListener('pointerdown', (e) => {
-    if (!(e.target as HTMLElement).closest('.tree-link')) return;
-    linkGesture = true;
+    const target = e.target as HTMLElement;
+    if (!target.closest('.tree-row')) return;
+    rowGesture = true;
     // Start the IDB write before a new tab reads this document, without canceling the gesture.
-    viewer.flush();
+    if (target.closest('.tree-link')) viewer.flush();
 });
-const endLinkGesture = () => {
-    if (!linkGesture) return;
+const endRowGesture = () => {
+    if (!rowGesture) return;
     // Native click/auxclick follows pointerup in the same task. Keep its anchor until then.
     setTimeout(() => {
-        linkGesture = false;
+        rowGesture = false;
         if (renderPending) {
             renderPending = false;
             render();
         }
     }, 0);
 };
-document.addEventListener('pointerup', endLinkGesture);
-document.addEventListener('pointercancel', endLinkGesture);
-window.addEventListener('blur', endLinkGesture);
+document.addEventListener('pointerup', endRowGesture);
+document.addEventListener('pointercancel', endRowGesture);
+window.addEventListener('blur', endRowGesture);
 
 tree.addEventListener('click', (e) => {
     const target = e.target as HTMLElement;
@@ -853,7 +863,7 @@ tree.addEventListener('dragend', () => {
     rowEl(dragId)?.classList.remove('dragging');
     dragId = null;
     clearDrop();
-    endLinkGesture();
+    endRowGesture();
 });
 tree.addEventListener('dragover', (e) => {
     const files = e.dataTransfer?.types.includes('Files');
@@ -877,7 +887,7 @@ tree.addEventListener('dragleave', (e) => {
 });
 tree.addEventListener('drop', async (e) => {
     e.preventDefault();
-    endLinkGesture();
+    endRowGesture();
     const drop = dropTarget(e);
     clearDrop();
     if (dragId) {

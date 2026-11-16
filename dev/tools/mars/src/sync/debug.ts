@@ -58,6 +58,8 @@ const CODES = new Set([
     'update-too-large',
     'invitation-expired',
     'membership-or-document-limit',
+    'document-limit',
+    'slot-allocation-busy',
     'renewal-needs-checkpoint',
     'connection-expired',
     'connection-ended',

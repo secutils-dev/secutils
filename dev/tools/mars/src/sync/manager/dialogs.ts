@@ -10,7 +10,7 @@ import * as db from '../../store/db.ts';
 import * as viewer from '../../doc/viewer.js';
 import { ancestors, descendants } from '../../tree/model.ts';
 import { esc } from '../../ui/ui.ts';
-import { LIMITS } from '../protocol.ts';
+import { LIMITS, SyncError } from '../protocol.ts';
 import { SyncDialog } from '../dialog.ts';
 import { icon, type IconName } from '../../ui/icons.ts';
 import { syncDebug, safeError } from '../debug.ts';
@@ -45,6 +45,8 @@ export async function details(id: string) {
  */
 export const syncError = (error: unknown) =>
     ({
+        'document-limit': `This Sync collection reached its limit of ${LIMITS.documents.toLocaleString('en-US')} documents and folders. The root and nested folders count too. Your files are saved locally. Disconnect this device. Split the content into smaller folders. Then turn on Sync for each folder separately. Retrying without changing the selection cannot increase the limit.`,
+        'membership-or-document-limit': `The service limit for this connection was reached. A Sync collection supports ${LIMITS.documents.toLocaleString('en-US')} documents and folders. Your files are saved locally. For an imported folder, disconnect this device and sync smaller folders separately. For device access, disconnect an unused device.`,
         'service-unavailable':
             'The Sync service is unavailable right now. Your documents are still here. Try again later.',
         'binding-missing':
@@ -53,7 +55,7 @@ export const syncError = (error: unknown) =>
             'An earlier setup left saved connection data without a connected item. Your saved documents stay unchanged.',
         'already-connected':
             'Some selected items are already connected. Open Sync for those items before connecting the whole folder.',
-        'selection-too-large': `This selection has more than ${LIMITS.documents} items. Choose a smaller folder.`,
+        'selection-too-large': `This selection exceeds the limit of ${LIMITS.documents.toLocaleString('en-US')} documents and folders, including the root and nested folders. Your files are saved locally. Turn on Sync for smaller folders separately.`,
         'temporary-storage': 'Save this document to your library before turning on Sync.',
         'sync-pending':
             'Your connection is saved, but its first upload has not finished. Keep this tab visible and check your connection, then try again.',
@@ -145,10 +147,12 @@ async function syncDialog(id: string) {
                     const path = [...ancestors(app.state.nodes, folder.id), folder]
                         .map((node) => node.name)
                         .join(' / ');
+                    const failure = item.syncPending?.error;
                     const answer = await ui.screen({
                         title: 'Sync',
                         html: `<p><strong>${esc(item.name)}</strong></p><p class="sync-status" data-state="${state}">${state === 'working' ? '<span class="su-spinner" aria-hidden="true"></span>' : icon(state === 'current' ? 'check' : state === 'ended' ? 'unlink' : state === 'attention' ? 'warning' : 'refresh')}<strong>${esc(status)}</strong></p>
                             <p>${connected ? 'Sync inherited from' : 'Folder Sync is disconnected for'} <strong>${esc(path)}</strong>.</p>
+                            ${failure ? `<p class="sync-error" role="alert">${esc(syncError(new SyncError(failure)))}</p>` : ''}
                             <p class="sync-fineprint">Device settings and Sync links apply to that folder and all its contents.</p>`,
                         buttons: [{ label: 'Manage folder Sync', value: 'manage', primary: true }],
                     });
@@ -225,6 +229,8 @@ async function syncDialog(id: string) {
                 const owner = scope.member.grant.permission === 'owner',
                     current = app.node(app.state.currentId);
                 const enrolling = pendingCreations(scope);
+                const enrollmentError = enrolling.find((item) => item.syncPending?.error)?.syncPending?.error;
+                const failure = enrollmentError ? syncError(new SyncError(enrollmentError)) : problem;
                 // The open document cannot publish its latest edits yet. Show `attention`, whatever the
                 // transport reports.
                 const blocked = !!current && belongs(current, scope) && !viewer.canPublishConnection();
@@ -270,7 +276,7 @@ async function syncDialog(id: string) {
                 const answer = await ui.screen({
                     title: 'Sync',
                     back: !!managedFolder,
-                    html: `<p><strong>${esc(node.name)}</strong></p>${scopeDescription}<p class="sync-status" data-state="${status}">${status === 'working' ? '<span class="su-spinner" aria-hidden="true"></span>' : icon(status === 'current' ? 'check' : status === 'ended' ? 'unlink' : status === 'attention' ? 'warning' : 'refresh')}<strong>${status === 'ended' ? 'Local copy · Sync ended' : label}</strong></p><p>${message}</p>${folder}${problem ? `<p role="alert">${esc(problem)}</p>` : ''}
+                    html: `<p><strong>${esc(node.name)}</strong></p>${scopeDescription}<p class="sync-status" data-state="${status}">${status === 'working' ? '<span class="su-spinner" aria-hidden="true"></span>' : icon(status === 'current' ? 'check' : status === 'ended' ? 'unlink' : status === 'attention' ? 'warning' : 'refresh')}<strong>${status === 'ended' ? 'Local copy · Sync ended' : label}</strong></p>${failure ? `<p class="sync-error" role="alert">${esc(failure)}</p>` : `<p>${message}</p>`}${folder}
                 ${enrolling.length ? `<p>${enrolling.length} ${enrolling.length === 1 ? 'item is' : 'items are'} saved locally and waiting to join Sync.</p>` : ''}
                 <nav class="sync-tools" aria-label="Sync settings">${owner && status !== 'ended' ? syncTool('Devices', 'access', 'refresh') : ''}</nav>
                 ${scope.selection ? '<p>To connect a new device, open the original synced folder.</p>' : ''}
@@ -304,7 +310,7 @@ async function syncDialog(id: string) {
                 else if (answer.value === 'retry') {
                     ui.busy('Trying again…');
                     await viewer.flush();
-                    resumeCreations(true);
+                    await resumeCreations(true);
                     // Resume in this order: a remote cleanup, then a saved key rotation, then the transport.
                     if (scope.cleanup) await continueCleanup(scope, ui.signal);
                     else if (await rotationRepository(scope).get()) await continueRotation(scope);

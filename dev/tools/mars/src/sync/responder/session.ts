@@ -77,15 +77,23 @@ export async function authenticate(context: Context, runtime: Runtime, request: 
     const owner = () => {
         if (grant.permission !== 'owner') return fail('owner-required', 403);
     };
-    const readDirectory = async (deleted = new Map<string, boolean>()) => {
+    const readDirectory = async (deleted = new Map<string, boolean>(), after?: unknown) => {
         if (grant.document !== null) return fail('forbidden-directory', 403);
+        const prefix = `${NS}c/${grant.collection}/documents/`;
+        if (
+            after !== undefined &&
+            (typeof after !== 'string' || !after.startsWith(prefix) || !validId(after.slice(prefix.length)))
+        )
+            return fail('invalid-directory-cursor');
         const page = await kv.list({
-            prefix: `${NS}c/${grant.collection}/documents/`,
-            limit: LIMITS.documents,
+            prefix,
+            after: after as string | undefined,
+            limit: LIMITS.directoryPageSize + 1,
             valuesIncluded: true,
         });
         const documents = [];
-        for (const entry of page.entries)
+        const entries = page.entries.slice(0, LIMITS.directoryPageSize);
+        for (const entry of entries)
             if (entry.value) {
                 const doc = parse<{ id: string; kind: string; creator?: string }>(entry.value);
                 if (!deleted.has(doc.id)) deleted.set(doc.id, !!(await kv.get(deletedKey(grant.collection, doc.id))));
@@ -96,7 +104,8 @@ export async function authenticate(context: Context, runtime: Runtime, request: 
                     deleted: deleted.get(doc.id)!,
                 });
             }
-        return { documents, root: collection.root };
+        const complete = page.entries.length <= LIMITS.directoryPageSize;
+        return { documents, root: collection.root, complete, cursor: complete ? null : entries.at(-1)!.key };
     };
     if (
         !['purge-live-document', 'deletions', 'delete-document'].includes(action) &&

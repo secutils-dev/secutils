@@ -64,6 +64,7 @@ The header menu button shows or hides the documents sidebar.
 MARS remembers the latest choice for the docked sidebar across window resizing and reloads.
 At 900px or narrower, the sidebar starts hidden and opens as an overlay.
 Overlay actions do not change the docked choice.
+Background updates keep the sidebar scroll position and the focused row control.
 
 An HTML file that MARS exported with embedded source opens as editable Markdown. Other HTML stays raw HTML.
 
@@ -103,6 +104,8 @@ After setup, the first window can close. New documents in a synced folder join S
 New files have a pending badge until registration and the folder manifest are complete.
 Registration retries retain the same remote identity and survive reloads. Multiple tabs share enrollment through browser locks.
 The Sync dialog shows unfinished enrollment and offers **Try again**.
+An enrollment failure shows its reason in the child and folder Sync dialogs, including after a reload.
+At the item limit, the dialog explains that files remain local and suggests separate, smaller synced folders.
 
 Recovery from incomplete imports is automatic. MARS retains local text and comments, and archives a saved replica before restoring its binding.
 The Sync dialog for a child shows its own status and the name of its synced folder.
@@ -120,7 +123,9 @@ For a synced folder, this action disconnects the complete folder. A copy that le
 **Delete everywhere** deletes a synced document or folder from every paired device, including when a paired device starts the deletion.
 Offline devices apply the deletion after they reconnect. Unsent edits stay separately under **Recovered Sync copies**.
 
-Limits: one IP address can create 50 Sync collections each hour, and one selection holds at most 100 documents and folders.
+Limits: one IP address can create 50 Sync collections each hour.
+One Sync collection holds at most 1,000 items, including its root folder, nested folders, and documents already connected.
+Local imports do not have this Sync item limit.
 Connected content expires after 30 days without activity. When you open a document or folder, the period starts again.
 
 ### Live links

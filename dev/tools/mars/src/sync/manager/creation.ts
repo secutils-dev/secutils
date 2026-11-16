@@ -9,6 +9,7 @@ import { ancestors, descendants, type TreeNode } from '../../tree/model.ts';
 import { creationIntent, type CreationJob } from '../creation.ts';
 import { Session, stagedSession, type SessionRecord } from '../session.ts';
 import { validId, validGrant, decode, SyncError } from '../protocol.ts';
+import { safeError } from '../debug.ts';
 import { verifyGrant } from '../crypto.ts';
 import { legacyLocalCopy, localCopyPlan, LOCAL_COPIES_FOLDER } from '../inheritance.ts';
 import { initialize } from './engine.ts';
@@ -377,10 +378,11 @@ async function enroll(job: CreationJob, signal: AbortSignal) {
     void driverFor(scope)?.upload();
 }
 
-/** Resumes durable jobs on startup, reconnect, and explicit retry. Hidden tabs make no requests. */
-export function resumeCreations(retry = false) {
+/** Resumes durable jobs. Returns the active run, including a queued explicit retry. Hidden tabs make no requests. */
+export function resumeCreations(retry = false): Promise<void> | undefined {
     if (retry) retryRequested = true;
-    if (!available() || running) return;
+    if (running) return running;
+    if (!available()) return;
     const explicitRetry = retryRequested;
     retryRequested = false;
     clearTimeout(timer);
@@ -416,8 +418,10 @@ export function resumeCreations(retry = false) {
                     const node = (await db.allNodes()).find((item) => item.id === job.id);
                     if (node?.syncPending) {
                         node.syncPending.phase = 'attention';
+                        node.syncPending.error = safeError(error).code;
                         await db.putNodes([node]);
-                        if (app.node(node.id)?.syncPending) app.node(node.id)!.syncPending!.phase = 'attention';
+                        if (app.node(node.id)?.syncPending)
+                            Object.assign(app.node(node.id)!.syncPending!, node.syncPending);
                         app.notify();
                     }
                 }
@@ -429,10 +433,10 @@ export function resumeCreations(retry = false) {
         if (!failed) failures = 0;
     })()
         .catch(() => {})
-        .finally(() => {
+        .finally(async () => {
             running = undefined;
             if (available() && retryRequested) {
-                resumeCreations();
+                await resumeCreations();
                 return;
             }
             if (available())
@@ -447,6 +451,7 @@ export function resumeCreations(retry = false) {
                     })
                     .catch(() => {});
         });
+    return running;
 }
 const wake = () => {
     if (available()) resumeCreations();

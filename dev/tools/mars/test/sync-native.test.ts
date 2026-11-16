@@ -16,6 +16,7 @@ import {
 } from '../src/sync/crypto.ts';
 import { decode, LIMITS, type Grant } from '../src/sync/protocol.ts';
 import { inlineMarsSync } from '../sync-assets.ts';
+import { readDirectory } from '../src/sync/directory.ts';
 
 // The runner links the existing secutils::js_runtime::JsRuntime with its real
 // 10 MiB heap and 10-second deadline. KV is stubbed; signatures and SHA-256 are real.
@@ -239,6 +240,35 @@ test(
             JSON.stringify({ collection: grant.collection, member: grant.member, directory: true }),
         );
         assert.equal(indexed.result.statusCode, 200);
-        assert.equal(JSON.parse(indexed.result.body).directory.documents.length, LIMITS.documents);
+        const directory = await readDirectory(
+            grant.collection,
+            async (after) => {
+                const page = run(
+                    'directory',
+                    JSON.stringify({ collection: grant.collection, member: grant.member, after }),
+                );
+                assert.equal(page.result.statusCode, 200);
+                return JSON.parse(page.result.body);
+            },
+            JSON.parse(indexed.result.body).directory,
+        );
+        assert.equal(directory.documents.length, LIMITS.documents);
+        const registration = run(
+            'document',
+            JSON.stringify({ collection: grant.collection, member: grant.member, document, kind: 'doc' }),
+        );
+        assert.equal(registration.result.statusCode, 201);
+        assert.ok(registration.operations < 20);
+        const full = run(
+            'document',
+            JSON.stringify({
+                collection: grant.collection,
+                member: grant.member,
+                document: crypto.randomUUID(),
+                kind: 'doc',
+            }),
+        );
+        assert.equal(full.result.statusCode, 507);
+        assert.equal(JSON.parse(full.result.body).error, 'document-limit');
     },
 );

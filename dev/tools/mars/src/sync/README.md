@@ -49,6 +49,8 @@ The job retains its portable document ID and key across retries and reloads.
 One browser lock per collection prevents competing seeds from tabs in the same profile.
 The job remains until the binding and encrypted manifest are saved. Pending jobs prevent a false **Up to date** status.
 Hidden tabs abort registration requests. Visible tabs and explicit retry resume unfinished jobs.
+Pending nodes retain an allowlisted failure code for the child and folder status dialogs.
+Explicit retry waits for enrollment before showing the updated status. A limit failure explains local retention and smaller-folder alternatives.
 
 Folder reconciliation automatically restores missing descendants to the original collection.
 An existing replica must match the collection and member and must not be ended or excluded.
@@ -70,7 +72,10 @@ Clients scan every index page, so delayed lower-sequence writes remain discovera
 Unknown document streams wait for their folder manifest instead of fetching ciphertext without a local session.
 
 Folder polls request `directory: true` on the first index page. The responder includes the existing authenticated directory result in that response.
-Document-only grants cannot request this metadata. The 100-item directory stays inside the existing KV and heap budgets.
+Document-only grants cannot request this metadata.
+Collections hold at most 1,000 documents and folders. Directory pages contain at most 100 items to stay inside the KV and heap budgets.
+The first index page includes the first directory page. Clients read all remaining pages before publishing the hierarchy.
+Slot allocation lists occupied slots before an immutable claim, so registration near the limit does not require 1,000 individual KV reads.
 The standalone directory endpoint and old index response remain available for older clients.
 
 Cached-manifest reconciliation includes the current directory and exclusions in its version key.

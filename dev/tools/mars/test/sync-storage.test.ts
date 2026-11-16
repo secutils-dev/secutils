@@ -48,7 +48,7 @@ test('node writes cannot erase a binding from another tab; only explicit scoped 
     assert.equal((await db.getDocument(local.id))!.node.connection, undefined);
 });
 
-test('new nodes and enrollment intents commit together, and a rename retains pending state', async () => {
+test('new nodes and enrollment intents commit together, and a rename retains pending state and its failure reason', async () => {
     const local = node(crypto.randomUUID());
     const job = {
         v: 1 as const,
@@ -59,12 +59,19 @@ test('new nodes and enrollment intents commit together, and a rename retains pen
         document: crypto.randomUUID(),
         key: 'saved-key',
     };
-    local.syncPending = { collection: job.collection, member: job.member, root: job.root, phase: 'waiting' };
+    local.syncPending = {
+        collection: job.collection,
+        member: job.member,
+        root: job.root,
+        phase: 'attention',
+        error: 'document-limit',
+    };
     await db.putNodes([local], { [local.id]: 'Exact imported source' }, { creations: [job] });
     const renamed = { ...local, name: 'New name' };
     delete renamed.syncPending;
     await db.putNodes([renamed]);
     assert.ok((await db.getDocument(local.id))!.node.syncPending);
+    assert.equal((await db.getDocument(local.id))!.node.syncPending!.error, 'document-limit');
     assert.deepEqual(await db.getSide('sync-create', local.id), job);
     await db.putNodes([renamed], {}, { detach: { collection: job.collection, member: job.member } });
     assert.equal((await db.getDocument(local.id))!.node.syncPending, undefined);

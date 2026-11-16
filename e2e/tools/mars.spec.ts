@@ -450,6 +450,69 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     }
   });
 
+  test('documents sidebar background renders preserve scroll, row controls, and rename drafts', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('mars.smartNudge', '{"never":true}'));
+    await page.goto(tool.path);
+    await expect(page.locator('#emptyState')).toBeVisible();
+    await page.locator('#importInput').setInputFiles(
+      Array.from({ length: 60 }, (_, index) => ({
+        name: `Note ${String(index).padStart(2, '0')}.md`,
+        mimeType: 'text/markdown',
+        buffer: Buffer.from(`# Note ${index}\n\nBody.`),
+      })),
+    );
+    await expect(docRows(page)).toHaveCount(60);
+    await expect(page.locator('#toast')).toContainText('Imported 60 documents');
+    const first = row(page, 'Note 00');
+    const tree = page.getByRole('tree', { name: 'Documents', exact: true });
+    const refresh = () => page.getByRole('searchbox', { name: 'Search documents' }).dispatchEvent('input');
+    for (const control of [first.getByRole('link'), first.getByRole('button', { name: 'Actions for Note 00' })]) {
+      await control.focus();
+      const top = await tree.evaluate((element) => {
+        element.scrollTop = 700;
+        return element.scrollTop;
+      });
+      expect(top).toBeGreaterThan(500);
+      for (let update = 0; update < 3; update++) {
+        await refresh();
+        await expect(control).toBeFocused();
+        expect(await tree.evaluate((element) => element.scrollTop)).toBe(top);
+      }
+    }
+    const actions = first.getByRole('button', { name: 'Actions for Note 00' });
+    await actions.scrollIntoViewIfNeeded();
+    const box = (await actions.boundingBox())!;
+    await actions.evaluate((element) => element.setAttribute('data-gesture-test', 'retained'));
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await refresh();
+    await expect(actions).toHaveAttribute('data-gesture-test', 'retained');
+    await page.mouse.up();
+    await expect(page.getByRole('menuitem', { name: 'Rename', exact: true })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await first.getByRole('link').focus();
+    await page.keyboard.press('F2');
+    const rename = page.getByRole('textbox', { name: 'Name', exact: true });
+    await rename.fill('Rename draft');
+    await rename.evaluate((element: HTMLInputElement) => element.setSelectionRange(2, 7));
+    const top = await tree.evaluate((element) => {
+      element.scrollTop = 700;
+      return element.scrollTop;
+    });
+    await refresh();
+    await expect(rename).toBeFocused();
+    await expect(rename).toHaveValue('Rename draft');
+    expect(
+      await rename.evaluate((element: HTMLInputElement) => [element.selectionStart, element.selectionEnd]),
+    ).toEqual([2, 7]);
+    expect(await tree.evaluate((element) => element.scrollTop)).toBe(top);
+    await page.keyboard.press('Escape');
+    await first.getByRole('link').focus();
+    await page.keyboard.press('End');
+    await expect(row(page, 'Note 59').getByRole('link')).toBeFocused();
+    expect(await tree.evaluate((element) => element.scrollTop)).toBeGreaterThan(700);
+  });
+
   test('folders: create, rename, move by drag, and delete with undo', async ({ page }) => {
     await page.goto(tool.path);
     await newDoc(page, '# Plan\n\nBody.');
