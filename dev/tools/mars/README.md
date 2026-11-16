@@ -104,6 +104,8 @@ After setup, the first window can close. New documents in a synced folder join S
 New files have a pending badge until registration and the folder manifest are complete.
 Registration retries retain the same remote identity and survive reloads. Multiple tabs share enrollment through browser locks.
 The Sync dialog shows unfinished enrollment and offers **Try again**.
+Open Sync dialogs update status, pending counts, and enrollment errors as they change.
+Status updates preserve keyboard focus and do not interrupt a footer action.
 An enrollment failure shows its reason in the child and folder Sync dialogs, including after a reload.
 At the item limit, the dialog explains that files remain local and suggests separate, smaller synced folders.
 

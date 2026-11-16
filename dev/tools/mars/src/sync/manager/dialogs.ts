@@ -11,10 +11,10 @@ import * as viewer from '../../doc/viewer.js';
 import { ancestors, descendants } from '../../tree/model.ts';
 import { esc } from '../../ui/ui.ts';
 import { LIMITS, SyncError } from '../protocol.ts';
-import { SyncDialog } from '../dialog.ts';
+import { SyncDialog, type FlowScreen } from '../dialog.ts';
 import { icon, type IconName } from '../../ui/icons.ts';
 import { syncDebug, safeError } from '../debug.ts';
-import { errorText, rootFor, sessions, belongs, saveScope, rotationRepository, driverFor } from './state.ts';
+import { rootFor, sessions, belongs, saveScope, rotationRepository, driverFor, rotations, scopeId } from './state.ts';
 import { initialize, start } from './engine.ts';
 import { SyncSetupError, enrollSelection, canRestartUnfinished } from './enrollment.ts';
 import { syncLinkPanel } from './pairing.ts';
@@ -39,9 +39,9 @@ export async function details(id: string) {
 /**
  * Maps a failure to one user-visible sentence.
  *
- * The lookup key is the code of a `SyncSetupError`, or else the error message, which holds the fixed code
- * of a service or setup failure. An unknown key returns a generic sentence, so raw error text never
- * reaches the reader. The result is plain text: the caller escapes it for markup.
+ * Only allowlisted codes reach the lookup. Unknown failures return a fixed generic sentence,
+ * so an untrusted service error cannot expose raw text or select an inherited object property.
+ * The result is plain text: the caller escapes it for markup.
  */
 export const syncError = (error: unknown) =>
     ({
@@ -74,7 +74,7 @@ export const syncError = (error: unknown) =>
             'This document is too large to sync. Your changes are saved here. Download a copy to keep them.',
         'invitation-expired': 'This Sync link expired. Go back and create a new one.',
         'unsupported-link-key-format': 'Unsupported link key format. Create a new link from the sharing device.',
-    })[error instanceof SyncSetupError ? error.code : errorText(error)] ??
+    })[safeError(typeof error === 'string' ? { message: error } : error).code] ??
     'Could not finish. Your document is still here. Try again.';
 /**
  * Markup for an action button inside a dialog body. `SyncDialog` resolves a click with `action`.
@@ -91,6 +91,26 @@ export const confirmationCode = (phrase: string) =>
         .split(' ')
         .map((part) => `<span>${esc(part)}</span>`)
         .join(' ')}</div>`;
+
+/** Keeps a status screen current until an action or dismissal. Subscription cleanup precedes the next flow screen. */
+async function liveScreen(ui: SyncDialog, read: () => FlowScreen | undefined) {
+    const screen = read();
+    if (!screen) {
+        ui.close();
+        return { value: 'close', text: '' };
+    }
+    const answer = ui.screen(screen);
+    const stop = app.onChange(() => {
+        const next = read();
+        if (next) ui.update(next);
+        else ui.close();
+    });
+    try {
+        return await answer;
+    } finally {
+        stop();
+    }
+}
 /**
  * Runs the Sync dialog for node `id` until the reader closes it.
  *
@@ -136,25 +156,29 @@ async function syncDialog(id: string) {
         while (ui.open) {
             try {
                 if (managedFolder && showingItem) {
-                    const item = app.node(itemId),
-                        folder = app.node(managedFolder);
-                    if (!item || !folder) break;
-                    const connected = !!folder.connection && folder.connection.phase !== 'ended';
-                    const state = item.syncPending?.phase ?? item.connection?.phase ?? 'waiting';
-                    const status = connected
-                        ? itemLabel(item) || 'Saved locally · Sync enrollment pending'
-                        : 'Local copy · folder Sync ended';
-                    const path = [...ancestors(app.state.nodes, folder.id), folder]
-                        .map((node) => node.name)
-                        .join(' / ');
-                    const failure = item.syncPending?.error;
-                    const answer = await ui.screen({
-                        title: 'Sync',
-                        html: `<p><strong>${esc(item.name)}</strong></p><p class="sync-status" data-state="${state}">${state === 'working' ? '<span class="su-spinner" aria-hidden="true"></span>' : icon(state === 'current' ? 'check' : state === 'ended' ? 'unlink' : state === 'attention' ? 'warning' : 'refresh')}<strong>${esc(status)}</strong></p>
-                            <p>${connected ? 'Sync inherited from' : 'Folder Sync is disconnected for'} <strong>${esc(path)}</strong>.</p>
-                            ${failure ? `<p class="sync-error" role="alert">${esc(syncError(new SyncError(failure)))}</p>` : ''}
+                    const answer = await liveScreen(ui, () => {
+                        const item = app.node(itemId),
+                            folder = app.node(managedFolder);
+                        if (!item || !folder) return;
+                        const connected = !!folder.connection && folder.connection.phase !== 'ended';
+                        const state = connected
+                            ? (item.syncPending?.phase ?? item.connection?.phase ?? 'waiting')
+                            : 'ended';
+                        const status = connected
+                            ? itemLabel(item) || 'Saved locally · Sync enrollment pending'
+                            : 'Local copy · folder Sync ended';
+                        const path = [...ancestors(app.state.nodes, folder.id), folder]
+                            .map((node) => node.name)
+                            .join(' / ');
+                        const failure = item.syncPending?.error;
+                        return {
+                            title: 'Sync',
+                            html: `<p data-sync-field="name"><strong>${esc(item.name)}</strong></p><p data-sync-field="status" class="sync-status" data-state="${state}" role="status" aria-atomic="true">${state === 'working' ? '<span class="su-spinner" aria-hidden="true"></span>' : icon(state === 'current' ? 'check' : state === 'ended' ? 'unlink' : state === 'attention' ? 'warning' : 'refresh')}<strong>${esc(status)}</strong></p>
+                            <p data-sync-field="folder">${connected ? 'Sync inherited from' : 'Folder Sync is disconnected for'} <strong>${esc(path)}</strong>.</p>
+                            <p data-sync-field="error" class="sync-error" role="alert"${failure ? '' : ' hidden'}>${failure ? esc(syncError(new SyncError(failure))) : ''}</p>
                             <p class="sync-fineprint">Device settings and Sync links apply to that folder and all its contents.</p>`,
-                        buttons: [{ label: 'Manage folder Sync', value: 'manage', primary: true }],
+                            buttons: [{ label: 'Manage folder Sync', value: 'manage', primary: true }],
+                        };
                     });
                     if (answer.value === 'close') break;
                     if (answer.value === 'manage') {
@@ -226,74 +250,84 @@ async function syncDialog(id: string) {
                     await syncLinkPanel(scope, ui);
                     if (!ui.open) break;
                 }
-                const owner = scope.member.grant.permission === 'owner',
-                    current = app.node(app.state.currentId);
-                const enrolling = pendingCreations(scope);
-                const enrollmentError = enrolling.find((item) => item.syncPending?.error)?.syncPending?.error;
-                const failure = enrollmentError ? syncError(new SyncError(enrollmentError)) : problem;
-                // The open document cannot publish its latest edits yet. Show `attention`, whatever the
-                // transport reports.
-                const blocked = !!current && belongs(current, scope) && !viewer.canPublishConnection();
-                const status =
-                    node.connection!.phase === 'ended'
-                        ? 'ended'
-                        : blocked || enrolling.some((item) => item.syncPending?.phase === 'attention')
-                          ? 'attention'
-                          : enrolling.length
-                            ? 'waiting'
-                            : (node.connection!.phase ?? 'waiting');
-                const rotating = !!(await rotationRepository(scope).get());
-                const label = {
-                    current: 'Up to date',
-                    working: 'Syncing changes…',
-                    waiting: 'Waiting to sync',
-                    offline: 'Offline',
-                    attention: 'Sync needs attention',
-                    ended: 'Sync stopped',
-                }[status];
-                const message = blocked
-                    ? 'Your latest changes are not saved yet. Try again, or download a copy before closing.'
-                    : status === 'offline'
-                      ? db.isTemporaryStorage()
-                          ? 'Your edits are waiting to sync. Keep this tab open or download a copy before closing.'
-                          : 'Your changes are saved here and will sync when you are back online.'
-                      : status === 'ended'
-                        ? 'This connection is no longer available. Your document stays here.'
-                        : status === 'attention'
-                          ? 'Your changes are saved here. Try again to finish syncing.'
-                          : owner
-                            ? 'Use a Sync link to connect your other device.'
-                            : 'Changes appear on your synced devices.';
-                const rootName = app.node(scope.localRoot)?.name ?? node.name;
-                const folder =
-                    scope.kind === 'folder' && node.id !== scope.localRoot
-                        ? `<p>This document syncs with the <strong>${esc(rootName)}</strong> folder. Sync links connect the whole folder.</p>`
-                        : '';
-                const scopeDescription =
-                    scope.kind === 'folder' && node.id === scope.localRoot
-                        ? '<p class="sync-fineprint">Folder settings apply to this folder and all its contents.</p>'
-                        : '';
-                const answer = await ui.screen({
-                    title: 'Sync',
-                    back: !!managedFolder,
-                    html: `<p><strong>${esc(node.name)}</strong></p>${scopeDescription}<p class="sync-status" data-state="${status}">${status === 'working' ? '<span class="su-spinner" aria-hidden="true"></span>' : icon(status === 'current' ? 'check' : status === 'ended' ? 'unlink' : status === 'attention' ? 'warning' : 'refresh')}<strong>${status === 'ended' ? 'Local copy · Sync ended' : label}</strong></p>${failure ? `<p class="sync-error" role="alert">${esc(failure)}</p>` : `<p>${message}</p>`}${folder}
-                ${enrolling.length ? `<p>${enrolling.length} ${enrolling.length === 1 ? 'item is' : 'items are'} saved locally and waiting to join Sync.</p>` : ''}
-                <nav class="sync-tools" aria-label="Sync settings">${owner && status !== 'ended' ? syncTool('Devices', 'access', 'refresh') : ''}</nav>
+                const answer = await liveScreen(ui, () => {
+                    const node = app.node(id);
+                    if (!node?.connection || !belongs(node, scope)) return;
+                    const owner = scope.member.grant.permission === 'owner',
+                        current = app.node(app.state.currentId);
+                    const enrolling = pendingCreations(scope);
+                    const enrollmentError = enrolling.find((item) => item.syncPending?.error)?.syncPending?.error;
+                    // The open document cannot publish its latest edits yet. Show `attention`, whatever the
+                    // transport reports.
+                    const blocked = !!current && belongs(current, scope) && !viewer.canPublishConnection();
+                    const status =
+                        node.connection!.phase === 'ended'
+                            ? 'ended'
+                            : blocked || enrolling.some((item) => item.syncPending?.phase === 'attention')
+                              ? 'attention'
+                              : enrolling.length
+                                ? 'waiting'
+                                : (node.connection!.phase ?? 'waiting');
+                    const rotating = rotations.has(scopeId(scope));
+                    if (status === 'current') problem = '';
+                    const transportError = driverFor(scope)?.lastFailure;
+                    const failure = enrollmentError
+                        ? syncError(new SyncError(enrollmentError))
+                        : status === 'attention' && transportError
+                          ? syncError(transportError)
+                          : problem;
+                    const label = {
+                        current: 'Up to date',
+                        working: 'Syncing changes…',
+                        waiting: 'Waiting to sync',
+                        offline: 'Offline',
+                        attention: 'Sync needs attention',
+                        ended: 'Sync stopped',
+                    }[status];
+                    const message = blocked
+                        ? 'Your latest changes are not saved yet. Try again, or download a copy before closing.'
+                        : status === 'offline'
+                          ? db.isTemporaryStorage()
+                              ? 'Your edits are waiting to sync. Keep this tab open or download a copy before closing.'
+                              : 'Your changes are saved here and will sync when you are back online.'
+                          : status === 'ended'
+                            ? 'This connection is no longer available. Your document stays here.'
+                            : status === 'attention'
+                              ? 'Your changes are saved here. Try again to finish syncing.'
+                              : owner
+                                ? 'Use a Sync link to connect your other device.'
+                                : 'Changes appear on your synced devices.';
+                    const rootName = app.node(scope.localRoot)?.name ?? node.name;
+                    const folder =
+                        scope.kind === 'folder' && node.id !== scope.localRoot
+                            ? `<p data-sync-field="folder">This document syncs with the <strong>${esc(rootName)}</strong> folder. Sync links connect the whole folder.</p>`
+                            : '';
+                    const scopeDescription =
+                        scope.kind === 'folder' && node.id === scope.localRoot
+                            ? '<p class="sync-fineprint">Folder settings apply to this folder and all its contents.</p>'
+                            : '';
+                    return {
+                        title: 'Sync',
+                        back: !!managedFolder,
+                        html: `<p data-sync-field="name"><strong>${esc(node.name)}</strong></p>${scopeDescription}<p data-sync-field="status" class="sync-status" data-state="${status}" role="status" aria-atomic="true">${status === 'working' ? '<span class="su-spinner" aria-hidden="true"></span>' : icon(status === 'current' ? 'check' : status === 'ended' ? 'unlink' : status === 'attention' ? 'warning' : 'refresh')}<strong>${status === 'ended' ? 'Local copy · Sync ended' : label}</strong></p><p data-sync-field="error" class="sync-error" role="alert"${failure ? '' : ' hidden'}>${esc(failure)}</p><p data-sync-field="message"${failure ? ' hidden' : ''}>${esc(message)}</p>${folder}
+                <p data-sync-field="pending"${enrolling.length ? '' : ' hidden'}>${enrolling.length} ${enrolling.length === 1 ? 'item is' : 'items are'} saved locally and waiting to join Sync.</p>
+                <nav data-sync-field="settings" class="sync-tools" aria-label="Sync settings"${owner && status !== 'ended' ? '' : ' hidden'}>${syncTool('Devices', 'access', 'refresh')}</nav>
                 ${scope.selection ? '<p>To connect a new device, open the original synced folder.</p>' : ''}
-                <p class="sync-fineprint">${status === 'ended' ? 'Your local copies remain available.' : scope.kind === 'folder' ? 'Sync for this folder and its documents will stop after 30 days without opening the folder or a document inside. Local copies will remain.' : "Sync will stop if this document isn't opened for 30 days, but local copies will remain."}</p>`,
-                    buttons: [
-                        {
-                            label: status === 'ended' ? 'Keep as local document' : 'Disconnect this device',
-                            value: 'stop',
-                            empty: true,
-                            left: true,
-                        },
-                        ...(status === 'attention' || status === 'waiting'
-                            ? [{ label: 'Try again', value: 'retry', primary: true }]
-                            : owner && status !== 'ended' && !rotating && !scope.selection
-                              ? [{ label: 'Sync link', value: 'link', primary: true }]
-                              : []),
-                    ],
+                <p data-sync-field="expiry" class="sync-fineprint">${status === 'ended' ? 'Your local copies remain available.' : scope.kind === 'folder' ? 'Sync for this folder and its documents will stop after 30 days without opening the folder or a document inside. Local copies will remain.' : "Sync will stop if this document isn't opened for 30 days, but local copies will remain."}</p>`,
+                        buttons: [
+                            {
+                                label: status === 'ended' ? 'Keep as local document' : 'Disconnect this device',
+                                value: 'stop',
+                                empty: true,
+                                left: true,
+                            },
+                            ...(status === 'attention' || status === 'waiting'
+                                ? [{ label: 'Try again', value: 'retry', primary: true }]
+                                : owner && status !== 'ended' && !rotating && !scope.selection
+                                  ? [{ label: 'Sync link', value: 'link', primary: true }]
+                                  : []),
+                        ],
+                    };
                 });
                 problem = '';
                 if (answer.value === 'back' && managedFolder) {

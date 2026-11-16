@@ -49,9 +49,12 @@ export const state = {
 };
 
 const listeners = new Set<() => void>();
-/** Registers a listener that runs synchronously after each state change. There is no removal. */
+/** Registers a synchronous state-change listener. Returns an idempotent function that removes it. */
 export const onChange = (fn: () => void) => {
     listeners.add(fn);
+    return () => {
+        listeners.delete(fn);
+    };
 };
 const emit = () => {
     for (const fn of listeners) fn();

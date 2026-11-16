@@ -1,9 +1,55 @@
-import { expect } from '@playwright/test';
+import { createRequire } from 'node:module';
+import { resolve } from 'node:path';
+
+import { expect, type Page } from '@playwright/test';
 
 import { test } from './_mars_test';
 
 const baseURL = process.env.MARS_BASE_URL ?? 'http://localhost:7373';
 test.use({ baseURL });
+const require = createRequire(resolve(process.cwd(), '../dev/tools/mars/package.json'));
+const { zipSync } = require('fflate') as { zipSync(files: Record<string, Uint8Array>): Uint8Array };
+
+async function connectedStatus(page: Page, folder = false) {
+  await page.goto('/');
+  await expect(page.locator('#emptyState')).toBeVisible();
+  if (folder) {
+    await page.locator('#importInput').setInputFiles({
+      name: 'Folder.zip',
+      mimeType: 'application/zip',
+      buffer: Buffer.from(zipSync({ 'Folder/Status.md': Buffer.from('# Status\n\nBefore.') })),
+    });
+    await expect(page.locator('#toast')).toContainText('Imported 1 document');
+  } else {
+    await page
+      .locator('#fileInput')
+      .setInputFiles({ name: 'Status.md', mimeType: 'text/markdown', buffer: Buffer.from('# Status\n\nBefore.') });
+    await expect(page.locator('#docTitle')).toHaveText('Status');
+  }
+  await page.getByRole('button', { name: `Actions for ${folder ? 'Folder' : 'Status'}`, exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Sync', exact: true }).click();
+  await page.getByRole('button', { name: 'Turn on sync', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Sync link', exact: true })).toBeVisible({ timeout: 15000 });
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+}
+
+async function openStatus(page: Page, name: string) {
+  await page.getByRole('button', { name: `Actions for ${name}`, exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Sync', exact: true }).click();
+  return page.getByRole('dialog', { name: 'Sync', exact: true });
+}
+
+async function editStatus(page: Page) {
+  await page.getByRole('link', { name: 'Status', exact: true }).click();
+  await page.getByRole('button', { name: 'Source', exact: true }).click();
+  await page.waitForFunction(() => !!(window as { __suEditorAPI?: unknown }).__suEditorAPI);
+  await page.evaluate(() =>
+    (window as unknown as { __suEditorAPI: { setText(value: string): void } }).__suEditorAPI.setText(
+      '# Status\n\nAfter.',
+    ),
+  );
+  await page.getByRole('button', { name: 'Preview', exact: true }).click();
+}
 
 test.describe('sync user experience', () => {
   test.beforeEach(async ({ context }) => {
@@ -12,6 +58,180 @@ test.describe('sync user experience', () => {
     await context.route(`${origin}/**`, (route) =>
       route.continue({ headers: { ...route.request().headers(), ...headers } }),
     );
+  });
+  for (const selection of ['document', 'folder', 'child'] as const) {
+    test(`open Sync status updates after upload without reopening or moving focus (${selection})`, async ({ page }) => {
+      await connectedStatus(page, selection !== 'document');
+      let release = () => {};
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      await page.route('**/sync/append', async (route) => {
+        await held;
+        await route.fallback();
+      });
+      try {
+        await editStatus(page);
+        await expect(page.locator('#tree [data-phase="working"]')).toHaveCount(1);
+        const dialog = await openStatus(page, selection === 'folder' ? 'Folder' : 'Status');
+        const status = dialog.locator('.sync-status');
+        await expect(status).toHaveText(selection === 'child' ? 'Syncing' : 'Syncing changes…');
+        await expect(status).toHaveAttribute('role', 'status');
+        const control = dialog.getByRole('button', {
+          name:
+            selection === 'child'
+              ? 'Manage folder Sync'
+              : selection === 'folder'
+                ? 'Devices'
+                : 'Disconnect this device',
+          exact: true,
+        });
+        await control.focus();
+        await control.evaluate((element) => element.setAttribute('data-live-test', 'retained'));
+        release();
+        await expect(page.locator('#tree [data-phase="current"]')).toHaveCount(1);
+        await expect(status).toHaveText('Up to date');
+        await expect(control).toBeFocused();
+        await expect(control).toHaveAttribute('data-live-test', 'retained');
+        await expect(status.locator('.su-spinner')).toHaveCount(0);
+        await page.getByRole('button', { name: 'Close', exact: true }).click();
+        await expect(page.locator('#syncDialog')).toHaveCount(0);
+      } finally {
+        release();
+      }
+    });
+  }
+
+  test('open Sync status follows offline and online changes without resetting focus', async ({ page, context }) => {
+    await connectedStatus(page);
+    const dialog = await openStatus(page, 'Status');
+    const control = dialog.getByRole('button', { name: 'Disconnect this device', exact: true });
+    await control.focus();
+    try {
+      await context.setOffline(true);
+      await expect(dialog.locator('.sync-status')).toHaveText('Offline');
+      await expect(dialog.locator('[data-sync-field="message"]')).toContainText('back online');
+      await expect(control).toBeFocused();
+      await context.setOffline(false);
+      await expect(dialog.locator('.sync-status')).toHaveText('Up to date', { timeout: 15000 });
+      await expect(control).toBeFocused();
+      await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+    } finally {
+      await context.setOffline(false);
+    }
+  });
+
+  for (const outcome of ['attention', 'ended'] as const) {
+    test(`open Sync status follows an upload failure in place (${outcome})`, async ({ page }) => {
+      await connectedStatus(page);
+      let release = () => {};
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      await page.route('**/sync/append', async (route) => {
+        await held;
+        await route.fulfill({
+          status: outcome === 'ended' ? 403 : 507,
+          json: { error: outcome === 'ended' ? 'access-ended' : 'sync-storage-full' },
+        });
+      });
+      try {
+        await editStatus(page);
+        await expect(page.locator('#tree [data-phase="working"]')).toHaveCount(1);
+        const dialog = await openStatus(page, 'Status');
+        const close = dialog.getByRole('button', { name: 'Close', exact: true });
+        await close.focus();
+        release();
+        await expect(dialog.locator('.sync-status')).toHaveText(
+          outcome === 'ended' ? 'Local copy · Sync ended' : 'Sync needs attention',
+        );
+        await expect(close).toBeFocused();
+        if (outcome === 'ended') {
+          await expect(dialog.getByRole('button', { name: 'Devices', exact: true })).toHaveCount(0);
+          await expect(dialog.getByRole('button', { name: 'Keep as local document', exact: true })).toBeVisible();
+          await expect(dialog.getByRole('button', { name: 'Sync link', exact: true })).toHaveCount(0);
+        } else {
+          await expect(dialog.getByRole('alert')).toContainText('Sync storage is full');
+          await expect(dialog.getByRole('button', { name: 'Try again', exact: true })).toBeVisible();
+        }
+        await close.click();
+        await expect(page.locator('#previewArticle')).toContainText('After.');
+      } finally {
+        release();
+      }
+    });
+  }
+
+  test('open Sync status shows enrollment errors immediately without resetting focus', async ({ page }) => {
+    await connectedStatus(page, true);
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route('**/sync/document', async (route) => {
+      await held;
+      await route.fulfill({ status: 507, json: { error: 'document-limit' } });
+    });
+    try {
+      await page.getByRole('button', { name: 'Actions for Folder', exact: true }).click();
+      const choosing = page.waitForEvent('filechooser');
+      await page.getByRole('menuitem', { name: 'Import files…', exact: true }).click();
+      await (
+        await choosing
+      ).setFiles({ name: 'Pending.md', mimeType: 'text/markdown', buffer: Buffer.from('# Pending\n\nKeep this.') });
+      await expect(page.locator('#toast')).toContainText('Imported 1 document');
+      const dialog = await openStatus(page, 'Folder');
+      await expect(dialog.locator('.sync-status')).toHaveText('Waiting to sync');
+      await expect(dialog.getByRole('alert')).toHaveCount(0);
+      const devices = dialog.getByRole('button', { name: 'Devices', exact: true });
+      await devices.focus();
+      release();
+      await expect(dialog.locator('.sync-status')).toHaveText('Sync needs attention');
+      await expect(dialog.getByRole('alert')).toContainText('1,000');
+      await expect(dialog.getByRole('alert')).toContainText('saved locally');
+      await expect(devices).toBeFocused();
+      await expect(dialog.getByRole('button', { name: 'Try again', exact: true })).toBeVisible();
+      await page.getByRole('button', { name: 'Close', exact: true }).click();
+    } finally {
+      release();
+    }
+  });
+
+  test('open Sync status keeps a focused footer action until blur while pending enrollment completes', async ({
+    page,
+  }) => {
+    await connectedStatus(page, true);
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route('**/sync/document', async (route) => {
+      await held;
+      await route.fallback();
+    });
+    try {
+      await page.getByRole('button', { name: 'Actions for Folder', exact: true }).click();
+      const choosing = page.waitForEvent('filechooser');
+      await page.getByRole('menuitem', { name: 'Import files…', exact: true }).click();
+      await (
+        await choosing
+      ).setFiles({ name: 'Pending.md', mimeType: 'text/markdown', buffer: Buffer.from('# Pending\n\nKeep this.') });
+      await expect(page.locator('#toast')).toContainText('Imported 1 document');
+      const dialog = await openStatus(page, 'Folder');
+      await expect(dialog.locator('[data-sync-field="pending"]')).toContainText('1 item is saved locally');
+      const retry = dialog.getByRole('button', { name: 'Try again', exact: true });
+      await retry.focus();
+      release();
+      await expect(dialog.locator('.sync-status')).toHaveText('Up to date', { timeout: 15000 });
+      await expect(dialog.locator('[data-sync-field="pending"]')).toBeHidden();
+      await expect(retry).toBeFocused();
+      await dialog.getByRole('button', { name: 'Close', exact: true }).focus();
+      await expect(dialog.getByRole('button', { name: 'Sync link', exact: true })).toBeVisible();
+      await expect(retry).toHaveCount(0);
+      await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+    } finally {
+      release();
+    }
   });
   test('sidebar Sync icons complete full turns across repeated renders and respect reduced motion', async ({
     page,

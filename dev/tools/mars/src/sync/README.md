@@ -245,6 +245,11 @@ Cleanup failure keeps the local document and its saved cleanup job. Source delet
 
 ## Activity and UI boundaries
 
+Open Sync status screens subscribe to app changes and unsubscribe before navigation or dismissal.
+`SyncDialog.update` changes marked `data-sync-field` content without replacing the screen or resolving its action promise.
+Repeated states leave live regions unchanged. Footer action changes wait until neither focus nor a pointer gesture remains in the footer.
+This keeps a completed upload from appearing stuck and prevents a status update from replacing an active control.
+
 Static Sync marks share one SVG viewport with each file or folder glyph. Default folders keep their star instead.
 Separate badges identify connection roots, pending enrollment, independent Live links, and individually ended connections.
 Transport phases belong to the complete scope, so inherited rows do not repeat its activity or error badge.

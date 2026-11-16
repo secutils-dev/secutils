@@ -247,6 +247,7 @@ Limits and behavior that users ask about:
 - Local edits save in the browser before upload. Sync continues after the original window closes.
 - New files show pending enrollment until registration completes. Retry survives reloads and retains the same remote identity across tabs.
 - The Sync dialog retains the enrollment failure reason after a reload.
+  Open Sync dialogs update status and pending enrollment without a reload. Updates preserve keyboard focus.
   At the item limit, local files remain safe. Disconnect the device, split the content, then sync smaller folders separately.
 - Incomplete folder imports recover automatically. Folder settings apply to the complete synced folder, not a separate child connection.
 - Synced icons contain a blue Sync mark. Default folders keep their star. Separate badges identify roots, pending files, Live links, and individually ended connections.

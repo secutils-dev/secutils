@@ -49,6 +49,10 @@ export class SyncDialog {
     private input: HTMLInputElement | null = null;
     private answer: ((value: { value: string; text: string }) => void) | null = null;
     private resetBusy: (() => void) | null = null;
+    private deferredButtons: FlowButton[] | null = null;
+    private footerGesture = false;
+    private lastUpdate: FlowScreen | null = null;
+    private activeField: HTMLElement | null = null;
     constructor(id = 'syncDialog') {
         this.signal = this.controller.signal;
         this.element.className = 'su-dialog mars-modal sync-dialog';
@@ -85,6 +89,31 @@ export class SyncDialog {
             if (!this.back.hidden && !this.back.disabled) this.resolve('back');
             else this.close();
         });
+        this.foot.addEventListener('pointerdown', () => {
+            this.footerGesture = true;
+        });
+        this.body.addEventListener('pointerdown', (event) => {
+            this.activeField = (event.target as Element).closest<HTMLElement>('[data-sync-field]');
+        });
+        const endGesture = () => {
+            if (!this.footerGesture && !this.activeField) return;
+            // Deliver click before a status update can replace its target.
+            setTimeout(() => {
+                this.footerGesture = false;
+                this.activeField = null;
+                if (this.lastUpdate) this.update(this.lastUpdate);
+                this.flushButtons();
+            }, 0);
+        };
+        document.addEventListener('pointerup', endGesture, { signal: this.signal });
+        document.addEventListener('pointercancel', endGesture, { signal: this.signal });
+        window.addEventListener('blur', endGesture, { signal: this.signal });
+        this.foot.addEventListener('focusout', () => queueMicrotask(() => this.flushButtons()));
+        this.body.addEventListener('focusout', () =>
+            queueMicrotask(() => {
+                if (this.lastUpdate) this.update(this.lastUpdate);
+            }),
+        );
     }
     /** False after the dialog closed. */
     get open() {
@@ -128,26 +157,12 @@ export class SyncDialog {
                 }
             };
         }
-        const button = (choice: FlowButton, index: number) => {
-            const element = document.createElement('button');
-            element.type = 'button';
-            element.textContent = choice.label;
-            const empty =
-                !choice.primary &&
-                !choice.danger &&
-                (choice.empty ?? ['', 'back', 'close', 'cancel'].includes(choice.value));
-            element.className = `${buttonClass({ ...choice, empty, text: empty, flush: empty ? (choice.left ? 'left' : index === (screen.buttons?.length ?? 0) - 1 ? 'right' : undefined) : undefined })}${choice.left ? ' sync-footer-left' : ''}`;
-            element.onclick = () => {
-                if (choice.run)
-                    void Promise.resolve(choice.run(element)).catch(() => this.message('Could not finish. Try again.'));
-                else this.resolve(choice.value);
-            };
-            return element;
-        };
-        this.foot.replaceChildren(this.back, ...(screen.buttons ?? []).map(button));
+        this.foot.replaceChildren(
+            this.back,
+            ...(screen.buttons ?? []).map((choice, index) => this.button(choice, index, screen.buttons!.length)),
+        );
         this.foot.hidden = !screen.back && !screen.buttons?.length;
-        for (const element of this.body.querySelectorAll<HTMLButtonElement>('[data-sync-action]'))
-            element.onclick = () => this.resolve(element.dataset.syncAction!);
+        this.bindActions();
         if (!this.element.open) this.element.showModal();
         if (this.input && !this.input.readOnly) this.input.focus();
         else this.heading.focus({ preventScroll: true });
@@ -159,7 +174,87 @@ export class SyncDialog {
     resolve(value: string) {
         const answer = this.answer;
         this.answer = null;
+        this.deferredButtons = null;
+        this.lastUpdate = null;
         answer?.({ value, text: this.input?.value.trim() ?? '' });
+    }
+    /**
+     * Updates marked `data-sync-field` blocks and footer actions without resolving the screen.
+     * Title, Back, and form values stay unchanged. Busy, closed, or resolved screens ignore updates.
+     * Focused or pressed blocks stay intact until the interaction ends.
+     */
+    update(screen: FlowScreen) {
+        if (!this.open || !this.answer || this.resetBusy) return;
+        this.lastUpdate = screen;
+        const template = document.createElement('template');
+        template.innerHTML = screen.html;
+        const fields = new Map(
+            [...template.content.querySelectorAll<HTMLElement>('[data-sync-field]')].map((field) => [
+                field.dataset.syncField,
+                field,
+            ]),
+        );
+        for (const field of this.body.querySelectorAll<HTMLElement>('[data-sync-field]')) {
+            const next = fields.get(field.dataset.syncField);
+            if (!next || field === this.activeField || field.contains(document.activeElement)) continue;
+            if (field.innerHTML !== next.innerHTML) field.innerHTML = next.innerHTML;
+            for (const attribute of [...field.attributes])
+                if (!next.hasAttribute(attribute.name)) field.removeAttribute(attribute.name);
+            for (const attribute of next.attributes)
+                if (field.getAttribute(attribute.name) !== attribute.value)
+                    field.setAttribute(attribute.name, attribute.value);
+        }
+        this.bindActions();
+        this.buttons(screen.buttons ?? []);
+    }
+    /** Binds body actions after a screen or marked content update. User-derived markup must escape these reserved attributes. */
+    private bindActions() {
+        for (const element of this.body.querySelectorAll<HTMLButtonElement>('[data-sync-action]'))
+            element.onclick = () => this.resolve(element.dataset.syncAction!);
+    }
+    /** Creates or updates one footer button. Its value identifies the action across status updates. */
+    private button(choice: FlowButton, index: number, total: number, element = document.createElement('button')) {
+        element.type = 'button';
+        element.value = choice.value;
+        if (element.textContent !== choice.label) element.textContent = choice.label;
+        const empty =
+            !choice.primary &&
+            !choice.danger &&
+            (choice.empty ?? ['', 'back', 'close', 'cancel'].includes(choice.value));
+        element.className = `${buttonClass({ ...choice, empty, text: empty, flush: empty ? (choice.left ? 'left' : index === total - 1 ? 'right' : undefined) : undefined })}${choice.left ? ' sync-footer-left' : ''}`;
+        element.onclick = () => {
+            if (choice.run)
+                void Promise.resolve(choice.run(element)).catch(() => this.message('Could not finish. Try again.'));
+            else this.resolve(choice.value);
+        };
+        return element;
+    }
+    /** Defers footer changes until focus and a pointer gesture leave the controls. Existing action nodes are reused. */
+    private buttons(choices: FlowButton[]) {
+        if (this.footerGesture || this.foot.contains(document.activeElement)) {
+            this.deferredButtons = choices;
+            return;
+        }
+        this.deferredButtons = null;
+        const existing = new Map(
+            [...this.foot.querySelectorAll<HTMLButtonElement>('button')]
+                .filter((button) => button !== this.back)
+                .map((button) => [button.value, button]),
+        );
+        const next = [
+            this.back,
+            ...choices.map((choice, index) => this.button(choice, index, choices.length, existing.get(choice.value))),
+        ];
+        if (
+            next.length !== this.foot.children.length ||
+            next.some((element, index) => this.foot.children[index] !== element)
+        )
+            this.foot.replaceChildren(...next);
+        this.foot.hidden = this.back.hidden && !choices.length;
+    }
+    /** Applies the latest deferred footer state while the same screen is still awaiting an action. */
+    private flushButtons() {
+        if (this.open && this.answer && !this.resetBusy && this.deferredButtons) this.buttons(this.deferredButtons);
     }
     /** Shows a status line below the body. It has the `status` role for screen readers. */
     message(text: string) {
