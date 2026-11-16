@@ -130,15 +130,21 @@ export const rootFor = (node: TreeNode) => {
     const binding = node.connection ?? node.syncPending;
     return binding ? scopes.get(scopeKey(binding.collection, binding.member)) : undefined;
 };
+/** An import adds its browser-local source and baseline to the same replica commit. */
+export interface SnapshotImport {
+    expected: db.IncomingSnapshot;
+    text: string;
+    source: TreeNode['importSource'];
+    check(): void;
+}
 /**
  * Storage adapter for the session of local node `id`.
- * `commit` saves the replica record, the tree node, and the Markdown projection in one transaction.
- * It throws `ReplicaConflict` when the stored revision or binding differs, and an `Error` when the
- * node no longer exists. After the write it updates the in-memory node and notifies the app.
- * `remote` marks a commit that did not come from a local edit. Only such a commit can mark the
- * document as changed since the last review.
+ * `commit` saves the replica, node, projection, and optional import source in one transaction.
+ * A changed revision, binding, or prepared import snapshot throws `ReplicaConflict` without writes.
+ * After the write it updates the in-memory node and notifies the app.
+ * Remote changes and explicit imports can mark the document as changed since the last review.
  */
-export const repository = (id: string) => ({
+export const repository = (id: string, incoming?: SnapshotImport) => ({
     get: () => db.getSide<SessionRecord>('sync', id),
     commit: async (expected: number | null, record: SessionRecord, remote = false) => {
         const node = app.node(id);
@@ -151,6 +157,7 @@ export const repository = (id: string) => ({
         staged.destroy();
         const previous = node.kind === 'doc' ? await db.getText(id) : record.projection;
         const extras: Record<string, unknown> = {};
+        if (incoming) extras[`opened:${id}`] = incoming.text;
         // A signed acknowledgement from this participant for exactly this body clears the review
         // marker, including an acknowledgement that another device of the participant made.
         const bodyHash = await hash(new TextEncoder().encode(body));
@@ -165,7 +172,7 @@ export const repository = (id: string) => ({
         // Comments and line endings do not count as an outside change. The first fill of an empty
         // document does not count either.
         const changed =
-            remote &&
+            (remote || !!incoming) &&
             previous !== undefined &&
             previous !== '' &&
             app.bodyOf(previous) !== app.bodyOf(record.projection);
@@ -174,6 +181,7 @@ export const repository = (id: string) => ({
             previous !== record.projection || (typeof meta?.name === 'string' && meta.name !== node.name);
         const updated = {
             ...node,
+            ...(incoming ? { importSource: incoming.source, opened: true as const } : {}),
             ...(changed && !node.pending ? { pending: true as const } : {}),
             ...(typeof meta?.name === 'string' ? { name: meta.name } : {}),
             // Local file/URL identities must survive enrollment and later receipts.
@@ -194,6 +202,7 @@ export const repository = (id: string) => ({
             delete updated.pending;
             delete extras[`base:${id}`];
         }
+        incoming?.check();
         const committed = await db.commitReplica(
             id,
             expected,
@@ -204,6 +213,7 @@ export const repository = (id: string) => ({
             extras,
             reviewed ? [`base:${id}`] : [],
             record.binding,
+            incoming?.expected,
         );
         const displayed = app.node(id);
         if (displayed) {

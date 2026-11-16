@@ -38,6 +38,10 @@ export interface TreeNode {
     pending?: true;
     // The document came from outside (a file, link, URL, or import); its source text is kept.
     opened?: true;
+    // Browser-local import identity. The full, case-sensitive path includes the source extension.
+    // Destination scopes otherwise identical paths. Moves and label edits do not change this identity.
+    // Never included in shared links, Sync metadata, or exported documents.
+    importSource?: { destinationId: string | null; path: string[] };
     // UTF-8 bytes of the stored text, for the sidebar footer.
     size?: number;
     // Shared document layout, separate from the reader's browser-wide preference.

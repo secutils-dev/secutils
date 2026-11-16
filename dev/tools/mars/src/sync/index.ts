@@ -39,7 +39,8 @@ export const metadata = (id: string) => api().then((m) => m.metadata(id));
 export const initialize = () => api().then((m) => m.initialize());
 export const refresh = (ids: string[]) => api().then((m) => m.refresh(ids));
 export const present = (id: string) => api().then((m) => m.present(id));
-export const snapshot = (node: TreeNode, text: string) => api().then((m) => m.snapshot(node, text));
+export const snapshot = (node: TreeNode, text: string, incoming?: import('./manager/state.ts').SnapshotImport) =>
+    api().then((m) => m.snapshot(node, text, incoming));
 /**
  * True when the URL fragment has a `sync`, `invite`, or `live` parameter. It is synchronous and does not load the
  * manager. It throws for an invalid URL.

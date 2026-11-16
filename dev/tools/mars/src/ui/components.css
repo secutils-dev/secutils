@@ -163,6 +163,12 @@ body.sb-collapsed .mars-sidebar { display: none; }
 .mars-modal-foot { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; padding: 0 24px 20px; }
 .mars-modal .field { display: block; width: 100%; height: 32px; padding: 0 10px; border: 1px solid var(--eui-border-plain); border-radius: var(--radius-s); background: var(--surface); }
 .mars-modal .field:focus { outline: none; border-color: var(--focus); box-shadow: inset 0 0 0 1px var(--focus); }
+.import-decisions { margin-block-start: 20px; }
+.import-decision { margin-block: 16px; overflow-wrap: anywhere; }
+.import-decision p { color: var(--text-muted); font-size: 12px; }
+.import-decision .select, #importAllChoices { inline-size: 100%; }
+#marsModal:has(.import-decisions):modal { overscroll-behavior: contain; }
+#marsModal:has(.import-decisions)::backdrop { overflow: hidden; overscroll-behavior: contain; }
 
 #modelImportStatus { bottom: 76px; }
 

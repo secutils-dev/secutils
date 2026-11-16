@@ -168,6 +168,19 @@ const announce = (ids: string[]) => {
     }
 };
 
+/** Prepared document/source snapshot for an atomic incoming write. */
+export interface IncomingSnapshot {
+    node: TreeNode;
+    text: string;
+    opened?: string;
+}
+// Shared by ordinary incoming writes and connected replica commits, inside their write transaction.
+function checkIncoming(expected: IncomingSnapshot, stored?: TreeNode, text?: string, opened?: string) {
+    if (!stored) throw new ReplicaConflict('missing-node');
+    if (text !== expected.text || opened !== expected.opened) throw new ReplicaConflict('text-changed');
+    if (JSON.stringify(stored) !== JSON.stringify(expected.node)) throw new ReplicaConflict('metadata-changed');
+}
+
 /** Every stored node, in no particular order. */
 export const allNodes = () =>
     temporary
@@ -241,6 +254,10 @@ export async function putNodes(
         creations?: CreationJob[];
         completeCreations?: string[];
         detach?: { collection: string; member: string };
+        // Prepared incoming copies use compare-and-set, including the source baseline.
+        expected?: IncomingSnapshot[];
+        // Side records that must commit with the node and body (opened source and review baseline).
+        extras?: Record<string, unknown>;
     } = {},
 ) {
     const checked = (node: TreeNode, stored?: TreeNode) => {
@@ -263,8 +280,15 @@ export async function putNodes(
             : node;
     };
     if (temporary) {
+        for (const expected of options.expected ?? [])
+            checkIncoming(
+                expected,
+                memory.get('nodes', expected.node.id),
+                memory.get('docs', expected.node.id),
+                memory.get('docs', sideKey('opened', expected.node.id)),
+            );
         const updates = nodes.map((node) => checked(node, memory.get('nodes', node.id)));
-        structuredClone({ updates, texts, creations: options.creations });
+        structuredClone({ updates, texts, creations: options.creations, extras: options.extras });
         for (const node of updates) {
             memory.put('nodes', node.id, node);
             if (options.detach) {
@@ -277,9 +301,18 @@ export async function putNodes(
             if (!memory.get('docs', sideKey('sync-create', job.id)))
                 memory.put('docs', sideKey('sync-create', job.id), job);
         for (const [id, text] of Object.entries(texts)) memory.put('docs', id, text);
+        for (const [key, value] of Object.entries(options.extras ?? {})) memory.put('docs', key, value);
         return;
     }
     await tx(['nodes', 'docs'], 'readwrite', async (t) => {
+        for (const expected of options.expected ?? []) {
+            const [stored, text, opened] = await Promise.all([
+                req(t.objectStore('nodes').get(expected.node.id)),
+                req(t.objectStore('docs').get(expected.node.id)),
+                req(t.objectStore('docs').get(sideKey('opened', expected.node.id))),
+            ]);
+            checkIncoming(expected, stored, text, opened);
+        }
         for (const n of nodes) {
             const stored = await req(t.objectStore('nodes').get(n.id));
             const enrolling = options.creations?.some((job) => job.id === n.id);
@@ -304,6 +337,7 @@ export async function putNodes(
             if (!(await req(t.objectStore('docs').get(key)))) t.objectStore('docs').put(job, key);
         }
         for (const [id, text] of Object.entries(texts)) t.objectStore('docs').put(text, id);
+        for (const [key, value] of Object.entries(options.extras ?? {})) t.objectStore('docs').put(value, key);
     });
     announce(nodes.map((n) => n.id));
 }
@@ -1179,6 +1213,7 @@ export async function commitReplica<T extends { revision: number }>(
     extras: Record<string, unknown> = {},
     deletes: string[] = [],
     binding?: { collection: string; document: string; member: string },
+    incoming?: IncomingSnapshot,
 ) {
     const key = sideKey('sync', id);
     const matches = (previous?: T & { binding?: typeof binding }) =>
@@ -1205,6 +1240,7 @@ export async function commitReplica<T extends { revision: number }>(
             order: stored.order,
             open: stored.open,
             localReadingWidth: stored.localReadingWidth,
+            importSource: stored.importSource ?? node.importSource,
             // A protocol-only commit preserves the latest timestamp, not a stale tab's timestamp.
             updatedAt:
                 node.name === stored.name && (!Object.hasOwn(texts, node.id) || texts[node.id] === storedText)
@@ -1215,11 +1251,19 @@ export async function commitReplica<T extends { revision: number }>(
         };
     };
     if (temporary) {
+        if (incoming)
+            checkIncoming(
+                incoming,
+                memory.get('nodes', id),
+                memory.get('docs', id),
+                memory.get('docs', sideKey('opened', id)),
+            );
         const previous = memory.get<T>('docs', key);
         if (!matches(previous)) throw new ReplicaConflict();
         const updates = nodes.map((node) =>
             updatedNode(node, memory.get('nodes', node.id), memory.get('docs', node.id)),
         );
+        structuredClone({ updates, texts, extras, metadata, replica });
         for (const node of updates) memory.put('nodes', node.id, node);
         for (const [doc, text] of Object.entries(texts)) memory.put('docs', doc, text);
         for (const [key, value] of Object.entries(extras)) memory.put('docs', key, value);
@@ -1229,6 +1273,14 @@ export async function commitReplica<T extends { revision: number }>(
         return updates;
     }
     const updates = await tx(['nodes', 'docs', 'meta'], 'readwrite', async (t) => {
+        if (incoming) {
+            const [stored, text, opened] = await Promise.all([
+                req(t.objectStore('nodes').get(id)),
+                req(t.objectStore('docs').get(id)),
+                req(t.objectStore('docs').get(sideKey('opened', id))),
+            ]);
+            checkIncoming(incoming, stored, text, opened);
+        }
         const docs = t.objectStore('docs'),
             existing = await req(docs.get(key));
         if (!matches(existing)) throw new ReplicaConflict();

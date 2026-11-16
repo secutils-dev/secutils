@@ -1,14 +1,18 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { createRequire } from 'node:module';
+import { join, resolve } from 'node:path';
 import { deflateRawSync } from 'node:zlib';
 
 import type { Page, Route } from '@playwright/test';
 import { expect } from '@playwright/test';
 
+import { mockWorker } from './_mars_indexing';
 import { copyLink } from './_mars_sharing';
 import { test } from './_mars_test';
 
 const MARS_BASE_URL = process.env.MARS_BASE_URL ?? 'https://mars.secutils.dev';
+const require = createRequire(resolve(process.cwd(), '../dev/tools/mars/package.json'));
+const { zipSync } = require('fflate') as { zipSync(files: Record<string, Uint8Array>): Uint8Array };
 test.use({ baseURL: MARS_BASE_URL });
 const RAW =
   '---\r\ntitle: "Preferred title"\r\n---\r\n# Body heading\r\n\r\nOriginal source text.\r\n\r\n<!-- su-comments\r\n[ { "id":"thread", "quote":"Original source text.", "comments":[{"id":"comment","body":"Private review"}] } ]\r\n-->\r\n';
@@ -80,7 +84,504 @@ async function edit(page: Page, text: string) {
   await expect(page.locator('#saveState')).toHaveText('Saved');
 }
 
+// Read all review/index side records along with the committed tree, not only visible rows.
+async function importSnapshot(page: Page) {
+  return page.evaluate(async () => {
+    const database = await new Promise<IDBDatabase>((resolve) => {
+      const request = indexedDB.open('mars');
+      request.onsuccess = () => resolve(request.result);
+    });
+    const result = await new Promise<{
+      nodes: {
+        id: string;
+        kind: string;
+        name: string;
+        parentId: string | null;
+        updatedAt: number;
+        pending?: boolean;
+        importSource?: { destinationId: string | null; path: string[] };
+        connection?: { document: string };
+      }[];
+      records: Record<string, unknown>;
+    }>((resolve) => {
+      const tx = database.transaction(['nodes', 'docs'], 'readonly');
+      const nodes = tx.objectStore('nodes').getAll(),
+        keys = tx.objectStore('docs').getAllKeys(),
+        values = tx.objectStore('docs').getAll();
+      tx.oncomplete = () =>
+        resolve({
+          nodes: nodes.result,
+          records: Object.fromEntries(keys.result.map((key, i) => [String(key), values.result[i]])),
+        });
+    });
+    database.close();
+    return result;
+  });
+}
+async function importInbox(page: Page) {
+  await page.getByRole('button', { name: 'New document, folder, or import', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'New folder', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Import inbox');
+  await page.getByRole('textbox', { name: 'Name', exact: true }).press('Enter');
+  await expect(page.getByRole('button', { name: 'Actions for Import inbox', exact: true })).toBeVisible();
+}
+async function importAtInbox(
+  page: Page,
+  files: string | { name: string; mimeType: string; buffer: Buffer }[],
+  folder = false,
+) {
+  if (
+    (await page
+      .getByRole('button', { name: 'Toggle documents sidebar', exact: true })
+      .getAttribute('aria-expanded')) === 'false'
+  )
+    await page.getByRole('button', { name: 'Toggle documents sidebar', exact: true }).click();
+  await page.getByRole('button', { name: 'Actions for Import inbox', exact: true }).click();
+  const pending = page.waitForEvent('filechooser');
+  await page.getByRole('menuitem', { name: folder ? 'Import a folder…' : /^Import files…/, exact: folder }).click();
+  await (await pending).setFiles(files);
+}
+
 test.describe('source import', () => {
+  test('batch re-import reuses smart-search vectors and embeds only the changed file', async ({ page, context }) => {
+    await mockWorker(context);
+    await boot(page);
+    await importInbox(page);
+    const files = Array.from({ length: 24 }, (_, i) => ({
+      name: `Indexed ${i}.md`,
+      mimeType: 'text/markdown',
+      buffer: Buffer.from(`# Indexed ${i}\n\nOriginal passage with enough words to index.`),
+    }));
+    await importAtInbox(page, files);
+    await expect(page.locator('#toast')).toContainText('Imported 24 documents');
+    await page.getByRole('button', { name: 'Smart search', exact: true }).click();
+    await page.getByRole('radio', { name: /Best speed/ }).check();
+    await page.locator('#marsModalFoot').getByRole('button', { name: 'Turn on', exact: true }).click();
+    await expect
+      .poll(
+        async () => Object.keys((await importSnapshot(page)).records).filter((key) => key.startsWith('vec:')).length,
+      )
+      .toBe(24);
+    const calls = () =>
+      page.evaluate(() => (window as unknown as { __marsWorker: { embeds: string[][] } }).__marsWorker.embeds.length);
+    const initial = await calls();
+    await importAtInbox(page, files);
+    await expect(page.locator('#toast')).toContainText('unchanged 24');
+    // Past the index debounce: an unchanged import must not merely postpone duplicate inference.
+    await page.waitForTimeout(2500);
+    expect(await calls()).toBe(initial);
+    files[7].buffer = Buffer.from('# Indexed 7\n\nChanged passage with different words to index.');
+    await importAtInbox(page, files);
+    await expect(page.locator('#toast')).toContainText('updated 1 · unchanged 23');
+    await expect.poll(calls).toBe(initial + 1);
+    await expect(page.locator('#sbSmartStatus')).toBeHidden();
+  });
+  test('folder drops consume every directory batch and re-import more than 100 files without duplicates', async ({
+    page,
+  }) => {
+    await boot(page);
+    const drop = async (changed: boolean) =>
+      page.evaluate((changed) => {
+        const files = Array.from({ length: 125 }, (_, i) => ({
+          name: `Entry ${i}.md`,
+          isFile: true,
+          file(resolve: (file: File) => void) {
+            resolve(new File([`# Entry ${i}\n\n${changed && i === 124 ? 'Changed.' : 'Original.'}`], `Entry ${i}.md`));
+          },
+        }));
+        const nested = {
+          name: 'Nested',
+          isFile: false,
+          createReader() {
+            let offset = 0;
+            return {
+              readEntries(resolve: (entries: unknown[]) => void) {
+                const batch = files.slice(offset, offset + 100);
+                offset += 100;
+                resolve(batch);
+              },
+            };
+          },
+        };
+        const root = {
+          name: 'Dropped',
+          isFile: false,
+          createReader() {
+            let done = false;
+            return {
+              readEntries(resolve: (entries: unknown[]) => void) {
+                resolve(done ? [] : [nested]);
+                done = true;
+              },
+            };
+          },
+        };
+        const transfer = new DataTransfer();
+        // Chromium can return a fresh wrapper for a DataTransferItem on each access.
+        // Override the list, not one transient item wrapper, to model directory batches.
+        Object.defineProperty(transfer, 'items', { value: [{ webkitGetAsEntry: () => root }] });
+        document
+          .getElementById('tree')!
+          .dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+      }, changed);
+    await drop(false);
+    await expect(page.locator('#toast')).toContainText('Imported 125 documents', { timeout: 15000 });
+    const before = await importSnapshot(page);
+    await drop(true);
+    await expect(page.locator('#toast')).toContainText('updated 1 · unchanged 124', { timeout: 15000 });
+    expect((await importSnapshot(page)).nodes.map((n) => n.id)).toEqual(before.nodes.map((n) => n.id));
+  });
+
+  test('indistinguishable loose files remain separate copies and cannot overwrite existing sources', async ({
+    page,
+  }) => {
+    await boot(page);
+    await importInbox(page);
+    const files = [
+      { name: 'README.md', mimeType: 'text/markdown', buffer: Buffer.from('# First\n') },
+      { name: 'README.md', mimeType: 'text/markdown', buffer: Buffer.from('# Second\n') },
+    ];
+    await importAtInbox(page, files);
+    await expect(page.locator('#toast')).toContainText('indistinguishable file paths saved as copies');
+    const before = await importSnapshot(page);
+    expect(before.nodes.filter((n) => n.kind === 'doc').every((n) => !n.importSource)).toBe(true);
+    await importAtInbox(page, files);
+    await expect(page.locator('#toast')).toContainText('Imported 2 documents');
+    await expect.poll(async () => (await importSnapshot(page)).nodes.filter((n) => n.kind === 'doc').length).toBe(4);
+    const after = await importSnapshot(page);
+    expect(after.nodes.filter((n) => n.kind === 'doc')).toHaveLength(4);
+    for (const n of before.nodes.filter((n) => n.kind === 'doc'))
+      expect(after.records[n.id]).toBe(before.records[n.id]);
+  });
+  test('batch re-import across tabs serializes identity and refuses edits made during conflict decisions', async ({
+    page,
+  }) => {
+    await boot(page);
+    await importInbox(page);
+    const files = Array.from({ length: 24 }, (_, i) => ({
+      name: `Tab ${i}.md`,
+      mimeType: 'text/markdown',
+      buffer: Buffer.from(`# Tab ${i}\n\nOriginal.`),
+    }));
+    await importAtInbox(page, files);
+    await expect(page.locator('#toast')).toContainText('Imported 24 documents');
+    const second = await page.context().newPage();
+    try {
+      await boot(second);
+      await Promise.all([importAtInbox(page, files), importAtInbox(second, files)]);
+      for (const tab of [page, second]) await expect(tab.locator('#toast')).toContainText('unchanged 24');
+      const initial = await importSnapshot(page),
+        n = initial.nodes.find((n) => n.name === 'Tab 7')!;
+      await page.goto(`/#doc=${n.id}`);
+      await edit(page, '# Tab 7\n\nFirst local edit.');
+      files[7].buffer = Buffer.from('# Tab 7\n\nDisk changed.');
+      await importAtInbox(page, files);
+      const dialog = page.getByRole('dialog', { name: 'Review imported files', exact: true });
+      await expect(dialog).toBeVisible();
+      await second.goto(`/#doc=${n.id}`);
+      await expect(second.locator('#previewArticle')).toContainText('First local edit.');
+      await edit(second, '# Tab 7\n\nNewer edit from another tab.');
+      await dialog.getByLabel('Tab 7.md', { exact: true }).selectOption('theirs');
+      await dialog.getByRole('button', { name: 'Import files', exact: true }).click();
+      await expect(page.locator('#toast')).toContainText('1 not updated');
+      const after = await importSnapshot(page);
+      expect(after.records[n.id]).toContain('Newer edit from another tab.');
+      expect(after.records[`opened:${n.id}`]).toBe(initial.records[`opened:${n.id}`]);
+      expect(after.nodes.filter((n) => n.kind === 'doc')).toHaveLength(24);
+    } finally {
+      await second.close();
+    }
+  });
+
+  test('batch re-import into Sync updates the original replica and paired device without sharing import identities', async ({
+    page,
+    browser,
+  }) => {
+    test.setTimeout(180000);
+    await boot(page);
+    await importInbox(page);
+    const files = Array.from({ length: 24 }, (_, i) => ({
+      name: `Synced ${i}.md`,
+      mimeType: 'text/markdown',
+      buffer: Buffer.from(`# Synced ${i}\n\nOriginal.`),
+    }));
+    await importAtInbox(page, files);
+    await expect(page.locator('#toast')).toContainText('Imported 24 documents');
+    await page.getByRole('button', { name: 'Actions for Import inbox', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Sync', exact: true }).click();
+    await page.getByRole('button', { name: 'Turn on sync', exact: true }).click();
+    const linkField = page.getByRole('textbox', { name: 'Sync link', exact: true });
+    await expect(linkField).toBeVisible({ timeout: 60000 });
+    const link = await linkField.inputValue();
+    const context = await browser.newContext({ baseURL: MARS_BASE_URL });
+    try {
+      const peer = await context.newPage();
+      await boot(peer, link);
+      await peer.getByRole('button', { name: 'Connect', exact: true }).click();
+      await expect(page.getByRole('button', { name: 'Codes match', exact: true })).toBeVisible({ timeout: 30000 });
+      await page.getByRole('button', { name: 'Codes match', exact: true }).click();
+      await expect(peer.locator('#toast')).toContainText('Sync connected', { timeout: 60000 });
+      await page.getByRole('button', { name: 'Close', exact: true }).click();
+      const before = await importSnapshot(page),
+        n = before.nodes.find((n) => n.name === 'Synced 7')!;
+      files[7].buffer = Buffer.from('# Synced 7\n\nRe-imported from disk.');
+      await importAtInbox(page, files);
+      await expect(page.locator('#toast')).toContainText('updated 1 · unchanged 23');
+      const after = await importSnapshot(page);
+      expect(after.nodes.filter((n) => n.kind === 'doc').map((n) => n.id)).toEqual(
+        before.nodes.filter((n) => n.kind === 'doc').map((n) => n.id),
+      );
+      expect(after.nodes.find((node) => node.id === n.id)?.connection?.document).toBe(n.connection?.document);
+      expect(after.records[`base:${n.id}`]).toBe(before.records[n.id]);
+      expect(after.records[`opened:${n.id}`]).toBe(files[7].buffer.toString());
+      await peer.getByRole('link', { name: 'Synced 7', exact: true }).click();
+      await expect(peer.locator('#previewArticle')).toContainText('Re-imported from disk.', { timeout: 30000 });
+      expect((await importSnapshot(peer)).nodes.filter((n) => n.importSource)).toEqual([]);
+      expect(JSON.stringify(after.records[`sync:${n.id}`])).not.toContain('importSource');
+      await page.reload();
+      await importAtInbox(page, files);
+      await expect(page.locator('#toast')).toContainText('unchanged 24');
+    } finally {
+      await context.close();
+    }
+  });
+  test('batch re-import of 24 nested files updates one identity and skips unchanged documents and indexes', async ({
+    page,
+  }, testInfo) => {
+    await boot(page);
+    await importInbox(page);
+    const directory = testInfo.outputPath('Workspace');
+    const paths = Array.from({ length: 24 }, (_, i) =>
+      join(directory, `Section ${i % 4}`, '研究 & evidence', 'Deep', `Note ${Math.floor(i / 4)}.md`),
+    );
+    for (const path of paths) {
+      await mkdir(join(path, '..'), { recursive: true });
+      await writeFile(path, `# Evidence\r\n\r\nOriginal ${paths.indexOf(path)}.\r\n`);
+    }
+    await importAtInbox(page, directory, true);
+    await expect(page.locator('#toast')).toContainText('Imported 24 documents');
+    const initial = await importSnapshot(page),
+      docs = initial.nodes.filter((n) => n.kind === 'doc');
+    expect(docs).toHaveLength(24);
+    const changed = docs.find(
+      (n) => n.importSource?.path.join('/') === 'Workspace/Section 3/研究 & evidence/Deep/Note 1.md',
+    )!;
+    await page.goto(`/#doc=${changed.id}`);
+    await expect(page.locator('#docTitle')).toHaveText('Note 1');
+    await page.locator(`.tree-row[data-id="${changed.id}"]`).getByRole('button').click();
+    await page.getByRole('menuitem', { name: 'Rename', exact: true }).click();
+    await page.getByRole('textbox', { name: 'Name', exact: true }).fill('My evidence label');
+    await page.getByRole('textbox', { name: 'Name', exact: true }).press('Enter');
+    await page.evaluate(
+      async (ids) => {
+        const database = await new Promise<IDBDatabase>((resolve) => {
+          const r = indexedDB.open('mars');
+          r.onsuccess = () => resolve(r.result);
+        });
+        const tx = database.transaction('docs', 'readwrite');
+        for (const id of ids) tx.objectStore('docs').put({ sentinel: id }, `vec:${id}`);
+        await new Promise<void>((resolve) => {
+          tx.oncomplete = () => resolve();
+        });
+        database.close();
+      },
+      docs.map((n) => n.id),
+    );
+    const before = await importSnapshot(page);
+    await writeFile(paths[7], '# Evidence\r\n\r\nEdited on disk.\r\n');
+    await importAtInbox(page, directory, true);
+    await expect(page.locator('#toast')).toContainText('updated 1 · unchanged 23');
+    await expect(page.locator('#docTitle')).toHaveText('My evidence label');
+    await expect(page.locator('#previewArticle')).toContainText('Edited on disk.');
+    const after = await importSnapshot(page);
+    expect(
+      after.nodes
+        .filter((n) => n.kind === 'doc')
+        .map((n) => n.id)
+        .sort(),
+    ).toEqual(docs.map((n) => n.id).sort());
+    expect(after.nodes.filter((n) => n.kind === 'folder')).toEqual(before.nodes.filter((n) => n.kind === 'folder'));
+    for (const original of docs) {
+      expect(after.records[`vec:${original.id}`]).toEqual(before.records[`vec:${original.id}`]);
+      if (original.id === changed.id) {
+        expect(after.records[`base:${original.id}`]).toBe(initial.records[original.id]);
+        expect(after.nodes.find((n) => n.id === original.id)?.pending).toBe(true);
+      } else {
+        expect(after.nodes.find((n) => n.id === original.id)).toEqual(before.nodes.find((n) => n.id === original.id));
+        expect(after.records[original.id]).toBe(before.records[original.id]);
+      }
+    }
+    await page.reload();
+    await expect(page.locator('#docTitle')).toHaveText('My evidence label');
+    await importAtInbox(page, directory, true);
+    await expect(page.locator('#toast')).toContainText('unchanged 24');
+    expect((await importSnapshot(page)).nodes.filter((n) => n.kind === 'doc')).toHaveLength(24);
+    await page.screenshot({ path: testInfo.outputPath('nested-reimport.png') });
+  });
+
+  test('batch re-import matches multi-file subsets and one file while retaining omitted documents', async ({
+    page,
+  }) => {
+    await boot(page);
+    await importInbox(page);
+    const files = Array.from({ length: 24 }, (_, i) => ({
+      name: `File ${i}.md`,
+      mimeType: 'text/markdown',
+      buffer: Buffer.from(`# File ${i}\n\nOriginal.`),
+    }));
+    await importAtInbox(page, files);
+    await expect(page.locator('#toast')).toContainText('Imported 24 documents');
+    const before = await importSnapshot(page);
+    files[7].buffer = Buffer.from('# File 7\n\nDisk changed.');
+    await importAtInbox(page, files.slice(5, 9));
+    await expect(page.locator('#toast')).toContainText('updated 1 · unchanged 3');
+    await importAtInbox(page, [files[7]]);
+    await expect(page.locator('#toast')).toContainText('unchanged 1');
+    const after = await importSnapshot(page);
+    expect(after.nodes.map((n) => n.id)).toEqual(before.nodes.map((n) => n.id));
+    expect(after.nodes.filter((n) => n.kind === 'doc')).toHaveLength(24);
+  });
+
+  test('batch conflicts use one cancellable dialog with per-file choices and preserve merged reviews', async ({
+    page,
+  }, testInfo) => {
+    await boot(page);
+    await importInbox(page);
+    const review =
+      '\n\n<!-- su-comments\n[{"id":"thread","quote":"Original","comments":[{"id":"one","body":"Existing review"}]}]\n-->\n';
+    const files = Array.from({ length: 4 }, (_, i) => ({
+      name: `Conflict ${i}.md`,
+      mimeType: 'text/markdown',
+      buffer: Buffer.from(`# File ${i}\n\nOriginal.${review}`),
+    }));
+    await importAtInbox(page, files);
+    await expect(page.locator('#toast')).toContainText('Imported 4 documents');
+    for (let i = 0; i < 3; i++) {
+      const n = (await importSnapshot(page)).nodes.find((n) => n.name === `Conflict ${i}`)!;
+      await page.goto(`/#doc=${n.id}`);
+      await expect(page.locator('#docTitle')).toHaveText(`Conflict ${i}`);
+      await edit(page, `# File ${i}\n\nMy edit.`);
+      files[i].buffer = Buffer.from(
+        `# File ${i}\n\nDisk edit.${review.replace('"comments":[', '"comments":[{"id":"two","body":"Incoming reply"},')}`,
+      );
+    }
+    files.push({ name: 'New.md', mimeType: 'text/markdown', buffer: Buffer.from('# New\n\nDo not add on cancel.') });
+    const before = await importSnapshot(page);
+    await importAtInbox(page, files);
+    const dialog = page.getByRole('dialog', { name: 'Review imported files', exact: true });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('combobox')).toHaveCount(4);
+    await expect(dialog.getByRole('button', { name: 'Import files', exact: true })).toBeFocused();
+    for (let i = 0; i < 3; i++)
+      await expect(dialog.getByLabel(`Conflict ${i}.md`, { exact: true })).toHaveValue('copy');
+    await page.keyboard.press('Escape');
+    expect(await importSnapshot(page)).toEqual(before);
+    await importAtInbox(page, files);
+    await expect(dialog).toBeVisible();
+    await dialog.getByLabel('Conflict 0.md', { exact: true }).selectOption('mine');
+    await dialog.getByLabel('Conflict 1.md', { exact: true }).selectOption('theirs');
+    await page.setViewportSize({ width: 320, height: 800 });
+    expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath('reimport-conflicts-phone.png') });
+    await dialog.getByRole('button', { name: 'Import files', exact: true }).click();
+    await expect(page.locator('#toast')).toContainText('Imported 2 documents');
+    const after = await importSnapshot(page);
+    expect(after.nodes.filter((n) => n.kind === 'doc')).toHaveLength(6);
+    const n0 = before.nodes.find((n) => n.name === 'Conflict 0')!,
+      n1 = before.nodes.find((n) => n.name === 'Conflict 1')!,
+      n2 = before.nodes.find((n) => n.name === 'Conflict 2')!;
+    expect(after.records[n0.id]).toContain('My edit.');
+    expect(after.records[n0.id]).toContain('Incoming reply');
+    expect(after.records[n1.id]).toContain('Disk edit.');
+    expect(after.records[n1.id]).toContain('Existing review');
+    expect(after.records[`base:${n1.id}`]).toBe(before.records[n1.id]);
+    expect(after.records[n2.id]).toBe(before.records[n2.id]);
+    expect(after.nodes.find((n) => n.name === 'Conflict 2 (2)')?.importSource).toBeUndefined();
+    await importAtInbox(page, [files[0]]);
+    await expect(page.locator('#toast')).toContainText('kept your text in 1');
+    await expect(dialog).toBeHidden();
+  });
+
+  test('ZIP re-import preserves extensions and destination scopes rather than merging same-named documents', async ({
+    page,
+  }) => {
+    await boot(page);
+    await importInbox(page);
+    const archive = (change = false) => [
+      {
+        name: 'Archive.zip',
+        mimeType: 'application/zip',
+        buffer: Buffer.from(
+          zipSync({
+            'Root/A/README.md': Buffer.from(change ? '# Changed\n' : '# First\n'),
+            'Root/B/README.md': Buffer.from('# Second\n'),
+            'Root/A/README.txt': Buffer.from('# Text file\n'),
+            'Root/A/readme.md': Buffer.from('# Lowercase\n'),
+          }),
+        ),
+      },
+    ];
+    await importAtInbox(page, archive());
+    await expect(page.locator('#toast')).toContainText('Imported 4 documents');
+    const before = await importSnapshot(page);
+    await importAtInbox(page, archive(true));
+    await expect(page.locator('#toast')).toContainText('updated 1 · unchanged 3');
+    expect((await importSnapshot(page)).nodes.map((n) => n.id)).toEqual(before.nodes.map((n) => n.id));
+    // An explicit different destination is a separate source scope.
+    await page.getByRole('button', { name: 'New document, folder, or import', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'New folder', exact: true }).click();
+    await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Separate inbox');
+    await page.getByRole('textbox', { name: 'Name', exact: true }).press('Enter');
+    await page.getByRole('button', { name: 'Actions for Separate inbox', exact: true }).click();
+    const chooser = page.waitForEvent('filechooser');
+    await page.getByRole('menuitem', { name: /^Import files…/ }).click();
+    await (await chooser).setFiles(archive());
+    await expect(page.locator('#toast')).toContainText('Imported 4 documents');
+    expect((await importSnapshot(page)).nodes.filter((n) => n.kind === 'doc')).toHaveLength(8);
+  });
+
+  test('legacy bulk imports require confirmation once before binding full source paths', async ({ page }) => {
+    await boot(page);
+    await importInbox(page);
+    const files = [
+      { name: 'Legacy.md', mimeType: 'text/markdown', buffer: Buffer.from('# Legacy\n\nOriginal.') },
+      { name: 'Other.md', mimeType: 'text/markdown', buffer: Buffer.from('# Other\n') },
+    ];
+    await importAtInbox(page, files);
+    await expect(page.locator('#toast')).toContainText('Imported 2 documents');
+    await page.evaluate(async () => {
+      const database = await new Promise<IDBDatabase>((resolve) => {
+        const r = indexedDB.open('mars');
+        r.onsuccess = () => resolve(r.result);
+      });
+      const tx = database.transaction('nodes', 'readwrite'),
+        store = tx.objectStore('nodes'),
+        request = store.getAll();
+      request.onsuccess = () => {
+        for (const node of request.result) {
+          delete node.importSource;
+          store.put(node);
+        }
+      };
+      await new Promise<void>((resolve) => {
+        tx.oncomplete = () => resolve();
+      });
+      database.close();
+    });
+    await page.reload();
+    files[0].buffer = Buffer.from('# Legacy\n\nChanged on disk.');
+    await importAtInbox(page, files);
+    const dialog = page.getByRole('dialog', { name: 'Review imported files', exact: true });
+    await expect(dialog).toContainText('older import');
+    await dialog.getByLabel('For all listed files', { exact: true }).selectOption('theirs');
+    await dialog.getByRole('button', { name: 'Import files', exact: true }).click();
+    await expect(page.locator('#toast')).toContainText('updated 1 · unchanged 1');
+    await page.reload();
+    await importAtInbox(page, files);
+    await expect(page.locator('#toast')).toContainText('unchanged 2');
+    await expect(dialog).toBeHidden();
+    expect((await importSnapshot(page)).nodes.filter((n) => n.kind === 'doc')).toHaveLength(2);
+  });
   for (const format of ['full', 'short'] as const) {
     test(`${format} document snapshots preserve saved names and nested folder context without siblings`, async ({
       page,
@@ -299,6 +800,7 @@ test.describe('source import', () => {
       for (const expanded of [true, false]) {
         if ((await workRow.getAttribute('aria-expanded')) !== String(expanded))
           await workRow.getByText('Work', { exact: true }).click();
+        await expect(workRow).toHaveAttribute('aria-expanded', String(expanded));
         await expect(workRow.locator('.tree-default-star')).toBeVisible();
         const geometry = await workRow.locator('.tree-icon-default').evaluate((element) => {
           const star = element.querySelector<SVGGElement>('.tree-default-star')!,

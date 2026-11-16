@@ -18,6 +18,7 @@ import { receiveFile } from '../share/share.ts';
 import * as sync from '../sync/index.ts';
 import { SyncDialog } from '../sync/dialog.ts';
 import * as db from '../store/db.ts';
+import { importKey, planImport, decideImport, updateImport, type ImportItem } from './reimport.ts';
 
 // Extensions of the files that an import reads. Other files are skipped and counted.
 const SOURCE_FILES_RE = /\.(md|markdown|mdx|txt|html?)$/i;
@@ -202,7 +203,7 @@ export async function exportToDirectory(rootId: string | null) {
 
 // ---- Import ----
 // One document of an import: the folder names above it, its name, and its text.
-type Incoming = { path: string[]; name: string; text: string };
+type Incoming = ImportItem;
 
 /** The document name for an imported file: its filename without the source extension. */
 export const docName = (file: string, text: string) => readFileSource(text, file).name;
@@ -220,12 +221,17 @@ async function expand(file: File, relPath: string): Promise<Incoming[]> {
         return Object.entries(entries).map(([path, bytes]) => {
             const parts = path.split('/').filter(Boolean);
             const source = readFileSource(strFromU8(bytes), parts.at(-1)!);
-            return { path: [...folders, ...parts.slice(0, -1)], name: source.name, text: source.text };
+            return {
+                path: [...folders, ...parts.slice(0, -1)],
+                name: source.name,
+                text: source.text,
+                sourcePath: [...folders, ...parts],
+            };
         });
     }
     if (!SOURCE_FILES_RE.test(file.name)) return [];
     const source = readFileSource(await file.text(), file.name);
-    return [{ path: folders, name: source.name, text: source.text }];
+    return [{ path: folders, name: source.name, text: source.text, sourcePath: segments }];
 }
 
 // Creates the folders and the documents of an import below `parentId`. The documents do not
@@ -235,6 +241,12 @@ async function importIncoming(items: Incoming[], parentId: string | null, skippe
         toast(skipped ? 'Only Markdown, HTML, and ZIP files can be imported' : 'Nothing to import');
         return;
     }
+    await flush();
+    input.check();
+    await app.load();
+    input.check();
+    const plans = await planImport(items, parentId, input);
+    if (!(await decideImport(plans, input))) return;
     const folderIds = new Map<string, string | null>([['', parentId]]);
     // A folder deleted while the import runs stays deleted: its remaining files are left out.
     const alive = (id: string | null): boolean => {
@@ -242,9 +254,34 @@ async function importIncoming(items: Incoming[], parentId: string | null, skippe
         return id === null || (!!n && alive(n.parentId));
     };
     const docs: string[] = [];
+    let updated = 0,
+        unchanged = 0,
+        kept = 0,
+        failed = 0,
+        leftOut = 0;
     try {
-        for (const item of items) {
+        for (const plan of plans) {
             input.check();
+            const { item } = plan;
+            if (!alive(parentId)) {
+                leftOut++;
+                continue;
+            }
+            if (parentId !== null && !incomingFolder(app.state.nodes, parentId))
+                throw new Error('The destination folder is no longer editable. Current copies are retained.');
+            if (plan.match && plan.choice !== 'copy') {
+                try {
+                    const result = await updateImport(plan, input);
+                    if (result === 'updated') updated++;
+                    else if (result === 'kept') kept++;
+                    else unchanged++;
+                } catch (error) {
+                    input.check();
+                    if (db.isStorageFailure(error)) throw error;
+                    failed++;
+                }
+                continue;
+            }
             let parent = parentId,
                 key = '';
             for (const seg of item.path) {
@@ -254,7 +291,12 @@ async function importIncoming(items: Incoming[], parentId: string | null, skippe
                 input.check();
                 parent = folderIds.get(key)!;
             }
-            if (!alive(parent)) continue;
+            if (!alive(parent)) {
+                leftOut++;
+                continue;
+            }
+            if (parent !== null && !incomingFolder(app.state.nodes, parent))
+                throw new Error('The destination folder is no longer editable. Current copies are retained.');
             docs.push(
                 (
                     await app.createDoc({
@@ -263,6 +305,7 @@ async function importIncoming(items: Incoming[], parentId: string | null, skippe
                         parentId: parent,
                         open: false,
                         opened: true,
+                        importSource: plan.match ? undefined : plan.source,
                         input,
                     })
                 ).id,
@@ -274,10 +317,15 @@ async function importIncoming(items: Incoming[], parentId: string | null, skippe
     }
     input.check();
     const imported = docs.filter((id) => app.node(id)).length,
-        removed = items.length - imported;
+        removed = docs.length - imported + leftOut;
     const last = docs.at(-1);
     if (items.length === 1 && last && app.node(last)) await app.openDoc(last, input);
     const notes = [
+        updated && `updated ${updated}`,
+        unchanged && `unchanged ${unchanged}`,
+        kept && `kept your text in ${kept}`,
+        failed && `${failed} not updated; current copies retained. Retry the import after checking Sync and other tabs`,
+        plans.filter((plan) => plan.ambiguous).length && 'indistinguishable file paths saved as copies',
         removed && `left out ${removed} deleted during the import`,
         skipped && `skipped ${skipped} other file${skipped === 1 ? '' : 's'}`,
         docs.some((id) => app.node(id)?.syncPending) && 'Sync enrollment pending',
@@ -303,7 +351,8 @@ async function importIncoming(items: Incoming[], parentId: string | null, skippe
  *   of the connections (`sync.restoreRecovery`). Not offered in a temporary session.
  * - One source file outside a picked folder: it goes through `receiveFile`. It can therefore
  *   update a document that is already in the library.
- * - Everything else: each source file becomes a new document.
+ * - Everything else: matches exact source paths in this destination, skips unchanged copies,
+ *   and collects body conflicts and legacy matches before applying the import. Missing files stay.
  * A failure shows a toast, unless the operation was superseded. A call with a superseded
  * `input` throws `AbortError`.
  */
@@ -313,6 +362,19 @@ export async function importFiles(
     input: InputOperation = beginInput(),
 ) {
     input.check();
+    const run = () => runImport(files, parentId, input);
+    try {
+        // Serialize library imports across tabs, then plan against the latest committed tree.
+        if (navigator.locks) await navigator.locks.request('mars.import', { signal: input.signal }, run);
+        else await run();
+    } catch (error) {
+        if (input.current() && (error as Error).name !== 'AbortError')
+            toast(`Failed to import: ${(error as Error).message}`);
+    }
+}
+
+// Runs inside the profile import lock where available. Ordinary input generations still cancel stale work.
+async function runImport(files: File[], parentId: string | null, input: InputOperation) {
     try {
         if (parentId !== null && !incomingFolder(app.state.nodes, parentId))
             throw new Error('The destination folder is no longer available for imports. Choose another folder.');
@@ -345,7 +407,12 @@ export async function importFiles(
         if (
             files.length === 1 &&
             SOURCE_FILES_RE.test(files[0].name) &&
-            !(files[0] as File & { webkitRelativePath?: string }).webkitRelativePath?.includes('/')
+            !(files[0] as File & { webkitRelativePath?: string }).webkitRelativePath?.includes('/') &&
+            !(await db.allNodes()).some(
+                (node) =>
+                    node.importSource &&
+                    importKey(node.importSource) === importKey({ destinationId: parentId, path: [files[0].name] }),
+            )
         ) {
             const file = files[0],
                 source = readFileSource(await file.text(), file.name);

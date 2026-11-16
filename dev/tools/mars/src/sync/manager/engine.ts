@@ -50,6 +50,7 @@ import {
     rootFor,
     renewing,
     saveScope,
+    type SnapshotImport,
 } from './state.ts';
 import { continueCleanup } from './live-links.ts';
 import { synchronizeDeletions, resumeDeletions, personalSync } from './deletion.ts';
@@ -425,11 +426,29 @@ export async function present(id: string) {
  * Replaces the text of a connected document with a complete incoming text, as one local change.
  * Throws when the document has no session, or when the grant of this member forbids the change.
  * The change runs on a private copy first, so a refused change leaves the live session and storage unchanged.
+ * An import also commits its prepared source and review baseline atomically, or rejects stale input without writes.
  */
-export async function snapshot(node: TreeNode, text: string) {
+export async function snapshot(node: TreeNode, text: string, incoming?: SnapshotImport) {
     await initialize();
     const session = sessions.get(node.id);
     if (!session) throw new Error('This replica is not ready');
+    if (incoming) {
+        const stored = await session.repository.get();
+        incoming.check();
+        if (!stored || stored.projection !== incoming.expected.text) throw new db.ReplicaConflict('text-changed');
+        const staged = new Session(structuredClone(stored), repository(node.id, incoming));
+        try {
+            const next = await staged.change(stored.projection, text);
+            await session.synchronize();
+            await persistProjection(node.id, next);
+            setTimeout(() => {
+                void driverFor(rootFor(node))?.upload();
+            }, 0);
+        } finally {
+            staged.destroy();
+        }
+        return;
+    }
     await validateSnapshot(session, text);
     await persist(node, text);
 }

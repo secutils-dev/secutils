@@ -20,7 +20,8 @@ import {
     textBytes,
     type TreeNode,
 } from './tree/model.ts';
-import { openThreads, splitComments } from './share/merge.ts';
+import { openThreads } from './share/merge.ts';
+import { sourceBody } from './share/reconcile.ts';
 import { $ } from './ui/ui.ts';
 import * as viewer from './doc/viewer.js';
 import { beginInput, cancelInput, checkInput, type InputOperation } from './io/input.ts';
@@ -208,6 +209,7 @@ export async function createDoc(
         opened?: boolean;
         input?: InputOperation;
         readingWidth?: ReadingWidth;
+        importSource?: TreeNode['importSource'];
     } = {},
 ) {
     // A direct open, with no input operation, supersedes a pending asynchronous input.
@@ -229,6 +231,7 @@ export async function createDoc(
         size: textBytes(text),
     };
     if (validWidth(opts.readingWidth)) n.readingWidth = opts.readingWidth;
+    if (opts.importSource) n.importSource = opts.importSource;
     if (opts.handle) Object.assign(n, { handle: opts.handle, stamp: opts.stamp ?? 0, dirty: false });
     try {
         if (opts.opened) {
@@ -264,7 +267,7 @@ export async function createDoc(
  * The text that decides whether two copies differ: the body without the review block, with
  * `\n` line endings and no outer whitespace.
  */
-export const bodyOf = (text: string) => splitComments(text).body.replace(/\r\n?/g, '\n').trim();
+export const bodyOf = sourceBody;
 
 /**
  * Records the source text as MARS last received it (the `opened` side record) and sets

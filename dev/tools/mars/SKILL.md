@@ -224,6 +224,8 @@ Use this reference when the user asks how to do a task in MARS. Each row is one 
 | Read and edit | **Preview**, **Source**, or double-click a block in Preview | The header shows **Saved** after an edit. |
 | Show or hide documents | Header > **Toggle documents sidebar** | The latest docked choice survives resizing and reloads. The narrow-screen overlay does not change that choice. |
 | Import into a folder | Folder menu > **Import files…** or **Import a folder…** | Available at every depth for editable folders. Imports preserve filenames and subfolder structure. |
+| Re-import files | Repeat the import into the same destination | Exact relative paths identify existing files. Unchanged files stay unchanged. Changed files retain comments and review history. Missing files remain. |
+| Resolve import conflicts | **Review imported files** | One dialog contains all conflicts and older imports without saved file identity. Each file defaults to **Save as a copy**. **Keep my text** merges comments only. **Review changes** takes incoming text. Cancel makes no import changes. |
 | Undo a rename | **Undo** in the rename notification | Available for six seconds after a folder, document, or title rename. Restores only the name, unless the name changed again. |
 | Comment | Select rendered text in Preview | Threads stay in the file. |
 | Pause indexing | Sparkles menu > **Pause indexing** or **Resume indexing** | Stops after the current batch. The pause survives reloads and applies to all tabs. Search remains available. |
@@ -243,6 +245,11 @@ Use this reference when the user asks how to do a task in MARS. Each row is one 
 
 Limits and behavior that users ask about:
 
+- Batch file identity includes the destination, complete relative path, extension, and case. MARS labels and moves retain this identity.
+  File identity stays in this browser. Sync, snapshots, and downloads do not carry it.
+  Use separate destinations for unrelated folders with identical names and structure. Browsers do not expose their absolute paths.
+  Ordinary multi-file selections expose filenames only. Indistinguishable paths stay separate as copies.
+  A disk rename or move adds a new document. Re-imports neither watch nor write files on disk.
 - **Up to date** means that the service acknowledged the upload. It does not mean that another person read the document.
 - Local edits save in the browser before upload. Sync continues after the original window closes.
 - New files show pending enrollment until registration completes. Retry survives reloads and retains the same remote identity across tabs.

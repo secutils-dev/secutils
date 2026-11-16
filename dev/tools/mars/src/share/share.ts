@@ -32,6 +32,7 @@ import {
 } from './codec.ts';
 import { joinComments, mergeDocuments, openThreads, splitComments, type Thread } from './merge.ts';
 import { matchScore } from './match.ts';
+import { incomingChoice } from './reconcile.ts';
 import { beginInput, checkInput, type InputOperation } from '../io/input.ts';
 import { readSource, sourceUrl, urlFileName } from '../io/source.ts';
 import { incomingFolder } from '../io/destination.ts';
@@ -534,15 +535,16 @@ async function updateExisting(
     const comments = merged.added ? ` and merged ${plural(merged.added, 'new comment')}` : '';
     let choice: 'theirs' | 'mine' | 'copy' | '';
     let note: string;
+    const automatic = incomingChoice(local, text, opened);
     if (merged.sameBody || local === text) {
         choice = 'mine';
         note = merged.added
             ? `Merged ${plural(merged.added, 'new comment')} into "${existing.name}"`
             : `"${existing.name}" is already up to date`;
-    } else if (opened !== undefined && app.bodyOf(opened) === app.bodyOf(text)) {
+    } else if (automatic === 'mine') {
         choice = 'mine';
         note = `Kept your edits to "${existing.name}": its source hasn't changed${comments}`;
-    } else if (opened !== undefined && app.bodyOf(opened) === app.bodyOf(local)) {
+    } else if (automatic === 'theirs') {
         choice = 'theirs';
         note = `Updated "${existing.name}"${comments} · showing what changed`;
     } else {

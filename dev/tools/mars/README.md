@@ -54,6 +54,15 @@ Link-click, file-download, form, and hash-route tracking are off. The tracker ha
 - Each folder menu offers **Import files…** and **Import a folder…**, including nested folders. These actions import into that folder.
 - Local files use their filenames without source extensions as document names, not their frontmatter titles or headings.
   Folder and ZIP imports preserve the subfolder structure. Duplicate names receive a numeric suffix.
+- Re-import into the same destination to update existing files. MARS matches complete relative paths, including extensions and case.
+  Unchanged files keep their document IDs, timestamps, and search indexes. Changed files keep their comments and show **Review changes**.
+  Labels and moves within MARS do not change saved file identity. Files absent from an import stay in the library.
+- **Review imported files** collects conflicts in one dialog. Each file offers **Keep my text**, **Review changes**, or **Save as a copy**.
+  Copies are the default. Cancel makes no import changes. Older imports require confirmation before MARS saves their file identity.
+- File identity is local to this browser and this import destination. It does not travel through Sync, snapshots, or downloads.
+  Browsers expose relative paths, not absolute paths. Use separate destinations for unrelated folders with identical names and structure.
+  Ordinary file selections do not expose parent directories. Files with indistinguishable paths stay separate as copies.
+  A disk rename or move adds a new file. Re-imports do not watch or write files on disk.
 - Right-click a document for MARS actions. **Shift + right-click** shows the browser link menu. The `⋮` button always opens MARS actions.
 - Each document has a link of the form `#doc=<id>`. The link works only in the same browser profile.
 - Every deletion asks for confirmation. **Undo** restores a locally deleted document as a local copy.

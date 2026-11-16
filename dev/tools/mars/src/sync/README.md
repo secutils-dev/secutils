@@ -38,6 +38,10 @@ Local preview and deployment assemble the same responder through `dev/tools/mars
 - `db.commitReplica` atomically saves projection, replica state, outbox, and received progress in existing stores.
 - `db.enrollConnected` saves the complete initial selection after registration. It rejects intervening local edits and retains existing vectors and timestamps.
 
+Batch re-imports use the existing `snapshot` entry with a prepared source snapshot.
+The change runs on a private session. Its replica, outbox, source identity, received text, and review baseline commit together.
+A changed local snapshot rejects the complete write. Import paths remain browser-local and never enter signed metadata or encrypted packets.
+
 Initial registration stays separate from the local library until this transaction completes.
 Other tabs discover complete records, rather than a partially seeded folder.
 New scopes already have fresh activity leases, so renewal waits until those leases need extension.
