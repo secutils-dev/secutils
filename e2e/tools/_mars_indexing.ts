@@ -48,13 +48,13 @@ export async function mockWorker(context: BrowserContext) {
   });
 }
 
-async function importDoc(page: Page, name: string) {
+async function importDoc(page: Page, name: string, text = `# ${name}\n\nA document with enough words to index.\n`) {
   // File inputs exist in the shell before the app registers their listeners.
   await expect(page.locator('html')).not.toHaveClass(/mars-boot/);
   await page.locator('#importInput').setInputFiles({
     name: `${name}.md`,
     mimeType: 'text/markdown',
-    buffer: Buffer.from(`# ${name}\n\nA document with enough words to index.\n`),
+    buffer: Buffer.from(text),
   });
   await expect(page.locator('#toast')).toContainText('Imported 1 document');
   await expect(page.locator('#tree .tree-label').getByText(name, { exact: true })).toBeVisible();
@@ -175,7 +175,7 @@ export function indexingTests(path: string) {
       expect(await total()).toBe(2);
     });
 
-    test('a remote pause stops an active pass after its current document', async ({ page, context }) => {
+    test('a remote pause stops an active pass after its current batch', async ({ page, context }) => {
       await page.goto(path);
       await importDoc(page, 'Original');
       await turnOn(page);
@@ -186,17 +186,63 @@ export function indexingTests(path: string) {
       await importDoc(page, 'First');
       const total = async () => (await Promise.all([page, other].map(calls))).reduce((a, b) => a + b, 0);
       await expect.poll(total).toBe(2); // Original, then one held First document across both tabs.
-      // Add the next document only after the first inference is held. Otherwise different
-      // tabs can legitimately start both documents before Pause reaches either tab.
+      // Another tab can discover Second and start it before the Pause action reaches both tabs.
+      // Capture the in-flight count once Pause is acknowledged, then require no new batches.
       await importDoc(page, 'Second');
       await toggle(other, 'Pause');
       await expect(page.locator('#sbSmartStatus')).toHaveText('Paused');
+      const inFlight = await total();
+      expect(inFlight).toBeGreaterThanOrEqual(2);
+      expect(inFlight).toBeLessThanOrEqual(3);
       await Promise.all([page, other].map(release));
       await page.waitForTimeout(2500);
-      expect(await total()).toBe(2);
+      expect(await total()).toBe(inFlight);
       await toggle(other, 'Resume');
       await expect.poll(total).toBe(3);
     });
+
+    for (const mode of ['Pause', 'hidden tab'] as const) {
+      test(`${mode} interrupts a large document and resumes without repeating completed batches`, async ({ page }) => {
+        await page.goto(path);
+        await importDoc(page, 'Original');
+        await turnOn(page);
+        await hold(page);
+        const large =
+          '# Large\n\n' +
+          Array.from(
+            { length: 40 },
+            (_, i) =>
+              `## Section ${i}\n\nThe cache for section ${i} expires after fifteen minutes. Review authorization before deployment.`,
+          ).join('\n\n');
+        await importDoc(page, 'Large', large);
+        await expect.poll(() => calls(page)).toBe(2);
+        expect(await page.evaluate(() => (window as TestWindow).__marsWorker.embeds[1].length)).toBe(8);
+        const visibility = async (hidden: boolean) =>
+          page.evaluate((hidden) => {
+            // Deterministic lifecycle coverage in all engines; native tab switching is measured separately.
+            Object.defineProperty(document, 'hidden', { configurable: true, value: hidden });
+            document.dispatchEvent(new Event('visibilitychange'));
+          }, hidden);
+        if (mode === 'Pause') await toggle(page, 'Pause');
+        else await visibility(true);
+        await release(page);
+        await page.waitForTimeout(500); // Let the held batch finish and the pass release its lock.
+        expect(await calls(page)).toBe(2);
+        expect(await indexedNames(page)).toEqual(['Original']);
+        await expect(page.locator('#sbSmartStatus')).toHaveText('Paused');
+        if (mode === 'hidden tab') {
+          expect(await page.evaluate(() => localStorage.getItem('mars.indexingPaused'))).toBeNull();
+          await expect(page.locator('#sbSmartStatus')).toHaveAttribute('title', /when this tab is visible/);
+          await visibility(false);
+        } else await toggle(page, 'Resume');
+        await expect.poll(() => indexedNames(page)).toEqual(['Large', 'Original']);
+        await expect(page.locator('#sbSmartStatus')).toBeHidden();
+        const inputs = await page.evaluate(() => (window as TestWindow).__marsWorker.embeds.slice(1).flat());
+        expect(inputs.length).toBeGreaterThan(32);
+        expect(new Set(inputs).size).toBe(inputs.length);
+        expect(inputs.filter((input) => input.includes('section 0 expires'))).toHaveLength(1);
+      });
+    }
 
     test('rebuilding respects pause and turning smart search off clears it', async ({ page }) => {
       await page.goto(path);

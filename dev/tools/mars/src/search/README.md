@@ -243,18 +243,31 @@ flowchart TD
 - **Other tabs**: a browser lock permits one inference job per document. Other tabs reuse the resulting shared cache entry.
   Vector notifications refresh search without replacing the document tree or scheduling another inference pass.
   Browsers without Web Locks retain cache reuse, but concurrent tabs can duplicate inference.
-- **Pause**: **Pause indexing** in the sparkles menu stops a pass after the current document, and
-  the status badge says "Paused". The pause survives reloads and applies to all MARS tabs
+- **Pause**: **Pause indexing** in the sparkles menu stops a pass after the current batch of up to eight passages.
+  The status badge says "Paused". The pause survives reloads and applies to all MARS tabs
   in this browser (`localStorage["mars.indexingPaused"]`). Search keeps using the entries already stored.
   **Resume indexing** runs one pass, which catches up on every document added or edited
   meanwhile and skips deleted ones, in every open tab. Switching models or rebuilding the index
   keeps indexing paused. Turning smart search off clears the pause. An
   import of 20 or more documents offers **Pause indexing** on its toast, so you can remove the
   files you don't need before they are embedded.
+- **Hidden tabs**: indexing stops after the current batch and resumes when the tab becomes visible.
+  This suspension does not change the saved Pause setting. A manually paused tab stays paused when it becomes visible.
+- **Batch scheduling**: each completed batch yields to browser tasks before the next batch starts.
+  Suspension releases the document lock. One incomplete document retains its completed vectors in the same open tab.
+  Resume reuses those vectors if the model inputs, model generation, and storage backend remain unchanged.
+  Only complete, current documents enter the saved index. A reload discards incomplete work but keeps all saved entries.
 - **Imports**: a folder deleted while an import runs stays deleted. The import leaves out its
   remaining files and removes anything it created under the deleted folder.
 - **Size**: a 384-value vector is 1.5 KB per chunk, and a chunk is a paragraph or a few short
   ones (up to 500 characters; longer single paragraphs and code blocks are cut at 1,500).
+
+**Scheduling measurement.** A native Firefox 160 check on an M3 Pro used Best speed on WebGPU with cached weights.
+The synthetic library contained 70 documents and 3,430 passages. Active indexing took 91.5 seconds before the scheduling change and 91.4 seconds after it.
+Both runs produced identical model inputs and saved vectors with 490 inference calls. These times exclude model preparation and intentional suspension.
+
+Pause stopped after the current batch in 254 ms. A hidden tab started no new batches and resumed without repeated inference.
+Neither run recorded a frame interval longer than 50 ms. This check did not reproduce the reported severe unresponsiveness or use a GPU-submission workaround.
 
 ## Searching
 

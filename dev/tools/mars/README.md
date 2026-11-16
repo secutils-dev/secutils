@@ -222,6 +222,8 @@ Smart search is optional and off by default. It finds passages by meaning with a
 The model downloads from Hugging Face once. Document text and queries stay in the browser.
 Renames reuse vectors with **Best speed**. **Best quality** includes the document name in each passage, so a rename requires new vectors.
 Tabs share completed vectors and use browser locks to avoid duplicate inference.
+**Pause indexing** stops after the current batch of up to eight passages. Hidden tabs stop indexing and resume when visible.
+Completed batches of an incomplete document remain in the same open tab for resume. A reload keeps only complete, saved entries.
 See [src/search/README.md](src/search/README.md) for models, devices, and index behavior.
 
 ### Linked files

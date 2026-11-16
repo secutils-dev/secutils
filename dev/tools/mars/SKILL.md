@@ -226,6 +226,7 @@ Use this reference when the user asks how to do a task in MARS. Each row is one 
 | Import into a folder | Folder menu > **Import files…** or **Import a folder…** | Available at every depth for editable folders. Imports preserve filenames and subfolder structure. |
 | Undo a rename | **Undo** in the rename notification | Available for six seconds after a folder, document, or title rename. Restores only the name, unless the name changed again. |
 | Comment | Select rendered text in Preview | Threads stay in the file. |
+| Pause indexing | Sparkles menu > **Pause indexing** or **Resume indexing** | Stops after the current batch. The pause survives reloads and applies to all tabs. Search remains available. |
 | Share a copy | **Share > Copy link > Snapshot** | Full and Short preserve saved document and parent-folder names without siblings. **Full** contains the unencrypted snapshot. **Short** encrypts it and expires after 1, 7, 14, or 30 days. |
 | Share live access | **Share > Copy link > Live** | One document. **Can view**, **Can comment**, or **Can edit**. Expires after 1, 7, 14, or 30 days (default 7). Folders support snapshots only. |
 | Stop live access | **Copy link > Live links** (bottom left) | **Stop sharing** disables every Live link of the document. Copies that recipients saved stay with them. |
@@ -249,6 +250,8 @@ Limits and behavior that users ask about:
 - Synced icons contain a blue Sync mark. Default folders keep their star. Separate badges identify roots, pending files, Live links, and individually ended connections.
 - Legacy local-only copies stay outside synced folders under **Local copies**. MARS retains their saved text and connection data without uploading them again.
 - Best speed reuses vectors after a rename. Best quality includes the document name in its model input and requires new vectors.
+- Hidden tabs stop indexing after the current batch and resume when visible, unless manually paused.
+  Incomplete-document vectors remain in the same open tab for resume. A reload keeps only complete, saved entries.
 - One IP address can create 50 Sync collections each hour. One Sync selection holds at most 100 documents and folders.
 - Connected content expires after 30 days without activity. When the user opens it, the period starts again.
 - **Can edit** permits deletion of comments and threads. Only the author can edit a comment.

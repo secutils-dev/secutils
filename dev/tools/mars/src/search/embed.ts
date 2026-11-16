@@ -8,6 +8,8 @@
 //   vectors need replacement. Snippets and source positions can update without inference.
 // - One pass runs per tab. A Web Lock and a shared-cache recheck prevent duplicate inference
 //   across tabs. A change during a pass queues exactly one more.
+// - Pause and hidden tabs stop at batch boundaries and release the document lock. One unfinished
+//   document keeps its vectors in memory; only complete, current documents enter the saved index.
 // - Network: the Transformers.js module comes from jsDelivr at a pinned version, and the model
 //   files come from Hugging Face. Document text never leaves the browser.
 import * as app from '../app.ts';
@@ -98,6 +100,13 @@ const status = (s: Status) => {
     for (const fn of statusListeners) fn(s);
 };
 const PAUSED: Status = { state: 'paused', label: 'Paused', text: 'Smart-search indexing is paused' };
+const HIDDEN: Status = {
+    state: 'paused',
+    label: 'Paused',
+    text: 'Smart-search indexing resumes when this tab is visible',
+};
+// Visibility suspends work without changing the reader's saved Pause setting.
+const suspension = () => (paused || readPaused() ? PAUSED : document.hidden ? HIDDEN : null);
 if (paused && enabledModel()) currentStatus = PAUSED;
 const unavailable = (err: unknown): Status => ({
     state: 'error',
@@ -226,7 +235,7 @@ function loadModel(key: ModelKey) {
     // Queries can load the model while indexing is paused; keep the pause badge visible.
     const show = (s: Status) => {
         line = s;
-        status(paused ? PAUSED : s);
+        status(suspension() ?? s);
     };
     const preparing = (): Status => ({ state: 'prepare', label: 'Preparing', text: `Preparing the ${m.label} model…` });
     // The loading status goes once the model is ready or failed; a status set meanwhile stays.
@@ -298,6 +307,24 @@ let generation = 0;
 let indexing: Promise<void> | null = null;
 // A change arrived during a run, so another run follows it.
 let queued = false;
+/** Passage count per inference batch. Keep model inputs and batch sizes unchanged. */
+const INDEX_BATCH_SIZE = 8;
+// Bounded to one unfinished document per tab. No partial entry is written to vec:*.
+let partial: {
+    id: string;
+    key: ModelKey;
+    gen: number;
+    storage: number;
+    input: string;
+    vectors: Float32Array[];
+} | null = null;
+// Yield a task, not only a microtask, so input and visibility events can run before the next batch.
+const yieldToMain = () => {
+    const scheduler = (window as unknown as { scheduler?: { yield?: () => Promise<void> } }).scheduler;
+    return typeof scheduler?.yield === 'function'
+        ? scheduler.yield()
+        : new Promise<void>((resolve) => setTimeout(resolve, 0));
+};
 // Bumped after a run that changed the index, so earlier search results go stale.
 let revision = 0;
 /** A counter that changes when a pass changed the index. Search results belong to one revision. */
@@ -312,10 +339,10 @@ export const isPaused = () => paused;
 function setPaused(value: boolean) {
     if (paused === value) return false;
     paused = value;
-    status(enabledModel() && paused ? PAUSED : null);
+    status(enabledModel() ? suspension() : null);
     return true;
 }
-/** Pauses indexing in every MARS tab. A running pass stops after its current document. */
+/** Pauses indexing in every MARS tab after its current batch; retains unfinished vectors in this tab. */
 export function pause() {
     try {
         localStorage.setItem(PAUSE_KEY, '1');
@@ -338,6 +365,14 @@ window.addEventListener('storage', (e) => {
     if (e.storageArea === localStorage && (e.key === PAUSE_KEY || e.key === null)) syncPaused();
 });
 window.addEventListener('pageshow', syncPaused);
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        if (indexing) status(suspension());
+    } else {
+        syncPaused();
+        reindex();
+    }
+});
 
 // The storage generation and the model that the in-memory index was loaded for.
 let indexStorage = -1,
@@ -361,16 +396,17 @@ async function loadIndex(key: ModelKey) {
 /**
  * Embeds documents whose text changed since they were indexed; one run at a time.
  *
- * Does nothing when smart search is off or paused. A call during a run queues one more run and
+ * Does nothing when smart search is off, paused, or the tab is hidden. A call during a run queues one more run and
  * returns the promise of the current one. The promise never rejects: a failure becomes the
  * `error` status. A run drops entries of deleted documents, skips documents that were deleted
- * since it started, and stops at a pause or a generation change.
+ * since it started, and stops between batches at suspension or a generation change.
  */
 export function reindex() {
     const key = enabledModel();
     if (!key) return Promise.resolve();
-    if (paused) {
-        status(PAUSED);
+    const suspended = suspension();
+    if (suspended) {
+        status(suspended);
         return Promise.resolve();
     }
     if (indexing) {
@@ -386,23 +422,32 @@ export function reindex() {
             const storage = db.storageGeneration();
             const docs = app.state.nodes.filter((n) => n.kind === 'doc');
             const ids = new Set(docs.map((n) => n.id));
+            if (
+                partial &&
+                (!ids.has(partial.id) || partial.gen !== gen || partial.storage !== storage || partial.key !== key)
+            )
+                partial = null;
             for (const id of index.keys())
                 if (!ids.has(id)) {
                     index.delete(id);
                     changed = true;
                 }
             const current = (e?: Entry) => e?.model === key && e.v === indexVersion(key);
-            const stale = docs.filter((n) => index.get(n.id)?.at !== n.updatedAt || !current(index.get(n.id)));
+            // Finish retained work first, so another stale document cannot replace the one-document buffer.
+            const stale = docs
+                .filter((n) => index.get(n.id)?.at !== n.updatedAt || !current(index.get(n.id)))
+                .sort((a, b) => Number(b.id === partial?.id) - Number(a.id === partial?.id));
             for (const [i, n] of stale.entries()) {
                 if (gen !== generation) return;
-                if (paused) {
-                    status(PAUSED);
+                if (suspension()) {
+                    status(suspension());
                     return;
                 }
                 if (!app.node(n.id)) continue;
                 const run = async () => {
-                    if (gen !== generation || paused || enabledModel() !== key || storage !== db.storageGeneration())
-                        return;
+                    const valid = () =>
+                        gen === generation && enabledModel() === key && storage === db.storageGeneration();
+                    if (!valid() || suspension()) return;
                     const snapshot = await db.getDocument(n.id);
                     if (!snapshot) return;
                     const { node, text } = snapshot;
@@ -411,39 +456,69 @@ export function reindex() {
                     // Recheck shared storage *inside* the lock. Another tab may already have done the inference.
                     const cached = await db.getSide<Entry>('vec', node.id);
                     const reuse = current(cached) && cached!.input === input && cached!.chunks.length === chunks.length;
+                    // A resumed snapshot may have changed. Exact model inputs decide whether partial vectors still apply.
+                    if (partial?.id === node.id && partial.input !== input) partial = null;
+                    const snapshotCurrent = async () => {
+                        if (!valid()) return false;
+                        const latest = await db.getDocument(node.id);
+                        if (!valid()) return false;
+                        if (!latest) {
+                            if (partial?.id === node.id) partial = null;
+                            return false;
+                        }
+                        if (
+                            latest.node.updatedAt !== node.updatedAt ||
+                            latest.node.name !== node.name ||
+                            latest.text !== text
+                        ) {
+                            if (partial?.id === node.id) partial = null;
+                            queued = true;
+                            return false;
+                        }
+                        return true;
+                    };
                     let vectors: Float32Array[];
                     if (reuse) vectors = cached!.chunks.map((chunk) => chunk.v);
                     else {
-                        if (paused || readPaused()) return;
+                        if (!valid() || suspension()) return;
                         await loadModel(key);
-                        // Another tab can pause while this tab waits for model preparation.
-                        // Finish inference already in flight, but do not start it after that pause.
-                        if (paused || readPaused() || gen !== generation || enabledModel() !== key) return;
+                        if (!valid() || suspension()) return;
                         status({
                             state: 'index',
                             label: `Indexing ${i + 1}/${stale.length}`,
                             text: `Indexing ${i + 1} of ${stale.length}…`,
                         });
-                        vectors = [];
-                        for (let j = 0; j < chunks.length; j += 8)
+                        const work =
+                            partial?.id === node.id ? partial : { id: node.id, key, gen, storage, input, vectors: [] };
+                        partial = work;
+                        vectors = work.vectors;
+                        for (let j = vectors.length; j < chunks.length; j += INDEX_BATCH_SIZE) {
+                            if (!valid()) {
+                                if (partial === work) partial = null;
+                                return;
+                            }
+                            if (suspension()) {
+                                status(suspension());
+                                return;
+                            }
+                            if (!(await snapshotCurrent())) return;
+                            // The storage read itself can give a Pause or visibility event time to arrive.
+                            if (suspension()) {
+                                status(suspension());
+                                return;
+                            }
                             vectors.push(
                                 ...(await embed(
                                     key,
-                                    chunks.slice(j, j + 8).map((c) => passageInput(MODELS[key], node.name, c)),
+                                    chunks
+                                        .slice(j, j + INDEX_BATCH_SIZE)
+                                        .map((c) => passageInput(MODELS[key], node.name, c)),
                                 )),
                             );
+                            await yieldToMain();
+                        }
                     }
-                    if (storage !== db.storageGeneration() || gen !== generation || enabledModel() !== key) return;
-                    const latest = await db.getDocument(node.id);
-                    if (!latest) return;
-                    if (
-                        latest.node.updatedAt !== node.updatedAt ||
-                        latest.node.name !== node.name ||
-                        latest.text !== text
-                    ) {
-                        queued = true;
-                        return;
-                    }
+                    if (!(await snapshotCurrent())) return;
                     const entry: Entry = {
                         id: node.id,
                         model: key,
@@ -461,22 +536,30 @@ export function reindex() {
                             JSON.stringify(entry.chunks.map((c) => [c.start, c.text]))
                     )
                         await db.putSide('vec', node.id, entry);
+                    if (partial?.id === node.id) partial = null;
                 };
                 if (!db.isTemporaryStorage() && navigator.locks)
                     await navigator.locks.request(`mars:index:${n.id}`, run);
                 else await run();
             }
-            status(paused ? PAUSED : null);
+            status(suspension());
         } catch (err) {
             if (gen === generation) status(unavailable(err));
         } finally {
             indexing = null;
+            if (
+                partial &&
+                (partial.gen !== generation ||
+                    partial.storage !== db.storageGeneration() ||
+                    partial.key !== enabledModel())
+            )
+                partial = null;
             if (changed) {
                 revision++;
                 for (const fn of indexedListeners) fn();
             }
             // A model switch or rebuild starts its own run once the old index is cleared.
-            if (queued && gen === generation && !paused) reindex();
+            if (queued && gen === generation && !suspension()) reindex();
         }
     })();
     return indexing;
@@ -559,6 +642,7 @@ export async function enable(key: ModelKey, force = false) {
     } catch {}
     if (previous !== key || force) {
         generation++;
+        partial = null;
         index.clear();
         indexStorage = -1;
         indexModel = null;
@@ -581,6 +665,7 @@ export async function disable() {
     } catch {}
     paused = false;
     generation++;
+    partial = null;
     index.clear();
     indexStorage = -1;
     indexModel = null;
