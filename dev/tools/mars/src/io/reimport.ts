@@ -1,6 +1,7 @@
 // Batch imports recognize exact browser-local source paths, never fuzzy content matches.
 // Planning writes nothing. Decisions precede folder creation; stale local writes abort atomically.
 // A source identity stays local to this browser and never becomes a share or Sync origin.
+// An import that matches only another destination asks before it updates that destination.
 import * as app from '../app.ts';
 import * as db from '../store/db.ts';
 import * as sync from '../sync/index.ts';
@@ -10,7 +11,7 @@ import { mergeDocuments, openThreads } from '../share/merge.ts';
 import { incomingFolder } from './destination.ts';
 import { $, esc, modal } from '../ui/ui.ts';
 import type { InputOperation } from './input.ts';
-import { textBytes, type TreeNode } from '../tree/model.ts';
+import { ancestors, textBytes, type TreeNode } from '../tree/model.ts';
 
 /** Extracted source with display folders and an exact source path, including the filename extension. */
 export interface ImportItem {
@@ -52,6 +53,76 @@ export function legacyImportParent(nodes: TreeNode[], destinationId: string | nu
     return parent;
 }
 
+/**
+ * The one other destination that recorded some of these source paths, and how many, when `destinationId`
+ * recorded none. Undefined when the chosen destination matches, none or several match, or the other no longer accepts imports.
+ */
+export function earlierDestination(nodes: TreeNode[], items: ImportItem[], destinationId: string | null) {
+    const paths = new Set(items.map((item) => JSON.stringify(item.sourcePath)));
+    const found = new Map<string | null, number>();
+    for (const n of nodes)
+        if (n.kind === 'doc' && n.importSource && paths.has(JSON.stringify(n.importSource.path)))
+            found.set(n.importSource.destinationId, (found.get(n.importSource.destinationId) ?? 0) + 1);
+    if (found.size !== 1 || found.has(destinationId)) return undefined;
+    const [[id, count]] = found;
+    return id === null || incomingFolder(nodes, id) ? { id, count } : undefined;
+}
+
+/** Asks whether a re-import from another destination updates its earlier copies. Undefined cancels. */
+export async function chooseDestination(items: ImportItem[], destinationId: string | null, input: InputOperation) {
+    const earlier = earlierDestination(app.state.nodes, items, destinationId);
+    if (!earlier) return destinationId;
+    const label = (id: string | null) =>
+        id === null
+            ? 'the top level'
+            : `"${[...ancestors(app.state.nodes, id), app.node(id)!].map((n) => n.name).join(' / ')}"`;
+    const answer = await modal({
+        title: 'Update the earlier import?',
+        signal: input.signal,
+        body: `${earlier.count} of these files were imported into ${label(earlier.id)} before. Update them there, or add new copies to ${label(destinationId)}.`,
+        buttons: [
+            { label: 'Cancel', value: '' },
+            { label: 'Add copies here', value: 'here' },
+            { label: 'Update earlier import', value: 'earlier', primary: true },
+        ],
+    });
+    input.check();
+    if (!answer.value) return undefined;
+    return answer.value === 'earlier' ? earlier.id : destinationId;
+}
+
+/**
+ * Current folders of recorded documents, keyed like import folder paths (`/A/B`), so new files follow renamed folders.
+ * A key maps only when every recorded document at that depth agrees and the folder accepts imports.
+ */
+export function recordedFolders(nodes: TreeNode[], destinationId: string | null) {
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    const found = new Map<string, Set<string>>();
+    for (const n of nodes) {
+        if (n.kind !== 'doc' || !n.importSource || n.importSource.destinationId !== destinationId) continue;
+        const folders = n.importSource.path.slice(0, -1),
+            chain: string[] = [];
+        let parent = n.parentId;
+        for (; parent && chain.length < folders.length; parent = byId.get(parent)?.parentId ?? null)
+            chain.unshift(parent);
+        // A document moved to another depth or out of the destination does not describe its source folders.
+        if (chain.length !== folders.length || parent !== destinationId) continue;
+        chain.forEach((id, i) => {
+            const key = folders
+                .slice(0, i + 1)
+                .map((s) => `/${s}`)
+                .join('');
+            found.set(key, (found.get(key) ?? new Set()).add(id));
+        });
+    }
+    const out = new Map<string, string>();
+    for (const [key, ids] of found) {
+        const [id] = ids;
+        if (ids.size === 1 && incomingFolder(nodes, id)) out.set(key, id);
+    }
+    return out;
+}
+
 /** Plans an import against current storage. Repeated indistinguishable paths never authorize a merge. */
 export async function planImport(items: ImportItem[], destinationId: string | null, input: InputOperation) {
     const counts = new Map<string, number>();
@@ -60,31 +131,35 @@ export async function planImport(items: ImportItem[], destinationId: string | nu
         const key = importKey(sourceFor(item));
         counts.set(key, (counts.get(key) ?? 0) + 1);
     }
+    const byKey = new Map<string, TreeNode[]>();
+    for (const n of app.state.nodes)
+        if (n.kind === 'doc' && n.importSource) {
+            const key = importKey(n.importSource);
+            byKey.set(key, [...(byKey.get(key) ?? []), n]);
+        }
     const plans: ImportPlan[] = [];
     for (const item of items) {
         input.check();
         const source = sourceFor(item),
             key = importKey(source);
-        const recorded = app.state.nodes.filter(
-            (n) => n.kind === 'doc' && n.importSource && importKey(n.importSource) === key,
-        );
+        const recorded = byKey.get(key) ?? [];
         if (counts.get(key)! > 1 || recorded.length > 1) {
             plans.push({ item, choice: 'copy', ambiguous: true });
             continue;
         }
-        const parent = legacyImportParent(app.state.nodes, destinationId, item.path);
-        const legacy = recorded.length
-            ? []
-            : app.state.nodes.filter(
-                  (n) =>
-                      n.kind === 'doc' &&
-                      parent !== undefined &&
-                      n.parentId === parent &&
-                      n.name === item.name &&
-                      n.opened &&
-                      !n.importSource &&
-                      !n.handle,
-              );
+        const parent = recorded.length ? undefined : legacyImportParent(app.state.nodes, destinationId, item.path);
+        const legacy =
+            parent === undefined
+                ? []
+                : app.state.nodes.filter(
+                      (n) =>
+                          n.kind === 'doc' &&
+                          n.parentId === parent &&
+                          n.name === item.name &&
+                          n.opened &&
+                          !n.importSource &&
+                          !n.handle,
+                  );
         const candidate = recorded[0] ?? (legacy.length === 1 ? legacy[0] : undefined);
         const snapshot = candidate ? await db.getDocument(candidate.id) : undefined;
         const opened = snapshot ? await db.getSide('opened', snapshot.node.id) : undefined;

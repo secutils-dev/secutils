@@ -57,6 +57,9 @@ Link-click, file-download, form, and hash-route tracking are off. The tracker ha
 - Re-import into the same destination to update existing files. MARS matches complete relative paths, including extensions and case.
   Unchanged files keep their document IDs, timestamps, and search indexes. Changed files keep their comments and show **Review changes**.
   Labels and moves within MARS do not change saved file identity. Files absent from an import stay in the library.
+  New files go into the current MARS folders of their source folders, also after a folder rename in MARS.
+- If an import into one destination matches files that MARS imported into another destination, **Update the earlier import?** asks first.
+  **Update earlier import** is the default. **Add copies here** starts a separate identity in the new destination.
 - **Review imported files** collects conflicts in one dialog. Each file offers **Keep my text**, **Review changes**, or **Save as a copy**.
   Copies are the default. Cancel makes no import changes. Older imports require confirmation before MARS saves their file identity.
 - File identity is local to this browser and this import destination. It does not travel through Sync, snapshots, or downloads.

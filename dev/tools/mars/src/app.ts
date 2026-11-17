@@ -57,11 +57,37 @@ export const onChange = (fn: () => void) => {
         listeners.delete(fn);
     };
 };
-const emit = () => {
+// Inside `batch`, listeners run at most once per this interval (milliseconds), then once at the end.
+// The interval grows to four times the last listener run, so slow renders take at most a fifth of a batch.
+const BATCH_EMIT_MS = 250;
+let batches = 0,
+    batchDelay = BATCH_EMIT_MS,
+    batchTimer: ReturnType<typeof setTimeout> | undefined;
+const flushEmit = () => {
+    clearTimeout(batchTimer);
+    batchTimer = undefined;
+    const start = performance.now();
     for (const fn of listeners) fn();
+    batchDelay = Math.max(BATCH_EMIT_MS, 4 * (performance.now() - start));
+};
+const emit = () => {
+    if (!batches) flushEmit();
+    else batchTimer ??= setTimeout(flushEmit, batchDelay);
 };
 /** Notifies the listeners. For a module that changes `state` or a node in place, such as Sync. */
 export const notify = emit;
+/**
+ * Runs `fn` with throttled notifications and notifies once after it settles, when a change is pending.
+ * ponytail: a sidebar render still costs O(rows); the throttle bounds how often a long import pays it.
+ */
+export async function batch<T>(fn: () => Promise<T>) {
+    batches++;
+    try {
+        return await fn();
+    } finally {
+        if (!--batches && batchTimer !== undefined) flushEmit();
+    }
+}
 
 /** The node with this id, or undefined for null and for an unknown id. */
 export const node = (id: string | null) => (id ? state.nodes.find((n) => n.id === id) : undefined);

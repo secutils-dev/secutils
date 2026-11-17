@@ -11,9 +11,15 @@ const code = transformSync(source.slice(start, source.indexOf('/** The node with
     format: 'cjs',
 }).code;
 const events = () =>
-    runInNewContext(`${code}\nmodule.exports`, { module: { exports: {} } }) as {
+    runInNewContext(`${code}\nmodule.exports`, {
+        module: { exports: {} },
+        setTimeout,
+        clearTimeout,
+        performance,
+    }) as {
         onChange(fn: () => void): () => void;
         notify(): void;
+        batch<T>(fn: () => Promise<T>): Promise<T>;
     };
 
 test('app listeners remain synchronous and can unsubscribe without affecting other consumers', () => {
@@ -42,4 +48,28 @@ test('a listener can retire itself during notification without skipping the next
     api.notify();
     assert.equal(temporary, 1);
     assert.equal(persistent, 2);
+});
+
+test('a batch coalesces notifications, notifies once when it settles, and stays quiet without changes', async () => {
+    const api = events();
+    let calls = 0;
+    api.onChange(() => calls++);
+    await api.batch(async () => {
+        for (let i = 0; i < 1000; i++) api.notify();
+        await api.batch(async () => api.notify());
+        assert.equal(calls, 0);
+    });
+    assert.equal(calls, 1);
+    await assert.rejects(
+        api.batch(async () => {
+            api.notify();
+            throw new Error('import failed');
+        }),
+    );
+    assert.equal(calls, 2);
+    await api.batch(async () => {});
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    assert.equal(calls, 2);
+    api.notify();
+    assert.equal(calls, 3);
 });

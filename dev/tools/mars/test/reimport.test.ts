@@ -90,6 +90,60 @@ test('import keys distinguish destination, complete nested paths, case, extensio
     assert.equal(legacyImportParent([folder, { ...folder, id: 'duplicate' }], null, ['a']), undefined);
 });
 
+test('a re-import from another destination finds the one earlier destination and its renamed nested folders', () => {
+    const { earlierDestination, recordedFolders } = setup();
+    const folder = (name: string, parentId: string | null): TreeNode => ({
+        ...node(name, []),
+        kind: 'folder',
+        parentId,
+        importSource: undefined,
+    });
+    const inbox = folder('Inbox', null),
+        project = folder('Project', inbox.id),
+        renamed = folder('My label', project.id),
+        deep = folder('Deep', renamed.id),
+        other = folder('Other', null);
+    const doc = (path: string[], parentId: string, destinationId: string | null = inbox.id) => ({
+        ...node(path.at(-1)!, path),
+        parentId,
+        importSource: { destinationId, path },
+    });
+    const nodes = [
+        inbox,
+        project,
+        renamed,
+        deep,
+        other,
+        doc(['Project', 'L1', 'a.md'], renamed.id),
+        doc(['Project', 'L1', 'Deep', 'b.md'], deep.id),
+        // Moved to another depth: it does not describe its source folders.
+        doc(['Project', 'L1', 'Deep', 'moved.md'], project.id),
+    ];
+    const items = [item(['Project', 'L1', 'a.md'], ''), item(['Project', 'New.md'], '')];
+    assert.deepEqual({ ...earlierDestination(nodes, items, other.id) }, { id: inbox.id, count: 1 });
+    assert.equal(earlierDestination(nodes, items, inbox.id), undefined);
+    assert.equal(earlierDestination(nodes, [item(['Project', 'New.md'], '')], other.id), undefined);
+    assert.equal(
+        earlierDestination([...nodes, doc(['Project', 'L1', 'a.md'], other.id, null)], items, other.id),
+        undefined,
+    );
+    assert.deepEqual(
+        Object.fromEntries(recordedFolders(nodes, inbox.id)),
+        Object.fromEntries([
+            ['/Project', project.id],
+            ['/Project/L1', renamed.id],
+            ['/Project/L1/Deep', deep.id],
+        ]),
+    );
+    // Disagreeing documents leave the folder to the name lookup.
+    const split = folder('L1', project.id);
+    assert.equal(
+        recordedFolders([...nodes, split, doc(['Project', 'L1', 'c.md'], split.id)], inbox.id).has('/Project/L1'),
+        false,
+    );
+    assert.equal(recordedFolders(nodes, other.id).size, 0);
+});
+
 test('24-file re-import skips unchanged bytes and vectors, updates one identity, and retains the review baseline', async () => {
     const api = setup();
     const items = Array.from({ length: 24 }, (_, i) =>

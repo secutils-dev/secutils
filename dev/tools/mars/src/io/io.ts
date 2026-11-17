@@ -18,7 +18,15 @@ import { receiveFile } from '../share/share.ts';
 import * as sync from '../sync/index.ts';
 import { SyncDialog } from '../sync/dialog.ts';
 import * as db from '../store/db.ts';
-import { importKey, planImport, decideImport, updateImport, type ImportItem } from './reimport.ts';
+import {
+    chooseDestination,
+    importKey,
+    planImport,
+    decideImport,
+    recordedFolders,
+    updateImport,
+    type ImportItem,
+} from './reimport.ts';
 
 // Extensions of the files that an import reads. Other files are skipped and counted.
 const SOURCE_FILES_RE = /\.(md|markdown|mdx|txt|html?)$/i;
@@ -245,9 +253,12 @@ async function importIncoming(items: Incoming[], parentId: string | null, skippe
     input.check();
     await app.load();
     input.check();
+    const destination = await chooseDestination(items, parentId, input);
+    if (destination === undefined) return;
+    parentId = destination;
     const plans = await planImport(items, parentId, input);
     if (!(await decideImport(plans, input))) return;
-    const folderIds = new Map<string, string | null>([['', parentId]]);
+    const folderIds = new Map<string, string | null>([['', parentId], ...recordedFolders(app.state.nodes, parentId)]);
     // A folder deleted while the import runs stays deleted: its remaining files are left out.
     const alive = (id: string | null): boolean => {
         const n = app.node(id);
@@ -435,7 +446,7 @@ async function runImport(files: File[], parentId: string | null, input: InputOpe
             if (!got.length) skipped++;
             items.push(...got);
         }
-        await importIncoming(items, parentId, skipped, input);
+        await app.batch(() => importIncoming(items, parentId, skipped, input));
     } catch (error) {
         if (input.current() && (error as Error).name !== 'AbortError')
             toast(`Failed to import: ${(error as Error).message}`);

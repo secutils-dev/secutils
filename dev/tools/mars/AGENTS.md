@@ -79,6 +79,8 @@ Read each guide whose trigger matches the change.
   It decides the text against `opened`: source changed takes it, stored copy changed keeps it, both changed asks (default **Save as a copy**).
 - Batch imports use `io/reimport.ts` and browser-local `importSource` paths, scoped by destination. Preserve extensions and case.
   Collect body conflicts and legacy identity confirmations before writes. Ambiguous paths create copies. Missing files remain.
+  An import that matches only one other destination asks before it moves there. New files use `recordedFolders`, so they follow folder renames.
+  Run the import inside `app.batch`: one library render per created document makes large imports quadratic.
   `putNodes` checks prepared text, source, and metadata, then commits body, import identity, and review side records together.
   Unchanged sources retain timestamps and vectors. Keep import identity out of Sync metadata, links, and exports.
 - An outside change keeps the previous text as the `base` side record (`app.rebase`) until **Mark reviewed**.

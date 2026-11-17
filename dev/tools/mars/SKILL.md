@@ -224,7 +224,7 @@ Use this reference when the user asks how to do a task in MARS. Each row is one 
 | Read and edit | **Preview**, **Source**, or double-click a block in Preview | The header shows **Saved** after an edit. |
 | Show or hide documents | Header > **Toggle documents sidebar** | The latest docked choice survives resizing and reloads. The narrow-screen overlay does not change that choice. |
 | Import into a folder | Folder menu > **Import files…** or **Import a folder…** | Available at every depth for editable folders. Imports preserve filenames and subfolder structure. |
-| Re-import files | Repeat the import into the same destination | Exact relative paths identify existing files. Unchanged files stay unchanged. Changed files retain comments and review history. Missing files remain. |
+| Re-import files | Repeat the import into the same destination | Exact relative paths identify existing files. Unchanged files stay unchanged. Changed files retain comments and review history. Missing files remain. New files follow renamed MARS folders. An import into another destination asks **Update the earlier import?** first. |
 | Resolve import conflicts | **Review imported files** | One dialog contains all conflicts and older imports without saved file identity. Each file defaults to **Save as a copy**. **Keep my text** merges comments only. **Review changes** takes incoming text. Cancel makes no import changes. |
 | Undo a rename | **Undo** in the rename notification | Available for six seconds after a folder, document, or title rename. Restores only the name, unless the name changed again. |
 | Comment | Select rendered text in Preview | Threads stay in the file. |

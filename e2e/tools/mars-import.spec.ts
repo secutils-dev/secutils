@@ -176,17 +176,15 @@ test.describe('source import', () => {
     await expect.poll(calls).toBe(initial + 1);
     await expect(page.locator('#sbSmartStatus')).toBeHidden();
   });
-  test('folder drops consume every directory batch and re-import more than 100 files without duplicates', async ({
-    page,
-  }) => {
+  test('folder drops consume every directory batch and re-import 1000 files without duplicates', async ({ page }) => {
     await boot(page);
     const drop = async (changed: boolean) =>
       page.evaluate((changed) => {
-        const files = Array.from({ length: 125 }, (_, i) => ({
+        const files = Array.from({ length: 1000 }, (_, i) => ({
           name: `Entry ${i}.md`,
           isFile: true,
           file(resolve: (file: File) => void) {
-            resolve(new File([`# Entry ${i}\n\n${changed && i === 124 ? 'Changed.' : 'Original.'}`], `Entry ${i}.md`));
+            resolve(new File([`# Entry ${i}\n\n${changed && i === 999 ? 'Changed.' : 'Original.'}`], `Entry ${i}.md`));
           },
         }));
         const nested = {
@@ -224,11 +222,12 @@ test.describe('source import', () => {
           .getElementById('tree')!
           .dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));
       }, changed);
+    // The timeouts also catch a library render per created document, which grows with the square of the file count.
     await drop(false);
-    await expect(page.locator('#toast')).toContainText('Imported 125 documents', { timeout: 15000 });
+    await expect(page.locator('#toast')).toContainText('Imported 1000 documents', { timeout: 15000 });
     const before = await importSnapshot(page);
     await drop(true);
-    await expect(page.locator('#toast')).toContainText('updated 1 · unchanged 124', { timeout: 15000 });
+    await expect(page.locator('#toast')).toContainText('updated 1 · unchanged 999', { timeout: 15000 });
     expect((await importSnapshot(page)).nodes.map((n) => n.id)).toEqual(before.nodes.map((n) => n.id));
   });
 
@@ -419,6 +418,139 @@ test.describe('source import', () => {
     await page.screenshot({ path: testInfo.outputPath('nested-reimport.png') });
   });
 
+  test('deep folder re-imports add, update, and skip files, follow renamed folders, and drive the review marker', async ({
+    page,
+  }, testInfo) => {
+    await boot(page);
+    await importInbox(page);
+    const root = testInfo.outputPath('Project');
+    const put = async (path: string, text: string) => {
+      await mkdir(join(root, path, '..'), { recursive: true });
+      await writeFile(join(root, path), text);
+    };
+    const deep = 'L1/L2/L3/L4/L5/Deep.md';
+    await put('Top.md', '# Top\n\nOne.\n');
+    await put('L1/Middle.md', '# Middle\n\nOne.\n');
+    await put(deep, '# Deep\n\nFirst paragraph.\n\nSecond paragraph.\n');
+    await importAtInbox(page, root, true);
+    await expect(page.locator('#toast')).toContainText('Imported 3 documents');
+    const docs = async () => (await importSnapshot(page)).nodes.filter((n) => n.kind === 'doc');
+    const folders = async () => (await importSnapshot(page)).nodes.filter((n) => n.kind === 'folder');
+    const initial = await importSnapshot(page),
+      d = initial.nodes.find((n) => n.name === 'Deep')!;
+    const dot = page.locator('.tree-dot');
+
+    // New files in existing and new nested folders, one changed file, and unchanged files.
+    await put(deep, '# Deep\n\nFirst paragraph changed.\n\nSecond paragraph.\n');
+    await put('L1/L2/Added.md', '# Added\n');
+    await put('L1/New folder/Fresh.md', '# Fresh\n');
+    await importAtInbox(page, root, true);
+    await expect(page.locator('#toast')).toContainText('Imported 2 documents · updated 1 · unchanged 2');
+    const l2 = (await folders()).find((n) => n.name === 'L2')!;
+    expect((await docs()).find((n) => n.name === 'Added')?.parentId).toBe(l2.id);
+    expect((await folders()).filter((n) => n.name === 'L2')).toHaveLength(1);
+    await expect(dot).toHaveCount(1);
+    await expect(page.locator(`.tree-row[data-id="${d.id}"] .tree-dot`)).toBeVisible();
+
+    await page.goto(`/#doc=${d.id}`);
+    await expect(page.locator('#changesLabel')).toHaveText('1 change since your review');
+    await expect(page.locator('#previewArticle .su-diff-edit')).toHaveCount(1);
+    await page.screenshot({ path: testInfo.outputPath('deep-reimport-review.png') });
+    await page.locator('#changesDone').click();
+    await expect(page.locator('#changesBar')).toBeHidden();
+    await expect(dot).toHaveCount(0);
+    let after = await importSnapshot(page);
+    expect(after.nodes.find((n) => n.id === d.id)?.pending).toBeUndefined();
+    expect(after.records[`base:${d.id}`]).toBeUndefined();
+
+    // The open document shows the change at once. Unreviewed changes add up across imports.
+    await put(deep, '# Deep\n\nFirst paragraph changed again.\n\nSecond paragraph.\n');
+    await importAtInbox(page, root, true);
+    await expect(page.locator('#toast')).toContainText('updated 1 · unchanged 4');
+    await expect(page.locator('#previewArticle')).toContainText('First paragraph changed again.');
+    await expect(page.locator('#changesLabel')).toHaveText('1 change since your review');
+    await put(deep, '# Deep\n\nFirst paragraph changed again.\n\nSecond paragraph changed.\n');
+    await importAtInbox(page, root, true);
+    await expect(page.locator('#toast')).toContainText('updated 1 · unchanged 4');
+    await expect(page.locator('#changesLabel')).toHaveText('2 changes since your review');
+    const reviewed = await importSnapshot(page);
+    await importAtInbox(page, root, true);
+    await expect(page.locator('#toast')).toContainText('unchanged 5');
+    after = await importSnapshot(page);
+    expect(after).toEqual(reviewed);
+    await expect(dot).toHaveCount(1);
+
+    // A folder label in MARS keeps receiving new files from its source folder.
+    await page.locator(`.tree-row[data-id="${l2.id}"]`).getByRole('button', { name: 'Actions for L2' }).click();
+    await page.getByRole('menuitem', { name: 'Rename', exact: true }).click();
+    await page.getByRole('textbox', { name: 'Name', exact: true }).fill('My L2 label');
+    await page.getByRole('textbox', { name: 'Name', exact: true }).press('Enter');
+    await put('L1/L2/Later.md', '# Later\n');
+    await put('L1/L2/L3/Later deep.md', '# Later deep\n');
+    await importAtInbox(page, root, true);
+    await expect(page.locator('#toast')).toContainText('Imported 2 documents · unchanged 5');
+    expect((await docs()).find((n) => n.name === 'Later')?.parentId).toBe(l2.id);
+    expect((await docs()).find((n) => n.name === 'Later deep')?.parentId).toBe(
+      initial.nodes.find((n) => n.name === 'L3')!.id,
+    );
+    expect((await folders()).map((n) => n.name).sort()).toEqual(
+      ['Import inbox', 'L1', 'L3', 'L4', 'L5', 'My L2 label', 'New folder', 'Project'].sort(),
+    );
+  });
+
+  test('a re-import into another destination asks before it updates the earlier import or adds copies', async ({
+    page,
+  }, testInfo) => {
+    await boot(page);
+    await importInbox(page);
+    const root = testInfo.outputPath('Project');
+    await mkdir(join(root, 'Nested'), { recursive: true });
+    await writeFile(join(root, 'Top.md'), '# Top\n');
+    await writeFile(join(root, 'Nested', 'Inner.md'), '# Inner\n\nOriginal.\n');
+    await importAtInbox(page, root, true);
+    await expect(page.locator('#toast')).toContainText('Imported 2 documents');
+    const inner = (await importSnapshot(page)).nodes.find((n) => n.name === 'Inner')!;
+    // The header menu imports into the folder of the open document.
+    const importFromHeader = async () => {
+      await page.getByRole('button', { name: 'New document, folder, or import', exact: true }).click();
+      const pending = page.waitForEvent('filechooser');
+      await page.getByRole('menuitem', { name: 'Import a folder…', exact: true }).click();
+      await (await pending).setFiles(root);
+    };
+    await page.goto(`/#doc=${inner.id}`);
+    await expect(page.locator('#docTitle')).toHaveText('Inner');
+    await writeFile(join(root, 'Nested', 'Inner.md'), '# Inner\n\nChanged on disk.\n');
+    const dialog = page.getByRole('dialog', { name: 'Update the earlier import?', exact: true });
+    const before = await importSnapshot(page);
+    await importFromHeader();
+    await expect(dialog).toContainText('2 of these files were imported into "Import inbox" before.');
+    await expect(dialog).toContainText('add new copies to "Import inbox / Project / Nested"');
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(dialog).toBeHidden();
+    expect(await importSnapshot(page)).toEqual(before);
+
+    await importFromHeader();
+    await expect(dialog.getByRole('button', { name: 'Update earlier import', exact: true })).toBeFocused();
+    await dialog.getByRole('button', { name: 'Update earlier import', exact: true }).click();
+    await expect(page.locator('#toast')).toContainText('Imported 0 documents · updated 1 · unchanged 1');
+    await expect(page.locator('#previewArticle')).toContainText('Changed on disk.');
+    await expect(page.locator('#changesLabel')).toHaveText('1 change since your review');
+    let after = await importSnapshot(page);
+    expect(after.nodes.map((n) => n.id).sort()).toEqual(before.nodes.map((n) => n.id).sort());
+
+    await importFromHeader();
+    await dialog.getByRole('button', { name: 'Add copies here', exact: true }).click();
+    await expect(page.locator('#toast')).toContainText('Imported 2 documents');
+    after = await importSnapshot(page);
+    expect(after.nodes.filter((n) => n.kind === 'doc')).toHaveLength(4);
+    expect(after.nodes.filter((n) => n.importSource?.destinationId === inner.parentId)).toHaveLength(2);
+    // The new destination now has its own identities, so no question repeats.
+    await importFromHeader();
+    await expect(page.locator('#toast')).toContainText('unchanged 2');
+    await expect(dialog).toBeHidden();
+    expect((await importSnapshot(page)).nodes.filter((n) => n.kind === 'doc')).toHaveLength(4);
+  });
+
   test('batch re-import matches multi-file subsets and one file while retaining omitted documents', async ({
     page,
   }) => {
@@ -536,6 +668,9 @@ test.describe('source import', () => {
     const chooser = page.waitForEvent('filechooser');
     await page.getByRole('menuitem', { name: /^Import files…/ }).click();
     await (await chooser).setFiles(archive());
+    const question = page.getByRole('dialog', { name: 'Update the earlier import?', exact: true });
+    await expect(question).toContainText('4 of these files were imported into "Import inbox" before.');
+    await question.getByRole('button', { name: 'Add copies here', exact: true }).click();
     await expect(page.locator('#toast')).toContainText('Imported 4 documents');
     expect((await importSnapshot(page)).nodes.filter((n) => n.kind === 'doc')).toHaveLength(8);
   });
