@@ -3,11 +3,10 @@
 // URL state: see dev/tools/shared/guides/url-state.md -> "URL state encoding":
 //   base64url( u32le(uncompressed length) || deflate-raw(UTF-8 text) )
 // Full links: `#name=<name>&md=<state>&o=<originId>&w=<readingWidth>` for one document
-// (compatible with Markdown Preview, which ignores `o` and `w`), or `#b=<state of a bundle JSON>`
-// for a folder.
+// (`#<state>` and `name`/`md` alone are the legacy forms), or `#b=<state of a bundle JSON>` for a folder.
 // Short links: `#s=<secret>`; the responder stores base64url(IV || AES-GCM(state bytes of the
 // bundle JSON)) under `id`. Both `id` and the AES key are SHA-256 hashes of the secret, so
-// the key never leaves the fragment (same scheme as Markdown Preview, different plaintext).
+// the key never leaves the fragment.
 //
 // Trust: a link can come from anyone, and a short-link blob comes from the service. Each decoder
 // bounds the inflated size (`MAX_STATE_BYTES`), `parseBundle` checks the bundle shape, and

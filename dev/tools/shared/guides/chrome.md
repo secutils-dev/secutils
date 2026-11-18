@@ -3,7 +3,7 @@
 Read before changes to tool layout, analytics, resource priority, or exported documents.
 MARS, ECHO, and Webhook Inspector use [design-system.md](design-system.md) for visual primitives.
 That guide takes precedence over the color, button, and icon snippets here for migrated tools.
-The snippets below describe legacy tool chrome, with `md/index.html` as the reference.
+The snippets below describe legacy tool chrome, with `pdf-extractor/index.html` as the reference.
 
 ## Brand Colors (from Elastic EUI theme-borealis)
 
@@ -202,7 +202,7 @@ together with the others and the mobile overrides:
 - `.btn-primary` uses `font-weight: 500` and `border-color: var(--primary-text)` (the maroon, contrast-safe in both
   themes), so it reads the same size as the outlined `.btn` beside it. `mock-saml-idp/index.html` keeps a +100 weight delta
   over its 500-weight regular buttons.
-- A mobile override that shrinks `.btn-sm` (as `md/index.html` and `pdf-extractor/index.html` do with `padding: 5px 9px; font-size: 11px`)
+- A mobile override that shrinks `.btn-sm` (as `pdf-extractor/index.html` does with `padding: 5px 9px; font-size: 11px`)
   also pins `height: 23px`, matching the 22-23 px mobile `.view-tab`.
 
 ### Panel bars and breakpoints (load-bearing)
@@ -493,7 +493,7 @@ Tools whose browser side ships **zero** third-party JS (today: `index.html`, `ec
 
 `opacity: 0.75` (not a darker `color`) is intentional: it dims **both** the muted text and the inherited link colour in one go, and stays correct across the light/dark theme swap without needing per-theme overrides. The `!important` on `.su-footer-fineprint`'s `margin-top` only exists to override the universal `* { margin: 0; }` reset declared at the top of every tool's stylesheet.
 
-### Generated/exported output files (no Secutils header, e.g. `md/index.html`'s HTML export)
+### Generated/exported output files (no Secutils header, e.g. the MARS HTML export)
 
 Since there is no header with branding, include a **"Powered by Secutils.dev" watermark footer** - subtle, non-distracting, links to `https://secutils.dev`:
 
@@ -647,7 +647,6 @@ run. Applies to:
 | `forge`                   | `certificate-decoder/index.html` | Only used in PEM decode handlers — `defer` is safe.                                                                    |
 | `jsrsasign` + `pako`      | `mock-saml-idp/index.html`       | Used inside `DOMContentLoaded` setup and click handlers — `defer` is safe.                                             |
 | `highlight.js` + `pako`   | `saml-decoder/index.html`        | Used in `buildStaticXmlView` and inflate handlers — `defer` is safe.                                                   |
-| `marked` + `highlight.js` | `md/index.html`                  | `fetchpriority="low"` **only** — `defer` cannot be added because the inline script calls `marked.use(…)` at top-level. |
 | Plausible loader          | every tool                 | Already `defer`; add `fetchpriority="low"` next to it.                                                                 |
 
 Canonical snippet:
@@ -668,7 +667,7 @@ the attribute — no behaviour change.
 
 Tools that produce printable artifacts (rendered articles, decoded certificates, JWT
 breakdowns, etc.) can offer a PDF export without breaking the single-page-HTML constraint.
-The pattern, demonstrated in `md/index.html`, is:
+The pattern is:
 
 1. Add a `↓ PDF` action button next to the existing download / copy actions.
 2. Build a self-contained printable HTML document (same brand fonts and palette as the

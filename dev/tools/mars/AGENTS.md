@@ -18,7 +18,7 @@ Read each guide whose trigger matches the change.
 | The operator storage audit or its report | [src/sync/storage-audit.md](src/sync/storage-audit.md) |
 | `src/search/`, `eval/`, a model, a dtype, or a Transformers.js upgrade | [src/search/README.md](src/search/README.md) |
 | A privacy claim, analytics, or a new network request | [README: Privacy and analytics](README.md#privacy-and-analytics) and the Privacy dialog in `index.html` |
-| Full links, bundles, short links, the `<state>` encoding | [url-state.md](../shared/guides/url-state.md#short-links-mdindexhtml-mars) |
+| Full links, bundles, short links, the `<state>` encoding | [url-state.md](../shared/guides/url-state.md#short-links-mars) |
 | The `@su:responder-script` in `index.html`, hosts, bundles | [platform.md](../shared/guides/platform.md) |
 | Shared tokens, primitives, glyphs, buttons | [design-system.md](../shared/guides/design-system.md) |
 | A failure that a document export cannot reproduce | [README: Developer flags and diagnostics](README.md#developer-flags-and-diagnostics) |
@@ -27,7 +27,6 @@ Read each guide whose trigger matches the change.
 ## Code conventions
 
 - **Format** with Prettier: `npm run format`. CI runs `npm run format:check`.
-  `.prettierignore` excludes `src/doc/viewer.js`, because its shared sections stay byte-identical to Markdown Preview.
 - **Module header**: each source file starts with a comment that states what the module owns and the invariants that callers depend on.
 - **Doc comments**: each exported function, class, and type has a JSDoc comment that states its contract: units, failure behavior, and side effects.
   A comment explains a reason or an invariant. The code states the mechanics.
@@ -40,21 +39,16 @@ Read each guide whose trigger matches the change.
 ### Source layout and build
 
 - `index.html` is a thin shell: SEO head, static DOM, favicons, the `@su:responder-script`, and two `gzip-base64` bundles.
-  The bundles are `mars` (this app, built by esbuild) and `three-mf` (`../shared/libs/three-mf/`, shared with `../md/index.html`).
+  The bundles are `mars` (this app, built by esbuild) and `three-mf` (`../shared/libs/three-mf/`).
 - The shell imports the `mars` bundle at startup. `html.mars-boot` hides the body until the bundle injects its CSS.
 - `sync-assets.ts` assembles the responder script for local preview, deployment, and the sandbox test. Keep one assembly function.
 - CodeMirror builds into one embedded module graph and loads lazily from a Blob URL. Mermaid and Paged.js load on demand from a CDN.
 - The page is cross-origin isolated (COOP `same-origin`, COEP `credentialless`) so that model threads work.
   A new cross-origin embed must load without credentials.
 
-### Viewer parity with Markdown Preview
+### Viewer
 
-- `src/doc/viewer.js` is a copy of the live script in `../md/index.html`, without its output UI and fragment autosave.
-  `viewer.d.ts` is its host API.
-- A fix to rendering, block editing, formatting, or comments lands in both files.
-  After the port, diff the shared sections. `test/viewer-parity.test.ts` compares several of them byte for byte.
-- MARS-only code stays out of `../md/index.html`: the "Review changes hooks" section
-  (`onRendered`, `setThreadHooks`, `blockText`, `requote`), the table hooks, the sync hooks, and the sanitizer calls.
+- `src/doc/viewer.js` renders, block-edits, formats, and comments. `viewer.d.ts` is its host API.
 - `src/doc/diagrams.js` supplies maps and models to the viewer and to the standalone export runtimes.
 
 ### Storage
@@ -92,14 +86,13 @@ Read each guide whose trigger matches the change.
 
 ### Links
 
-- Full links are Markdown Preview-compatible: `#name=&md=`, plus `&o=<originId>` and optional `&w=<width>`.
+- Full links are `#name=&md=`, plus `&o=<originId>` and optional `&w=<width>`. A bare `#<state>` still opens as a legacy link.
   New document snapshots add `&p=<state of the folder-name array>` and keep the exact saved document label.
   Single-document bundles carry the same path in `docs[0].path`, without sibling documents.
   New recipients recreate it under their incoming folder. Known copies keep their own placement and labels.
   Temporary sessions recreate the path at the root and retain it in their recovery fragment, without sibling documents.
   Folders use `#b=<state of a JSON bundle>` with `readingWidth` on each document.
-- Short links use the Markdown Preview scheme with a different plaintext, in the MARS key-value store.
-  MARS and Markdown Preview short links are not interchangeable.
+- Short links keep an encrypted bundle in the MARS key-value store ([url-state.md](../shared/guides/url-state.md#short-links-mars)).
 - `t=1` in the fragment or `?temporary=1` selects the memory backend before the database opens.
   Denied storage and quota failures select it too. A temporary session never reads or writes the library or its preferences.
 - `share/temporary.ts` keeps only the current document in the fragment, with generation guards and size limits.
@@ -112,7 +105,7 @@ Read each guide whose trigger matches the change.
 
 ### Sync and Live links
 
-- `src/sync/` owns Sync and Live links. Its hooks stay out of Markdown Preview.
+- `src/sync/` owns Sync and Live links.
   `index.ts` is the light entry. It loads `manager.ts`, a facade over the modules in `manager/`, only for connected content.
   The modules share state through `manager/state.ts`. Keep top-level code in them free of calls into sibling modules: they import each other in cycles.
 - `db.commitReplica` saves the Markdown projection, replica state, outbox, and received progress in one transaction.
@@ -150,8 +143,7 @@ Every document, comment, and review baseline can come from another person, and t
 - Column proportions live in an adjacent `su-table` comment. Use no side record and no new link format for them.
 - A cell edit splices only the selected content. An alignment edit changes only the divider colons.
   Selection formatting in Preview uses the source range of the selected cell.
-- The shared block mapper keeps byte parity with Markdown Preview apart from the explicit table hook calls.
-  Advance table ranges past source-mapped code and HTML tokens, inline list fences included, before the search for a table.
+- Advance table ranges past source-mapped code and HTML tokens, inline list fences included, before the search for a table.
 - A whole-table move or deletion takes the `su-table` comment with it. A column move keeps cell Markdown, alignment, and saved widths.
 - Apply a cell draft before a view change, a share, or an export. Discard a stale draft after an outside source change.
 - Preview and export use the same layout helper. Add controls only after the live Preview renders.
@@ -209,14 +201,14 @@ Every document, comment, and review baseline can come from another person, and t
    | Sync, Live links, responder | `mars-sync.spec.ts`, `mars-sync-ux.spec.ts`, `mars-sync-followup.spec.ts`, `mars-cleanup.spec.ts` |
    | Review markers | `mars-review-markers.spec.ts` |
    | Smart search | `mars-smart.spec.ts` (downloads each model once. No other spec downloads a model.) |
-   | Viewer | The affected `md.spec.ts` cases |
+   | Viewer | `mars-viewer.spec.ts` |
    | PDF Extractor handoff | `pdf.spec.ts` |
 
 5. For a selection, toolbar, or table-handle change, run the same specs with `--project=firefox` and `--project=webkit`.
 6. Run steps 2, 4, and 5 of "Change a tool" in [`../AGENTS.md`](../AGENTS.md).
 7. After a deploy, run `make e2e-tools-test ARGS=mars.spec.ts` (`MARS_BASE_URL` defaults to `https://mars.secutils.dev`).
 
-Completion: steps 1-6 pass, step 7 passes after a deploy, a viewer fix is present in both `viewer.js` and `../md/index.html`,
+Completion: steps 1-6 pass, step 7 passes after a deploy,
 and README.md, SKILL.md, and the Privacy dialog describe the changed behavior.
 Report each step that you did not run as unverified.
 

@@ -48,6 +48,34 @@ async function readyPdf(page: Page) {
 
 test.describe('export workspace', () => {
   test.setTimeout(90000);
+  test('HTML exports keep formatted Markdown inside the complete disclosure', async ({ page }) => {
+    const text =
+      '<details>\n<summary>**Title**</summary>\n## Inside\n\nFirst **paragraph**.\n\n- Last item\n</details>\n\nOutside.';
+    await openDoc(page, text, 'Disclosure.md');
+    await openExport(page);
+    const frame = htmlFrame(page);
+    const details = frame.locator('details');
+    await expect(details.locator(':scope > summary > strong')).toHaveText('Title');
+    await expect(details.getByRole('heading', { name: /^Inside/ })).toBeHidden();
+    await details.locator('summary').click();
+    await expect(details.getByRole('heading', { name: /^Inside/ })).toBeVisible();
+    await expect(details.locator('p strong')).toHaveText('paragraph');
+    await expect(details.locator('li')).toHaveText('Last item');
+    const output = await htmlDownload(page);
+    expect(
+      await page.evaluate((html) => {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const block = doc.querySelector('main > article details')!;
+        return {
+          summary: block.querySelector(':scope > summary > strong')?.textContent,
+          heading: block.querySelector('h2')?.textContent?.replace(/#$/, '').trim(),
+          last: block.querySelector('li')?.textContent,
+          ranges: block.querySelectorAll('[data-start], [data-end]').length,
+        };
+      }, output.text),
+    ).toEqual({ summary: 'Title', heading: 'Inside', last: 'Last item', ranges: 0 });
+  });
+
   test('documents the HTML boundary and removes supplied executable embeds, styling, and forged attributes', async ({
     page,
   }) => {

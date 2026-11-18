@@ -123,7 +123,7 @@ async function bundleFor(id: string): Promise<Bundle | null> {
 
 /**
  * Builds a full link: the content travels in the fragment, and nothing is uploaded.
- * A document uses the Markdown Preview form (`name`, `md`, `o`, optional `w`) plus `p` for its folder names.
+ * A document uses `name`, `md`, `o`, optional `w`, and `p` for its folder names.
  * A folder uses `#b=`. Names and paths stay in the fragment, never in a server request.
  */
 async function fullLink(bundle: Bundle) {
@@ -939,7 +939,7 @@ export async function openFromLocation(address = location.href): Promise<boolean
             bundle = json === null ? null : parseBundle(json);
             if (!bundle) return fail('This link is damaged or incomplete.');
         } else if (hash) {
-            // md.html-compatible full links: `#<state>` or `#name=<name>&md=<state>[&o=<originId>]`.
+            // Full links: `#<state>` or `#name=<name>&md=<state>[&o=<originId>]`.
             const text = await decodeState(params.get('md') ?? (hash.includes('=') ? '' : hash));
             input.check();
             if (text === null) return fail('This link is damaged or incomplete.');

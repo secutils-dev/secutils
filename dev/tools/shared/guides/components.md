@@ -461,8 +461,6 @@ Behavioural notes:
 
 ### Reference implementations
 
-- [`dev/tools/md/index.html`](../../md/index.html) — HTML options gear
-  popover + Export dropdown menu (the canonical pair).
 - [`dev/tools/pdf-extractor/index.html`](../../pdf-extractor/index.html) — OCR settings popover
   (uses the `toggle` event for language-suggestions teardown) + Export menu
   (uses `toggle` for the per-open `syncExportMenuItems()` resync).

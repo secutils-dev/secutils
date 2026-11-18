@@ -19,7 +19,7 @@ import { matchScore, textOverlap } from '../src/share/match.ts';
 import { chunkDoc, embeddable, nudgeDue, searchBody, snippet, threadChunks } from '../src/search/chunks.ts';
 import { createEncoder, indexChunks, MODELS, onnxFile, placement, rank, toVectors } from '../src/search/models.ts';
 
-test('URL state round-trips and matches the md.html wire format', async () => {
+test('URL state round-trips and matches the shared tools wire format', async () => {
     const text = '# Hi\n\nÜnïcödé ✓ and `code`\n';
     const encoded = await encodeState(text);
     assert.equal(await decodeState(encoded), text);

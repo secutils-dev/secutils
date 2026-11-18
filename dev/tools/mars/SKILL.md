@@ -14,13 +14,14 @@ description: >-
 # MARS: Markdown Annotation & Review System (Secutils.dev)
 
 MARS renders GitHub-flavored Markdown with Mermaid, KaTeX math, GeoJSON/TopoJSON maps, STL/3MF models, and GitHub alerts.
+`<details>` blocks support Markdown bodies and inline formatting in `<summary>`, without a required blank line after `</summary>`.
+Use Markdown headings in the body, not in the summary label. MARS keeps the source unchanged and sanitizes supplied HTML.
 Gantt labels support clock times such as `13:00` before a whitespace-prefixed task separator (` :`).
 MARS escapes these colons only for rendering. Source text, shared links, and Markdown downloads stay unchanged.
 A reader selects rendered text to start a review thread, then replies, resolves, and shares.
 Documents stay in the reader's browser (IndexedDB) unless the reader shares or syncs them.
 Review threads travel inside the Markdown file as one trailing HTML comment that other renderers hide.
 An agent reads and writes threads with ordinary file edits.
-The thread format is the same as in the Secutils.dev Markdown Preview tool.
 
 Pick the section for the task:
 
@@ -209,7 +210,7 @@ MARS stores column proportions in a one-line comment directly before a Markdown 
 - The number of weights must equal the number of header columns. If the metadata is invalid, MARS uses automatic widths.
 - Keep the comment directly before its table when you move or delete the table.
 - Files, full links, short links, HTML exports, and PDF exports keep the proportions. Row heights stay automatic.
-- The comment is MARS-only. Markdown Preview does not read it.
+- Other Markdown renderers hide the comment.
 
 In the app, the user edits tables in Preview: click a cell for the row and column handles, double-click a cell to edit its Markdown,
 and drag a header boundary to resize two adjacent columns. `Ctrl/Cmd+Z` reverts an edit.

@@ -27,10 +27,10 @@ Run the tool verification and browser gates below locally.
 - **Browsers**: current Chrome, Firefox, Safari, and Edge. Use a Baseline Newly Available feature when it replaces custom code.
   For an engine that still lacks it, add a fallback only when it is at most 20 lines, needs no polyfill or extra script,
   and the tool keeps working without it; otherwise stay on the existing pattern.
-  Limited Availability features are out of scope, except the File System Access API as a feature-detected enhancement in `md/index.html` and MARS.
+  Limited Availability features are out of scope, except the File System Access API as a feature-detected enhancement in MARS.
 - **Page**: `<title>Tool Name | Secutils.dev</title>`, `data-theme="dark"` on `<html>` with a theme toggle, and the shared chrome.
   MARS, ECHO, and Webhook Inspector use the [shared design system](shared/guides/design-system.md).
-  `md/index.html` remains the reference for unmigrated tools.
+  `pdf-extractor/index.html` remains the reference for unmigrated tools.
   Known deviations: `mock-saml-idp/index.html` (pre-banner chrome), and `index.html` and `certificate-decoder/index.html` (ES5 syntax).
 
 ## Guides
@@ -57,7 +57,7 @@ Read every guide whose surface the change touches.
 3. For URL-state changes, round-trip representative payloads (small, large, Unicode, the default state):
    `decodeState(await encodeState(x)) === x`.
 4. For responder-script changes, run `make e2e-standalone-test` when a smoke spec covers the tool
-   (`e2e/standalone/md_responder_script_smoke.spec.ts` covers `md/index.html` and `mars/index.html`).
+   (`e2e/standalone/mars_responder_script_smoke.spec.ts` covers `mars/index.html`).
    Otherwise run the script under `node:vm` with a stub `secutils`/`Deno.core` for a valid input,
    a malformed input (a clean error response), and a missing input (`null`, so the static body is served).
 5. Run `make tools-check`.

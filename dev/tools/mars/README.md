@@ -220,6 +220,19 @@ For that reason MARS sanitizes the HTML in every document, comment, and export b
 
 The Markdown source does not change. **Download Markdown** keeps the original HTML.
 
+`<details>` blocks support Markdown in their bodies and inline formatting in their `<summary>` labels.
+Blank lines after `</summary>` are optional. Headings, lists, and nested disclosures stay inside the collapsed block.
+MARS edits each top-level disclosure as one source block. Its HTML attributes follow the same safety policy.
+
+```markdown
+<details>
+<summary>**Section title**</summary>
+## Heading inside the section
+
+Text with **bold**, `code`, and [links](https://example.com).
+</details>
+```
+
 ### Table editing
 
 Click a table cell in Preview to show its row and column handles.
@@ -237,7 +250,7 @@ MARS stores column proportions in a one-line comment before the table. Files, li
 | Alice | Ready |
 ```
 
-Raw HTML tables are read-only. Markdown Preview does not read the comment.
+Raw HTML tables are read-only.
 
 ### Search
 

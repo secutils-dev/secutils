@@ -1,4 +1,4 @@
-/* Standalone reader styles, ported from md.html. Never collected from app stylesheets. */
+/* Standalone reader styles. Never collected from app stylesheets. */
 *, *::before, *::after { box-sizing: border-box; }
 :root, [data-theme="light"] {
     color-scheme: light;

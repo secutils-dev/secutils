@@ -37,8 +37,7 @@ Inline scripts ship untranspiled to evergreen browsers: write modern, compact, i
 - Use private object short-hand (`{ foo, bar }`) and computed property names where they
   make code clearer.
 
-The reference implementation in `md/index.html` follows all of the above and is
-the canonical example. When modifying an existing tool that still uses legacy syntax,
+When modifying an existing tool that still uses legacy syntax,
 modernize the surrounding code in the same edit.
 
 ### Long tasks (`scheduler.yield()` + `content-visibility: auto`)
@@ -74,7 +73,7 @@ const yieldToMain = () => 'scheduler' in window && typeof scheduler.yield === 'f
 ```
 
 Pick the fallback to match what the loop needs (event-loop slice vs paint).
-The Markdown renderer in `md/index.html` uses the first form
+The MARS renderer (`mars/src/doc/viewer.js`) uses the first form
 (highlight blocks are cheap and don't need a paint between them); the PDF
 extractor's `renderShots` loop uses the second (each iteration appends an
 `<img>` whose paint the user sees as progress).
@@ -119,7 +118,7 @@ median height once and pin it.
 
 #### Reference implementations
 
-- [`dev/tools/md/index.html`](../../md/index.html) `render()` —
+- [`dev/tools/mars/src/doc/viewer.js`](../../mars/src/doc/viewer.js) `render()` —
   yields every 50 ms between hljs `highlightElement` calls. The 150 ms
   `updatePreview` debounce hides the async hop from the user.
 - [`dev/tools/pdf-extractor/index.html`](../../pdf-extractor/index.html) `renderShots()` and

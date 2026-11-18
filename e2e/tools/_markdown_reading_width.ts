@@ -14,7 +14,7 @@ export function readingWidthTests(load: (page: Page, markdown: string) => Promis
       const maxWidth = width === 'full' ? 'none' : width === 'custom' ? '980px' : '1100px';
       await expect(page.locator('#previewArticle')).toHaveCSS('max-width', maxWidth);
       await options.click();
-      // Markdown Preview saves its document in the fragment; MARS uses a document ID.
+      // MARS routes the open document as `#doc=<id>`.
       await expect(page).toHaveURL(/#.+/);
       await page.reload();
       await expect(page.locator('#previewArticle h1')).toContainText('Reading layout');

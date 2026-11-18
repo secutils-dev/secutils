@@ -8,7 +8,7 @@
 //  3. html-minifier-terser accepts the page with deploy.ts's exact options,
 //     and minified script bodies contain no HTML comment-openers.
 //
-// Usage: `make tools-verify [ARGS="dev/tools/md/index.html ..."]` (default: every tool).
+// Usage: `make tools-verify [ARGS="dev/tools/echo/index.html ..."]` (default: every tool).
 // Read-only, no browser, no network. Exits non-zero on any failure.
 
 import { readFile } from "node:fs/promises";

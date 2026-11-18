@@ -7,7 +7,7 @@ import { validWidth } from '../src/export/settings.ts';
 import { encodeState, decodeState, parseBundle, sealBundle, openSealed, type Bundle } from '../src/share/codec.ts';
 
 const viewer = readFileSync(new URL('../src/doc/viewer.js', import.meta.url), 'utf8');
-const start = viewer.indexOf('// ---- Shared reading layout (MARS only) ----');
+const start = viewer.indexOf('// ---- Shared reading layout ----');
 const preference = viewer.slice(viewer.indexOf('const READING_WIDTH_MIN'), start);
 const layout = viewer.slice(start, viewer.indexOf('// ---- File open', start)).replace(/^export /gm, '');
 

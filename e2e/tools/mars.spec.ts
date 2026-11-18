@@ -853,7 +853,7 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     await other.close();
   });
 
-  test('md.html links open, and Export all downloads a zip that imports back', async ({ page, browser }) => {
+  test('full document links open, and Export all downloads a zip that imports back', async ({ page, browser }) => {
     await page.goto(tool.path);
     const encoded = await page.evaluate(async () => {
       const bytes = new TextEncoder().encode('# From md\n\nHello.');

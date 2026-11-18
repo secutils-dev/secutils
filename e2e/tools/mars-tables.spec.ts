@@ -498,7 +498,7 @@ test.describe('table editing', () => {
       mimeType: 'text/markdown',
       buffer: Buffer.from('# Other document\n\nOther text.'),
     });
-    await expect(page.locator('#docTitle')).toHaveText('Other document');
+    await expect(page.locator('#docTitle')).toHaveText('Other');
     await page.mouse.up();
     await page.goto(originalUrl);
     await expect(table(page)).toBeVisible();

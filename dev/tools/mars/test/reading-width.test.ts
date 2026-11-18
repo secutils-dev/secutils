@@ -4,7 +4,6 @@ import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
 
 const viewer = readFileSync(new URL('../src/doc/viewer.js', import.meta.url), 'utf8');
-const md = readFileSync(new URL('../../md/index.html', import.meta.url), 'utf8');
 const section = (text: string) =>
     text.slice(
         text.indexOf('const READING_WIDTH_MIN'),
@@ -48,10 +47,6 @@ function setup(saved: string | null = null, denied = false) {
     });
     return { els, styles, callbacks, saved: () => saved };
 }
-
-test('reading width restoration matches Markdown Preview', () => {
-    assert.equal(section(viewer), section(md).replace("    if (viewMode === 'html') renderHtmlPreview();\n", ''));
-});
 
 test('saved full and custom widths synchronize controls and both layout properties at startup', () => {
     const full = setup(JSON.stringify({ width: 'full', customWidth: 980 }));

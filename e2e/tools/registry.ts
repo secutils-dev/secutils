@@ -72,22 +72,6 @@ export const TOOLS: readonly Tool[] = [
     icon: 'cert',
   },
   {
-    slug: 'md',
-    // All selection styles work in GitHub alert bodies; generated titles offer Comment only.
-    // Reading width restores across reloads and new tabs, including full/custom widths and comment rails.
-    // Block controls reserve a gutter and retain adjacent items in gaps; ordered moves renumber source.
-    // Document links open in a new tab in Preview; fragment links still scroll locally.
-    // Mermaid: zoom, pan, and fit in preview/fullscreen; unchanged diagrams retain views after edits.
-    source: 'md/index.html',
-    name: 'Markdown Preview',
-    path: '/md',
-    description: 'Reading-first Markdown preview with Mermaid, math, alerts, and HTML/PDF export.',
-    applicationCategory: 'DeveloperApplication',
-    promote: true,
-    accent: '#a371f7',
-    icon: 'doc',
-  },
-  {
     slug: 'mars',
     // Temporary sessions and storage-denial fallback keep documents in memory, not the library.
     // MARS-only tables: proportional resizing and row/column editing persist in Markdown and HTML/PDF output.

@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 
-export const LINK_MARKDOWN = [
+const LINK_MARKDOWN = [
   '# Preview links',
   '',
   '[Markdown site](https://example.test/markdown)',
@@ -66,7 +66,7 @@ export function previewLinkTests(open: (page: Page, markdown: string) => Promise
     await expect(html).toHaveAttribute('title', 'Original title');
     await expect(html).toHaveAttribute('rel', /\bnofollow\b/);
     await expect(html).not.toHaveAttribute('rel', /\bopener\b/);
-    // Markdown Preview saves its share state to the fragment asynchronously.
+    // MARS routes the open document as `#doc=<id>`.
     await expect(page).toHaveURL(/#.+$/);
     const beforeAnchor = page.url();
     const jump = article.getByRole('link', { name: 'Jump to destination', exact: true });

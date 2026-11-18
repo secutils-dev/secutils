@@ -1,4 +1,4 @@
-// Host API of the ported md.html viewer (viewer.js).
+// Host API of the document viewer (viewer.js).
 //
 // The viewer owns the preview, the source and block editors, review threads, and writes to a
 // linked file. The host (main.ts) owns storage, routing, and sharing, and installs its callbacks
@@ -202,7 +202,7 @@ export function renderExportBody(body: string, signal?: AbortSignal): Promise<st
  */
 export function toast(msg: string, action?: { label: string; run: () => void }): void;
 
-// Review changes hooks (MARS only; md.html has none of these).
+// Review changes hooks.
 export interface ThreadHooks {
     // An anchor for a thread whose quote no longer matches the preview.
     fallbackAnchor?(thread: Thread): Range | null;

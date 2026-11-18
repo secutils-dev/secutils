@@ -182,7 +182,7 @@ Deployment inlines them before minification, without a new app bundle.
 
 When a tool needs an npm package (Node-only dependencies to stub, a worker, WASM, or a multi-file app), build it in a
 sub-package and let `deploy.ts` inline the output into the page. Current bundles: `liteparse` (`pdf-extractor/index.html`),
-`micro-ml` (`forecast/index.html`), `three-mf` (`md/index.html`, `mars/index.html`), and `mars` (the MARS app).
+`micro-ml` (`forecast/index.html`), `three-mf` (`mars/index.html`), and `mars` (the MARS app).
 
 Sub-package layout, isolated from the root `package.json`:
 
@@ -239,4 +239,3 @@ The HTML tokenizer can combine `<!--` with `<script` inside JavaScript and consu
 Use `\x3c` for `<` in JavaScript regex literals that match comment openers.
 Terser escapes strings, but it does not apply the same protection to regex literals.
 The matching behavior stays unchanged.
-`e2e/standalone/tools_inline_scripts.spec.ts` checks minified Markdown Preview startup through the browser's HTML parser.

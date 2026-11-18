@@ -1,5 +1,5 @@
-// Review threads in the trailing `<!-- su-comments [...] -->` block (format shared with
-// Markdown Preview, see dev/tools/md/SKILL.md -> "Review comments"), and merging a shared copy back.
+// Review threads in the trailing `<!-- su-comments [...] -->` block (format in SKILL.md -> "Review threads"),
+// and merging a shared copy back.
 //
 // Pure: no storage and no DOM. The block is document content, so another person can write it.
 // `splitComments` checks only that the block is a JSON array. It does not check the entries.

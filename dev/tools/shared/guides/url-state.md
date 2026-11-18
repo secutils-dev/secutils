@@ -1,6 +1,6 @@
 # URL state and short links
 
-The shared fragment encoding every tool uses for reload-safe and shareable state, and the encrypted short links of `md/index.html` and MARS. Read before changing how a tool stores, shares, or restores state.
+The shared fragment encoding every tool uses for reload-safe and shareable state, and the encrypted short links of MARS. Read before changing how a tool stores, shares, or restores state.
 
 ## URL state encoding (`encodeState` / `decodeState`)
 
@@ -109,24 +109,21 @@ const decodeState = async (str) => {
   `tiny-inflate` + a `ulen` cap (1 MiB is plenty) + bounds-checked source pointer to
   turn malformed input into a clean error response instead of an infinite loop.
 
-### Short links (`md/index.html`, MARS)
+### Short links (MARS)
 
-`md/index.html` can also share an expiring, end-to-end-encrypted copy of the state through
-its own responder KV store. The URL is `/md#s=<secret>`. Base64url never contains `=`,
-so this form can't collide with `#<encoded>`. Unlike full links, the document name is
-not a fragment parameter: it travels inside the ciphertext, so the URL reveals nothing.
+MARS can also share an expiring, end-to-end-encrypted copy of a document or folder through
+its own responder KV store. The URL is `/#s=<secret>`. Base64url never contains `=`,
+so this form can't collide with `#<encoded>`. The document name travels inside the ciphertext,
+so the URL reveals nothing.
 
 - **Keys**: `secret` is 12 random bytes (16 base64url characters).
   `id` is the first 12 bytes of `SHA-256("id" || secret)`.
   The AES-256-GCM key is `SHA-256("key" || secret)`.
   The server sees only `id`. The key never leaves the fragment.
-- **Envelope**: `base64url(IV(12) || AES-GCM(u16le(nameLen) || UTF-8 name || encodeState bytes))`.
-  The name is empty when frontmatter implies it (the same rule as `stateHash()`). The canonical
-  `encodeState`/`decodeState` snippet stays verbatim; bytes are bridged with
-  `toBase64Url`/`fromBase64Url`. The cap is 1,398,100 characters (`SHORT_MAX_CHARS`
-  in the page, `MAX_CHARS` in the script; keep them in sync), just under the 1 MiB KV
-  value limit.
-- **API** (the `@su:responder-script` in `md/index.html`, bare mount):
+- **Envelope**: `base64url(IV(12) || AES-GCM(encodeState bytes of the bundle JSON))` (`sealBundle` in `mars/src/share/codec.ts`).
+  The cap is 1,398,100 characters (`SHORT_MAX_CHARS` in `codec.ts`, `MAX_CHARS` in the script; keep them in sync),
+  just under the 1 MiB KV value limit.
+- **API** (the `@su:responder-script` in `mars/index.html`, bare mount):
   - `POST ?s=<id>&ttl=<86400|604800|1209600|2592000>`, with the blob as the body and an
     `x-su-delete-token` header. It returns `201 {exp}`. Other `ttl` values fall back to
     7 days. Both `s/<id>` and `d/<id>` (SHA-256 hex of the token) are written with
@@ -136,19 +133,16 @@ not a fragment parameter: it travels inside the ciphertext, so the URL reveals n
   - Errors: `400`, `405`, `413`, `429` (per-IP throttle, 20 links or 16 MiB per hour,
     tracked under `rl/<ip>/<id>.<bytes>`), `507` (KV quota).
   - Every response sets `Cache-Control: no-store` and `skipRequest: true`.
-- **Client state**: `localStorage["md.shortLinks"]` maps `id` to
-  `{token, exp, secret, ttl, docHash}`. Expired entries are pruned on read. Copying
-  again reuses a link with the same document, name, and ttl while at least half of
-  its lifetime remains. `localStorage["md.shortTtl"]` remembers the lifetime choice.
-- **Tests**: `e2e/standalone/md_responder_script_smoke.spec.ts` (runs the responder script of both `md/index.html` and
-  `mars/index.html`) and the short-link cases in `e2e/tools/md.spec.ts` and `mars.spec.ts`.
-- **MARS** runs a copy of this responder script in its own KV, with a different plaintext ([MARS guide](../../mars/AGENTS.md)).
-  Keep the two scripts identical.
-  The shared responder accepts 30-day snapshots. MARS offers this duration in Copy link. Markdown Preview retains its existing lifetime controls.
+- **Client state**: `localStorage["mars.shortLinks"]` maps `id` to
+  `{token, exp, secret, ttl, hash, nodeId}`. Expired entries are pruned on read. Copying
+  again reuses a link with the same content and ttl while at least half of
+  its lifetime remains. `localStorage["mars.shortTtl"]` remembers the lifetime choice.
+- **Tests**: `e2e/standalone/mars_responder_script_smoke.spec.ts` (runs the responder script) and the short-link cases in `mars.spec.ts`.
+- **Bundle fields** ([MARS guide](../../mars/AGENTS.md)):
   MARS bundle documents can include `readingWidth` (`full`, or an integer from 320 to 2400).
   Full document links carry this value as `w` in the fragment. An explicit `w` also supplies layout for legacy short links.
   Invalid or absent values retain the recipient's preference. The state encoding and responder script remain unchanged.
   MARS document snapshots carry saved parent-folder names in the bundle document's `path`.
   Full links encode that array as `p` in the fragment. Its presence also preserves the exact saved document label.
-  Markdown Preview ignores `p`. Legacy MARS links without it retain their existing name inference.
+  Legacy MARS links without it retain their existing name inference.
   Temporary recovery fragments retain the same path and recreate it at the session root, without an incoming-folder wrapper.

@@ -4,9 +4,11 @@ import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { marked } from 'marked';
 import { installTableRanges } from '../src/doc/table-renderer.ts';
+import { markdownDetails } from '../src/doc/markdown-details.ts';
+
+marked.use({ extensions: [markdownDetails] });
 
 const viewer = readFileSync(new URL('../src/doc/viewer.js', import.meta.url), 'utf8');
-const md = readFileSync(new URL('../../md/index.html', import.meta.url), 'utf8');
 const section = (text: string, start: string, end: string) =>
     text.slice(text.indexOf(start), text.indexOf(end, text.indexOf(start)));
 const mapping = section(viewer, 'const LIST_ITEM_RE', '// Keep the review open');
@@ -21,19 +23,6 @@ const itemRanges = (source: string) =>
         (match) => ({ start: Number(match[1]), text: source.slice(Number(match[1]), Number(match[2])) }),
     );
 
-test('shared source mapping and block controls match Markdown Preview apart from MARS table and sync hooks', () => {
-    for (const [start, end] of [
-        ['const LIST_ITEM_RE', '// Keep the review open'],
-        ['function renumberListItem', 'async function copyTarget'],
-        ['// ---- Block handle', '// ---- Selection formatting toolbar'],
-        ['// ---- Selection formatting toolbar', '// ---- Review comments'],
-    ])
-        assert.equal(
-            section(viewer, start, end).replace(/^.*\/\/ MARS-only (?:table (?:mapping|hook)|sync hook)\.\n/gm, ''),
-            section(md, start, end),
-        );
-});
-
 test('nested multiline list items retain original source ranges and indentation', () => {
     const source = '1. Parent\n   1. First\n   2. Wrapped\n      continuation\n   3. Last\n2. Outside\n';
     const ranges = itemRanges(source);
@@ -42,6 +31,28 @@ test('nested multiline list items retain original source ranges and indentation'
     assert.equal(ranges[3].text, '   3. Last');
     assert.equal(ranges[4].text, '2. Outside');
     assert.equal(ranges[2].start, source.indexOf('   2. Wrapped'));
+});
+
+test('disclosures keep one source wrapper around all paragraphs and the matching end tag', () => {
+    const source =
+        '# Before\n\n<details>\n<summary>Title</summary>\n**First**.\n\n## Inside\n\nLast.\n</details>\n\nAfter.';
+    const html = render(source, new marked.Renderer());
+    const start = source.indexOf('<details>');
+    const end = source.indexOf('</details>') + '</details>'.length;
+    assert.match(html, new RegExp(`<div class="su-block" data-start="${start}" data-end="${end}"><details>`));
+    assert.match(html, /<p>Last\.<\/p>\n<\/details><\/div><div class="su-block"[^>]*><p>After\.<\/p>/);
+    assert.equal([...html.matchAll(/class="su-block"/g)].length, 3);
+});
+
+test('table and task ranges inside a disclosure ignore identical fenced examples', () => {
+    const table = '| Name | State |\n| --- | --- |\n| Alice | Ready |';
+    const source = `<details>\n<summary>Title</summary>\n\n\`\`\`md\n${table}\n- [ ] Task\n\`\`\`\n\n${table}\n\n- [ ] Task\n</details>`;
+    const html = render(source, new marked.Renderer());
+    const range = html.match(/data-table-start="(\d+)" data-table-end="(\d+)"/)!;
+    assert.equal(Number(range[1]), source.lastIndexOf(table));
+    assert.equal(source.slice(Number(range[1]), Number(range[2])).trimEnd(), table);
+    const task = html.match(/data-check="(\d+)"/)!;
+    assert.equal(Number(task[1]), source.lastIndexOf('[ ] Task'));
 });
 
 test('list markers in code fences do not steal subsequent nested item ranges', () => {
