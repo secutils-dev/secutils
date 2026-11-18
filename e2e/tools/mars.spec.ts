@@ -543,6 +543,63 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     await expect(page.locator('#previewArticle h1')).toHaveText(/^Plan/);
   });
 
+  test('sidebar options sort the tree and keep the manual order', async ({ page }) => {
+    await page.goto(tool.path);
+    const rename = async (from: string, to: string) => {
+      await row(page, from).press('F2');
+      await page.getByRole('textbox', { name: 'Name', exact: true }).fill(to);
+      await page.keyboard.press('Enter');
+      await expect(row(page, to)).toBeVisible();
+    };
+    for (const name of ['Note 10', 'Note 2', 'Alpha']) {
+      await newDoc(page, `# ${name}`);
+      await rename('Untitled', name);
+    }
+    await page.getByRole('button', { name: 'New document, folder, or import' }).click();
+    await page.getByRole('menuitem', { name: 'New folder', exact: true }).click();
+    await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Box');
+    await page.keyboard.press('Enter');
+    const topLevel = page.locator('#tree .tree-row[aria-level="1"] .tree-label');
+    await expect(topLevel).toHaveText(['Note 10', 'Note 2', 'Alpha', 'Box']);
+
+    const options = page.getByRole('button', { name: 'Sidebar options' });
+    const sortBy = async (name: string) => {
+      await options.click();
+      await page.getByRole('menuitemradio', { name }).click();
+    };
+    await options.click();
+    await expect(page.getByRole('menuitemradio', { name: 'Manual' })).toHaveAttribute('aria-checked', 'true');
+    await expect(page.getByRole('menuitemcheckbox', { name: 'Folders always on top' })).toBeDisabled();
+    await page.keyboard.press('Escape');
+
+    await sortBy('Name');
+    await expect(topLevel).toHaveText(['Box', 'Alpha', 'Note 2', 'Note 10']);
+    await rename('Alpha', 'Zulu');
+    await expect(topLevel).toHaveText(['Box', 'Note 2', 'Note 10', 'Zulu']);
+
+    await sortBy('Modification time (newest first)');
+    await expect(topLevel).toHaveText(['Box', 'Zulu', 'Note 2', 'Note 10']);
+    await row(page, 'Note 2').getByRole('link').click();
+    await editSource(page, '# Note 2\n\nEdited.');
+    await expect(topLevel).toHaveText(['Box', 'Note 2', 'Zulu', 'Note 10']);
+    await page.reload();
+    await expect(topLevel).toHaveText(['Box', 'Note 2', 'Zulu', 'Note 10']);
+    await options.click();
+    await expect(page.getByRole('menuitemradio', { name: 'Modification time (newest first)' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    await page.keyboard.press('Escape');
+
+    // A sorted view has no position between siblings, so this drop must not touch the stored order.
+    await row(page, 'Note 10').dragTo(row(page, 'Zulu'));
+    await row(page, 'Zulu').dragTo(row(page, 'Box'));
+    await expect(row(page, 'Zulu')).toHaveAttribute('aria-level', '2');
+
+    await sortBy('Manual');
+    await expect(topLevel).toHaveText(['Note 10', 'Note 2', 'Box']);
+  });
+
   test('documents sidebar rename offers Undo for documents, folders, and title edits without losing text', async ({
     page,
   }) => {

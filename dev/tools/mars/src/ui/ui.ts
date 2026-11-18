@@ -24,9 +24,15 @@ export interface MenuItem {
     danger?: boolean;
     disabled?: boolean;
     run?: () => void;
+    // A choice row with a check mark in the icon slot. `radio` rows are exclusive choices.
+    checked?: boolean;
+    radio?: boolean;
 }
-/** A menu row: an action, a separator line, or a hint paragraph that is not interactive. */
-export type MenuEntry = MenuItem | 'separator' | { hint: string };
+/**
+ * A menu row: an action, a separator line, a hint paragraph that is not interactive,
+ * or a heading for the choice rows below it.
+ */
+export type MenuEntry = MenuItem | 'separator' | { hint: string } | { heading: string };
 
 const menuEl = () => $('marsMenu');
 let menuCleanup: (() => void) | null = null;
@@ -55,12 +61,22 @@ export function openMenu(anchor: Element | { x: number; y: number }, entries: Me
                     className: 'mars-menu-hint',
                     textContent: entry.hint,
                 });
+            if ('heading' in entry)
+                return Object.assign(document.createElement('p'), {
+                    className: 'mars-menu-heading',
+                    textContent: entry.heading,
+                });
             const b = document.createElement('button');
             b.type = 'button';
             b.className = `export-item${entry.danger ? ' danger' : ''}`;
-            b.setAttribute('role', 'menuitem');
+            b.setAttribute(
+                'role',
+                entry.checked === undefined ? 'menuitem' : entry.radio ? 'menuitemradio' : 'menuitemcheckbox',
+            );
+            if (entry.checked !== undefined) b.setAttribute('aria-checked', String(entry.checked));
             b.disabled = !!entry.disabled;
-            b.innerHTML = `${entry.icon ? `<span data-icon="${entry.icon}"></span>` : ''}<span>${esc(entry.label)}${entry.sub ? `<span class="item-sub">${esc(entry.sub)}</span>` : ''}</span>`;
+            const glyph = entry.checked === undefined ? entry.icon : 'check';
+            b.innerHTML = `${glyph ? `<span data-icon="${glyph}"></span>` : ''}<span>${esc(entry.label)}${entry.sub ? `<span class="item-sub">${esc(entry.sub)}</span>` : ''}</span>`;
             b.addEventListener('click', () => {
                 closeMenu();
                 entry.run?.();

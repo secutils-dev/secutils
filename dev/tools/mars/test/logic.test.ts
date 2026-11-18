@@ -3,7 +3,17 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { decodeState, encodeState, openSealed, parseBundle, sealBundle, type Bundle } from '../src/share/codec.ts';
 import { joinComments, mergeDocuments, splitComments, type Thread } from '../src/share/merge.ts';
-import { canMove, childrenOf, exportPaths, moveNode, type TreeNode } from '../src/tree/model.ts';
+import {
+    canMove,
+    childrenOf,
+    DEFAULT_SORT,
+    exportPaths,
+    moveNode,
+    parseSort,
+    siblingOrder,
+    type SortKey,
+    type TreeNode,
+} from '../src/tree/model.ts';
 import { diffBlocks, diffWords } from '../src/doc/diff.ts';
 import { matchScore, textOverlap } from '../src/share/match.ts';
 import { chunkDoc, embeddable, nudgeDue, searchBody, snippet, threadChunks } from '../src/search/chunks.ts';
@@ -69,6 +79,48 @@ test('tree moves reorder siblings and never create cycles', () => {
     );
     assert.equal(paths.get('a'), 'f/g/a.md');
     assert.equal(paths.get('a2'), 'f/g/a (2).md');
+});
+
+test('sidebar sort keys order siblings without a change to the stored order', () => {
+    const at = (id: string, kind: TreeNode['kind'], order: number, updatedAt: number, name = id): TreeNode => ({
+        ...node(id, null, kind, order),
+        name,
+        updatedAt,
+    });
+    const nodes = [
+        at('Zed', 'folder', 0, 9),
+        at('Note 10', 'doc', 1, 3),
+        at('Alpha', 'folder', 2, 1),
+        at('Note 2', 'doc', 3, 5),
+        at('beta', 'doc', 4, 1),
+        at('twin-b', 'doc', 6, 2, 'Twin'),
+        at('twin-a', 'doc', 5, 2, 'Twin'),
+    ];
+    const before = JSON.stringify(nodes);
+    const ids = (by: SortKey, foldersFirst = true) =>
+        childrenOf(nodes, null, siblingOrder({ by, foldersFirst })).map((n) => n.id);
+    assert.deepEqual(
+        ids('manual'),
+        childrenOf(nodes, null).map((n) => n.id),
+    );
+    assert.deepEqual(ids('name'), ['Alpha', 'Zed', 'beta', 'Note 2', 'Note 10', 'twin-a', 'twin-b']);
+    assert.deepEqual(ids('name', false), ['Alpha', 'beta', 'Note 2', 'Note 10', 'twin-a', 'twin-b', 'Zed']);
+    assert.deepEqual(ids('modifiedDesc', false), ['Alpha', 'Zed', 'Note 2', 'Note 10', 'twin-a', 'twin-b', 'beta']);
+    assert.deepEqual(ids('modifiedAsc'), ['Alpha', 'Zed', 'beta', 'twin-a', 'twin-b', 'Note 10', 'Note 2']);
+    assert.equal(JSON.stringify(nodes), before);
+    assert.deepEqual(
+        [...exportPaths(nodes, null).keys()],
+        ['Zed', 'Note 10', 'Alpha', 'Note 2', 'beta', 'twin-a', 'twin-b'],
+    );
+});
+
+test('a malformed sidebar sort preference falls back to Manual', () => {
+    for (const raw of [null, '{', '{"by":"type","foldersFirst":true}', '{"by":"name","foldersFirst":"yes"}'])
+        assert.deepEqual(parseSort(raw), DEFAULT_SORT);
+    assert.deepEqual(parseSort('{"by":"modifiedAsc","foldersFirst":false}'), {
+        by: 'modifiedAsc',
+        foldersFirst: false,
+    });
 });
 
 test('comment merge unions threads and comments and keeps the body choice', () => {

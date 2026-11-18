@@ -1,5 +1,7 @@
 // Documents sidebar: a docked, hideable tree of folders and documents (EuiCollapsibleNav +
 // EuiTreeView look). Drag rows to move or reorder them; drop files to import them.
+// A sort key other than Manual orders the rows for display only. In that view a drag can only move
+// a row into another folder, so the stored `order` never changes without a visible result.
 //
 // This module owns the tree DOM, the search result list, row menus, rename, and drag and drop.
 // It does not own the tree data: every change goes through `app`, `sync`, `share`, or `io`, and
@@ -10,7 +12,18 @@
 // - A document row is a real link to `#doc=<id>`. The action button and the rename input stay
 //   outside the anchor.
 import * as app from '../app.ts';
-import { ancestors, canMove, childrenOf, descendants, textBytes, type TreeNode } from '../tree/model.ts';
+import {
+    ancestors,
+    canMove,
+    childrenOf,
+    descendants,
+    parseSort,
+    siblingOrder,
+    textBytes,
+    type SortKey,
+    type TreeNode,
+    type TreeSort,
+} from '../tree/model.ts';
 import { icon, folderIcon, documentIcon } from '../ui/icons.ts';
 import { connectionBadgeVisible, hasSyncGlyph, syncedAncestor } from '../ui/connection-indicator.ts';
 import { $, closeMenu, esc, modal, openMenu, type MenuEntry } from '../ui/ui.ts';
@@ -33,6 +46,8 @@ const NARROW = matchMedia('(max-width: 900px)');
 const COLLAPSED_KEY = 'mars.sidebarCollapsed';
 /** `localStorage` key: the sidebar width in CSS pixels. */
 const WIDTH_KEY = 'mars.sidebarWidth';
+/** `localStorage` key: the JSON `TreeSort` of the tree rows. */
+const SORT_KEY = 'mars.sidebarSort';
 // The node whose row shows a rename input, or null.
 let renaming: string | null = null;
 // The row that keyboard navigation last reached. It keeps the tab stop across renders.
@@ -97,6 +112,64 @@ resizer.addEventListener('pointerup', () => {
     resizer.onpointermove = null;
 });
 
+// ---- Sort ----
+const readSort = () => {
+    try {
+        return parseSort(localStorage.getItem(SORT_KEY));
+    } catch {
+        return parseSort(null);
+    }
+};
+let sort: TreeSort = readSort();
+let compare = siblingOrder(sort);
+/** The children of `parentId` in display order. */
+const visibleChildren = (parentId: string | null) => childrenOf(app.state.nodes, parentId, compare);
+
+/** Applies a sort and saves it. If storage rejects the write, the sort applies to this tab only. */
+function setSort(next: TreeSort) {
+    sort = next;
+    compare = siblingOrder(sort);
+    try {
+        localStorage.setItem(SORT_KEY, JSON.stringify(sort));
+    } catch {}
+    render();
+}
+window.addEventListener('storage', (e) => {
+    if (e.storageArea !== localStorage || (e.key !== SORT_KEY && e.key !== null)) return;
+    sort = readSort();
+    compare = siblingOrder(sort);
+    render();
+});
+
+const SORT_LABELS: [SortKey, string][] = [
+    ['manual', 'Manual'],
+    ['name', 'Name'],
+    ['modifiedDesc', 'Modification time (newest first)'],
+    ['modifiedAsc', 'Modification time (oldest first)'],
+];
+$('sbOptionsBtn').addEventListener('click', (e) =>
+    openMenu(
+        e.currentTarget as HTMLElement,
+        [
+            { heading: 'Sort by' },
+            ...SORT_LABELS.map(([by, label]) => ({
+                label,
+                radio: true,
+                checked: sort.by === by,
+                run: () => setSort({ ...sort, by }),
+            })),
+            'separator',
+            {
+                label: 'Folders always on top',
+                checked: sort.by === 'name' ? sort.foldersFirst : sort.by !== 'manual',
+                disabled: sort.by !== 'name',
+                run: () => setSort({ ...sort, foldersFirst: !sort.foldersFirst }),
+            },
+        ],
+        'Sidebar options',
+    ),
+);
+
 // ---- Rendering ----
 const filterText = () => filterInput.value.trim().toLowerCase();
 
@@ -104,7 +177,7 @@ const filterText = () => filterInput.value.trim().toLowerCase();
 function visibleRows(): { n: TreeNode; depth: number }[] {
     const rows: { n: TreeNode; depth: number }[] = [];
     const walk = (parentId: string | null, depth: number) => {
-        for (const n of childrenOf(app.state.nodes, parentId)) {
+        for (const n of visibleChildren(parentId)) {
             rows.push({ n, depth });
             if (n.kind === 'folder' && n.open) walk(n.id, depth + 1);
         }
@@ -117,7 +190,7 @@ function visibleRows(): { n: TreeNode; depth: number }[] {
 function allDocs() {
     const out: TreeNode[] = [];
     const walk = (parentId: string | null) => {
-        for (const n of childrenOf(app.state.nodes, parentId)) n.kind === 'doc' ? out.push(n) : walk(n.id);
+        for (const n of visibleChildren(parentId)) n.kind === 'doc' ? out.push(n) : walk(n.id);
     };
     walk(null);
     return out;
@@ -822,22 +895,37 @@ let lastDrop: Drop | null = null;
  * Maps the pointer to a drop position. The middle half of a folder row drops into the folder.
  * Otherwise the upper half of a row drops before it and the lower half after it. A point
  * outside every row drops at the end of the top level.
+ * In a sorted view a folder row drops into the folder, and a document row into its parent.
  */
 function dropTarget(e: DragEvent): Drop {
     const row = (e.target as HTMLElement).closest<HTMLElement>('.tree-row');
     const n = rowNode(row);
     if (!row || !n) return { parentId: null, beforeId: null, row: null, cls: '' };
+    if (sort.by !== 'manual') {
+        const parentId = n.kind === 'folder' ? n.id : (app.node(n.parentId)?.id ?? null);
+        const target = rowEl(parentId);
+        return { parentId, beforeId: null, row: target, cls: target ? 'drop-inside' : '' };
+    }
     const r = row.getBoundingClientRect();
     const y = (e.clientY - r.top) / r.height;
-    const siblings = childrenOf(app.state.nodes, n.parentId).filter((s) => s.id !== dragId);
+    const siblings = visibleChildren(n.parentId).filter((s) => s.id !== dragId);
     const after = siblings[siblings.findIndex((s) => s.id === n.id) + 1]?.id ?? null;
     if (n.kind === 'folder' && y > 0.25 && y < 0.75) return { parentId: n.id, beforeId: null, row, cls: 'drop-inside' };
     if (y < 0.5) return { parentId: n.parentId, beforeId: n.id, row, cls: 'drop-before' };
     // Below an open folder, a drop goes to its first child slot.
     if (n.kind === 'folder' && n.open && app.state.nodes.some((c) => c.parentId === n.id)) {
-        return { parentId: n.id, beforeId: childrenOf(app.state.nodes, n.id)[0]?.id ?? null, row, cls: 'drop-after' };
+        return { parentId: n.id, beforeId: visibleChildren(n.id)[0]?.id ?? null, row, cls: 'drop-after' };
     }
     return { parentId: n.parentId, beforeId: after, row, cls: 'drop-after' };
+}
+
+/**
+ * True when a row drag in a sorted view targets the current parent. `moveNode` would move the row to
+ * the end of the stored order: an invisible change that Sync sends to other devices.
+ */
+function sortedNoop(drop: Drop) {
+    const n = app.node(dragId);
+    return !!n && sort.by !== 'manual' && drop.parentId === (app.node(n.parentId)?.id ?? null);
 }
 
 function clearDrop() {
@@ -869,7 +957,7 @@ tree.addEventListener('dragover', (e) => {
     const files = e.dataTransfer?.types.includes('Files');
     if (!dragId && !files) return;
     const drop = dropTarget(e);
-    if (dragId && !canMove(app.state.nodes, dragId, drop.parentId)) {
+    if (dragId && (!canMove(app.state.nodes, dragId, drop.parentId) || sortedNoop(drop))) {
         clearDrop();
         return;
     }
@@ -892,8 +980,9 @@ tree.addEventListener('drop', async (e) => {
     clearDrop();
     if (dragId) {
         const id = dragId;
+        const noop = sortedNoop(drop);
         dragId = null;
-        await app.move(id, drop.parentId, drop.beforeId);
+        if (!noop) await app.move(id, drop.parentId, drop.beforeId);
         return;
     }
     if (e.dataTransfer) await io.importDataTransfer(e.dataTransfer, drop.parentId);

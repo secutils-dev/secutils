@@ -66,6 +66,11 @@ Link-click, file-download, form, and hash-route tracking are off. The tracker ha
   Browsers expose relative paths, not absolute paths. Use separate destinations for unrelated folders with identical names and structure.
   Ordinary file selections do not expose parent directories. Files with indistinguishable paths stay separate as copies.
   A disk rename or move adds a new file. Re-imports do not watch or write files on disk.
+- **Sidebar options > Sort by** selects **Manual**, **Name**, or **Modification time** (newest or oldest first).
+  **Manual** is the default and keeps the drag-and-drop order. The other keys sort the rows again after each add, rename, or save.
+  **Folders always on top** applies to **Name**. In a time sort, folders stay on top, sorted by name.
+  The sort applies only to the sidebar in this browser. Sync, links, and exports keep the manual order.
+  In a sorted view, a drag moves an item into another folder only.
 - Right-click a document for MARS actions. **Shift + right-click** shows the browser link menu. The `⋮` button always opens MARS actions.
 - Each document has a link of the form `#doc=<id>`. The link works only in the same browser profile.
 - Every deletion asks for confirmation. **Undo** restores a locally deleted document as a local copy.

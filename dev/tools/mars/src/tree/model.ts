@@ -1,6 +1,7 @@
 // Pure tree helpers over the flat node list stored in IndexedDB.
 //
 // Owns the `TreeNode` record and the rules for order, ancestry, moves, and export paths.
+// Sidebar sort keys only compare nodes. They never change the stored `order`.
 // No function reads storage or the DOM. Only `moveNode` changes the nodes that it receives.
 // The list can hold a node whose parent is gone, so each walk tolerates a missing parent.
 import type { ReadingWidth } from '../export/settings.ts';
@@ -72,14 +73,54 @@ export const textBytes = (text: string) => utf8.encode(text).length;
 const byOrder = (a: TreeNode, b: TreeNode) =>
     a.order - b.order || (a.kind === b.kind ? 0 : a.kind === 'folder' ? -1 : 1) || a.name.localeCompare(b.name);
 
+/** A sidebar sort key. `manual` is the stored `order`. */
+export type SortKey = 'manual' | 'name' | 'modifiedDesc' | 'modifiedAsc';
+/** The sidebar sort preference. `foldersFirst` applies to the `name` key only. */
+export interface TreeSort {
+    by: SortKey;
+    foldersFirst: boolean;
+}
+/** The sort that MARS uses when no valid preference exists. */
+export const DEFAULT_SORT: TreeSort = { by: 'manual', foldersFirst: true };
+const SORT_KEYS: readonly SortKey[] = ['manual', 'name', 'modifiedDesc', 'modifiedAsc'];
+
+/** Parses a stored preference. Returns `DEFAULT_SORT` for a missing or malformed value. Never throws. */
+export function parseSort(raw: string | null): TreeSort {
+    try {
+        const value = JSON.parse(raw ?? '');
+        if (SORT_KEYS.includes(value?.by) && typeof value.foldersFirst === 'boolean')
+            return { by: value.by, foldersFirst: value.foldersFirst };
+    } catch {}
+    return DEFAULT_SORT;
+}
+
+const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+const folderFirst = (a: TreeNode, b: TreeNode) => (a.kind === b.kind ? 0 : a.kind === 'folder' ? -1 : 1);
+const byName = (a: TreeNode, b: TreeNode) => collator.compare(a.name, b.name);
+
 /**
- * The sorted children of `parentId`. Null selects the top level.
+ * The sibling comparator for a sort preference. Equal keys fall back to `order`.
+ * A time sort keeps folders on top, sorted by name.
+ * ponytail: a folder `updatedAt` changes only on create and rename. For mixed time order, use the newest `updatedAt` below each folder.
+ */
+export function siblingOrder({ by, foldersFirst }: TreeSort): (a: TreeNode, b: TreeNode) => number {
+    if (by === 'manual') return byOrder;
+    if (by === 'name') return (a, b) => (foldersFirst ? folderFirst(a, b) : 0) || byName(a, b) || a.order - b.order;
+    const sign = by === 'modifiedDesc' ? -1 : 1;
+    return (a, b) =>
+        folderFirst(a, b) ||
+        (a.kind === 'folder' ? byName(a, b) : sign * (a.updatedAt - b.updatedAt)) ||
+        a.order - b.order;
+}
+
+/**
+ * The sorted children of `parentId`. Null selects the top level. `compare` defaults to the stored order.
  * Nodes whose parent is gone (deleted in another tab, say) show at the top level.
  */
-export function childrenOf(nodes: TreeNode[], parentId: string | null) {
-    if (parentId !== null) return nodes.filter((n) => n.parentId === parentId).sort(byOrder);
+export function childrenOf(nodes: TreeNode[], parentId: string | null, compare = byOrder) {
+    if (parentId !== null) return nodes.filter((n) => n.parentId === parentId).sort(compare);
     const ids = new Set(nodes.map((n) => n.id));
-    return nodes.filter((n) => n.parentId === null || !ids.has(n.parentId)).sort(byOrder);
+    return nodes.filter((n) => n.parentId === null || !ids.has(n.parentId)).sort(compare);
 }
 
 /** Every node below `id`, each parent before its children. The folder itself is not included. */
