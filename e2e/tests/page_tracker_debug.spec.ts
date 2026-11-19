@@ -1,8 +1,8 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 
-import type { PageDebugResult } from './page_tracker_debug_fixtures';
 import { ensureUserAndLogin } from '../helpers';
+import type { PageDebugResult } from './page_tracker_debug_fixtures';
 
 // ---------------------------------------------------------------------------
 // Fixture factories

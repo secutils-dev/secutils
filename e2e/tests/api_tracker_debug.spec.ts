@@ -1,8 +1,8 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 
-import type { DebugResult } from './api_tracker_debug_fixtures';
 import { ensureUserAndLogin } from '../helpers';
+import type { DebugResult } from './api_tracker_debug_fixtures';
 
 // Reachable from Retrack inside Docker via the host-gateway alias.
 const REAL_TARGET_URL = 'http://host.docker.internal:7171/api/ui/state';
