@@ -26,7 +26,6 @@
     <meta name="twitter:description" content="Free JWT debugger. Decode, verify, and sign HMAC JSON Web Tokens directly in your browser. No signup.">
     <meta name="twitter:image" content="https://secutils.dev/docs/img/og/og-jwt.png">
     <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"JWT Debugger","url":"https://{{TOOLS_HOST}}/jwt","applicationCategory":"SecurityApplication","operatingSystem":"Any","browserRequirements":"Requires JavaScript","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"publisher":{"@type":"Organization","name":"Secutils.dev","url":"https://secutils.dev"},"sameAs":"https://github.com/secutils-dev/secutils/blob/main/dev/tools/jwt-debugger/index.html","description":"Free JWT debugger. Decode, verify, and sign HMAC JSON Web Tokens (HS256, HS384, HS512) directly in your browser. State stays in the URL fragment so tokens never leave your machine."}</script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jose/4.14.4/index.umd.min.js" integrity="sha384-poiEbfNKlGsC2UCQ/2tTuNE0fFy0BsCXn1io3SyuDm7TqWh8EgorXSCmzu8UE4rD" crossorigin="anonymous" defer fetchpriority="low"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=Roboto+Mono:wght@400..700&display=swap" rel="stylesheet">
@@ -418,7 +417,7 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; max-w
         <div class="su-dialog-body">
             <p>This tool is powered by the following open-source libraries:</p>
             <ul class="su-credits-list">
-                <li><a href="https://github.com/panva/jose" target="_blank" rel="noopener noreferrer"><strong>jose</strong></a> - JSON Object Signing and Encryption for the Web Crypto API, used to decode, verify, and sign JWTs.</li>
+                <li><a href="https://github.com/panva/jose" target="_blank" rel="noopener noreferrer"><strong>jose 6.2.18</strong></a> - Embedded JSON Object Signing and Encryption for the Web Crypto API, used to verify and sign JWTs.</li>
             </ul>
             <p class="su-dialog-fineprint">All trademarks are property of their respective owners.</p>
         </div>
@@ -428,6 +427,7 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; max-w
         <span id="toastMsg"></span>
     </div>
 
+<script id="su-bundle-jose" type="text/plain" data-su-bundle="jose" data-su-bundle-encoding="gzip-base64"></script>
 <script>
 (function() {
     const skillLinkEl = document.getElementById('skillLink');
@@ -474,6 +474,19 @@ if (!('closedBy' in HTMLDialogElement.prototype)) {
         });
     }
 }
+
+async function loadSuBundle(name) {
+    const el = document.getElementById(`su-bundle-${name}`);
+    if (!el?.textContent) throw new Error(`Bundle "${name}" is not loaded`);
+    let src = el.textContent.trim();
+    if (el.dataset.suBundleEncoding === 'gzip-base64') {
+        const bytes = Uint8Array.from(atob(src), (c) => c.charCodeAt(0));
+        src = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+    }
+    return import(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+}
+let josePromise;
+const loadJose = () => josePromise ??= loadSuBundle('jose');
 
 // URL state encoding: see dev/tools/shared/guides/url-state.md → "URL state encoding".
 const utf8Enc = new TextEncoder();
@@ -873,6 +886,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('decoded-header').value = JSON.stringify(header, null, 2);
         }
         try {
+            const jose = await loadJose();
             const secretKey = new TextEncoder().encode(secretInput.value);
             const jwt = await new jose.SignJWT(payload).setProtectedHeader(header).sign(secretKey);
             renderColoredToken(jwt);
@@ -890,6 +904,7 @@ document.addEventListener('DOMContentLoaded', () => {
             updateSignatureStatusUI(false); return;
         }
         try {
+            const jose = await loadJose();
             const secretKey = new TextEncoder().encode(secret);
             await jose.jwtVerify(token, secretKey, { algorithms: [algorithmSelect.value] });
             updateSignatureStatusUI(true);

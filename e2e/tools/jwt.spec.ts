@@ -1,3 +1,5 @@
+import { createHmac } from 'node:crypto';
+
 import { expect, test } from '@playwright/test';
 
 import { assertSeoBasics, assertSkillMd, getTool } from './_helpers';
@@ -69,6 +71,39 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     await page.locator('#encoded-output').fill(SAMPLE_JWT);
     await page.locator('#secret-input').fill(SAMPLE_SECRET);
     await expect(page.locator('#signature-status')).toContainText(/Signature Verified/i);
+  });
+
+  test('signs all HMAC algorithms with the embedded bundle and no library CDN requests', async ({ page }) => {
+    const libraryRequests: string[] = [];
+    const libraryCdn = /^https:\/\/(?:cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net)\//;
+    page.on('request', (request) => {
+      if (libraryCdn.test(request.url())) libraryRequests.push(request.url());
+    });
+    await page.route(libraryCdn, (route) => route.abort());
+    await page.goto(tool.path);
+    const encoded = page.locator('#encoded-output');
+    await page.locator('#secret-input').fill(SAMPLE_SECRET);
+    for (const [algorithm, hash] of [
+      ['HS256', 'sha256'],
+      ['HS384', 'sha384'],
+      ['HS512', 'sha512'],
+    ]) {
+      await page.getByLabel('Algorithm').selectOption(algorithm);
+      await expect
+        .poll(async () => {
+          const [header] = (await encoded.innerText()).split('.');
+          return JSON.parse(Buffer.from(header, 'base64url').toString()).alg;
+        })
+        .toBe(algorithm);
+      await expect(page.locator('#signature-status')).toHaveText('Signature Verified');
+      const [header, payload, signature] = (await encoded.innerText()).split('.');
+      const expected = createHmac(hash, SAMPLE_SECRET).update(`${header}.${payload}`).digest('base64url');
+      expect(signature).toBe(expected);
+      const invalid = `${header}.${payload}.${signature.startsWith('A') ? 'B' : 'A'}${signature.slice(1)}`;
+      await encoded.fill(invalid);
+      await expect(page.locator('#signature-status')).toHaveText('Invalid Signature');
+    }
+    expect(libraryRequests).toEqual([]);
   });
 
   test('Share button produces a shareable URL with state in the fragment', async ({ page }) => {

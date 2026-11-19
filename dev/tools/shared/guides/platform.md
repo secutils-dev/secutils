@@ -38,6 +38,7 @@ The tools index remains `index.html`.
 MARS owns its source, assets, evaluation, and sync assembly in `mars/`.
 PDF Extractor owns the `liteparse` build. Forecast owns the `micro-ml` build.
 The shared `three-mf` importer lives in `shared/libs/three-mf/`.
+JWT Debugger owns the `jose` build.
 
 `shared/sources.ts` discovers root HTML files and immediate app directories with `index.html`.
 It excludes `shared/` and does not traverse dependencies, build output, or fixtures.
@@ -181,8 +182,9 @@ Shared visual assets use a separate inclusion step, documented in [design-system
 Deployment inlines them before minification, without a new app bundle.
 
 When a tool needs an npm package (Node-only dependencies to stub, a worker, WASM, or a multi-file app), build it in a
-sub-package and let `deploy.ts` inline the output into the page. Current bundles: `liteparse` (`pdf-extractor/index.html`),
-`micro-ml` (`forecast/index.html`), `three-mf` (`mars/index.html`), and `mars` (the MARS app).
+sub-package and let `deploy.ts` inline the output into the page.
+`liteparse` serves PDF Extractor, `micro-ml` serves Forecast, and `jose` serves JWT Debugger.
+MARS uses the `three-mf` importer and its own `mars` app bundle.
 
 Sub-package layout, isolated from the root `package.json`:
 

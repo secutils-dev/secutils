@@ -74,7 +74,7 @@ test('single-file sources stay flat, companion skills stay app-local, and bundle
         assert.equal(source.skill, `${source.slug}/SKILL.md`);
     }
     const bundles = discoverBundles();
-    assert.deepEqual(bundles.map((bundle) => bundle.name), ['liteparse', 'mars', 'micro-ml', 'three-mf']);
+    assert.deepEqual(bundles.map((bundle) => bundle.name), ['jose', 'liteparse', 'mars', 'micro-ml', 'three-mf']);
     const used = new Set<string>();
     for (const { html } of sources) {
         for (const [, name] of readFileSync(join(TOOLS_DIR, html), 'utf8').matchAll(/data-su-bundle="([a-z0-9_-]+)"/g)) {

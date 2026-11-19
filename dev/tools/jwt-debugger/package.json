@@ -1,0 +1,17 @@
+{
+  "name": "@secutils-dev/jose-browser",
+  "version": "0.0.0",
+  "private": true,
+  "suBundle": "jose",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "npm run build && node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "jose": "6.2.18"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

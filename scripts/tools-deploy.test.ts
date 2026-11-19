@@ -44,7 +44,7 @@ async function deploy(t: { after(fn: () => void): void }, selectors: string[] = 
 test('all tools assemble from the new layout without changing responder identities, public routes, or storage settings', async (t) => {
     const result = await deploy(t);
     assert.equal(result.records.length, keys.length);
-    assert.match(result.stdout, /27 deployed/);
+    assert.match(result.stdout, new RegExp(`${keys.length} deployed`));
     for (const record of result.records) {
         assert.deepEqual(Object.keys(record), ['id', 'settings']);
         assert.equal(record.settings.requestsToTrack, 0);
