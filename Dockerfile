@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM rust:1.99-slim-trixie@sha256:b8e062b1c3a80183df83d9ba187cadd2b5ab84bc78d453dbfeb2fccd5f982247 AS server_builder
+FROM rust:1.100-slim-trixie@sha256:6f14b2b4b278ec0d50aa1d69541c304ce0f95e0f6268487aa9924af1c2e9aebe AS server_builder
 
 ARG TARGETARCH
 ARG UPX_VERSION=5.3.0
@@ -46,7 +46,7 @@ RUN --mount=type=cache,target=/app/target set -x && cargo build --release && \
     upx --best --lzma ./secutils
 
 # Check out https://gcr.io/distroless/cc-debian13:nonroot
-FROM gcr.io/distroless/cc-debian13:nonroot@sha256:3ee00291cf386ec52a552e6a858d555debd74776eb4bfa53fa3df2cd6677515e
+FROM gcr.io/distroless/cc-debian13:nonroot@sha256:cb87acc574abe719b6e5c547384defa2f7b1f24af9605d3f618cf852495d8be2
 EXPOSE 7070
 
 WORKDIR /app
