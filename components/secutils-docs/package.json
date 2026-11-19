@@ -26,7 +26,7 @@
     "prism-react-renderer": "^2.4.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "sass": "^1.107.1"
+    "sass": "^1.108.2"
   },
   "devDependencies": {
     "@docusaurus/module-type-aliases": "^3.10.2",
@@ -37,8 +37,15 @@
     "rehype-remark": "^10.0.1",
     "remark-gfm": "^4.0.1",
     "remark-stringify": "^11.0.0",
-    "typescript": "^6.0.3",
+    "typescript": "^7.0.2",
     "unified": "^11.0.5"
+  },
+  "overrides": {
+    "tinypool": "^2.2.0",
+    "serialize-javascript": "^7.1.4",
+    "sockjs": {
+      "uuid": "^14.0.3"
+    }
   },
   "scripts": {
     "docusaurus": "docusaurus",
