@@ -14,7 +14,13 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
-    "typescript": "^6.0.3",
-    "vite": "^8.3.5"
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8"
+  },
+  "overrides": {
+    "@llamaindex/liteparse": {
+      "sharp": "^0.35.5",
+      "zod": "^4.6.7"
+    }
   }
 }

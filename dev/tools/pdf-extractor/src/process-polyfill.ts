@@ -7,7 +7,7 @@
 // module so the shim is in place by the time their top-level code runs.
 // The bundle's entry.ts does exactly that -- this module is imported on
 // the first line, before `@llamaindex/liteparse`.
-const g = globalThis as { process?: Record<string, unknown> };
+const g = globalThis as unknown as { process?: Record<string, unknown> };
 if (typeof g.process === "undefined") {
   const noop = () => true;
   const stream = { write: noop, isTTY: false } as const;

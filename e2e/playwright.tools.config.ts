@@ -41,7 +41,7 @@ export default defineConfig({
       name: 'firefox',
       testMatch:
         '**/{mars,mars-viewer,mars-export,mars-import,mars-models,mars-tables,mars-temporary,mars-sync,mars-sync-ux,mars-sync-followup,mars-sharing,mars-review-markers,mars-cleanup,mars-concurrency,pdf}.spec.ts',
-      grep: /source selection|selection toolbar|admonition selection|app identity|Mermaid navigation|Mermaid rendering|preview links|block controls|list dragging|reading width|native document links|documents sidebar|export workspace|source import|model parity|MARS handoff|table editing|temporary sessions|sync protocol|sync user experience|review markers|twelve tabs|automatic recovery|automatic folder reconciliation|child Sync controls|EmbeddingGemma renames|indexing pause|disclosure/,
+      grep: /source selection|selection toolbar|admonition selection|app identity|Mermaid navigation|Mermaid rendering|preview links|block controls|list dragging|reading width|native document links|documents sidebar|export workspace|source import|model parity|MARS handoff|table editing|temporary sessions|sync protocol|sync user experience|review markers|twelve tabs|automatic recovery|automatic folder reconciliation|child Sync controls|EmbeddingGemma renames|indexing pause|disclosure|embedded PDF text/,
       use: {
         ...devices['Desktop Firefox'],
         viewport: { width: 1280, height: 800 },
@@ -51,7 +51,7 @@ export default defineConfig({
       name: 'webkit',
       testMatch:
         '**/{mars,mars-viewer,mars-export,mars-import,mars-models,mars-tables,mars-temporary,mars-sync,mars-sync-ux,mars-sync-followup,mars-sharing,mars-review-markers,mars-cleanup,mars-concurrency,pdf}.spec.ts',
-      grep: /selection toolbar|Mermaid rendering|native document links|documents sidebar|export workspace|source import|model parity|MARS handoff|table editing|temporary sessions|sync protocol|sync user experience|review markers|twelve tabs|automatic recovery|automatic folder reconciliation|child Sync controls|EmbeddingGemma renames|indexing pause|disclosure/,
+      grep: /selection toolbar|Mermaid rendering|native document links|documents sidebar|export workspace|source import|model parity|MARS handoff|table editing|temporary sessions|sync protocol|sync user experience|review markers|twelve tabs|automatic recovery|automatic folder reconciliation|child Sync controls|EmbeddingGemma renames|indexing pause|disclosure|embedded PDF text/,
       use: {
         ...devices['Desktop Safari'],
         viewport: { width: 1280, height: 800 },

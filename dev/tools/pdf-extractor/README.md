@@ -27,13 +27,20 @@ missing or older than the sources here.
 |---------------------------|-------------|-------------------------------------------------|
 | `@llamaindex/liteparse`   | `1.5.3`     | exact pin -- we patch its internals via stubs   |
 | `tesseract.js`            | `^7.0.0`    | OCR engine; lazy-fetches worker + lang from CDN |
-| `vite`                    | `^8.3.2`    | bundler                                         |
+| `vite`                    | `^8.3.8`    | bundler                                         |
 | (vendored) `pdfjs-dist`   | `5.6.205`   | shipped inside `@llamaindex/liteparse` itself   |
 
 The `pdfjs-dist` build is **not** a direct dep -- we alias
 `virtual:liteparse-pdfjs` / `virtual:liteparse-pdfjs-worker` to the copy
 inside `node_modules/@llamaindex/liteparse/dist/src/vendor/pdfjs/`. Same
 version liteparse was built against, no second 4 MB checkout.
+
+The adapter retains LiteParse 1.5.3 because version 2 replaces its JavaScript internals with a native implementation.
+The separate `@llamaindex/liteparse-wasm` package requires a new adapter and OCR parity tests.
+
+The package overrides `sharp` to 0.35.5 and `zod` to 4.6.7 for security fixes.
+The browser build replaces both Sharp consumers with stubs, and LiteParse declares Zod without imports.
+Neither package enters the browser bundle.
 
 ## Stub strategy (hybrid)
 
