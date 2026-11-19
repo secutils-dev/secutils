@@ -43,7 +43,7 @@ fn main() -> Result<(), anyhow::Error> {
                     "sub": generate_args.sub,
                     "exp": exp.unix_timestamp(),
                 }),
-                &EncodingKey::from_secret(generate_args.secret.as_bytes()),
+                &EncodingKey::from_secret(generate_args.secret.as_bytes())?,
             )?;
             println!("{jwt}");
         }

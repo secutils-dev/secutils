@@ -62,7 +62,7 @@ jobs:
           path: |
             ~/.cargo/bin/sqlx
             ~/.cargo/bin/cargo-sqlx
-          key: sqlx-cli-0.9.0-${{ runner.os }}
+          key: sqlx-cli-0.9.1-${{ runner.os }}
 
       - name: Install sqlx-cli
         if: steps.cache-sqlx.outputs.cache-hit != 'true'

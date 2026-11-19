@@ -529,7 +529,7 @@ where
         };
         Ok(decode::<Claims>(
             token,
-            &DecodingKey::from_secret(jwt_secret.as_bytes()),
+            &DecodingKey::from_secret(jwt_secret.as_bytes())?,
             &Validation::default(),
         )?
         .claims)
@@ -631,7 +631,7 @@ mod tests {
         Ok(encode(
             &Header::default(),
             &claims,
-            &EncodingKey::from_secret(secret.as_bytes()),
+            &EncodingKey::from_secret(secret.as_bytes())?,
         )?)
     }
 
@@ -830,6 +830,28 @@ mod tests {
             .await;
         assert_debug_snapshot!(result.unwrap_err(), @r###""JWT secret is not configured.""###);
 
+        Ok(())
+    }
+
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
+    async fn fails_to_authenticate_with_jwt_if_secret_empty(pool: PgPool) -> anyhow::Result<()> {
+        let mut config = mock_config()?;
+        config.security.jwt_secret = Some(String::new());
+        let api = mock_api_with_config(pool, config).await?;
+        let token = encode_test_jwt("dev@secutils.dev", TEST_JWT_SECRET)?;
+
+        let error = api
+            .security()
+            .authenticate(&Credentials::Jwt(token))
+            .await
+            .unwrap_err();
+        assert_eq!(
+            error
+                .downcast_ref::<jsonwebtoken::errors::Error>()
+                .unwrap()
+                .kind(),
+            &jsonwebtoken::errors::ErrorKind::InvalidKeyFormat
+        );
         Ok(())
     }
 
