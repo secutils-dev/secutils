@@ -8,7 +8,7 @@
 import { type Chunk, chunkDoc, embeddable, searchBody, threadChunks } from './chunks.ts';
 
 // The Transformers.js release the app loads; eval/package.json pins the same version.
-export const TRANSFORMERS_VERSION = '4.3.1';
+export const TRANSFORMERS_VERSION = '4.3.2';
 
 /** One selectable embedding model. */
 export interface Model {

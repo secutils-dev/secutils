@@ -429,11 +429,10 @@ test.describe('sync user experience sharing', () => {
     await expect(dialog).not.toContainText(/encrypt|decryption|credentials/i);
     await expect(dialog.getByRole('radio', { name: 'Snapshot', exact: true })).toBeChecked();
     await expect(dialog.getByRole('radio', { name: 'Full', exact: true })).toBeChecked();
-    expect(
-      await dialog
-        .locator('input[name="copyFormat"]')
-        .evaluateAll((inputs) => inputs.map((input) => (input as HTMLInputElement).value)),
-    ).toEqual(['full', 'short']);
+    const formats = dialog.locator('input[name="copyFormat"]');
+    await expect(formats).toHaveCount(2);
+    await expect(formats.nth(0)).toHaveValue('full');
+    await expect(formats.nth(1)).toHaveValue('short');
     await expect(dialog.getByRole('textbox', { name: 'Link', exact: true })).toBeHidden();
     await expect(dialog).toContainText('Click Copy link to create and copy your link.');
     await expect(dialog.getByLabel('Expires', { exact: true })).toBeHidden();
@@ -449,7 +448,7 @@ test.describe('sync user experience sharing', () => {
     await expect(dialog.getByRole('textbox', { name: 'Link', exact: true })).toBeHidden();
     await expect(page.locator('.su-tooltip')).toHaveCount(0);
     const expiry = dialog.getByLabel('Expires', { exact: true });
-    expect(await expiry.locator('option').allTextContents()).toEqual(['1 day', '7 days', '14 days', '30 days']);
+    await expect(expiry.locator('option')).toHaveText(['1 day', '7 days', '14 days', '30 days']);
     const shortBefore = await dialog.boundingBox();
     const short = await configureCopyLink(page, { format: 'short', ttl: '2592000', close: false });
     expect(new URL(short).hash).toMatch(/^#s=/);
@@ -464,7 +463,7 @@ test.describe('sync user experience sharing', () => {
     expect(exp.ttl).toBe(2592000);
     expect(exp.exp - Date.now() / 1000).toBeGreaterThan(2592000 - 10);
     const live = await configureCopyLink(page, { mode: 'live', format: 'full', ttl: '86400', close: false });
-    expect(await expiry.locator('option').allTextContents()).toEqual(['1 day', '7 days', '14 days', '30 days']);
+    await expect(expiry.locator('option')).toHaveText(['1 day', '7 days', '14 days', '30 days']);
     expect(new URL(live).hash).toMatch(/^#live=/);
     expect(new URL(live).hash.length).toBeGreaterThan(100);
     expect(await configureCopyLink(page, { mode: 'live', format: 'full', ttl: '86400', close: false })).toBe(live);

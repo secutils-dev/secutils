@@ -14,6 +14,7 @@ import { readTable, tableCellRange } from './table.ts';
 import { download } from '../ui/ui.ts';
 import { safeRawHtml, safeRenderedHtml } from './preview-safety.ts';
 import { markdownDetails } from './markdown-details.ts';
+import { KATEX_CSS_INTEGRITY, KATEX_CSS_URL, KATEX_JS_URL } from './math-assets.ts';
 
 let host = {};
 let connectionApplying = false,
@@ -58,11 +59,8 @@ const renderedHook = () => {
 let threadHooks = {};
 let pendingReveal = null;
 
-const MERMAID_URL = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+const MERMAID_URL = 'https://cdn.jsdelivr.net/npm/mermaid@12.3.0/dist/mermaid.esm.min.mjs';
 const TOPOJSON_URL = 'https://esm.sh/topojson-client@3.1.0?bundle';
-const KATEX_VERSION = '0.16.11';
-const KATEX_CSS_URL = `https://cdn.jsdelivr.net/npm/katex@${KATEX_VERSION}/dist/katex.min.css`;
-const KATEX_JS_URL = `https://cdn.jsdelivr.net/npm/katex@${KATEX_VERSION}/dist/katex.mjs`;
 const MD_FILE_EXT = /\.(md|markdown|txt|mdx)$/i;
 const FRONTMATTER_TITLE_RE = /^title:\s*['"]?(.+?)['"]?\s*$/m;
 
@@ -1007,6 +1005,9 @@ function injectKatexCss() {
     link.id = 'su-katex-css';
     link.rel = 'stylesheet';
     link.href = KATEX_CSS_URL;
+    link.integrity = KATEX_CSS_INTEGRITY;
+    link.crossOrigin = 'anonymous';
+    link.referrerPolicy = 'no-referrer';
     document.head.appendChild(link);
 }
 function ensureKatex() {

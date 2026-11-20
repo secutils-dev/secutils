@@ -3,6 +3,7 @@
 // runtime bundles this module, so it imports no app, storage, or UI module. Each helper states what
 // it escapes.
 import outputCss from './output.css';
+import { KATEX_CSS_INTEGRITY, KATEX_CSS_URL } from '../doc/math-assets.ts';
 
 // Keep the standalone graph free of UI modules (and their glyph catalog).
 /** Escapes text for HTML content and for a double-quoted attribute value. */
@@ -13,8 +14,7 @@ const esc = (value: string) =>
 export const FONT_LINKS =
     '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=Roboto+Mono:wght@400..700&display=swap" rel="stylesheet">';
 /** The KaTeX stylesheet for rendered math, at the KaTeX version that the viewer renders with. */
-export const KATEX_LINK =
-    '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">';
+export const KATEX_LINK = `<link rel="stylesheet" href="${KATEX_CSS_URL}" integrity="${KATEX_CSS_INTEGRITY}" crossorigin="anonymous" referrerpolicy="no-referrer">`;
 /** The stylesheet of both output documents, inlined in the head. */
 export const OUTPUT_CSS = outputCss;
 /** The fixed footer of both output documents. */

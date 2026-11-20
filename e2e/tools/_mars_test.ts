@@ -6,7 +6,7 @@ import { closeTestScope, installScopeFetch, openTestScope, type ScopeManifest } 
 
 export const test = base.extend<{ marsTestScope: { manifest: ScopeManifest; path: string } }>({
   marsTestScope: [
-    async ({ browser, baseURL }, use, info) => {
+    async ({ browser, browserName, baseURL }, use, info) => {
       const origin = new URL(baseURL ?? process.env.MARS_BASE_URL ?? 'https://mars.secutils.dev').origin;
       const run = process.env.MARS_TEST_RUN_ID ?? randomUUID();
       const id = createHash('sha256')
@@ -19,6 +19,26 @@ export const test = base.extend<{ marsTestScope: { manifest: ScopeManifest; path
         const context = await original.call(browser, options);
         contexts.push(context);
         await context.addInitScript(installScopeFetch, { origin, scope: manifest.scope, token: manifest.token });
+        if (browserName === 'firefox') {
+          // Gecko cancels its intercepted native picker before Playwright supplies the selection.
+          // Ignore that harness-only event, not synthetic cancellation or other input controls.
+          await context.addInitScript(() => {
+            document.addEventListener(
+              'cancel',
+              (event) => {
+                const input = event.target;
+                if (
+                  event.isTrusted &&
+                  input instanceof HTMLInputElement &&
+                  ['importInput', 'importFolderInput'].includes(input.id)
+                ) {
+                  event.stopImmediatePropagation();
+                }
+              },
+              true,
+            );
+          });
+        }
         return context;
       };
       try {
