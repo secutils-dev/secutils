@@ -226,7 +226,8 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4.4.1
         with:
-          version: v0.39.1
+          # Buildx 0.39.1. The action's release index does not include this release yet.
+          version: https://github.com/docker/buildx.git#334b63fe2bb0f0e89a8fd067704a0d113f57ec25
           driver-opts: image=moby/buildkit:v0.35.1@sha256:baf6138eb8c37644800c7c913fba051e840ebb9ba13eaf92d92ef9a1712d0b4c
 
       - name: Build all Docker images
