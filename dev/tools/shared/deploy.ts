@@ -74,10 +74,10 @@ function extractResponderScript(
 // to change the public host of every tool. `{{MARS_HOST}}` is the host of the
 // standalone MARS app (see dev/tools/mars/AGENTS.md).
 const MARS_HOST = process.env.SECUTILS_MARS_PUBLIC_HOST?.trim() || "mars.secutils.dev";
-function substituteToolsHost(text: string, toolsHost: string): string {
+function substituteToolsHost(text: string, toolsHost: string, marsHost = MARS_HOST): string {
   return text
     .replace(/\{\{\s*TOOLS_HOST\s*\}\}/g, toolsHost)
-    .replace(/\{\{\s*MARS_HOST\s*\}\}/g, MARS_HOST);
+    .replace(/\{\{\s*MARS_HOST\s*\}\}/g, marsHost);
 }
 
 // Cross-origin isolation for MARS: with it, ONNX Runtime runs smart-search models on several
@@ -579,8 +579,9 @@ async function buildHtmlTarget(
   mdNegotiationPath: string | undefined,
   // Static response headers (e.g. RFC 8288 Link headers on the index page).
   extraHeaders?: [string, string][],
+  marsHost = MARS_HOST,
 ): Promise<DeployTarget> {
-  const templated = substituteToolsHost(rawHtml, toolsHost);
+  const templated = substituteToolsHost(rawHtml, toolsHost, marsHost);
   let responderScript = inlineOgImage(extractResponderScript(templated, label), filename);
   if (filename === 'mars.html' && responderScript) {
     ensureBundleBuilt('mars');
@@ -620,8 +621,9 @@ function buildSkillTarget(
   filename: string,
   rawMd: string,
   toolsHost: string,
+  marsHost = MARS_HOST,
 ): DeployTarget {
-  const body = substituteToolsHost(rawMd, toolsHost);
+  const body = substituteToolsHost(rawMd, toolsHost, marsHost);
   return {
     filename,
     body,
@@ -726,6 +728,7 @@ async function putResponder(
   try {
     res = await fetch(url, {
       method: "PUT",
+      redirect: "error",
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
@@ -740,7 +743,48 @@ async function putResponder(
   return { ok: false, status: res.status, body };
 }
 
+/** Publish only the MARS development pair. No production host, credentials or discovery writes. */
+async function deployMarsDev() {
+  const api = "https://dev.secutils.dev", host = "mars-dev.secutils.dev", toolsHost = "tools.secutils.dev";
+  const key = process.env.SECUTILS_DEV_DEMO_API_KEY;
+  if (!key || key === process.env.SECUTILS_HTML_APP_API_KEY)
+    throw new Error("A distinct SECUTILS_DEV_DEMO_API_KEY is required.");
+  const get = async (path: string) => {
+    const response = await fetch(api + path, {
+      redirect: "error", headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(20_000),
+    });
+    if (!response.ok) throw new Error(`Dev API returned HTTP ${response.status}.`);
+    return response.json();
+  };
+  if ((await get("/api/users/self")).handle !== "demo") throw new Error("Expected the dev demo account.");
+  const { items } = await get("/api/webhooks/responders?q=MARS%20dev&pageSize=100");
+  const find = (name: string, path: string, pathType: string) => {
+    const match = items.filter((item: any) => item.name === name && item.location?.subdomainPrefix === "mars"
+      && item.location.path === path && item.location.pathType === pathType);
+    if (match.length !== 1 || !/^[a-f0-9-]{36}$/.test(match[0].id)) throw new Error(`Expected one dev responder for ${path}.`);
+    return match[0].id as string;
+  };
+  const app = find("MARS dev", "/", "^"), skill = find("MARS dev skill", "/llms.txt", "=");
+  const noIndex: [string, string] = ["X-Robots-Tag", "noindex, nofollow"];
+  const html = readFileSync(join(TOOLS_DIR, "mars/index.html"), "utf8")
+    .replace('name="robots" content="index, follow"', 'name="robots" content="noindex, nofollow"')
+    .replace('<html lang="en"', '<html data-mars-dev lang="en"');
+  const targets = [
+    [skill, { ...buildSkillTarget("mars.skill.md", readFileSync(join(TOOLS_DIR, "mars/SKILL.md"), "utf8"), toolsHost, host), extraHeaders: [noIndex] }],
+    [app, await buildHtmlTarget("mars.html", html, toolsHost, "mars dev", "/llms.txt", [...CROSS_ORIGIN_ISOLATION, noIndex], host)],
+  ] as const;
+  for (const [id, target] of targets) {
+    const result = await putResponder(api, key, id, target);
+    if (!result.ok) throw new Error(`Dev MARS ${target.filename} deploy failed (HTTP ${result.status}).`);
+    log(`${target.filename} deployed to ${host}`);
+  }
+}
+
 export async function main() {
+  if (process.argv.includes("--mars-dev")) {
+    if (process.argv.length !== 3) throw new Error("--mars-dev does not take additional arguments.");
+    return deployMarsDev();
+  }
   const API_DOMAIN = process.env.SECUTILS_HTML_APP_API_DOMAIN;
   const API_KEY = process.env.SECUTILS_HTML_APP_API_KEY;
   const TOOLS_HOST =

@@ -66,6 +66,7 @@ export function validateTestOrigin(origin: string) {
 export function operatorKey(origin: string) {
   const local = validateTestOrigin(origin),
     env = environment();
+  if (origin === 'https://mars-dev.secutils.dev') return env.SECUTILS_DEV_MARS_TEST_OPERATOR_KEY;
   return env.MARS_TEST_OPERATOR_KEY ?? (local ? 'local-operator-secret' : env.SECUTILS_HTML_APP_API_KEY);
 }
 const save = (path: string, manifest: ScopeManifest) => {

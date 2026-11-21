@@ -32,7 +32,7 @@ export DEPLOY_REMOTE_DIR DEPLOY_REMOTE_BUILDER DEPLOY_REMOTE_MEMORY DEPLOY_REMOT
 .PHONY: deploy-dev deploy-dev-api deploy-dev-webui deploy-dev-docs deploy-dev-retrack-api deploy-dev-retrack-scraper
 .PHONY: deploy-prod deploy-prod-api deploy-prod-webui deploy-prod-docs deploy-prod-retrack-api deploy-prod-retrack-scraper
 .PHONY: deploy-camoufox deploy-health deploy-stats
-.PHONY: deploy-tools tools-bundles tools-og tools-og-loop tools-check tools-verify e2e-tools-test
+.PHONY: deploy-tools deploy-mars-dev tools-bundles tools-og tools-og-loop tools-check tools-verify e2e-tools-test
 
 ## ---------- Development ----------
 
@@ -264,6 +264,9 @@ perf-report: ## Open the HTML perf viewer. Load .perf/history.jsonl inside it.
 
 deploy-tools: ## Deploy tool apps and their skills to responders (ARGS="jwt-debugger echo" selects apps). Rebuilds bundles on demand and refreshes discovery indexes.
 	node --env-file=.env dev/tools/shared/deploy.ts $(ARGS)
+
+deploy-mars-dev: ## Deploy only the development MARS app and skill. Does not publish discovery indexes.
+	node --env-file=.env dev/tools/shared/deploy.ts --mars-dev
 
 tools-bundles: ## Pre-build app-local and shared bundle packages. Skips fresh outputs.
 	@node dev/tools/shared/build-bundles.ts
