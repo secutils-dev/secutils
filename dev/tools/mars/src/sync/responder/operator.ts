@@ -1,15 +1,15 @@
 // Operator actions of the Sync responder: capacity telemetry, bounded cleanup of abandoned
-// reservations, and the read-only storage audit. The operator secret of the responder authorizes
-// them. No response contains document content, credentials, or participant identifiers.
+// reservations, storage auditing, and exact-collection retirement. The responder operator secret
+// authorizes them. No response contains document content, credentials, or participant identifiers.
 import { encode, fail, validId } from '../protocol.ts';
 import { auditStoragePage } from '../storage-audit.ts';
 import type { Context, Runtime, SyncRequest, Permit } from './types.ts';
 import { json, NS, parse, deletedKey, clock, payloadKey } from './store.ts';
 import { UNIT, GLOBAL_SLOTS, release } from './quota.ts';
+import { retireCollection } from './retirement.ts';
 
 /**
- * Handles the operator actions: `telemetry`, `maintenance`, and `storage-audit`. The operator secret of the responder
- * authorizes them.
+ * Handles capacity telemetry, maintenance, storage audit, and retirement. The responder operator secret authorizes them.
  */
 export async function operatorAction(context: Context, runtime: Runtime, request: SyncRequest, action: string) {
     const { kv } = runtime;
@@ -24,6 +24,11 @@ export async function operatorAction(context: Context, runtime: Runtime, request
     )
         return fail('forbidden', 403);
     if (action === 'storage-audit') return json(200, await auditStoragePage(request, runtime));
+    if (action === 'retire-collection') {
+        if (context.headers?.['x-mars-test-scope'] || context.headers?.['x-mars-test-token'])
+            return fail('forbidden', 403);
+        return json(200, await retireCollection(request, runtime));
+    }
     const prefix = `${NS}budget/all/`;
     if (action === 'telemetry') {
         let after: string | undefined,

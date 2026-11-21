@@ -58,7 +58,7 @@ import { renewFolder, renewCheckpoint, renewDocument } from './responder/renewal
 /** Actions that the bearer token of an invitation authorizes. */
 const INVITATION_ACTIONS = new Set(['invite-read', 'pair-request', 'pair-result', 'live-join']);
 /** Actions that the operator secret authorizes. */
-const OPERATOR_ACTIONS = new Set(['telemetry', 'maintenance', 'storage-audit']);
+const OPERATOR_ACTIONS = new Set(['telemetry', 'maintenance', 'storage-audit', 'retire-collection']);
 /**
  * Member actions by name. A `Map` has no inherited keys, so a path such as `/sync/constructor`
  * finds no handler.

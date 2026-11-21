@@ -68,3 +68,19 @@ Live dependencies use the start time of the scan, so expiry during the scan cann
 
 The existing `/sync/telemetry` response remains unchanged.
 The audit does not change ordinary Sync, Live-link, or snapshot behavior.
+
+## Retire the approved collection
+
+Retirement is irreversible. It requires a reconciled private report that identifies exactly one Live-bearing collection.
+Run the plan first. It checks the full audit fingerprint against the deployed responder without changing storage.
+
+```bash
+node --env-file=.env scripts/mars-retire-collection.ts https://{{MARS_HOST}} private-report.json
+node --env-file=.env scripts/mars-retire-collection.ts https://{{MARS_HOST}} private-report.json --apply
+```
+
+The operator action fences the collection before it waits for in-flight requests to finish.
+It then removes the collection's own invitations and data in bounded batches.
+For the shared quota ledger, it releases target-owned busy heads and removes only older generations owned by the target.
+Free heads remain to prevent reuse of an earlier generation. The retirement fence also remains.
+If cleanup is interrupted, rerun with the same private report. Do not replace it with a new report that identifies a different collection.

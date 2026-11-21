@@ -17,6 +17,7 @@ import {
     revokedInviteKey,
     parse,
     deletedKey,
+    retirementKey,
 } from './store.ts';
 
 /**
@@ -32,6 +33,7 @@ import {
 export async function authenticate(context: Context, runtime: Runtime, request: SyncRequest, action: string) {
     const { kv } = runtime;
     if (!validId(request.collection) || !validId(request.member)) return fail('invalid-scope');
+    if (await kv.get(retirementKey(request.collection))) return fail('connection-ended', 410);
     const collection = await read<Collection>(kv, collectionKey(request.collection));
     if (!collection) return fail('connection-expired', 410);
     let member = await read<Member>(kv, grantKey(request.collection, request.member));

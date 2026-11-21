@@ -51,6 +51,8 @@ export const json = (statusCode: number, value?: unknown) => ({
 export const grantKey = (collection: string, member: string) => `${NS}c/${collection}/members/${member}`;
 export const revokedKey = (collection: string, member: string) => `${NS}c/${collection}/revoked/${member}`;
 export const collectionKey = (collection: string) => `${NS}c/${collection}/owner`;
+/** Persistent fence for a collection retired by the operator. It also blocks stale creation retries. */
+export const retirementKey = (collection: string) => `retired/v1/${collection}`;
 export const docKey = (collection: string, document: string) => `${NS}c/${collection}/documents/${document}`;
 export const deletedKey = (collection: string, document: string) => `${NS}c/${collection}/deleted/${document}`;
 export const epochsPrefix = (collection: string, document: string) => `${NS}c/${collection}/epochs/${document}/`;

@@ -2,7 +2,18 @@
 // signs its own grant, and a limit for each client address bounds the number of collections.
 import { encode, fail, LIMITS, validGrant, validId } from '../protocol.ts';
 import type { Context, Runtime, SyncRequest, Collection } from './types.ts';
-import { signatureValid, allocate, NS, clock, first, collectionKey, b64json, grantKey, json } from './store.ts';
+import {
+    signatureValid,
+    allocate,
+    NS,
+    clock,
+    first,
+    collectionKey,
+    retirementKey,
+    b64json,
+    grantKey,
+    json,
+} from './store.ts';
 
 /**
  * Creates a collection from a self-signed owner grant and stores the owner as its first member.
@@ -22,6 +33,7 @@ export async function createCollection(context: Context, runtime: Runtime, reque
         return fail('invalid-owner');
     const g = signed.grant,
         ip = String(context.clientAddress ?? 'unknown').replace(/:\d+$/, '');
+    if (await kv.get(retirementKey(g.collection))) return fail('connection-ended', 410);
     const ipHash = await runtime.crypto.sha256(encode(new TextEncoder().encode(ip)));
     await allocate(
         kv,

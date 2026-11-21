@@ -145,6 +145,26 @@ async function fixture(root: boolean | 'folder' = false, kv = new TestKv()) {
     return { kv, who, token, owner, signed, document, dataKey, request, checkpoint };
 }
 
+test('a retired folder cannot resume signed writes or replay creation, while another folder stays usable', async () => {
+    const target = await fixture('folder');
+    const other = await fixture('folder', target.kv);
+    const fingerprint = createHash('sha256')
+        .update(`mars-storage-audit-v1:collection:${target.owner.collection}`)
+        .digest('hex');
+    const transfer = await target.checkpoint(1);
+    assert.equal(
+        (await target.request('retire-collection', { action: 'begin', fingerprint }, 'operator-secret')).status,
+        200,
+    );
+    assert.equal((await target.request('append', { envelope: transfer })).status, 410);
+    assert.equal(
+        (await target.request('create', { owner: target.signed, root: { document: target.document, kind: 'folder' } }))
+            .status,
+        410,
+    );
+    assert.equal((await other.request('append', { envelope: await other.checkpoint(1) })).status, 200);
+});
+
 test('personal devices delete with signed permanent receipts; guests, forgeries, and stale writes cannot delete or resurrect content', async () => {
     const f = await fixture('folder');
     const makePacket = async (document: string, author = f.signed, who = f.who): Promise<SignedDeletion> => {

@@ -18,6 +18,7 @@ import {
     NS,
     first,
     grantKey,
+    retirementKey,
     b64json,
     signatureValid,
     validSealed,
@@ -41,6 +42,7 @@ export async function invitationAction(context: Context, runtime: Runtime, reque
         collection = await read<Collection>(kv, collectionKey(p.collection));
     if (
         !collection ||
+        (await kv.get(retirementKey(p.collection))) ||
         (await kv.get(revokedKey(p.collection, entry.inviter))) ||
         (await kv.get(revokedInviteKey(p.collection, p.id)))
     )

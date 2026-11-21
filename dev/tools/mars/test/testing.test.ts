@@ -8,6 +8,9 @@ import { inlineMarsSync } from '../sync-assets.ts';
 import { prepareTestScope } from '../src/sync/testing.ts';
 import { decode, encode } from '../src/sync/protocol.ts';
 import type { Context, Kv } from '../src/sync/responder.ts';
+import { handle } from '../src/sync/responder.ts';
+import { b64json, clock, collectionKey, inviteKey, parse, retirementKey } from '../src/sync/responder/store.ts';
+import { reverseSequence } from '../src/sync/protocol.ts';
 
 const operator = 'operator-secret';
 const hash = (text: string) => createHash('sha256').update(text).digest('hex');
@@ -55,6 +58,74 @@ class MemoryKv implements Kv {
         return { entries, cursor: entries.at(-1)?.key ?? null };
     }
 }
+
+test('exact collection retirement fences writes and preserves foreign data and global generation heads', async () => {
+    const { kv, runtime, context } = await fixture();
+    const collection = crypto.randomUUID(),
+        other = crypto.randomUUID();
+    const fingerprint = hash(`mars-storage-audit-v1:collection:${collection}`);
+    const seed = (key: string, value: unknown) => kv.values.set(key, { value: b64json(value), expiresAt: null });
+    const request = async (action: string, fields: Record<string, unknown> = {}, secret = operator) => {
+        kv.operations = 0;
+        const result = (await handle(
+            {
+                ...context,
+                path: '/sync/retire-collection',
+                body: new TextEncoder().encode(JSON.stringify({ action, fingerprint, collection, ...fields })),
+                headers: { authorization: `Bearer ${secret}` },
+                secrets: { MARS_STATS_API_KEY: operator },
+            },
+            runtime,
+        ))!;
+        return { status: result.statusCode, data: JSON.parse(result.body!) };
+    };
+    for (const id of [collection, other]) seed(collectionKey(id), { owner: { grant: { collection: id } } });
+    const ownedInvite = inviteKey(crypto.randomUUID()),
+        foreignInvite = inviteKey(crypto.randomUUID());
+    for (const [key, id] of [
+        [ownedInvite, collection],
+        [foreignInvite, other],
+    ]) {
+        seed(key, { policy: { invitation: { collection: id } } });
+        seed(`${key}/support`, { support: true });
+    }
+    const slot = (n: number, generation: number) => `sync/v1/budget/all/0000${n}/${reverseSequence(generation)}`;
+    seed(slot(1, 1), { collection, generation: 1, busy: true });
+    seed(slot(2, 1), { collection, generation: 1, busy: true });
+    seed(slot(2, 2), { collection: other, generation: 2, busy: true });
+    seed(`sync/v1/budget/${collection}/slot`, {});
+    seed(`sync/v1/reservations/${collection}/ref`, {});
+    seed('s/snapshot', {});
+    assert.equal((await request('begin', {}, 'wrong')).status, 403);
+    assert.equal((await request('begin', { collection: other })).status, 409);
+    assert.equal((await request('resolve')).data.collection, collection);
+    assert.deepEqual((await request('plan')).data, { matched: true, fenced: false });
+    assert.equal(kv.values.has(retirementKey(collection)), false);
+    assert.equal((await request('begin')).status, 200);
+    assert.equal((await request('global')).status, 409);
+    const ended = await handle(
+        { ...context, body: new TextEncoder().encode(JSON.stringify({ collection, member: crypto.randomUUID() })) },
+        runtime,
+    );
+    assert.equal(ended?.statusCode, 410);
+    seed(retirementKey(collection), { started: clock() - 121 });
+    assert.deepEqual((await request('global')).data, { complete: true, cursor: slot(2, 1), released: 1, removed: 2 });
+    assert.equal(parse<{ busy: boolean }>(kv.values.get(slot(1, 2))!.value).busy, false);
+    assert.deepEqual(parse(kv.values.get(slot(2, 2))!.value), { collection: other, generation: 2, busy: true });
+    assert.equal((await request('global')).data.removed, 0);
+    assert.equal((await request('invitations')).data.removed, 2);
+    assert.equal((await request('invitations')).data.complete, true);
+    for (const action of ['records', 'budget', 'refs']) assert.equal((await request(action)).data.removed, 1);
+    assert.equal((await request('resolve-retired')).data.collection, collection);
+    for (const key of [
+        retirementKey(collection),
+        collectionKey(other),
+        foreignInvite,
+        `${foreignInvite}/support`,
+        's/snapshot',
+    ])
+        assert.ok(kv.values.has(key));
+});
 async function fixture() {
     const kv = new MemoryKv(),
         scope = crypto.randomUUID(),
