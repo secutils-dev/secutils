@@ -21,6 +21,8 @@ import {
     type TreeNode,
 } from './tree/model.ts';
 import { openThreads } from './share/merge.ts';
+import { githubRoot } from './github/binding.ts';
+import { githubSaved } from './github/workspace.ts';
 import { sourceBody } from './share/reconcile.ts';
 import { $ } from './ui/ui.ts';
 import * as viewer from './doc/viewer.js';
@@ -669,6 +671,7 @@ async function persistOne(doc: PersistedDoc) {
         return;
     }
     await save([n], { [n.id]: doc.text });
+    githubSaved(n);
     if (db.isTemporaryStorage()) await setRoute(n.id);
     emit();
 }
@@ -709,7 +712,8 @@ export function rename(id: string, name: string) {
 }
 
 const canRename = (n: TreeNode) =>
-    !n.connection || (['owner', 'edit'].includes(n.connection.permission) && n.connection.phase !== 'ended');
+    (!githubRoot(state.nodes, n) || !!n.github) &&
+    (!n.connection || (['owner', 'edit'].includes(n.connection.permission) && n.connection.phase !== 'ended'));
 
 /** Stores a name through the node's current connection, without touching its text or side records. */
 async function saveName(n: TreeNode, name: string) {
@@ -739,6 +743,7 @@ async function saveName(n: TreeNode, name: string) {
  * folder joins the collection.
  */
 export async function move(id: string, parentId: string | null, beforeId: string | null = null) {
+    if (githubRoot(state.nodes, node(id)) || githubRoot(state.nodes, node(parentId))) return false;
     if (
         (node(id)?.connection || node(id)?.syncPending || node(parentId)?.connection || node(parentId)?.syncPending) &&
         !(await sync.beforeMove(id, parentId))

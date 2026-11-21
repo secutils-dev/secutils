@@ -261,6 +261,8 @@ export async function putNodes(
     } = {},
 ) {
     const checked = (node: TreeNode, stored?: TreeNode) => {
+        if (stored?.githubFile && !options.expected?.some((before) => before.node.id === node.id))
+            node = { ...node, githubFile: stored.githubFile };
         const a = stored?.connection,
             b = node.connection;
         const previous = a ?? stored?.syncPending;
@@ -342,6 +344,20 @@ export async function putNodes(
     announce(nodes.map((n) => n.id));
 }
 
+/** Update only the GitHub baseline. A newer editor save is not replaced by the acknowledged bytes. */
+export async function acknowledgeGitHubBlob(id: string, previousSha: string, sha: string, text: string) {
+    if (temporary) return;
+    const changed = await tx(['nodes', 'docs'], 'readwrite', async (t) => {
+        const nodes = t.objectStore('nodes');
+        const current = (await req(nodes.get(id))) as TreeNode | undefined;
+        if (!current?.githubFile || current.githubFile.sha !== previousSha) return false;
+        nodes.put({ ...current, githubFile: { ...current.githubFile, sha } });
+        t.objectStore('docs').put(text, sideKey('github-base', id));
+        return true;
+    });
+    if (changed) announce([id]);
+}
+
 /**
  * Deletes nodes with their texts and every side record in one transaction, then broadcasts.
  * It does not look for descendants. The caller passes the complete subtree.
@@ -374,9 +390,9 @@ export async function deleteNodes(ids: string[]) {
  * - `sync-delete`: a durable deletion job, keyed by its own UUID rather than a document ID.
  * - `sync-create`: a pending registration, keyed by the local node ID.
  */
-export type Side = 'base' | 'opened' | 'vec' | 'sync' | 'sync-delete' | 'sync-create';
+export type Side = 'base' | 'opened' | 'vec' | 'sync' | 'sync-delete' | 'sync-create' | 'github-base';
 // Every kind. `deleteNodes` uses the list, so a new kind must be added here.
-const SIDES: Side[] = ['base', 'opened', 'vec', 'sync', 'sync-delete', 'sync-create'];
+const SIDES: Side[] = ['base', 'opened', 'vec', 'sync', 'sync-delete', 'sync-create', 'github-base'];
 // The key of a side record in the `docs` store: `<kind>:<id>`.
 const sideKey = (kind: Side, id: string) => `${kind}:${id}`;
 /** One side record, or undefined. */

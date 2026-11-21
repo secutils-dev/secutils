@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { transformSync } from 'esbuild';
 import { ancestors, type TreeNode } from '../src/tree/model.ts';
+import { githubRoot } from '../src/github/binding.ts';
 
 const source = readFileSync(new URL('../src/app.ts', import.meta.url), 'utf8');
 const start = source.indexOf('export function rename(');
@@ -40,6 +41,7 @@ function fixture(kind: 'doc' | 'folder' = 'doc', temporary = false) {
         now: () => 100,
         emit() {},
         ancestors,
+        githubRoot,
         serializePersistence: (run: () => Promise<unknown>) => {
             const task = queue.then(run);
             queue = task.catch(() => {});

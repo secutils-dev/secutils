@@ -43,6 +43,9 @@ export interface TreeNode {
     // Destination scopes otherwise identical paths. Moves and label edits do not change this identity.
     // Never included in shared links, Sync metadata, or exported documents.
     importSource?: { destinationId: string | null; path: string[] };
+    // GitHub attachments are browser-local. No credential belongs in these records.
+    github?: { repository: string; branch: string; write: boolean };
+    githubFile?: { root: string; path: string; sha: string };
     // UTF-8 bytes of the stored text, for the sidebar footer.
     size?: number;
     // Shared document layout, separate from the reader's browser-wide preference.

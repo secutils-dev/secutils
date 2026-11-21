@@ -14,8 +14,9 @@ export function incomingFolder(nodes: TreeNode[], id: string | null | undefined)
     if (!folder) return undefined;
     const editable = [folder, ...ancestors(nodes, folder.id)].every(
         (node) =>
-            !node.connection ||
-            (node.connection.phase !== 'ended' && ['owner', 'edit'].includes(node.connection.permission)),
+            !node.github &&
+            (!node.connection ||
+                (node.connection.phase !== 'ended' && ['owner', 'edit'].includes(node.connection.permission))),
     );
     return editable ? folder : undefined;
 }

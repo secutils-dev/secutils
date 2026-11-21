@@ -23,6 +23,10 @@ Documents stay in the reader's browser (IndexedDB) unless the reader shares or s
 Review threads travel inside the Markdown file as one trailing HTML comment that other renderers hide.
 An agent reads and writes threads with ordinary file edits.
 
+On the development host, **New → Import from GitHub** can open a repository branch as a folder.
+If the user needs private access or wants MARS to commit edits, ask them to enter a repository-scoped fine-grained token directly in the app. Do not ask for the token in chat or put it in a URL.
+Choose a test branch. Short snapshots use Secutils. A Live copy uses Secutils and stays independent of GitHub.
+
 Pick the section for the task:
 
 | Task | Section |

@@ -33,6 +33,8 @@ export interface ViewerDoc {
  * host provides it.
  */
 export interface ViewerHost {
+    /** Prevent document edits without selecting the Secutils collaboration protocol. */
+    readOnly?(): boolean;
     /** Identifier of the open document in the library, or null when no entry exists for it. */
     currentId(): string | null;
     /**

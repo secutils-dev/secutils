@@ -95,6 +95,13 @@ An HTML file that MARS exported with embedded source opens as editable Markdown.
 
 ### Share
 
+The dev-only GitHub preview imports a repository branch with **New → Import from GitHub**.
+Use a fine-grained token restricted to that repository. The token stays in the tab, so reconnect after a reload.
+Public repositories can be imported read-only without a token. Existing Markdown and text files can be edited and committed in batches when writes are enabled.
+The local folder label does not change repository paths. HTML is read-only; this preview does not publish moves, new files, or deletions.
+Conflicting and remotely missing files stay local. Use a dedicated test branch while evaluating the preview.
+GitHub controls access and retention. Short snapshots use Secutils when selected. Live sharing uses an independent Secutils copy, not the GitHub file.
+
 **Share > Copy link** opens one dialog for all links.
 
 | Link | Use it to | Notes |
@@ -302,6 +309,11 @@ so short links, Sync, and Live links work offline.
 
 `npm run build` writes `dist/mars.js` (the app) and `dist/mars-sync-responder.js` (the Sync part of the responder).
 Deployment inlines the app into `index.html` and publishes it as a Secutils.dev webhook responder.
+
+`make deploy-mars-dev` publishes only the dev MARS app and skill to `mars-dev.secutils.dev`.
+It uses `SECUTILS_DEV_DEMO_API_KEY`, finds the two dev responders by location, and leaves production discovery files untouched.
+For scoped browser tests on dev, set `SECUTILS_DEV_MARS_TEST_OPERATOR_KEY` in the test process from an ignored local file.
+It must match the dev demo account's `MARS_STATS_API_KEY` secret. Do not reuse the production operator key.
 `package.json` pins every dependency to an exact version.
 
 ### Developer flags and diagnostics

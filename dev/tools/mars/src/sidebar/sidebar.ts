@@ -37,6 +37,9 @@ import * as sync from '../sync/index.ts';
 import { incomingFolder } from '../io/destination.ts';
 import { pickImport } from '../io/pickers.ts';
 import { renameNode } from '../ui/rename.ts';
+import { githubEnabled, githubRoot } from '../github/binding.ts';
+import { openGitHubDialog } from '../github/dialog.ts';
+import { githubStatus, syncGitHub } from '../github/workspace.ts';
 
 const tree = $('tree');
 const filterInput = $<HTMLInputElement>('sbFilter');
@@ -277,7 +280,7 @@ function rowHtml({ n, depth }: { n: TreeNode; depth: number }) {
     const hasKids = folder && app.state.nodes.some((c) => c.parentId === n.id);
     const selected = n.id === app.state.currentId || (folder && !app.state.currentId && n.id === app.state.folderId);
     const chevron = `<span class="tree-chevron${hasKids ? '' : ' leaf'}">${icon(n.open ? 'chevronDown' : 'chevronRight')}</span>`;
-    const glyph = `<span class="tree-icon${defaultFolder ? ' tree-icon-default' : ''}" aria-hidden="true">${folder ? folderIcon(!!n.open, defaultFolder, hasSyncGlyph(n)) : documentIcon(hasSyncGlyph(n))}</span>`;
+    const glyph = `<span class="tree-icon${defaultFolder ? ' tree-icon-default' : ''}" aria-hidden="true">${n.github ? icon('logoGithub') : folder ? folderIcon(!!n.open, defaultFolder, hasSyncGlyph(n)) : documentIcon(hasSyncGlyph(n))}</span>`;
     const content = `${folder ? chevron : '<span class="tree-chevron leaf"></span>'}${glyph}${labelHtml(n)}${folder ? '' : badgesHtml(n)}`;
     const description = [
         defaultFolder ? 'Default destination' : '',
@@ -419,6 +422,7 @@ function renderUsage() {
 // ---- Actions ----
 /** Creates an empty document in `parentId`, switches to Source view, and hides the overlay sidebar. */
 async function newDoc(parentId: string | null = app.state.folderId) {
+    if (githubRoot(app.state.nodes, app.node(parentId))) parentId = null;
     const n = await app.createDoc({ name: app.uniqueName('Untitled', parentId), parentId });
     setViewMode('edit');
     closeOverlay();
@@ -427,6 +431,7 @@ async function newDoc(parentId: string | null = app.state.folderId) {
 
 /** Creates a folder in `parentId`, selects it, and starts its rename. */
 async function newFolder(parentId: string | null = app.state.folderId) {
+    if (githubRoot(app.state.nodes, app.node(parentId))) parentId = null;
     const n = await app.createFolder(app.uniqueName('New folder', parentId), parentId);
     app.state.folderId = n.id;
     startRename(n.id);
@@ -461,6 +466,10 @@ async function deleteNode(n: TreeNode) {
     if (deleting.has(n.id)) return;
     const current = app.node(n.id);
     if (!current) return;
+    if (githubRoot(app.state.nodes, current) && !current.github) {
+        toast('Delete this file on GitHub. The preview does not publish file deletions.');
+        return;
+    }
     n = current;
     deleting.add(n.id);
     try {
@@ -592,6 +601,50 @@ function importMenu(parentId: string | null): MenuEntry[] {
 function menuFor(n: TreeNode): MenuEntry[] {
     const dirPicker = 'showDirectoryPicker' in window;
     const editable = !n.connection || ['owner', 'edit'].includes(n.connection.permission);
+    const repo = githubRoot(app.state.nodes, n);
+    if (repo)
+        return [
+            { hint: `${repo.github!.repository} · ${repo.github!.branch} · Never expires` },
+            {
+                label: 'Sync with GitHub',
+                icon: 'refresh',
+                sub: githubStatus(repo.id),
+                run: () =>
+                    syncGitHub(repo.id).then(
+                        (message) => toast(message),
+                        (error) => toast(error.message),
+                    ),
+            },
+            { label: 'Reconnect GitHub…', icon: 'refresh', run: () => openGitHubDialog(repo.id) },
+            ...(n.github ? [{ label: 'Rename', icon: 'pencil' as const, run: () => startRename(n.id) }] : []),
+            { label: 'Copy link', icon: 'link', run: () => share.copyLinkDialog(n.id) },
+            ...(n.kind === 'doc'
+                ? [
+                      {
+                          label: 'Share a Live copy via Secutils…',
+                          sub: 'Creates an independent copy. Live edits do not go back to GitHub.',
+                          icon: 'copy' as const,
+                          run: async () => {
+                              await viewer.flush();
+                              const copy = await app.createDoc({
+                                  name: n.name,
+                                  text: (await db.getText(n.id)) ?? '',
+                                  parentId: null,
+                              });
+                              await share.copyLinkDialog(copy.id, 'live');
+                          },
+                      },
+                  ]
+                : []),
+            {
+                label: 'Download',
+                icon: 'download',
+                run: () => (n.kind === 'folder' ? io.exportZip(n.id) : io.downloadDoc(n.id)),
+            },
+            ...(n.github
+                ? [{ label: 'Remove local folder', icon: 'trash' as const, danger: true, run: () => deleteNode(n) }]
+                : []),
+        ];
     if (n.kind === 'folder')
         return [
             { label: 'New document', icon: 'document', run: () => newDoc(n.id) },
@@ -865,6 +918,16 @@ $('sbNewBtn').addEventListener('click', (e) =>
             { label: 'New folder', icon: 'folder', run: () => newFolder() },
             'separator',
             ...importMenu(app.state.folderId),
+            ...(githubEnabled()
+                ? [
+                      {
+                          label: 'Import from GitHub…',
+                          icon: 'folder' as const,
+                          disabled: db.isTemporaryStorage(),
+                          run: () => openGitHubDialog(),
+                      },
+                  ]
+                : []),
             {
                 label: 'Restore backup…',
                 icon: 'lock',

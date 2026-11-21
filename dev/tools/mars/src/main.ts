@@ -23,6 +23,7 @@ import { installSyncDebug } from './sync/debug.ts';
 import { installDeveloperTools } from './ui/developer.ts';
 import { startAnalytics } from './platform/analytics.ts';
 import { renameNode } from './ui/rename.ts';
+import { githubReadOnly, installGitHubPolling } from './github/workspace.ts';
 
 // Setup that needs no storage runs first, so it is also in place when a later step fails.
 // `installDeveloperTools` parses the flags and removes their control parameters from the address bar.
@@ -30,6 +31,7 @@ import { renameNode } from './ui/rename.ts';
 startAnalytics();
 installDeveloperTools();
 installSyncDebug();
+installGitHubPolling();
 
 /** `meta` key of the document that was open last. Startup opens it when the address names no document. */
 const LAST_DOC_KEY = 'lastDoc';
@@ -48,6 +50,7 @@ viewer.setHost({
     openFile: share.receiveFile,
     openUrl: share.receiveUrl,
     temporary: db.isTemporaryStorage,
+    readOnly: () => githubReadOnly(app.current()),
     connection: () => {
         const n = app.current();
         return n?.connection

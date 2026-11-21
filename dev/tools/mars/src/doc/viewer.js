@@ -20,8 +20,10 @@ let host = {};
 let connectionApplying = false,
     connectionComposing = false;
 let connectionDraftBlocked = false;
-const connectionEditable = () => !host.connection?.() || ['edit', 'owner'].includes(host.connection().permission);
-const connectionReviewEditable = () => !host.connection?.() || host.connection().permission !== 'view';
+const connectionEditable = () =>
+    !host.readOnly?.() && (!host.connection?.() || ['edit', 'owner'].includes(host.connection().permission));
+const connectionReviewEditable = () =>
+    !host.readOnly?.() && (!host.connection?.() || host.connection().permission !== 'view');
 const connectionOwns = (id) => {
     const c = host.connection?.();
     return (

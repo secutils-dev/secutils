@@ -10,6 +10,7 @@ import { snapshotLink } from './share.ts';
 import { copyRich, esc } from '../ui/ui.ts';
 import { copyFeedback, hideTooltip } from '../ui/feedback.ts';
 import { SyncDialog } from '../sync/dialog.ts';
+import { githubRoot } from '../github/binding.ts';
 
 /**
  * Opens the Copy link dialog for a node and resolves when it closes. An unknown id has no effect.
@@ -19,13 +20,17 @@ import { SyncDialog } from '../sync/dialog.ts';
 export async function openShareDialog(id: string, initial: 'snapshot' | 'live' = 'snapshot') {
     const node = app.node(id);
     if (!node) return;
+    const github = !!githubRoot(app.state.nodes, node);
     // A received Live document can only forward the owner's link. `original` describes that link
     // and becomes null when it ends.
     const received = node.connection?.kind === 'live';
     let original = received ? await sync.liveLinkInfo(id) : null;
     // A new Live link needs a library document that is local or owned by this reader.
     const canCreate =
-        node.kind === 'doc' && !db.isTemporaryStorage() && (!node.connection || node.connection.permission === 'owner');
+        !github &&
+        node.kind === 'doc' &&
+        !db.isTemporaryStorage() &&
+        (!node.connection || node.connection.permission === 'owner');
     const canLive = canCreate || !!original;
     const ui = new SyncDialog('copyLinkDialog');
     let busy = false;
@@ -161,7 +166,11 @@ export async function openShareDialog(id: string, initial: 'snapshot' | 'live' =
             if (received && !original && !forwarding)
                 help.textContent += ' The Live link ended. Only snapshots can be shared.';
             else if (!canLive && node.kind === 'doc')
-                help.textContent += ' Only the sharing source can create Live links.';
+                help.textContent += github
+                    ? ' To start Live sharing, choose Share a Live copy via Secutils from the document menu.'
+                    : ' Only the sharing source can create Live links.';
+            if (github && !live && format === 'short')
+                help.textContent += ' This uploads an encrypted snapshot to Secutils. It does not grant GitHub access.';
             if (!live && !expires) help.textContent += ' Full snapshot links do not expire.';
             const ttl = ui.element.querySelector<HTMLSelectElement>('#copyLifetime')!;
             ttl.innerHTML = [1, 7, 14, 30]
