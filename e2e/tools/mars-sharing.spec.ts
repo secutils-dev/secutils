@@ -429,6 +429,12 @@ test.describe('sync user experience sharing', () => {
     await expect(dialog).not.toContainText(/encrypt|decryption|credentials/i);
     await expect(dialog.getByRole('radio', { name: 'Snapshot', exact: true })).toBeChecked();
     await expect(dialog.getByRole('radio', { name: 'Full', exact: true })).toBeChecked();
+    const parents = dialog.getByRole('checkbox', { name: 'Include parent folders', exact: true });
+    await expect(parents).toBeEnabled();
+    await expect(parents).not.toBeChecked();
+    await expect(dialog.locator('#copyModeHelp')).toHaveText(
+      'A copy of this document, without later updates. Full links do not expire or upload content.',
+    );
     const formats = dialog.locator('input[name="copyFormat"]');
     await expect(formats).toHaveCount(2);
     await expect(formats.nth(0)).toHaveValue('full');
@@ -444,6 +450,11 @@ test.describe('sync user experience sharing', () => {
     await expect(dialog.locator('#copyLinkHelp')).toBeHidden();
     expect(await dialog.boundingBox()).toEqual(before);
     await expect(page.locator('.su-tooltip')).toHaveText('Copied');
+    await parents.focus();
+    await page.keyboard.press('Space');
+    await expect(parents).toBeChecked();
+    await expect(dialog.getByRole('textbox', { name: 'Link', exact: true })).toBeHidden();
+    await expect(page.locator('.su-tooltip')).toHaveCount(0);
     await dialog.getByRole('radio', { name: 'Short', exact: true }).check();
     await expect(dialog.getByRole('textbox', { name: 'Link', exact: true })).toBeHidden();
     await expect(page.locator('.su-tooltip')).toHaveCount(0);
@@ -463,6 +474,7 @@ test.describe('sync user experience sharing', () => {
     expect(exp.ttl).toBe(2592000);
     expect(exp.exp - Date.now() / 1000).toBeGreaterThan(2592000 - 10);
     const live = await configureCopyLink(page, { mode: 'live', format: 'full', ttl: '86400', close: false });
+    await expect(parents).toBeHidden();
     await expect(expiry.locator('option')).toHaveText(['1 day', '7 days', '14 days', '30 days']);
     expect(new URL(live).hash).toMatch(/^#live=/);
     expect(new URL(live).hash.length).toBeGreaterThan(100);
@@ -479,6 +491,8 @@ test.describe('sync user experience sharing', () => {
     await expect(links.locator('.sync-access-item')).toHaveCount(1);
     await links.getByRole('button', { name: 'Copy link', exact: true }).click();
     await expect(dialog).toBeVisible();
+    await dialog.getByRole('radio', { name: 'Snapshot', exact: true }).check();
+    await expect(dialog.getByRole('checkbox', { name: 'Include parent folders', exact: true })).not.toBeChecked();
     await dialog.getByRole('button', { name: 'Live links', exact: true }).click();
     await expect(links).toHaveCount(1);
     await expect(page.locator('#copyLinkDialog')).toHaveCount(0);
@@ -635,7 +649,7 @@ test.describe('sync user experience sharing', () => {
     const dialog = page.getByRole('dialog', { name: 'Copy link', exact: true });
     await expect(dialog.getByRole('radio', { name: 'Live', exact: true })).toHaveCount(0);
     await expect(dialog.getByRole('radio', { name: 'Snapshot', exact: true })).toHaveCount(0);
-    await expect(dialog).toContainText('A snapshot of this folder and its documents.');
+    await expect(dialog).toContainText('A copy of this folder and its contents, without later updates.');
     await expect(dialog.getByRole('radio', { name: 'Full', exact: true })).toBeChecked();
     expect(new URL(await configureCopyLink(page, { format: 'full', close: false })).hash).toMatch(/^#b=/);
     expect(new URL(await configureCopyLink(page, { format: 'short', close: false })).hash).toMatch(/^#s=/);

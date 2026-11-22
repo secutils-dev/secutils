@@ -118,7 +118,7 @@ export function parseSharedPath(json: string): string[] | null {
 
 /** One document of a bundle. */
 export interface SharedDoc {
-    // For one document: its complete parent-folder path. For a folder bundle: names below the shared folder.
+    // For one document: opted-in parent folders, empty by default. For a folder bundle: names below the shared folder.
     path: string[];
     name: string;
     originId: string;
@@ -136,6 +136,8 @@ export interface Bundle {
     name: string;
     // The shared folder's originId, so a re-shared folder merges into the same copy.
     originId?: string;
+    // Folder snapshots only: opted-in parent-folder names above the selected folder.
+    path?: string[];
     docs: SharedDoc[];
     // The sender shared from a temporary session. The recipient opens the link in one too.
     temporary?: true;
@@ -145,7 +147,8 @@ export interface Bundle {
  * Validates untrusted bundle JSON. Returns the bundle, or null when the JSON does not parse
  * or a required field has the wrong type.
  * It checks types only: `v`, `kind`, `name`, and for each document `text`, `name`, `originId`,
- * and `path`. It removes an invalid `readingWidth` and a `temporary` value other than `true`.
+ * and `path`, including the optional parent path of a folder. It removes an invalid `readingWidth`
+ * and a `temporary` value other than `true`.
  * It does not check the optional folder `originId`, does not limit the number of documents,
  * and does not remove unknown fields.
  */
@@ -163,6 +166,8 @@ export function parseBundle(json: string): Bundle | null {
             b?.v !== 1 ||
             !['doc', 'folder'].includes(b.kind) ||
             typeof b.name !== 'string' ||
+            (b.path !== undefined &&
+                (!Array.isArray(b.path) || !b.path.every((name: unknown) => typeof name === 'string'))) ||
             !Array.isArray(b.docs) ||
             !b.docs.every(docOk)
         )

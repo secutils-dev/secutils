@@ -2,7 +2,8 @@
 // It owns the dialog state and the choice of link. `share.ts` creates snapshot links, and
 // `sync/` creates, forwards, and manages Live links.
 // Invariants: the dialog opens on Snapshot and Full unless the caller asks for Live. The
-// clipboard write starts inside the button click. The document name is escaped in the markup.
+// parent folders are opt-in for snapshots. The clipboard write starts inside the button click.
+// The document name is escaped in the markup.
 import * as app from '../app.ts';
 import * as db from '../store/db.ts';
 import * as sync from '../sync/index.ts';
@@ -39,7 +40,8 @@ export async function openShareDialog(id: string, initial: 'snapshot' | 'live' =
     // so a second click does not create a second link.
     let cachedLive: { key: string; value: { url: string; expires: number } } | null = null;
     let mode = initial === 'live' && canLive ? 'live' : 'snapshot',
-        format = 'full';
+        format = 'full',
+        includeParentFolders = false;
     // The chosen lifetime of each mode, in seconds. The default is 7 days.
     const lifetimes = { snapshot: 604800, live: 604800 };
     // Shows the generated link, or the instruction text when `url` is empty.
@@ -59,6 +61,7 @@ export async function openShareDialog(id: string, initial: 'snapshot' | 'live' =
             ${node.kind === 'doc' ? `<fieldset class="copy-options"><legend class="field-label">Share</legend><label><input type="radio" name="copyMode" value="snapshot"${mode === 'snapshot' ? ' checked' : ''}> Snapshot</label><label><input type="radio" name="copyMode" value="live"${mode === 'live' ? ' checked' : ''}${canLive ? '' : ' disabled'}> Live</label></fieldset>` : ''}
             <p id="copyModeHelp" class="sync-fineprint"></p>
             <fieldset id="copyFormatFields" class="copy-options"><legend class="field-label">Link format</legend><label><input type="radio" name="copyFormat" value="full" checked> Full</label><label><input type="radio" name="copyFormat" value="short"> Short</label></fieldset>
+            <div id="copyParentFields" class="copy-options"><label for="copyParentFolders"><input id="copyParentFolders" name="includeParentFolders" type="checkbox"> Include parent folders</label></div>
             <div id="copyExpiryFields" class="live-expiry"><label class="field-label" for="copyLifetime">Expires</label><select class="select" id="copyLifetime"></select></div>
             <fieldset id="copyAccessFields" class="live-access"><legend class="field-label">Access</legend><label><input type="radio" name="copyPermission" value="view" aria-label="Can view" checked> Can view</label><label><input type="radio" name="copyPermission" value="comment" aria-label="Can comment"> Can comment</label><label><input type="radio" name="copyPermission" value="edit" aria-label="Can edit"> Can edit</label></fieldset>
             <p id="copyForwardInfo" class="sync-fineprint" hidden></p>
@@ -86,7 +89,7 @@ export async function openShareDialog(id: string, initial: 'snapshot' | 'live' =
                                     : cachedLive?.key === key && cachedLive.value.expires > Date.now() / 1000 + 60
                                       ? Promise.resolve(cachedLive.value)
                                       : sync.createLiveLink(id, permission, ttl, format as 'short' | 'full')
-                                : snapshotLink(id, format as 'short' | 'full', ttl);
+                                : snapshotLink(id, format as 'short' | 'full', ttl, includeParentFolders);
                         // Start the clipboard write in the button gesture, before network work finishes.
                         const copied = copyRich(result.then((value) => value.url));
                         try {
@@ -142,6 +145,7 @@ export async function openShareDialog(id: string, initial: 'snapshot' | 'live' =
             const liveChoice = ui.element.querySelector<HTMLInputElement>('input[name="copyMode"][value="live"]');
             if (liveChoice) liveChoice.disabled = !canCreate && !original;
             ui.element.querySelector<HTMLElement>('#copyFormatFields')!.hidden = forwarding;
+            ui.element.querySelector<HTMLElement>('#copyParentFields')!.hidden = live;
             ui.element.querySelector<HTMLElement>('#copyExpiryFields')!.hidden = !expires;
             ui.element.querySelector<HTMLElement>('#copyAccessFields')!.hidden = !live || forwarding;
             const info = ui.element.querySelector<HTMLElement>('#copyForwardInfo')!;
@@ -161,17 +165,17 @@ export async function openShareDialog(id: string, initial: 'snapshot' | 'live' =
                 : live
                   ? 'Receives later document changes. Choose what people can do.'
                   : node.kind === 'folder'
-                    ? 'A snapshot of this folder and its documents. Later changes are not included.'
-                    : 'A copy of this document and its parent-folder names, without sibling documents. Later changes are not included.';
+                    ? 'A copy of this folder and its contents, without later updates.'
+                    : 'A copy of this document, without later updates.';
             if (received && !original && !forwarding)
                 help.textContent += ' The Live link ended. Only snapshots can be shared.';
-            else if (!canLive && node.kind === 'doc')
-                help.textContent += github
-                    ? ' To start Live sharing, choose Share a Live copy via Secutils from the document menu.'
-                    : ' Only the sharing source can create Live links.';
-            if (github && !live && format === 'short')
-                help.textContent += ' This uploads an encrypted snapshot to Secutils. It does not grant GitHub access.';
-            if (!live && !expires) help.textContent += ' Full snapshot links do not expire.';
+            else if (!github && !canLive && node.kind === 'doc')
+                help.textContent += ' Only the sharing source can create Live links.';
+            if (!live)
+                help.textContent +=
+                    format === 'short'
+                        ? ' Short links upload an encrypted copy to Secutils.'
+                        : ' Full links do not expire or upload content.';
             const ttl = ui.element.querySelector<HTMLSelectElement>('#copyLifetime')!;
             ttl.innerHTML = [1, 7, 14, 30]
                 .map(
@@ -190,6 +194,11 @@ export async function openShareDialog(id: string, initial: 'snapshot' | 'live' =
                 ui.message('');
                 update();
             };
+        ui.element.querySelector<HTMLInputElement>('#copyParentFolders')!.onchange = (event) => {
+            includeParentFolders = (event.target as HTMLInputElement).checked;
+            showLink();
+            ui.message('');
+        };
         ui.element.querySelector<HTMLSelectElement>('#copyLifetime')!.onchange = (event) => {
             lifetimes[mode as 'snapshot' | 'live'] = Number((event.target as HTMLSelectElement).value);
             showLink();

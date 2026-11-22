@@ -5,7 +5,7 @@ import { runInNewContext } from 'node:vm';
 import { transformSync } from 'esbuild';
 import { ancestors, descendants, type TreeNode } from '../src/tree/model.ts';
 import { incomingFolder } from '../src/io/destination.ts';
-import { decodeState, encodeState, openSealed, parseSharedPath, sealBundle } from '../src/share/codec.ts';
+import { decodeState, encodeState, openSealed, parseBundle, parseSharedPath, sealBundle } from '../src/share/codec.ts';
 import { validWidth } from '../src/export/settings.ts';
 import { checkInput, InputController } from '../src/io/input.ts';
 
@@ -20,7 +20,7 @@ const node = (id: string, name: string, parentId: string | null, kind: 'doc' | '
     updatedAt: 1,
 });
 
-test('single-document snapshot bundles preserve exact saved names and folder paths without sibling text', async () => {
+test('single-document snapshots omit parent folders by default and preserve opted-in paths without sibling text', async () => {
     const nodes = [
         node('root', 'Local', null),
         node('nested', '研究 & "evidence"', 'root'),
@@ -47,13 +47,20 @@ test('single-document snapshot bundles preserve exact saved names and folder pat
         URLSearchParams,
         base: () => 'https://mars.example/',
     });
-    const bundle = JSON.parse(JSON.stringify(await api.bundleFor('doc')));
+    const flat = JSON.parse(JSON.stringify(await api.bundleFor('doc')));
+    assert.deepEqual(flat.docs[0].path, []);
+    assert.equal(flat.docs[0].name, 'Lease evidence.md');
+    const flatParams = new URLSearchParams(new URL(await api.fullLink(flat)).hash.slice(1));
+    assert.deepEqual(parseSharedPath((await decodeState(flatParams.get('p')!))!), []);
+    const flatShort = await sealBundle(flat);
+    assert.deepEqual(await openSealed(flatShort.secret, flatShort.blob), flat);
+    const bundle = JSON.parse(JSON.stringify(await api.bundleFor('doc', true)));
     assert.equal(bundle.kind, 'doc');
     assert.equal(bundle.name, 'Lease evidence.md');
     assert.equal(bundle.docs.length, 1);
     assert.equal(bundle.docs[0].name, 'Lease evidence.md');
     assert.deepEqual(bundle.docs[0].path, ['Local', '研究 & "evidence"']);
-    assert.deepEqual(reads, ['doc']);
+    assert.deepEqual(reads, ['doc', 'doc']);
     const sealed = await sealBundle(bundle);
     assert.deepEqual(await openSealed(sealed.secret, sealed.blob), bundle);
     const params = new URLSearchParams(new URL(await api.fullLink(bundle)).hash.slice(1));
@@ -62,13 +69,124 @@ test('single-document snapshot bundles preserve exact saved names and folder pat
     assert.equal(params.get('w'), '980');
     assert.equal(await decodeState(params.get('md')!), bundle.docs[0].text);
     nodes[1].name = 'Renamed research';
-    const renamed = await api.bundleFor('doc');
+    const renamed = await api.bundleFor('doc', true);
     assert.equal(renamed.docs[0].path[1], 'Renamed research');
     assert.notEqual(JSON.stringify(renamed), JSON.stringify(bundle));
     nodes[2].parentId = 'root';
-    const moved = await api.bundleFor('doc');
+    const moved = await api.bundleFor('doc', true);
     assert.equal(JSON.stringify(moved.docs[0].path), '["Local"]');
     assert.deepEqual(bundle.docs[0].path, ['Local', '研究 & "evidence"']);
+});
+
+test('folder snapshots keep their own descendants and add parent folders only on request', async () => {
+    const root = node('root', 'Private account', null);
+    root.github = { repository: 'owner/private', branch: 'main', write: false, credentialId: 'private-credential' };
+    const nodes = [
+        root,
+        node('folder', 'Shared project', 'root'),
+        node('nested', 'Nested', 'folder'),
+        node('doc', 'Guide', 'nested', 'doc'),
+        node('outside', 'Private sibling', 'root', 'doc'),
+    ];
+    nodes[3].githubFile = { root: 'root', path: 'Shared project/Nested/Guide.md', sha: 'private-sha' };
+    const reads: string[] = [];
+    const code = source.slice(source.indexOf('async function bundleFor'), source.indexOf('// ---- Short links'));
+    const api = runInNewContext(`${transformSync(code, { loader: 'ts' }).code}\n({bundleFor, fullLink})`, {
+        app: {
+            node: (id: string) => nodes.find((node) => node.id === id),
+            state: { nodes, currentId: 'doc' },
+            docText: async (id: string) => {
+                reads.push(id);
+                return '# Guide';
+            },
+        },
+        db: { isTemporaryStorage: () => false },
+        viewer: { exportReadingWidth: () => 980, defaultReadingWidth: () => 800 },
+        ancestors,
+        descendants,
+        validWidth,
+        encodeState,
+        URLSearchParams,
+        base: () => 'https://mars.example/',
+    });
+    for (const include of [false, true]) {
+        const bundle = JSON.parse(JSON.stringify(await api.bundleFor('folder', include)));
+        assert.equal(bundle.name, 'Shared project');
+        assert.deepEqual(bundle.path, include ? ['Private account'] : undefined);
+        assert.deepEqual(
+            bundle.docs.map((doc: { path: string[] }) => doc.path),
+            [['Nested']],
+        );
+        assert.equal(bundle.docs.length, 1);
+        assert.doesNotMatch(JSON.stringify(bundle), /credential|repository|private-sha|Private sibling/);
+        const params = new URLSearchParams(new URL(await api.fullLink(bundle)).hash.slice(1));
+        assert.deepEqual(parseBundle((await decodeState(params.get('b')!))!), bundle);
+        const sealed = await sealBundle(bundle);
+        assert.deepEqual(await openSealed(sealed.secret, sealed.blob), bundle);
+    }
+    assert.deepEqual(reads, ['doc', 'doc']);
+    const doc = JSON.parse(JSON.stringify(await api.bundleFor('doc')));
+    assert.deepEqual(doc.docs[0].path, []);
+    assert.doesNotMatch(JSON.stringify(doc), /Private account|credential|repository|private-sha/);
+});
+
+test('folder bundles validate optional parent paths and retain legacy bundles', () => {
+    const bundle = { v: 1, kind: 'folder', name: 'Selection', docs: [] };
+    assert.deepEqual(parseBundle(JSON.stringify(bundle)), bundle);
+    for (const path of [[], ['研究', 'A/B', '..', '<img onerror=alert(1)>']])
+        assert.deepEqual(parseBundle(JSON.stringify({ ...bundle, path }))?.path, path);
+    for (const path of [null, {}, 'Parent', [1], ['Parent', null]])
+        assert.equal(parseBundle(JSON.stringify({ ...bundle, path })), null);
+});
+
+test('incoming folder snapshots recreate opted-in parents and retain known placements', async () => {
+    const start = source.indexOf('async function receiveFolder(');
+    const code = source.slice(start, source.indexOf('\n}', start) + 2);
+    for (const temporary of [false, true])
+        for (const include of [false, true]) {
+            const nodes = [node('incoming', 'Inbox', null)];
+            const create = async (name: string, parentId: string | null, originId?: string) => {
+                const folder = node(`folder-${nodes.length}`, name, parentId);
+                if (originId) folder.originId = originId;
+                nodes.push(folder);
+                return folder;
+            };
+            const receive = runInNewContext(`${transformSync(code, { loader: 'ts' }).code}\nreceiveFolder`, {
+                app: {
+                    state: { nodes },
+                    defaultIncomingFolder: () => nodes[0],
+                    findOrCreateFolder: create,
+                    createFolder: create,
+                    uniqueName: (name: string) => name,
+                    setOpen: async () => {},
+                },
+                db: { isTemporaryStorage: () => temporary },
+                checkInput() {},
+                incomingFolder,
+                viewer: { toast() {} },
+            });
+            const bundle = {
+                v: 1,
+                kind: 'folder',
+                name: 'Selection',
+                originId: 'selection-origin',
+                ...(include ? { path: ['Private', '研究'] } : {}),
+                docs: [],
+            };
+            await receive(bundle);
+            const selection = nodes.find((node) => node.originId === 'selection-origin')!;
+            assert.deepEqual(
+                ancestors(nodes, selection.id).map((node) => node.name),
+                [...(temporary ? [] : ['Inbox']), ...(include ? ['Private', '研究'] : [])],
+            );
+            selection.parentId = null;
+            selection.name = 'My placement';
+            const count = nodes.length;
+            await receive({ ...bundle, path: ['A different path'] });
+            assert.equal(nodes.length, count);
+            assert.equal(selection.name, 'My placement');
+            assert.equal(selection.parentId, null);
+        }
 });
 
 test('snapshot folder paths round-trip empty, Unicode, and punctuation names and reject malformed inputs', async () => {
@@ -76,6 +194,11 @@ test('snapshot folder paths round-trip empty, Unicode, and punctuation names and
         assert.deepEqual(parseSharedPath((await decodeState(await encodeState(JSON.stringify(path))))!), path);
     for (const json of ['null', '{}', '"Local"', '[1]', '["Local",null]', '[{"name":"Local"}]', 'bad json'])
         assert.equal(parseSharedPath(json), null);
+});
+
+test('snapshot text round-trips default, small, large, and Unicode payloads', async () => {
+    for (const text of ['', '# Small', '# 研究 🪐\n\nΚαλημέρα', '# Large\n\n'.repeat(100_000)])
+        assert.equal(await decodeState(await encodeState(text)), text);
 });
 
 test('incoming document snapshots recreate only their path and leave known copies in place', async () => {

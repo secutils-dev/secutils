@@ -88,9 +88,12 @@ Read each guide whose trigger matches the change.
 
 - Full links are `#name=&md=`, plus `&o=<originId>` and optional `&w=<width>`. A bare `#<state>` still opens as a legacy link.
   New document snapshots add `&p=<state of the folder-name array>` and keep the exact saved document label.
-  Single-document bundles carry the same path in `docs[0].path`, without sibling documents.
+  Parent folders are off by default in every snapshot copy. **Include parent folders** starts unchecked in **Copy link**.
+  Single-document bundles use `docs[0].path`: empty by default, or the complete parent path when selected, without sibling documents.
+  Folder bundles always keep the selected folder and descendants. Their optional `path` adds its parent folders only when selected.
   New recipients recreate it under their incoming folder. Known copies keep their own placement and labels.
-  Temporary sessions recreate the path at the root and retain it in their recovery fragment, without sibling documents.
+  Temporary sessions recreate the received path at the root and retain it in their recovery fragment, without sibling documents.
+  **Read temporarily** keeps the original parent path independently of snapshot-sharing defaults.
   Folders use `#b=<state of a JSON bundle>` with `readingWidth` on each document.
 - Short links keep an encrypted bundle in the MARS key-value store ([url-state.md](../shared/guides/url-state.md#short-links-mars)).
 - `t=1` in the fragment or `?temporary=1` selects the memory backend before the database opens.

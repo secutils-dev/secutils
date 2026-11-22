@@ -113,6 +113,6 @@ test('GitHub preview imports nested files and sends one commit with the expected
   await page.getByRole('button', { name: 'Share', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Copy link', exact: true }).click();
   await page.getByRole('radio', { name: 'Short', exact: true }).check();
-  await expect(page.getByText(/uploads an encrypted snapshot to Secutils/)).toBeVisible();
+  await expect(page.getByText(/Short links upload an encrypted copy to Secutils/)).toBeVisible();
   expect(leaked).toEqual([]);
 });

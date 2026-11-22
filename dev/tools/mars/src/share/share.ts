@@ -76,9 +76,10 @@ const fmtSize = (chars: number) =>
 /**
  * Builds the bundle of a document, or of a folder with every document below it. Returns null
  * for an unknown id. The open document contributes its viewer text and width. Callers flush the
- * viewer first, so that text includes a pending edit. A temporary session marks the bundle `temporary`.
+ * viewer first, so that text includes a pending edit. Parent folders are omitted unless explicitly
+ * requested. A folder always keeps its descendants. A temporary session marks the bundle `temporary`.
  */
-async function bundleFor(id: string): Promise<Bundle | null> {
+async function bundleFor(id: string, includeParentFolders = false): Promise<Bundle | null> {
     const n = app.node(id);
     if (!n) return null;
     const widthFor = (doc: TreeNode) =>
@@ -92,7 +93,7 @@ async function bundleFor(id: string): Promise<Bundle | null> {
             name: n.name,
             docs: [
                 {
-                    path: ancestors(app.state.nodes, n.id).map((folder) => folder.name),
+                    path: includeParentFolders ? ancestors(app.state.nodes, n.id).map((folder) => folder.name) : [],
                     name: n.name,
                     originId: n.originId ?? n.id,
                     text: await app.docText(n.id),
@@ -116,6 +117,7 @@ async function bundleFor(id: string): Promise<Bundle | null> {
         kind: 'folder',
         name: n.name,
         originId: n.originId ?? n.id,
+        ...(includeParentFolders ? { path: ancestors(app.state.nodes, n.id).map((folder) => folder.name) } : {}),
         docs,
         ...(db.isTemporaryStorage() ? { temporary: true } : {}),
     };
@@ -252,12 +254,13 @@ async function shortLink(nodeId: string, bundle: Bundle, ttl = shortTtl) {
  * Creates a snapshot link for a node. Pending edits of the open document are saved first.
  * `full` uploads nothing and returns `expires: null`. `short` requires a lifetime from
  * `SHORT_TTLS`, stores it as the preference, and returns `expires` in seconds since the epoch.
+ * `includeParentFolders` adds the selected node's ancestors, and defaults to false for every copy.
  * Throws an `Error` with a display message.
  */
-export async function snapshotLink(id: string, format: 'short' | 'full', ttl = shortTtl) {
+export async function snapshotLink(id: string, format: 'short' | 'full', ttl = shortTtl, includeParentFolders = false) {
     if (id === app.state.currentId || descendants(app.state.nodes, id).some((node) => node.id === app.state.currentId))
         await viewer.flush();
-    const bundle = await bundleFor(id);
+    const bundle = await bundleFor(id, includeParentFolders);
     if (!bundle) throw new Error('Nothing to share');
     if (format === 'full') return { url: await fullLink(bundle), expires: null };
     if (!SHORT_TTLS.includes(ttl)) throw new Error('Choose an available expiration date.');
@@ -361,10 +364,10 @@ const hideMenu = () => {
 };
 
 // The bundle of the open document, after a save of pending edits. Throws when no document is open.
-async function currentBundle() {
+async function currentBundle(includeParentFolders = false) {
     await viewer.flush();
     const id = app.state.currentId;
-    const bundle = id ? await bundleFor(id) : null;
+    const bundle = id ? await bundleFor(id, includeParentFolders) : null;
     if (!id || !bundle) throw new Error('Nothing to share yet');
     return { id, bundle };
 }
@@ -376,7 +379,7 @@ async function currentBundle() {
  */
 export async function startTemporary(copyCurrent = false) {
     await viewer.flush();
-    const hash = copyCurrent ? await temporaryFragment((await currentBundle()).bundle.docs[0]) : '';
+    const hash = copyCurrent ? await temporaryFragment((await currentBundle(true)).bundle.docs[0]) : '';
     location.assign(`${base()}?temporary=1${copyCurrent ? '' : '&new=1'}${hash}`);
 }
 
@@ -758,18 +761,23 @@ export async function receiveFile(
 }
 
 // A shared folder. A folder with the same origin receives the documents again. Otherwise a new
-// folder goes to the default folder, or to "Shared with me".
+// folder goes to the incoming destination, under any explicitly shared parent-folder names.
 async function receiveFolder(bundle: Bundle, input?: InputOperation) {
     let target = bundle.originId
         ? app.state.nodes.find((n) => n.kind === 'folder' && n.originId === bundle.originId)
         : undefined;
     if (!target) {
-        const parent = app.defaultIncomingFolder() ?? (await sharedRoot());
-        target = await app.createFolder(
-            app.uniqueName(bundle.name || 'Untitled', parent.id),
-            parent.id,
-            bundle.originId,
-        );
+        const destination = db.isTemporaryStorage() ? null : (app.defaultIncomingFolder() ?? (await sharedRoot()));
+        let parentId = destination?.id ?? null;
+        checkInput(input);
+        for (const name of bundle.path ?? []) {
+            const parent = await app.findOrCreateFolder(name, parentId);
+            checkInput(input);
+            if (!incomingFolder(app.state.nodes, parent.id))
+                throw new Error('The shared folder path cannot receive documents. Choose another default folder.');
+            parentId = parent.id;
+        }
+        target = await app.createFolder(app.uniqueName(bundle.name || 'Untitled', parentId), parentId, bundle.originId);
     }
     checkInput(input);
     let added = 0,

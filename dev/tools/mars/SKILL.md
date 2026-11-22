@@ -45,7 +45,7 @@ Pick the section for the task:
 | `…&o=<id>` | Gives the document a stable origin. A second link with the same `o` updates the same document and merges its threads. |
 | `…&w=<width>` | Sets the reading width: `800`, `1100`, `full`, or an integer from 320 to 2400. |
 | `…&t=1` | Opens the document in a temporary session, without library storage. |
-| `…&p=<state>` | Carries the parent-folder names as an encoded JSON array. MARS snapshot links add it automatically and preserve the exact saved document name. |
+| `…&p=<state>` | Carries parent-folder names as an encoded JSON array and preserves the exact saved document name. New snapshots use an empty array unless **Include parent folders** is checked. |
 | `https://{{MARS_HOST}}/?url=<public-md-url>` | Fetches a public, CORS-enabled file in the browser (for example from `raw.githubusercontent.com`). |
 | `https://{{MARS_HOST}}/?temporary=1` | Opens an empty temporary session. Add `&url=<public-md-url>` to load a file into it. |
 | `#s=<secret>`, `#live=<secret>`, `#sync=<secret>` | Short snapshot, Live, and Sync links. Only the app creates them. Do not construct or edit them. |
@@ -81,8 +81,10 @@ Rules that MARS applies to an incoming document:
 - **Destination**: a new document goes to the profile's default folder, or to **Shared with me** if none is set.
   The folder action **Use as default** changes the default folder.
 - **Name**: local files use their filenames without source extensions, not their frontmatter titles or headings.
-  MARS snapshots keep the saved document name and parent-folder names, without sibling documents.
-  Recipients get that path under their incoming folder. Known copies keep their own placement and names.
+  MARS snapshots keep the saved document name and omit parent folders by default, without sibling documents.
+  **Copy link → Include parent folders** adds the complete parent path for Full and Short snapshots. It starts unchecked each time.
+  Folder snapshots retain the selected folder and its nested contents. Recipients get the selection under their incoming folder.
+  Known copies keep their own placement and names.
   Temporary sessions recreate the path at the root and retain it on reload.
   For raw URLs and legacy links without `p`, the `name` parameter wins, then the frontmatter title, heading, and URL filename.
   MARS removes `.md` and `.html` extensions from filenames and legacy link names.
@@ -235,7 +237,7 @@ Use this reference when the user asks how to do a task in MARS. Each row is one 
 | Undo a rename | **Undo** in the rename notification | Available for six seconds after a folder, document, or title rename. Restores only the name, unless the name changed again. |
 | Comment | Select rendered text in Preview | Threads stay in the file. |
 | Pause indexing | Sparkles menu > **Pause indexing** or **Resume indexing** | Stops after the current batch. The pause survives reloads and applies to all tabs. Search remains available. |
-| Share a copy | **Share > Copy link > Snapshot** | Full and Short preserve saved document and parent-folder names without siblings. **Full** contains the unencrypted snapshot. **Short** encrypts it and expires after 1, 7, 14, or 30 days. |
+| Share a copy | **Share > Copy link > Snapshot** | Parent folders are off by default. **Include parent folders** adds them. Documents keep their saved name without siblings. Folders keep their nested contents. **Full** contains the unencrypted snapshot. **Short** encrypts it and expires after 1, 7, 14, or 30 days. |
 | Share live access | **Share > Copy link > Live** | One document. **Can view**, **Can comment**, or **Can edit**. Expires after 1, 7, 14, or 30 days (default 7). Folders support snapshots only. |
 | Stop live access | **Copy link > Live links** (bottom left) | **Stop sharing** disables every Live link of the document. Copies that recipients saved stay with them. |
 | Sync own devices | Document or folder menu > **Sync**, then **Sync link** | The Sync link expires after 10 minutes. Both devices must show the same code before approval. |

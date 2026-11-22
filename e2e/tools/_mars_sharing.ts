@@ -7,6 +7,7 @@ export async function copyLink(
     format?: 'short' | 'full';
     permission?: 'view' | 'comment' | 'edit';
     ttl?: string;
+    includeParentFolders?: boolean;
     close?: boolean;
   } = {},
 ) {
@@ -21,6 +22,7 @@ export async function configureCopyLink(
     format?: 'short' | 'full';
     permission?: 'view' | 'comment' | 'edit';
     ttl?: string;
+    includeParentFolders?: boolean;
     close?: boolean;
   } = {},
 ) {
@@ -32,6 +34,10 @@ export async function configureCopyLink(
   const forwarding = await dialog.locator('#copyForwardInfo').isVisible();
   if (!forwarding) {
     await dialog.getByRole('radio', { name: options.format === 'full' ? 'Full' : 'Short', exact: true }).check();
+    if (options.mode !== 'live' && options.includeParentFolders !== undefined)
+      await dialog
+        .getByRole('checkbox', { name: 'Include parent folders', exact: true })
+        .setChecked(options.includeParentFolders);
     if (options.mode === 'live')
       await dialog.getByRole('radio', { name: `Can ${options.permission ?? 'view'}`, exact: true }).check();
     if (options.ttl) await dialog.getByLabel('Expires', { exact: true }).selectOption(options.ttl);

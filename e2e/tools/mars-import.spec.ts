@@ -1,13 +1,13 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
-import { deflateRawSync } from 'node:zlib';
+import { deflateRawSync, inflateRawSync } from 'node:zlib';
 
 import type { Page, Route } from '@playwright/test';
 import { expect } from '@playwright/test';
 
 import { mockWorker } from './_mars_indexing';
-import { copyLink } from './_mars_sharing';
+import { configureCopyLink, copyLink } from './_mars_sharing';
 import { test } from './_mars_test';
 
 const MARS_BASE_URL = process.env.MARS_BASE_URL ?? 'https://mars.secutils.dev';
@@ -717,90 +717,156 @@ test.describe('source import', () => {
     await expect(dialog).toBeHidden();
     expect((await importSnapshot(page)).nodes.filter((n) => n.kind === 'doc')).toHaveLength(2);
   });
-  for (const format of ['full', 'short'] as const) {
-    test(`${format} document snapshots preserve saved names and nested folder context without siblings`, async ({
-      page,
-      context,
-      browser,
-      browserName,
-    }, testInfo) => {
-      if (browserName === 'chromium') await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-      await boot(page);
-      const directory = testInfo.outputPath('Local');
-      const path = join(directory, 'Research', '研究 & evidence');
-      await mkdir(path, { recursive: true });
-      await writeFile(join(path, 'LETTERS.md'), RAW);
-      await writeFile(join(path, 'SIBLING.md'), '# Private sibling\n\nDo not include this document.');
-      await page.locator('#importFolderInput').setInputFiles(directory);
-      await expect(page.locator('#toast')).toContainText('Imported 2 documents');
-      await page.getByRole('link', { name: 'LETTERS', exact: true }).click();
-      await expect(page.locator('#docTitle')).toHaveText('LETTERS');
-      await page.getByRole('button', { name: 'Actions for LETTERS', exact: true }).click();
-      await page.getByRole('menuitem', { name: 'Rename', exact: true }).click();
-      const rename = page.getByRole('textbox', { name: 'Name', exact: true });
-      await rename.fill('Lease evidence.md');
-      await rename.press('Enter');
-      await expect(page.locator('#docTitle')).toHaveText('Lease evidence.md');
-      const link = await copyLink(page, { format });
-      if (format === 'full') expect(new URLSearchParams(new URL(link).hash.slice(1)).has('p')).toBe(true);
-      const other = await browser.newContext({ baseURL: MARS_BASE_URL });
-      try {
-        const recipient = await other.newPage();
-        await boot(recipient);
-        await recipient.getByRole('button', { name: 'New document, folder, or import', exact: true }).click();
-        await recipient.getByRole('menuitem', { name: 'New folder', exact: true }).click();
-        const name = recipient.getByRole('textbox', { name: 'Name', exact: true });
-        await name.fill('Inbox');
-        await name.press('Enter');
-        await recipient.getByRole('button', { name: 'Actions for Inbox', exact: true }).click();
-        await recipient.getByRole('menuitem', { name: 'Use as default', exact: true }).click();
-        await boot(recipient, link);
-        await expect(recipient.locator('#docTitle')).toHaveText('Lease evidence.md');
-        await expect(recipient.locator('#previewArticle')).toContainText('Original source text.');
-        const data = await stored(recipient);
-        expect(data.docs).toHaveLength(1);
-        expect(data.docs[0].name).toBe('Lease evidence.md');
-        const ancestors: string[] = [];
-        for (let parent = data.docs[0].parentId; parent;) {
-          const folder = data.nodes.find((node) => node.id === parent)!;
-          ancestors.unshift(folder.name);
-          parent = folder.parentId;
+  for (const includeParentFolders of [false, true])
+    for (const format of ['full', 'short'] as const) {
+      test(`${format} document snapshots ${includeParentFolders ? 'include' : 'omit'} parent folders without siblings`, async ({
+        page,
+        context,
+        browser,
+        browserName,
+      }, testInfo) => {
+        if (browserName === 'chromium') await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+        await boot(page);
+        const directory = testInfo.outputPath('Local');
+        const path = join(directory, 'Research', '研究 & evidence');
+        await mkdir(path, { recursive: true });
+        await writeFile(join(path, 'LETTERS.md'), RAW);
+        await writeFile(join(path, 'SIBLING.md'), '# Private sibling\n\nDo not include this document.');
+        await page.locator('#importFolderInput').setInputFiles(directory);
+        await expect(page.locator('#toast')).toContainText('Imported 2 documents');
+        await page.getByRole('link', { name: 'LETTERS', exact: true }).click();
+        await expect(page.locator('#docTitle')).toHaveText('LETTERS');
+        await page.getByRole('button', { name: 'Actions for LETTERS', exact: true }).click();
+        await page.getByRole('menuitem', { name: 'Rename', exact: true }).click();
+        const rename = page.getByRole('textbox', { name: 'Name', exact: true });
+        await rename.fill('Lease evidence.md');
+        await rename.press('Enter');
+        await expect(page.locator('#docTitle')).toHaveText('Lease evidence.md');
+        const flat = await copyLink(page, { format, close: false });
+        const link = await configureCopyLink(page, { format, includeParentFolders });
+        expect(link === flat).toBe(!includeParentFolders);
+        const reopened = await copyLink(page, { format: 'full', close: false });
+        await expect(
+          page
+            .getByRole('dialog', { name: 'Copy link', exact: true })
+            .getByRole('checkbox', { name: 'Include parent folders', exact: true }),
+        ).not.toBeChecked();
+        const reopenedPath = new URLSearchParams(new URL(reopened).hash.slice(1)).get('p')!;
+        expect(JSON.parse(inflateRawSync(Buffer.from(reopenedPath, 'base64url').subarray(4)).toString())).toEqual([]);
+        await page
+          .getByRole('dialog', { name: 'Copy link', exact: true })
+          .getByRole('button', { name: 'Close', exact: true })
+          .click();
+        if (format === 'full') expect(new URLSearchParams(new URL(link).hash.slice(1)).has('p')).toBe(true);
+        const other = await browser.newContext({ baseURL: MARS_BASE_URL });
+        try {
+          const recipient = await other.newPage();
+          await boot(recipient);
+          await recipient.getByRole('button', { name: 'New document, folder, or import', exact: true }).click();
+          await recipient.getByRole('menuitem', { name: 'New folder', exact: true }).click();
+          const name = recipient.getByRole('textbox', { name: 'Name', exact: true });
+          await name.fill('Inbox');
+          await name.press('Enter');
+          await recipient.getByRole('button', { name: 'Actions for Inbox', exact: true }).click();
+          await recipient.getByRole('menuitem', { name: 'Use as default', exact: true }).click();
+          await boot(recipient, link);
+          await expect(recipient.locator('#docTitle')).toHaveText('Lease evidence.md');
+          await expect(recipient.locator('#previewArticle')).toContainText('Original source text.');
+          const data = await stored(recipient);
+          expect(data.docs).toHaveLength(1);
+          expect(data.docs[0].name).toBe('Lease evidence.md');
+          const ancestors: string[] = [];
+          for (let parent = data.docs[0].parentId; parent;) {
+            const folder = data.nodes.find((node) => node.id === parent)!;
+            ancestors.unshift(folder.name);
+            parent = folder.parentId;
+          }
+          const sharedParents = includeParentFolders ? ['Local', 'Research', '研究 & evidence'] : [];
+          expect(ancestors).toEqual(['Inbox', ...sharedParents]);
+          expect(data.texts).toContain(RAW);
+          expect(data.texts).not.toContain('# Private sibling\n\nDo not include this document.');
+          await recipient.reload();
+          await expect(recipient.locator('#docTitle')).toHaveText('Lease evidence.md');
+          await expect(recipient.locator('#crumbs')).toHaveText(['Inbox', ...sharedParents].join(''));
+          await recipient.getByRole('button', { name: 'Actions for Lease evidence.md', exact: true }).click();
+          await recipient.getByRole('menuitem', { name: 'Rename', exact: true }).click();
+          const localName = recipient.getByRole('textbox', { name: 'Name', exact: true });
+          await localName.fill('My local label');
+          await localName.press('Enter');
+          await boot(recipient, link);
+          await expect(recipient.locator('#docTitle')).toHaveText('My local label');
+          expect((await stored(recipient)).docs).toHaveLength(1);
+          await expect(recipient.locator('#crumbs')).toHaveText(['Inbox', ...sharedParents].join(''));
+          const temporary = await other.newPage();
+          const temporaryUrl = new URL(link);
+          temporaryUrl.searchParams.set('temporary', '1');
+          await boot(temporary, temporaryUrl.href);
+          await expect(temporary.locator('#docTitle')).toHaveText('Lease evidence.md');
+          await expect(temporary.locator('#crumbs')).toHaveText(sharedParents.join(''));
+          await temporary.waitForFunction(() => {
+            const params = new URLSearchParams(location.hash.slice(1));
+            return params.get('t') === '1' && params.has('md') && params.has('p');
+          });
+          await temporary.reload();
+          await expect(temporary.locator('#docTitle')).toHaveText('Lease evidence.md');
+          await expect(temporary.locator('#crumbs')).toHaveText(sharedParents.join(''));
+          await expect(temporary.locator('#tree .tree-row[data-kind="doc"]')).toHaveCount(1);
+          expect((await stored(recipient)).docs[0].name).toBe('My local label');
+        } finally {
+          await other.close();
         }
-        expect(ancestors).toEqual(['Inbox', 'Local', 'Research', '研究 & evidence']);
-        expect(data.texts).toContain(RAW);
-        expect(data.texts).not.toContain('# Private sibling\n\nDo not include this document.');
-        await recipient.reload();
-        await expect(recipient.locator('#docTitle')).toHaveText('Lease evidence.md');
-        await expect(recipient.locator('#crumbs')).toHaveText('InboxLocalResearch研究 & evidence');
-        await recipient.getByRole('button', { name: 'Actions for Lease evidence.md', exact: true }).click();
-        await recipient.getByRole('menuitem', { name: 'Rename', exact: true }).click();
-        const localName = recipient.getByRole('textbox', { name: 'Name', exact: true });
-        await localName.fill('My local label');
-        await localName.press('Enter');
-        await boot(recipient, link);
-        await expect(recipient.locator('#docTitle')).toHaveText('My local label');
-        expect((await stored(recipient)).docs).toHaveLength(1);
-        await expect(recipient.locator('#crumbs')).toHaveText('InboxLocalResearch研究 & evidence');
-        const temporary = await other.newPage();
-        const temporaryUrl = new URL(link);
-        temporaryUrl.searchParams.set('temporary', '1');
-        await boot(temporary, temporaryUrl.href);
-        await expect(temporary.locator('#docTitle')).toHaveText('Lease evidence.md');
-        await expect(temporary.locator('#crumbs')).toHaveText('LocalResearch研究 & evidence');
-        await temporary.waitForFunction(() => {
-          const params = new URLSearchParams(location.hash.slice(1));
-          return params.get('t') === '1' && params.has('md') && params.has('p');
-        });
-        await temporary.reload();
-        await expect(temporary.locator('#docTitle')).toHaveText('Lease evidence.md');
-        await expect(temporary.locator('#crumbs')).toHaveText('LocalResearch研究 & evidence');
-        await expect(temporary.locator('#tree .tree-row[data-kind="doc"]')).toHaveCount(1);
-        expect((await stored(recipient)).docs[0].name).toBe('My local label');
-      } finally {
-        await other.close();
-      }
-    });
-  }
+      });
+    }
+
+  for (const includeParentFolders of [false, true])
+    for (const format of ['full', 'short'] as const)
+      test(`${format} folder snapshots ${includeParentFolders ? 'include' : 'omit'} parent folders and keep nested contents`, async ({
+        page,
+        browser,
+      }, testInfo) => {
+        await boot(page);
+        const directory = testInfo.outputPath('Private client');
+        const selected = join(directory, 'Internal', 'Published');
+        await mkdir(join(selected, 'Nested'), { recursive: true });
+        await writeFile(join(selected, 'Overview.md'), '# Overview\n\nPublished overview.');
+        await writeFile(join(selected, 'Nested', 'Details.md'), '# Details\n\nPublished details.');
+        await writeFile(join(directory, 'Outside.md'), '# Private sibling\n\nNever share this.');
+        await page.locator('#importFolderInput').setInputFiles(directory);
+        await expect(page.locator('#toast')).toContainText('Imported 3 documents');
+        await page.getByRole('button', { name: 'Actions for Published', exact: true }).click();
+        await page.getByRole('menuitem', { name: 'Copy link', exact: true }).click();
+        const dialog = page.getByRole('dialog', { name: 'Copy link', exact: true });
+        await expect(dialog.getByRole('radio', { name: 'Live', exact: true })).toHaveCount(0);
+        await expect(dialog.getByRole('checkbox', { name: 'Include parent folders', exact: true })).not.toBeChecked();
+        const link = await configureCopyLink(page, { format, includeParentFolders });
+        const recipientContext = await browser.newContext({ baseURL: MARS_BASE_URL });
+        try {
+          const recipient = await recipientContext.newPage();
+          await boot(recipient, link);
+          await expect(recipient.getByRole('link', { name: 'Overview', exact: true })).toBeVisible();
+          await expect(recipient.getByRole('link', { name: 'Details', exact: true })).toBeVisible();
+          const data = await stored(recipient);
+          expect(data.docs).toHaveLength(2);
+          const details = data.docs.find((node) => node.name === 'Details')!;
+          const parents: string[] = [];
+          for (let id = details.parentId; id;) {
+            const parent = data.nodes.find((node) => node.id === id)!;
+            parents.unshift(parent.name);
+            id = parent.parentId;
+          }
+          expect(parents).toEqual([
+            'Shared with me',
+            ...(includeParentFolders ? ['Private client', 'Internal'] : []),
+            'Published',
+            'Nested',
+          ]);
+          expect(data.texts).not.toContain('# Private sibling\n\nNever share this.');
+          await recipient.reload();
+          expect((await stored(recipient)).nodes).toEqual(data.nodes);
+        } finally {
+          await recipientContext.close();
+        }
+      });
 
   test('a malformed full-link folder path cannot create documents or partial folders', async ({ page }) => {
     await boot(page);
