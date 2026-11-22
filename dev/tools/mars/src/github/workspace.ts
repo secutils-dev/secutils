@@ -1,5 +1,5 @@
 // A local working copy of a GitHub branch. Pulls compare remote blob identity with saved local text.
-// This preview never turns local deletions, moves, or unsupported files into remote writes.
+// Pending renames and deletions publish only after complete-tree checks; unsupported files stay read-only.
 import * as app from '../app.ts';
 import * as viewer from '../doc/viewer.js';
 import { readFileSource } from '../io/source.ts';
@@ -16,7 +16,7 @@ import {
     type GitHubSource,
     type GitHubTreeEntry,
 } from './api.ts';
-import { githubEnabled, githubRoot } from './binding.ts';
+import { githubRoot } from './binding.ts';
 import { excludedJobPath, githubExclusion } from './exclusions.ts';
 import { fileDecision, mergeGitHubText, type GitHubConflict } from './merge.ts';
 import { openGitHubToken, type GitHubCredential } from './credentials.ts';
@@ -211,7 +211,7 @@ export async function connectGitHub(
     signal?: AbortSignal,
     progress?: GitHubProgress,
 ) {
-    if (!githubEnabled() || db.isTemporaryStorage()) throw new Error('Open the dev library to connect GitHub.');
+    if (db.isTemporaryStorage()) throw new Error('Open your library to connect GitHub.');
     progress?.(0, 0, 'details');
     const credentialId = 'credentialId' in authorization ? authorization.credentialId : undefined;
     const authRevision = newId();
@@ -351,7 +351,7 @@ export async function refreshGitHubCredential(id: string) {
 
 /** Resume saved and public connections after reading the browser library. */
 export async function restoreGitHubConnections() {
-    if (!githubEnabled() || db.isTemporaryStorage()) return;
+    if (db.isTemporaryStorage()) return;
     for (const node of app.state.nodes) {
         if (node.github && !sessions.has(node.id)) await restoreGitHubSession(node.id, node.github);
     }
@@ -631,8 +631,6 @@ async function publishStructuralJobs(
 
 /** Poll only connected workspaces in a visible, online tab. Public and private sessions use the same budget. */
 export function installGitHubPolling() {
-    if (!githubEnabled()) return;
-    document.querySelector<HTMLElement>('[data-github-preview-only]')?.removeAttribute('hidden');
     const poll = () => {
         if (document.hidden || !navigator.onLine || db.isTemporaryStorage()) return;
         for (const [id, session] of sessions) {
@@ -843,7 +841,7 @@ async function runGitHub(
         );
     });
     const fetchSize = changedFiles.reduce((sum, file) => sum + file.size, 0);
-    if (fetchSize > MAX_PULL_BYTES) throw new Error('The changed files exceed the GitHub preview download budget.');
+    if (fetchSize > MAX_PULL_BYTES) throw new Error('The changed files exceed the GitHub Sync download budget.');
     const downloaded = new Map<string, string | null>();
     const blobs = new Map<string, Promise<string | null>>();
     let completed = 0;

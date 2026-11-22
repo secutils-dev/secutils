@@ -37,7 +37,7 @@ import * as sync from '../sync/index.ts';
 import { incomingFolder } from '../io/destination.ts';
 import { pickImport } from '../io/pickers.ts';
 import { renameNode } from '../ui/rename.ts';
-import { githubEnabled, githubRoot } from '../github/binding.ts';
+import { githubRoot } from '../github/binding.ts';
 import { openGitHubDialog } from '../github/dialog.ts';
 import { excludeGitHubItem } from '../github/exclusion-dialog.ts';
 import { forgetGitHubSession } from '../github/workspace.ts';
@@ -1034,16 +1034,12 @@ $('sbNewBtn').addEventListener('click', (e) =>
             { label: 'New folder', icon: 'folder', run: () => newFolder() },
             'separator',
             ...importMenu(app.state.folderId),
-            ...(githubEnabled()
-                ? [
-                      {
-                          label: 'Import from GitHub…',
-                          icon: 'logoGithub' as const,
-                          disabled: db.isTemporaryStorage(),
-                          run: () => openGitHubDialog(),
-                      },
-                  ]
-                : []),
+            {
+                label: 'Import from GitHub…',
+                icon: 'logoGithub',
+                disabled: db.isTemporaryStorage(),
+                run: () => openGitHubDialog(),
+            },
             {
                 label: 'Restore backup…',
                 icon: 'lock',

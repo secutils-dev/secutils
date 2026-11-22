@@ -387,7 +387,7 @@ export class GitHubApi {
             const bytes = new TextEncoder().encode(text);
             total += bytes.length;
             if (bytes.length > MAX_FILE_BYTES || total > MAX_BATCH_BYTES)
-                throw new Error('This edit batch is too large for the GitHub preview.');
+                throw new Error('This edit batch is too large for GitHub Sync.');
             return { path, contents: base64(bytes) };
         });
         const value = await this.request('/graphql', signal, {

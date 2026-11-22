@@ -86,6 +86,9 @@ Read each guide whose trigger matches the change.
 
 ### Links
 
+- GitHub import and Sync are available on every MARS host. They require the persistent library, not a temporary session.
+  Credentials and repository permissions remain explicit. GitHub attachments support snapshots, not Live links.
+
 - Full links are `#name=&md=`, plus `&o=<originId>` and optional `&w=<width>`. A bare `#<state>` still opens as a legacy link.
   New document snapshots add `&p=<state of the folder-name array>` and keep the exact saved document label.
   Parent folders are off by default in every snapshot copy. **Include folder path** starts unchecked in **Copy link**.

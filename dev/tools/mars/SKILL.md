@@ -23,7 +23,7 @@ Documents stay in the reader's browser (IndexedDB) unless the reader shares or s
 Review threads travel inside the Markdown file as one trailing HTML comment that other renderers hide.
 An agent reads and writes threads with ordinary file edits.
 
-On the development host, **New → Import from GitHub** can open a repository branch as a folder.
+**New → Import from GitHub** opens a repository branch as a folder on every MARS host.
 If the user needs private access or wants MARS to commit edits, ask them to enter a repository-scoped fine-grained token directly in the app. Do not ask for the token in chat or put it in a URL.
 Choose a test branch. GitHub documents support Full and Short snapshot links, but not Live links. Short snapshots use Secutils.
 Select a **GitHub credential** in **Import from GitHub** or **Sync**. Use the key button (**Manage credentials**) next to the dropdown to add, replace, or remove tokens. Removing a credential pauses Sync and keeps local edits. The write setting is separate for each folder.

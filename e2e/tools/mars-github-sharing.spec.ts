@@ -6,13 +6,8 @@ import { expect } from '@playwright/test';
 import { configureCopyLink } from './_mars_sharing';
 import { test } from './_mars_test';
 
-const baseURL = process.env.MARS_BASE_URL ?? 'http://localhost:7373';
+const baseURL = process.env.MARS_BASE_URL ?? 'https://mars.secutils.dev';
 test.use({ baseURL });
-test.skip(
-  !process.env.MARS_BASE_URL ||
-    !['localhost', '127.0.0.1', '[::1]', 'mars-dev.secutils.dev'].includes(new URL(baseURL).hostname),
-  'GitHub preview requires an explicitly selected local or dev host',
-);
 
 test('GitHub snapshot links omit parent folders by default and use concise Full and Short help', async ({
   page,

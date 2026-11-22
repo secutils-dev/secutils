@@ -1,13 +1,30 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 
-const baseURL = process.env.MARS_BASE_URL ?? 'http://localhost:7373';
+const baseURL = process.env.MARS_BASE_URL ?? 'https://mars.secutils.dev';
 test.use({ baseURL });
 type EditorWindow = Window & { __suEditorAPI: { setText(text: string): void } };
-test.skip(
-  !process.env.MARS_BASE_URL ||
-    !['localhost', '127.0.0.1', '[::1]', 'mars-dev.secutils.dev'].includes(new URL(baseURL).hostname),
-  'GitHub preview is enabled only on an explicitly selected local or dev host',
-);
+
+test('GitHub import is available in the library and disabled in temporary sessions', async ({ page }) => {
+  let githubRequests = 0;
+  page.on('request', (request) => {
+    if (request.url().startsWith('https://api.github.com/')) githubRequests++;
+  });
+  await page.goto('/');
+  await expect(page.locator('html')).not.toHaveClass(/mars-boot/);
+  await page.getByRole('button', { name: 'New document, folder, or import' }).click();
+  await expect(page.getByRole('menuitem', { name: 'Import from GitHub…' })).toBeEnabled();
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Privacy', exact: true }).click();
+  const privacy = page.getByRole('dialog', { name: 'Privacy', exact: true });
+  await expect(privacy.getByText('GitHub Sync.', { exact: true })).toBeVisible();
+  await privacy.getByRole('button', { name: 'Close', exact: true }).click();
+  expect(githubRequests).toBe(0);
+  await page.goto('/?temporary=1');
+  await expect(page.locator('html')).not.toHaveClass(/mars-boot/);
+  await page.getByRole('button', { name: 'New document, folder, or import' }).click();
+  await expect(page.getByRole('menuitem', { name: 'Import from GitHub…' })).toBeDisabled();
+  expect(githubRequests).toBe(0);
+});
 
 async function addCredential(page: Page, parent: Locator, token: string, name = 'Test credential') {
   await parent.getByRole('button', { name: 'Manage credentials' }).click();
@@ -24,7 +41,7 @@ async function addCredential(page: Page, parent: Locator, token: string, name = 
   );
 }
 
-test('GitHub preview imports nested files and sends one commit with the expected branch head', async ({ page }) => {
+test('GitHub import loads nested files and sends one commit with the expected branch head', async ({ page }) => {
   const token = 'github_pat_synthetic_test';
   const oldHead = '1'.repeat(40),
     blob = '3'.repeat(40);

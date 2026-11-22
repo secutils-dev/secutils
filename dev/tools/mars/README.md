@@ -95,7 +95,7 @@ An HTML file that MARS exported with embedded source opens as editable Markdown.
 
 ### Share
 
-The dev-only GitHub preview imports a repository branch with **New → Import from GitHub**.
+**New → Import from GitHub** imports a repository branch on production, dev, and local MARS hosts.
 Use a fine-grained token restricted to the repositories you need. In GitHub, set **Repository permissions → Contents** to **Read-only** or **Read and write**.
 
 In **Import from GitHub** or **Sync**, use the **GitHub credential** dropdown. It starts with the credential used for this import or **None (public read-only)**. The optional GitHub owner puts credentials under **Suggested for** that organization or account. MARS does not try other tokens automatically. Each folder has its own write setting, which starts off for new imports.
