@@ -309,7 +309,7 @@ test.describe('table editing', () => {
     expect(html).not.toContain('su-table-cell-editor');
     await page
       .getByRole('dialog', { name: /^Export / })
-      .getByRole('button', { name: 'Close', exact: true })
+      .getByRole('button', { name: 'Close export', exact: true })
       .click();
     await cell(page, 1, 0).dblclick();
     await editor.fill('Stale draft');
