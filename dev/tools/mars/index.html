@@ -282,19 +282,7 @@
                 <div class="toolbar-left">
                     <span id="docStats" class="stats-text">empty</span>
                     <span id="documentAccess" class="permission-badge" role="status" aria-live="polite" hidden></span>
-                    <div id="changesBar" class="changes-bar" role="group" aria-label="Changes since your last review" hidden>
-                        <span id="changesLabel" class="changes-label" role="status" aria-live="polite"></span>
-                        <button id="changesPrev" type="button" class="icon-btn" title="Previous change" aria-label="Previous change">
-                            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m11 10-3-3-3 3"/></svg>
-                        </button>
-                        <button id="changesNext" type="button" class="icon-btn" title="Next change" aria-label="Next change">
-                            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 6 3 3 3-3"/></svg>
-                        </button>
-                        <button id="changesBefore" type="button" class="btn btn-xs btn-empty" aria-expanded="false" hidden><span data-icon="eye"></span>Show before</button>
-                        <button id="changesSwap" type="button" class="icon-btn" hidden><span data-icon="merge"></span></button>
-                        <button id="changesDone" type="button" class="btn btn-xs" title="Clear the change marks and start the next review from this text"><span data-icon="check"></span>Mark reviewed</button>
-                        <button id="changesClose" type="button" class="icon-btn" title="Hide changes since opened" aria-label="Hide changes since opened" hidden><span data-icon="cross"></span></button>
-                    </div>
+                    <button id="githubCopyBtn" class="btn btn-xs" type="button" title="Make an independent copy in your library" hidden><span data-icon="copy"></span>Make a copy</button>
                 </div>
                 <div class="toolbar-actions">
                     <button id="openBtn" class="btn btn-sm" type="button" aria-label="Open" title="Open a Markdown, STL, or 3MF file as a new document (Ctrl/Cmd+O)"><span data-icon="folderOpen"></span><span class="btn-label">Open</span></button>
@@ -360,6 +348,23 @@
                         <span id="fullscreenEnterIcon" data-icon="fullScreen"></span>
                         <span id="fullscreenExitIcon" data-icon="fullScreenExit" style="display:none"></span>
                     </button>
+                </div>
+            </div>
+
+            <div id="githubConflictBar" class="github-conflict-bar" hidden>
+                <span>Local and GitHub edits overlap.</span>
+                <button id="githubConflictBtn" class="btn btn-xs" type="button"><span data-icon="merge"></span>Resolve conflicts</button>
+            </div>
+
+            <div id="changesBar" class="changes-bar" role="group" aria-label="Changes since your last review" hidden>
+                <span id="changesLabel" class="changes-label" role="status" aria-live="polite"></span>
+                <div class="changes-actions">
+                    <button id="changesPrev" type="button" class="icon-btn" data-tooltip="Previous change" aria-label="Previous change" data-icon="chevronDown"></button>
+                    <button id="changesNext" type="button" class="icon-btn" data-tooltip="Next change" aria-label="Next change" data-icon="chevronDown"></button>
+                    <button id="changesCompare" type="button" class="icon-btn" data-tooltip="Compare changes" aria-label="Compare changes" aria-haspopup="dialog" data-icon="compare"></button>
+                    <button id="changesSwap" type="button" class="icon-btn" data-icon="merge" hidden></button>
+                    <button id="changesDone" type="button" class="icon-btn" data-tooltip="Mark reviewed" aria-label="Mark reviewed" data-icon="checkCircle"></button>
+                    <button id="changesClose" type="button" class="icon-btn" data-tooltip="Hide changes since opened" aria-label="Hide changes since opened" data-icon="cross" hidden></button>
                 </div>
             </div>
 
@@ -432,7 +437,7 @@
             <p><strong>File imports.</strong> MARS stores relative file paths to recognize later imports into the same destination. These file identities stay in this browser. They do not enter Sync metadata, snapshot links, or downloads. Re-imports do not watch or write files on disk.</p>
             <p><strong>Sidebar preference.</strong> MARS keeps your docked sidebar choice in this browser. Window resizing restores that choice. Narrow-screen overlay actions do not change it.</p>
             <p><strong>End-to-end encryption.</strong> Secutils short snapshots, Sync, and Live links encrypt content, names, and comments in your browser (AES-256-GCM) before upload. The service stores ciphertext and cannot read it. Secutils.dev has no master decryption key or recovery key.</p>
-            <p data-github-preview-only hidden><strong>GitHub preview.</strong> Your browser reads and writes ordinary files directly on GitHub. The repository controls who can read the files and their history. The token stays in this tab. Short snapshots and independent Live copies use Secutils only when you choose them.</p>
+            <p data-github-preview-only hidden><strong>GitHub preview.</strong> Your browser reads and writes ordinary files directly on GitHub. The repository controls who can read the files and their history. Exclusion rules and cached copies of excluded files stay in this browser. MARS encrypts saved GitHub tokens with local browser keys. Code that runs on this site can still use the tokens. Tokens are not part of links or backups. Short snapshots use Secutils only when you choose them.</p>
             <p><strong>Links.</strong> A link contains its decryption secret, or the document itself. Anyone with the complete link can use it. Browser history, extensions, and services where you paste a link can read it.</p>
             <p><strong>Snapshot names.</strong> Snapshots omit parent folders by default. <strong>Include folder path</strong> in <strong>Copy link</strong> adds their names. A document snapshot keeps its saved name without sibling documents. A folder snapshot keeps the selected folder and its nested contents. Full links carry names in the fragment. Short links include them in the encrypted copy.</p>
             <ul class="su-credits-list">
@@ -481,6 +486,9 @@
                 <li><a href="https://github.com/101arrowz/fflate" target="_blank" rel="noopener noreferrer"><strong>fflate</strong></a> - builds and reads <code>.zip</code> exports, and extracts 3MF packages in a worker (MIT).</li>
                 <li><a href="https://github.com/lddubeau/saxes" target="_blank" rel="noopener noreferrer"><strong>saxes</strong></a> - parses namespace-aware 3MF XML in a worker (ISC).</li>
                 <li><a href="https://github.com/yjs/yjs" target="_blank" rel="noopener noreferrer"><strong>Yjs</strong></a> - convergent text replication for connected documents (MIT).</li>
+                <li><a href="https://github.com/kpdecker/jsdiff" target="_blank" rel="noopener noreferrer"><strong>jsdiff</strong></a> - compares blocks, lines, and words for change review (BSD-3-Clause).</li>
+                <li><a href="https://github.com/bhousel/node-diff3" target="_blank" rel="noopener noreferrer"><strong>node-diff3</strong></a> - three-way text merge for GitHub Sync (MIT).</li>
+                <li><a href="https://github.com/kaelzhang/node-ignore" target="_blank" rel="noopener noreferrer"><strong>ignore</strong></a> - .gitignore pattern matching for GitHub Sync (MIT).</li>
                 <li><a href="https://github.com/paulmillr/noble-curves" target="_blank" rel="noopener noreferrer"><strong>Noble Curves</strong></a> - P-256 signature verification in the responder (MIT).</li>
                 <li><a href="https://github.com/cure53/DOMPurify" target="_blank" rel="noopener noreferrer"><strong>DOMPurify</strong></a> - sanitizes connected preview markup (Apache-2.0 or MPL-2.0).</li>
                 <li><a href="https://github.com/huggingface/transformers.js" target="_blank" rel="noopener noreferrer"><strong>Transformers.js</strong></a> - runs the optional smart-search embedding models in the browser (Apache-2.0), with <a href="https://huggingface.co/thenlper/gte-small" target="_blank" rel="noopener noreferrer">GTE Small</a> (MIT) or <a href="https://huggingface.co/google/embeddinggemma-2" target="_blank" rel="noopener noreferrer">EmbeddingGemma 2</a> (Apache-2.0).</li>
@@ -522,7 +530,6 @@
         </div>
         <footer class="export-foot">
             <button id="downloadMdBtn" type="button" class="btn btn-sm"><span data-icon="download"></span>Download Markdown</button>
-            <button id="exportCloseFooter" type="button" class="btn btn-empty btn-text btn-sm">Close</button>
             <button id="exportCopyHtml" type="button" class="btn btn-empty btn-text btn-sm" disabled><span data-icon="copy"></span>Copy HTML</button>
             <button id="exportDownloadHtml" type="button" class="btn btn-primary btn-sm" disabled><span data-icon="download"></span>Download HTML</button>
             <button id="exportPrint" type="button" class="btn btn-primary btn-sm" disabled hidden>Print / Save PDF</button>
@@ -531,7 +538,7 @@
 
     <dialog id="marsModal" class="su-dialog mars-modal" aria-labelledby="marsModalTitle">
         <form method="dialog">
-            <header class="su-dialog-header"><h2 id="marsModalTitle"></h2></header>
+            <header class="su-dialog-header"><h2 id="marsModalTitle"></h2><button type="submit" formnovalidate value="" class="su-dialog-close" aria-label="Close" data-icon="cross"></button></header>
             <div class="su-dialog-body" id="marsModalBody"></div>
             <footer class="mars-modal-foot" id="marsModalFoot"></footer>
         </form>
@@ -555,7 +562,10 @@
         <button type="button" data-comment title="Comment (Ctrl/Cmd+Alt+M)" aria-label="Comment"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M12 7v6M9 10h6"/></svg></button>
     </div>
     <div id="marsMenu" class="export-menu mars-menu" role="menu" hidden></div>
-    <div id="diffBefore" class="export-menu diff-before" popover role="dialog" aria-label="Text before your last review"></div>
+    <div id="diffBefore" class="export-menu diff-before" popover role="dialog" aria-labelledby="diffBeforeTitle">
+        <header class="diff-before-head"><h2 id="diffBeforeTitle"></h2><button type="button" class="su-dialog-close" popovertarget="diffBefore" popovertargetaction="hide" aria-label="Close" data-icon="cross"></button></header>
+        <div id="diffBeforeBody" class="preview-article"></div>
+    </div>
 
     <input type="file" id="fileInput" accept=".md,.markdown,.txt,.mdx,.html,.htm,.stl,.3mf" hidden>
     <input type="file" id="importInput" accept=".md,.markdown,.txt,.mdx,.html,.htm,.zip" multiple hidden>

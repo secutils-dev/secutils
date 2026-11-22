@@ -44,8 +44,21 @@ export interface TreeNode {
     // Never included in shared links, Sync metadata, or exported documents.
     importSource?: { destinationId: string | null; path: string[] };
     // GitHub attachments are browser-local. No credential belongs in these records.
-    github?: { repository: string; branch: string; write: boolean };
-    githubFile?: { root: string; path: string; sha: string };
+    github?: {
+        repository: string;
+        branch: string;
+        write: boolean;
+        public?: boolean;
+        authenticated?: boolean;
+        credentialId?: string;
+        authRevision?: string;
+    };
+    /** Repository-relative .gitignore rules for this browser's attachment, not for GitHub itself. */
+    githubExcludes?: string;
+    githubFile?: { root: string; path: string; sha: string; conflict?: string };
+    /** Optimistic structural operation. Pending deletes stay in storage but not in the visible tree. */
+    githubChange?: { id: string; kind: 'rename' | 'delete'; blocked?: boolean };
+    githubReview?: { pending: number; blocked: number };
     // UTF-8 bytes of the stored text, for the sidebar footer.
     size?: number;
     // Shared document layout, separate from the reader's browser-wide preference.

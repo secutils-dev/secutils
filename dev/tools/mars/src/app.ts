@@ -22,6 +22,7 @@ import {
 } from './tree/model.ts';
 import { openThreads } from './share/merge.ts';
 import { githubRoot } from './github/binding.ts';
+import { visibleGitHubNodes } from './github/exclusions.ts';
 import { githubSaved } from './github/workspace.ts';
 import { sourceBody } from './share/reconcile.ts';
 import { $ } from './ui/ui.ts';
@@ -105,7 +106,9 @@ export const current = () => node(state.currentId);
  */
 export async function load() {
     const [nodes, destination] = await Promise.all([db.allNodes(), db.getMeta<string>(DEFAULT_DESTINATION_KEY)]);
-    state.nodes = sync.connectionStates.restore(nodes);
+    state.nodes = sync.connectionStates.restore(
+        visibleGitHubNodes(nodes).filter((node) => node.githubChange?.kind !== 'delete'),
+    );
     state.defaultIncomingFolder = incomingFolder(nodes, destination)?.id ?? null;
     if (state.currentId && !current()) state.currentId = null;
     if (state.folderId && !node(state.folderId)) state.folderId = null;
@@ -815,7 +818,9 @@ export async function duplicate(id: string) {
 export async function remove(id: string) {
     const n = node(id);
     if (!n) return null;
-    const gone = [n, ...descendants(state.nodes, id)];
+    // A GitHub root owns cached exclusions and pending deletions that the visible tree omits.
+    const gone = [n, ...descendants(n.github ? await db.allNodes() : state.nodes, id)];
+    const shown = new Set(state.nodes.map((node) => node.id));
     const texts: Record<string, string> = {};
     for (const d of gone) if (d.kind === 'doc') texts[d.id] = (await db.getText(d.id)) ?? '';
     const ids = new Set(gone.map((d) => d.id));
@@ -825,7 +830,9 @@ export async function remove(id: string) {
     try {
         await db.deleteNodes([...ids]);
     } catch (error) {
-        state.nodes.push(...gone.filter((node) => !state.nodes.some((current) => current.id === node.id)));
+        state.nodes.push(
+            ...gone.filter((node) => shown.has(node.id) && !state.nodes.some((current) => current.id === node.id)),
+        );
         emit();
         throw error;
     }

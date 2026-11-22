@@ -15,9 +15,9 @@ body { overflow: hidden; }
 
 /* Layout */
 .mars-layout { flex: 1; min-height: 0; display: flex; position: relative; }
-.mars-main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 12px 16px 16px; }
+.mars-main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 12px 16px 16px; container: mars-document / inline-size; }
 .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-bottom: 10px; flex-wrap: wrap; }
-.toolbar-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.toolbar-left { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
 .toolbar-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .temporary-session { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; margin-bottom: 12px; border: 1px solid var(--eui-border); border-left: 3px solid var(--eui-warning); border-radius: var(--radius); background: var(--surface); font-size: 12px; }
 .temporary-session[hidden] { display: none; }
@@ -28,13 +28,19 @@ body { overflow: hidden; }
 .export-restrictions p { margin: 8px 0 0; line-height: 1.5; }
 @media (max-width: 640px) { .temporary-session { align-items: stretch; flex-direction: column; } .temporary-actions { flex-wrap: wrap; } }
 .stats-text { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
-.changes-bar { display: flex; align-items: center; gap: 2px; min-width: 0; height: 28px; padding: 0 2px 0 10px; border-radius: var(--radius); background: var(--eui-lightest); box-shadow: inset 3px 0 0 var(--eui-warning); }
-.changes-label { min-width: 0; margin-right: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 500; color: var(--text); }
-.changes-bar .icon-btn { width: 24px; height: 24px; }
-.changes-bar .btn [data-icon] .eui-icon { width: 14px; height: 14px; }
+.changes-bar { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; align-self: center; gap: 4px 8px; max-inline-size: 100%; margin-block-end: 10px; padding: 4px 8px; border: 1px solid var(--eui-border); border-radius: var(--radius); background: var(--eui-lightest); }
+.changes-bar[hidden] { display: none; }
+.changes-label { min-inline-size: 0; overflow-wrap: anywhere; text-align: center; font-size: 12px; font-weight: 500; color: var(--text); }
+.changes-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px; min-inline-size: 0; }
+#changesPrev .eui-icon { rotate: 180deg; }
 .changes-bar .icon-btn:disabled { opacity: .4; cursor: default; background: none; }
+@media (pointer: coarse) {
+    .changes-bar .icon-btn { width: 40px; height: 40px; }
+}
 .diff-before[popover] { position: fixed; inset: auto; width: min(640px, calc(100vw - 16px)); max-height: min(60vh, 520px); overflow: auto; padding: 10px 16px 4px; }
-.diff-before-head { margin-bottom: 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }
+.diff-before { overscroll-behavior: contain; }
+.diff-before-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; color: var(--text-muted); }
+.diff-before-head h2 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
 .diff-before .preview-article { max-width: none; font-size: 14px; color: var(--text-muted); }
 .output-panel { border-radius: var(--radius); box-shadow: var(--shadow-s); }
 
@@ -79,6 +85,7 @@ body.sb-collapsed .mars-sidebar { display: none; }
 .tree-row .tree-chevron.leaf { visibility: hidden; }
 .tree-row .tree-icon { color: var(--text-muted); }
 .tree-row[data-kind="folder"] .tree-icon { color: var(--mars-500); }
+.tree-github-lock { fill: var(--text); }
 .tree-icon-default { display: inline-flex; }
 .tree-icon-default .tree-default-star { fill: var(--brand-text); }
 /* Static membership marks share their base glyph's SVG viewport; activity stays on root controls. */
@@ -212,6 +219,7 @@ body.sb-collapsed .mars-sidebar { display: none; }
 .sync-notice:empty { display: none; }
 .sync-dialog .mars-modal-foot { flex-wrap: wrap; }
 .sync-dialog:has(.sync-status) .mars-modal-foot { flex-wrap: nowrap; }
+#githubImportDialog .mars-modal-foot { flex-wrap: wrap; }
 .sync-dialog[data-inherited-context] .mars-modal-foot { flex-wrap: wrap; }
 .sync-dialog[data-inherited-context] p { overflow-wrap: anywhere; }
 @media (max-width: 480px) { .sync-dialog:has(.sync-status) .mars-modal-foot .btn { font-size: 12px; padding-inline: 8px; white-space: nowrap; } }
@@ -225,6 +233,85 @@ body.sb-collapsed .mars-sidebar { display: none; }
 #githubImportDialog::backdrop { overflow: hidden; overscroll-behavior: contain; }
 .github-fields { display: grid; gap: 8px; }
 .github-fields .field { width: 100%; }
+.github-fields .select, .github-credential-fields .field { width: 100%; }
+.github-credential-picker { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+.github-credential-picker .select { min-inline-size: 0; border-start-end-radius: 0; border-end-end-radius: 0; }
+.github-credential-picker .icon-btn { border: 1px solid var(--eui-border-plain); border-inline-start: 0; border-start-start-radius: 0; border-end-start-radius: 0; background: var(--surface-hover); }
+.github-credential-picker .icon-btn:hover:not(:disabled) { background: var(--eui-hover); }
+.github-credential-picker .icon-btn:disabled { opacity: .5; cursor: default; }
+.github-credential-fields { display: grid; gap: 8px; }
+.github-credential-fields .sync-fineprint { margin-block-end: 4px; }
+.github-credential-fields .sync-error:empty { display: none; }
+.github-credential-list { list-style: none; margin: 0; padding: 0; }
+.github-credential-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; padding-block: 10px; border-block-start: 1px solid var(--eui-border); overflow-wrap: anywhere; }
+.github-credential-actions { display: flex; gap: 4px; }
+.github-legacy-credential { padding-block-start: 10px; border-block-start: 1px solid var(--eui-border); }
+.github-sync-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-block-start: 6px; }
+.github-exclusions .field-label { display: block; margin-block-end: 4px; }
+.github-exclusions .textarea { display: block; width: 100%; min-height: 6rem; font-family: var(--mono); }
+.github-exclusions [data-preview-result]:not([hidden]) { margin-block-start: 10px; padding: 10px 12px; background: var(--surface-hover); border-radius: var(--radius-s); }
+.github-exclusions [data-preview-result] ul { margin: 8px 0 0; padding-inline-start: 1.25rem; font-family: var(--mono); overflow-wrap: anywhere; }
+.github-pending-item { padding-block: 10px; overflow-wrap: anywhere; }
+.github-pending-item + .github-pending-item { border-block-start: 1px solid var(--eui-border); }
+.github-pending-item .btn { margin-block-start: 6px; }
+.github-rename-choices { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 12px; margin-block: 12px; }
+.github-rename-choices dt { color: var(--text-muted); }
+.github-rename-choices dd { margin: 0; font-family: var(--mono); }
+.github-conflict-bar { display: flex; align-items: center; align-self: start; flex-wrap: wrap; gap: 8px; margin-block-end: 10px; padding: 4px 8px; border-inline-start: 3px solid var(--eui-warning); background: var(--eui-lightest); border-radius: var(--radius); color: var(--text-muted); font-size: 12px; }
+
+.mars-review-workspace {
+    width: min(96vw, 92rem);
+    max-width: none;
+    max-height: 90dvh;
+    padding: 0;
+    overscroll-behavior: contain;
+}
+.mars-review-workspace[open] { display: flex; flex-direction: column; }
+.mars-review-workspace::backdrop { overflow: hidden; overscroll-behavior: contain; }
+.mars-review-workspace .su-dialog-header { gap: 8px; padding: 12px 16px; }
+.mars-review-workspace .su-dialog-close { flex: none; }
+.mars-review-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 0 16px 8px; border-bottom: 1px solid var(--border); }
+.mars-review-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin-inline-start: auto; }
+.mars-review-status { margin: 0 6px 0 0; color: var(--text-muted); font-size: .85rem; }
+.mars-review-previous .eui-icon { rotate: 180deg; }
+.mars-review-controls .icon-btn:disabled { opacity: .4; cursor: default; background: none; }
+.mars-review-filename { margin: 0; color: var(--text-muted); overflow-wrap: anywhere; }
+@media (pointer: coarse) { .mars-review-controls .icon-btn { width: 40px; height: 40px; } }
+.mars-review-column-headings, .mars-review-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.mars-review-column-headings strong { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+.mars-review-diff { overflow: auto; min-height: 8rem; max-height: 68dvh; overscroll-behavior: contain; }
+.mars-review-cell { display: grid; grid-template-columns: 4ch minmax(0, 1fr); gap: 8px; padding-inline: 8px; min-height: 1.45em; }
+.mars-review-cell + .mars-review-cell { border-inline-start: 1px solid var(--border); }
+.mars-review-cell code, .mars-review-line-number, .mars-review-pane pre, .mars-review-pane textarea, .mars-review-merge-base pre {
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .85rem; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.mars-review-line-number { color: var(--text-muted); text-align: end; user-select: none; }
+.mars-review-row.is-changed .mars-review-cell:first-child { background: color-mix(in srgb, #e7664c 16%, transparent); }
+.mars-review-row.is-changed .mars-review-cell:last-child { background: color-mix(in srgb, #39a87a 19%, transparent); }
+.mars-review-row mark { color: inherit; background: color-mix(in srgb, #ebbc50 37%, transparent); }
+.mars-review-hunk.is-current { outline: 1px solid var(--accent); outline-offset: -1px; }
+.mars-review-gap summary { padding: 6px 12px; color: var(--text-muted); cursor: pointer; border-block: 1px solid var(--border); }
+.mars-merge-workspace { width: min(97dvw, 100rem); height: min(90dvh, 62rem); }
+.mars-merge-description { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; overflow-wrap: anywhere; }
+.mars-merge-description span { color: var(--text-muted); font-size: .8rem; }
+.mars-review-merge { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--eui-border); border-block: 1px solid var(--eui-border); }
+.mars-review-pane { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; min-height: 0; background: var(--surface); }
+.mars-merge-pane-head { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid var(--eui-border); }
+.mars-merge-pane-head h3 { margin: 0; font-size: .9rem; }
+.mars-merge-pane-head .btn { min-height: 28px; padding: 0 8px; font-size: .75rem; }
+.mars-merge-editor { min-block-size: 0; overflow: hidden; }
+.mars-merge-editor-host, .mars-merge-editor .cm-editor { block-size: 100%; }
+.mars-merge-editor :is(pre, textarea) { display: block; margin: 0; padding: 8px; inline-size: 100%; block-size: 100%; overflow: auto; border: 0; color: var(--text); background: var(--surface); }
+.mars-merge-editor .cm-gutters { background: var(--surface-hover); color: var(--text-muted); border-inline-end-color: var(--eui-border); }
+.mars-merge-editor .cm-content { color: var(--text); }
+.mars-merge-highlight { background: color-mix(in srgb, var(--eui-warning) 23%, transparent); }
+.mars-merge-highlight.is-active { background: color-mix(in srgb, var(--eui-warning) 38%, transparent); outline: 1px solid var(--eui-warning); }
+.mars-merge-workspace .mars-modal-foot { padding: 12px 16px; }
+.mars-review-workspace > .sync-error { margin-inline: 12px; }
+@media (max-width: 640px) {
+    .mars-review-merge { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); }
+    .mars-review-merge .mars-review-pane:nth-child(2) { grid-area: 2 / 1 / 3 / -1; }
+}
 .sync-access-group + .sync-access-group { margin-top: 24px; }
 .sync-access-group h3 { margin-bottom: 8px; }
 .sync-access-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 10px; }

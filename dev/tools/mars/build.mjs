@@ -1,8 +1,7 @@
 // Build script (`npm run build`). It writes `dist/mars.js`, the app bundle that deployment
 // inlines into `index.html`, and `dist/mars-sync-responder.js`, the Sync part of the responder.
 // `--preview` also writes `dist/mars.html` for the local server.
-// License notices stay in the output (`legalComments: 'inline'`, the editor notice block, and
-// the tracker banner). A bundled editor package without a license file fails the build.
+// License notices stay in the output (`legalComments: 'inline'` and explicit editor/app notices).
 import { build } from 'esbuild';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
@@ -11,6 +10,12 @@ import { gzipSync } from 'node:zlib';
 // lazy-imported; Paged.js remains an on-demand CDN dependency.
 // name -> promise of the compiled source. Each runtime builds once, also when imported twice.
 const runtimes = new Map();
+const appNotices = {
+    '@plausible-analytics/tracker': 'LICENSE.md',
+    diff: 'LICENSE',
+    ignore: 'LICENSE-MIT',
+    'node-diff3': 'LICENSE.md',
+};
 const runtimePlugin = {
     name: 'standalone-runtimes',
     setup(builder) {
@@ -77,7 +82,9 @@ await build({
     plugins: [runtimePlugin],
     legalComments: 'inline',
     banner: {
-        js: `/*! @plausible-analytics/tracker\n${readFileSync('node_modules/@plausible-analytics/tracker/LICENSE.md', 'utf8').trim()}\n*/`,
+        js: Object.entries(appNotices)
+            .map(([name, file]) => `/*! ${name}\n${readFileSync(`node_modules/${name}/${file}`, 'utf8').trim()}\n*/`)
+            .join('\n'),
     },
     logLevel: 'warning',
 });

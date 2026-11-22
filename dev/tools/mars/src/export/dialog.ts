@@ -341,7 +341,7 @@ markdown.addEventListener('click', async () => {
         }
     }
 });
-for (const id of ['exportClose', 'exportCloseFooter']) $(id).addEventListener('click', () => dialog.close());
+$('exportClose').addEventListener('click', () => dialog.close());
 dialog.addEventListener('close', () => {
     ++generation;
     ++session;

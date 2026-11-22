@@ -218,7 +218,6 @@ async function syncDialog(id: string) {
                         await ui.screen({
                             title: 'Sync',
                             html: '<p>Save this document to your library before turning on sync.</p>',
-                            buttons: [{ label: 'Close', value: 'close' }],
                         });
                         break;
                     }

@@ -825,8 +825,7 @@ test.describe('table editing', () => {
     await cell(page, 1, 0).click();
     await tableAction(page, 'Move row down');
     await expect(page.locator('#changesLabel')).toContainText('1 change since opened');
-    await page.locator('#changesNext').click();
-    await page.locator('#changesBefore').click();
+    await page.locator('#previewArticle .su-diff-edit').getByRole('button', { name: 'Show before' }).click();
     const before = page.locator('#diffBefore table');
     await expect(before).toHaveClass(/su-sized-table/);
     const fraction = await before

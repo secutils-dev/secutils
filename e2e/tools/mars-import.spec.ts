@@ -453,7 +453,7 @@ test.describe('source import', () => {
     await expect(page.locator(`.tree-row[data-id="${d.id}"] .tree-dot`)).toBeVisible();
 
     await page.goto(`/#doc=${d.id}`);
-    await expect(page.locator('#changesLabel')).toHaveText('1 change since your review');
+    await expect(page.locator('#changesLabel')).toHaveText('1 new change');
     await expect(page.locator('#previewArticle .su-diff-edit')).toHaveCount(1);
     await page.screenshot({ path: testInfo.outputPath('deep-reimport-review.png') });
     await page.locator('#changesDone').click();
@@ -468,11 +468,11 @@ test.describe('source import', () => {
     await importAtInbox(page, root, true);
     await expect(page.locator('#toast')).toContainText('updated 1 · unchanged 4');
     await expect(page.locator('#previewArticle')).toContainText('First paragraph changed again.');
-    await expect(page.locator('#changesLabel')).toHaveText('1 change since your review');
+    await expect(page.locator('#changesLabel')).toHaveText('1 new change');
     await put(deep, '# Deep\n\nFirst paragraph changed again.\n\nSecond paragraph changed.\n');
     await importAtInbox(page, root, true);
     await expect(page.locator('#toast')).toContainText('updated 1 · unchanged 4');
-    await expect(page.locator('#changesLabel')).toHaveText('2 changes since your review');
+    await expect(page.locator('#changesLabel')).toHaveText('2 new changes');
     const reviewed = await importSnapshot(page);
     await importAtInbox(page, root, true);
     await expect(page.locator('#toast')).toContainText('unchanged 5');
@@ -534,7 +534,7 @@ test.describe('source import', () => {
     await dialog.getByRole('button', { name: 'Update earlier import', exact: true }).click();
     await expect(page.locator('#toast')).toContainText('Imported 0 documents · updated 1 · unchanged 1');
     await expect(page.locator('#previewArticle')).toContainText('Changed on disk.');
-    await expect(page.locator('#changesLabel')).toHaveText('1 change since your review');
+    await expect(page.locator('#changesLabel')).toHaveText('1 new change');
     let after = await importSnapshot(page);
     expect(after.nodes.map((n) => n.id).sort()).toEqual(before.nodes.map((n) => n.id).sort());
 

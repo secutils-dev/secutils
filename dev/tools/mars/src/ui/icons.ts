@@ -12,6 +12,13 @@ const syncMark = (y: number, size = 6) =>
 const composite = (paths: string) =>
     `<svg class="eui-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">${paths}</svg>`;
 
+/** GitHub mark with a lock overlay for folders that cannot publish changes. */
+export function githubIcon(readOnly: boolean) {
+    const mark = `<g transform="scale(.5)">${ICONS.logoGithub}</g>`;
+    const lock = `<rect x="8.5" y="8" width="7.5" height="8" rx="2" fill="var(--surface)"/><g class="tree-github-lock" transform="translate(8.75 8.5) scale(.44)">${ICONS.lock}</g>`;
+    return composite(mark + (readOnly ? lock : ''));
+}
+
 /** Returns a document glyph with an optional static Sync mark inside its single viewport. */
 export function documentIcon(synced = false) {
     return synced ? composite(ICONS.document + syncMark(7)) : icon('document');

@@ -24,7 +24,7 @@ import {
     type TreeNode,
     type TreeSort,
 } from '../tree/model.ts';
-import { icon, folderIcon, documentIcon } from '../ui/icons.ts';
+import { icon, folderIcon, documentIcon, githubIcon } from '../ui/icons.ts';
 import { connectionBadgeVisible, hasSyncGlyph, syncedAncestor } from '../ui/connection-indicator.ts';
 import { $, closeMenu, esc, modal, openMenu, type MenuEntry } from '../ui/ui.ts';
 import * as viewer from '../doc/viewer.js';
@@ -39,7 +39,12 @@ import { pickImport } from '../io/pickers.ts';
 import { renameNode } from '../ui/rename.ts';
 import { githubEnabled, githubRoot } from '../github/binding.ts';
 import { openGitHubDialog } from '../github/dialog.ts';
-import { githubStatus, syncGitHub } from '../github/workspace.ts';
+import { excludeGitHubItem } from '../github/exclusion-dialog.ts';
+import { forgetGitHubSession } from '../github/workspace.ts';
+import { showGitHubConflict } from '../github/conflict-dialog.ts';
+import { changeGitHubFiles } from '../github/files.ts';
+import { reviewGitHubChanges } from '../github/pending-dialog.ts';
+import { writablePath } from '../github/api.ts';
 
 const tree = $('tree');
 const filterInput = $<HTMLInputElement>('sbFilter');
@@ -280,9 +285,20 @@ function rowHtml({ n, depth }: { n: TreeNode; depth: number }) {
     const hasKids = folder && app.state.nodes.some((c) => c.parentId === n.id);
     const selected = n.id === app.state.currentId || (folder && !app.state.currentId && n.id === app.state.folderId);
     const chevron = `<span class="tree-chevron${hasKids ? '' : ' leaf'}">${icon(n.open ? 'chevronDown' : 'chevronRight')}</span>`;
-    const glyph = `<span class="tree-icon${defaultFolder ? ' tree-icon-default' : ''}" aria-hidden="true">${n.github ? icon('logoGithub') : folder ? folderIcon(!!n.open, defaultFolder, hasSyncGlyph(n)) : documentIcon(hasSyncGlyph(n))}</span>`;
+    const githubDescription = n.github ? `GitHub · ${n.github.write ? 'Read and write' : 'Read-only'}` : '';
+    const glyph = `<span class="tree-icon${defaultFolder ? ' tree-icon-default' : ''}" aria-hidden="true"${githubDescription ? ` title="${githubDescription}"` : ''}>${n.github ? githubIcon(!n.github.write) : folder ? folderIcon(!!n.open, defaultFolder, hasSyncGlyph(n)) : documentIcon(hasSyncGlyph(n))}</span>`;
     const content = `${folder ? chevron : '<span class="tree-chevron leaf"></span>'}${glyph}${labelHtml(n)}${folder ? '' : badgesHtml(n)}`;
     const description = [
+        n.githubChange?.blocked
+            ? 'Rename blocked'
+            : n.githubChange
+              ? 'Pending Sync'
+              : n.githubReview?.blocked
+                ? 'GitHub changes blocked'
+                : n.githubReview?.pending
+                  ? 'Pending Sync'
+                  : '',
+        githubDescription,
         defaultFolder ? 'Default destination' : '',
         hasSyncGlyph(n)
             ? syncedAncestor(app.state.nodes, n)
@@ -292,8 +308,14 @@ function rowHtml({ n, depth }: { n: TreeNode; depth: number }) {
     ]
         .filter(Boolean)
         .join('. ');
+    const pending = n.githubChange || n.githubReview?.pending;
+    const blocked = n.githubChange?.blocked || n.githubReview?.blocked;
+    const title = blocked ? (n.githubChange ? 'Rename blocked' : 'GitHub changes blocked') : 'Pending Sync';
+    const status = pending
+        ? `<button class="tree-connection" type="button" data-github-pending title="${title}" aria-label="${title}">${icon(blocked ? 'warning' : 'clock')}</button>`
+        : '';
     return `<div class="tree-row" role="treeitem"${description ? ` aria-description="${esc(description)}"` : ''} data-id="${n.id}" data-kind="${n.kind}" style="--depth:${depth}" tabindex="-1" draggable="${renaming === n.id ? 'false' : 'true'}"
-${folder ? `aria-expanded="${!!n.open}"` : ''} aria-selected="${selected}" aria-level="${depth + 1}">${!folder && renaming !== n.id ? docLink(n, content) : content}${connectionHtml(n)}${moreHtml(n)}</div>`;
+${folder ? `aria-expanded="${!!n.open}"` : ''} aria-selected="${selected}" aria-level="${depth + 1}">${!folder && renaming !== n.id ? docLink(n, content) : content}${status}${connectionHtml(n)}${moreHtml(n)}</div>`;
 }
 
 function resultHtml(r: Result) {
@@ -422,7 +444,36 @@ function renderUsage() {
 // ---- Actions ----
 /** Creates an empty document in `parentId`, switches to Source view, and hides the overlay sidebar. */
 async function newDoc(parentId: string | null = app.state.folderId) {
-    if (githubRoot(app.state.nodes, app.node(parentId))) parentId = null;
+    const repo = githubRoot(app.state.nodes, app.node(parentId));
+    if (repo?.github?.write && parentId) {
+        try {
+            const result = await modal({
+                title: 'New document',
+                body: 'This document will be saved to GitHub.',
+                field: { label: 'Document name', value: app.uniqueName('Untitled', parentId) },
+                buttons: [
+                    { label: 'Cancel', value: '' },
+                    { label: 'Create', value: 'create', primary: true },
+                ],
+            });
+            if (!result.value) return;
+            const id = await changeGitHubFiles(repo.id, {
+                kind: 'create',
+                parent: parentId,
+                name: result.text,
+                text: '',
+            });
+            if (id) {
+                await app.openDoc(id);
+                setViewMode('edit');
+                closeOverlay();
+            }
+        } catch (error) {
+            toast(error instanceof Error ? error.message : 'Could not create the GitHub document.');
+        }
+        return;
+    }
+    if (repo) parentId = null;
     const n = await app.createDoc({ name: app.uniqueName('Untitled', parentId), parentId });
     setViewMode('edit');
     closeOverlay();
@@ -431,13 +482,32 @@ async function newDoc(parentId: string | null = app.state.folderId) {
 
 /** Creates a folder in `parentId`, selects it, and starts its rename. */
 async function newFolder(parentId: string | null = app.state.folderId) {
-    if (githubRoot(app.state.nodes, app.node(parentId))) parentId = null;
+    const repo = githubRoot(app.state.nodes, app.node(parentId));
+    if (repo?.github?.write && parentId) {
+        try {
+            const n = await app.createFolder(app.uniqueName('New folder', parentId), parentId);
+            app.state.folderId = n.id;
+            startRename(n.id);
+        } catch {
+            toast('Could not create the folder.');
+        }
+        return;
+    }
+    if (repo) parentId = null;
     const n = await app.createFolder(app.uniqueName('New folder', parentId), parentId);
     app.state.folderId = n.id;
     startRename(n.id);
 }
 
 function startRename(id: string) {
+    const n = app.node(id),
+        repo = githubRoot(app.state.nodes, n);
+    if (
+        repo &&
+        id !== repo.id &&
+        (!repo.github?.write || (n?.kind === 'doc' && !writablePath(n.githubFile?.path ?? '')))
+    )
+        return;
     renaming = id;
     render();
 }
@@ -466,10 +536,13 @@ async function deleteNode(n: TreeNode) {
     if (deleting.has(n.id)) return;
     const current = app.node(n.id);
     if (!current) return;
-    if (githubRoot(app.state.nodes, current) && !current.github) {
-        toast('Delete this file on GitHub. The preview does not publish file deletions.');
+    const repo = githubRoot(app.state.nodes, current);
+    if (
+        repo &&
+        !current.github &&
+        (!repo.github?.write || (current.kind === 'doc' && !writablePath(current.githubFile?.path ?? '')))
+    )
         return;
-    }
     n = current;
     deleting.add(n.id);
     try {
@@ -491,10 +564,20 @@ async function deleteNode(n: TreeNode) {
                   ? n.kind === 'folder'
                       ? `This deletes the folder and ${docs} document${docs === 1 ? '' : 's'} from this browser and deletes their owned remote content.`
                       : 'This deletes the document from this browser and the service.'
-                  : n.kind === 'folder'
-                    ? `This removes the folder and ${docs} document${docs === 1 ? '' : 's'} from this browser.`
-                    : 'This removes the document from this browser.',
+                  : n.github
+                    ? 'This removes the folder and all its cached documents from this browser, including exclusions.'
+                    : n.kind === 'folder'
+                      ? `This removes the folder and ${docs} document${docs === 1 ? '' : 's'} from this browser.`
+                      : 'This removes the document from this browser.',
         ];
+        if (n.github)
+            paragraphs.push(
+                'The GitHub repository and its files will not be deleted. Any edits not yet synced to GitHub will be removed from this browser.',
+            );
+        else if (repo)
+            paragraphs.push(
+                'This also deletes the selected files from the GitHub branch. The files are still available in GitHub history.',
+            );
         if (info.shared)
             paragraphs.push(
                 'Offline devices remove it when they next sync. Unsent edits are kept separately under Recovered Sync copies. Independent copies and downloaded files are not deleted.',
@@ -538,6 +621,10 @@ async function deleteNode(n: TreeNode) {
         if (connected) toast(`Deleting ${n.name}…`);
         // Hand pending edits to storage before the removal.
         await viewer.flush();
+        if (repo && !n.github) {
+            await changeGitHubFiles(repo.id, { kind: 'delete', id: n.id });
+            return;
+        }
         if (info.shared) {
             await sync.deleteEverywhere(n.id);
             toast(`Deleted ${n.name}. Deletion will sync to your other devices.`);
@@ -545,7 +632,8 @@ async function deleteNode(n: TreeNode) {
         }
         if (connected) await sync.remove(n.id, true);
         const undo = await app.remove(n.id);
-        if (undo) toast(`Deleted ${n.name}`, info.remote ? undefined : { label: 'Undo', run: undo });
+        if (n.github) forgetGitHubSession(n.id);
+        if (undo) toast(`Deleted ${n.name}`, info.remote || n.github ? undefined : { label: 'Undo', run: undo });
     } catch (error) {
         toast(`Could not delete "${n.name}": ${(error as Error).message}. Your local copy is still here.`, {
             label: 'Try again',
@@ -602,47 +690,70 @@ function menuFor(n: TreeNode): MenuEntry[] {
     const dirPicker = 'showDirectoryPicker' in window;
     const editable = !n.connection || ['owner', 'edit'].includes(n.connection.permission);
     const repo = githubRoot(app.state.nodes, n);
+    const canChangeGitHub = !!repo?.github?.write && (n.kind === 'folder' || writablePath(n.githubFile?.path ?? ''));
     if (repo)
         return [
-            { hint: `${repo.github!.repository} · ${repo.github!.branch} · Never expires` },
+            ...(repo.github?.write && n.kind === 'folder'
+                ? [
+                      { label: 'New document', icon: 'document' as const, run: () => newDoc(n.id) },
+                      { label: 'New folder', icon: 'folder' as const, run: () => newFolder(n.id) },
+                  ]
+                : []),
+            ...(n.githubFile?.conflict
+                ? [{ label: 'Resolve conflicts…', icon: 'merge' as const, run: () => showGitHubConflict(n.id) }]
+                : []),
             {
-                label: 'Sync with GitHub',
+                label: 'Sync',
                 icon: 'refresh',
-                sub: githubStatus(repo.id),
-                run: () =>
-                    syncGitHub(repo.id).then(
-                        (message) => toast(message),
-                        (error) => toast(error.message),
-                    ),
+                run: () => openGitHubDialog(repo.id),
             },
-            { label: 'Reconnect GitHub…', icon: 'refresh', run: () => openGitHubDialog(repo.id) },
-            ...(n.github ? [{ label: 'Rename', icon: 'pencil' as const, run: () => startRename(n.id) }] : []),
-            { label: 'Copy link', icon: 'link', run: () => share.copyLinkDialog(n.id) },
-            ...(n.kind === 'doc'
+            ...(!n.github && (n.kind === 'folder' || n.githubFile)
                 ? [
                       {
-                          label: 'Share a Live copy via Secutils…',
-                          sub: 'Creates an independent copy. Live edits do not go back to GitHub.',
+                          label: 'Exclude from Sync',
+                          icon: 'eyeSlash' as const,
+                          run: () => excludeGitHubItem(repo.id, n.id),
+                      },
+                  ]
+                : []),
+            ...(n.github || canChangeGitHub
+                ? [{ label: 'Rename', icon: 'pencil' as const, run: () => startRename(n.id) }]
+                : []),
+            ...(canChangeGitHub && n.kind === 'doc' && n.parentId
+                ? [
+                      {
+                          label: 'Duplicate',
                           icon: 'copy' as const,
                           run: async () => {
-                              await viewer.flush();
-                              const copy = await app.createDoc({
-                                  name: n.name,
-                                  text: (await db.getText(n.id)) ?? '',
-                                  parentId: null,
-                              });
-                              await share.copyLinkDialog(copy.id, 'live');
+                              try {
+                                  await viewer.flush();
+                                  const id = await changeGitHubFiles(repo.id, {
+                                      kind: 'duplicate',
+                                      parent: n.parentId!,
+                                      name: app.uniqueName(`${n.name} (copy)`, n.parentId),
+                                      text: (await db.getText(n.id)) ?? '',
+                                      originalPath: n.githubFile?.path,
+                                  });
+                                  if (id) await app.openDoc(id);
+                              } catch (error) {
+                                  toast(
+                                      error instanceof Error
+                                          ? error.message
+                                          : 'Could not duplicate the GitHub document.',
+                                  );
+                              }
                           },
                       },
                   ]
                 : []),
+            { label: 'Copy link', icon: 'link', run: () => share.copyLinkDialog(n.id) },
             {
                 label: 'Download',
                 icon: 'download',
                 run: () => (n.kind === 'folder' ? io.exportZip(n.id) : io.downloadDoc(n.id)),
             },
-            ...(n.github
-                ? [{ label: 'Remove local folder', icon: 'trash' as const, danger: true, run: () => deleteNode(n) }]
+            ...(n.github || canChangeGitHub
+                ? [{ label: 'Delete', icon: 'trash' as const, danger: true, run: () => deleteNode(n) }]
                 : []),
         ];
     if (n.kind === 'folder')
@@ -772,6 +883,11 @@ tree.addEventListener('click', (e) => {
     if (target.closest('.tree-rename')) return;
     const n = rowNode(target);
     if (!n) return;
+    if (target.closest('[data-github-pending]')) {
+        const repo = githubRoot(app.state.nodes, n);
+        if (repo) void reviewGitHubChanges(repo.id, n.githubChange?.id);
+        return;
+    }
     if (target.closest('[data-connection]')) {
         e.preventDefault();
         void sync.details(n.id);
@@ -922,7 +1038,7 @@ $('sbNewBtn').addEventListener('click', (e) =>
                 ? [
                       {
                           label: 'Import from GitHub…',
-                          icon: 'folder' as const,
+                          icon: 'logoGithub' as const,
                           disabled: db.isTemporaryStorage(),
                           run: () => openGitHubDialog(),
                       },

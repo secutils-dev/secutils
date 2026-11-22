@@ -11,6 +11,7 @@
 // - Inside a frame, the script reports `ready` or `error` to the parent window with the
 //   operation identifier from its configuration. A file that is opened directly sends nothing.
 import { initDiagrams } from '../doc/diagrams.js';
+import { icon } from '../ui/icons.ts';
 import { prepareFrame, printDocument, type PreparedFrame } from './pdf.ts';
 
 // Select the script element itself: a document heading can produce the same id.
@@ -235,8 +236,12 @@ const pdfButton = $<HTMLButtonElement>('pdf-btn');
 if (pdfButton)
     pdfButton.addEventListener('click', () => {
         const dialog = document.createElement('dialog');
-        dialog.setAttribute('aria-label', 'Print / Save PDF');
+        dialog.setAttribute('aria-labelledby', 'reader-print-title');
         dialog.className = 'reader-print-dialog';
+        const header = document.createElement('header');
+        const title = document.createElement('h2');
+        title.id = 'reader-print-title';
+        title.textContent = 'Print / Save PDF';
         const status = document.createElement('p');
         status.textContent = 'Preparing PDF…';
         status.setAttribute('role', 'status');
@@ -247,9 +252,12 @@ if (pdfButton)
         action.disabled = true;
         const close = document.createElement('button');
         close.type = 'button';
-        close.textContent = 'Close';
+        close.className = 'reader-print-close';
+        close.setAttribute('aria-label', 'Close');
+        close.innerHTML = icon('cross');
         close.addEventListener('click', () => dialog.close());
-        dialog.append(status, action, close, preview);
+        header.append(title, close);
+        dialog.append(header, status, action, preview);
         document.body.append(dialog);
         dialog.showModal();
         pdfButton.disabled = true;

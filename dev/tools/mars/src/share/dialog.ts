@@ -24,7 +24,7 @@ export async function openShareDialog(id: string, initial: 'snapshot' | 'live' =
     const github = !!githubRoot(app.state.nodes, node);
     // A received Live document can only forward the owner's link. `original` describes that link
     // and becomes null when it ends.
-    const received = node.connection?.kind === 'live';
+    const received = !github && node.connection?.kind === 'live';
     let original = received ? await sync.liveLinkInfo(id) : null;
     // A new Live link needs a library document that is local or owned by this reader.
     const canCreate =
@@ -51,23 +51,27 @@ export async function openShareDialog(id: string, initial: 'snapshot' | 'live' =
         ui.element.querySelector<HTMLElement>('#copyLinkReady')!.hidden = !url;
         ui.element.querySelector<HTMLElement>('#copyLinkHelp')!.hidden = !!url;
         const connection = app.node(id)?.connection;
-        ui.element.querySelector<HTMLButtonElement>('footer .sync-footer-left')!.hidden =
-            connection?.permission !== 'owner' || !connection.liveShared;
+        const manage = ui.element.querySelector<HTMLButtonElement>('footer .sync-footer-left');
+        if (manage) manage.hidden = connection?.permission !== 'owner' || !connection.liveShared;
     };
     try {
         const answer = ui.screen({
             title: 'Copy link',
             html: `<p><strong>${esc(node.name)}</strong></p>
-            ${node.kind === 'doc' ? `<fieldset class="copy-options"><legend class="field-label">Share</legend><label><input type="radio" name="copyMode" value="snapshot"${mode === 'snapshot' ? ' checked' : ''}> Snapshot</label><label><input type="radio" name="copyMode" value="live"${mode === 'live' ? ' checked' : ''}${canLive ? '' : ' disabled'}> Live</label></fieldset>` : ''}
+            ${node.kind === 'doc' && !github ? `<fieldset class="copy-options"><legend class="field-label">Share</legend><label><input type="radio" name="copyMode" value="snapshot"${mode === 'snapshot' ? ' checked' : ''}> Snapshot</label><label><input type="radio" name="copyMode" value="live"${mode === 'live' ? ' checked' : ''}${canLive ? '' : ' disabled'}> Live</label></fieldset>` : ''}
             <p id="copyModeHelp" class="sync-fineprint"></p>
             <fieldset id="copyFormatFields" class="copy-options"><legend class="field-label">Link format</legend><label><input type="radio" name="copyFormat" value="full" checked> Full</label><label><input type="radio" name="copyFormat" value="short"> Short</label></fieldset>
             <div id="copyParentFields" class="copy-options"><label for="copyParentFolders"><input id="copyParentFolders" name="includeParentFolders" type="checkbox"> Include folder path</label></div>
             <div id="copyExpiryFields" class="live-expiry"><label class="field-label" for="copyLifetime">Expires</label><select class="select" id="copyLifetime"></select></div>
-            <fieldset id="copyAccessFields" class="live-access"><legend class="field-label">Access</legend><label><input type="radio" name="copyPermission" value="view" aria-label="Can view" checked> Can view</label><label><input type="radio" name="copyPermission" value="comment" aria-label="Can comment"> Can comment</label><label><input type="radio" name="copyPermission" value="edit" aria-label="Can edit"> Can edit</label></fieldset>
-            <p id="copyForwardInfo" class="sync-fineprint" hidden></p>
+            ${
+                github
+                    ? ''
+                    : `<fieldset id="copyAccessFields" class="live-access"><legend class="field-label">Access</legend><label><input type="radio" name="copyPermission" value="view" aria-label="Can view" checked> Can view</label><label><input type="radio" name="copyPermission" value="comment" aria-label="Can comment"> Can comment</label><label><input type="radio" name="copyPermission" value="edit" aria-label="Can edit"> Can edit</label></fieldset>
+            <p id="copyForwardInfo" class="sync-fineprint" hidden></p>`
+            }
             <div class="copy-link-output"><p id="copyLinkHelp" class="sync-fineprint">Click Copy link to create and copy your link.</p><div id="copyLinkReady" hidden><label class="field-label" for="copyLinkValue">Link</label><input class="field" id="copyLinkValue" type="text" readonly autocomplete="off" spellcheck="false"></div></div>`,
             buttons: [
-                { label: 'Live links', value: 'manage', empty: true, left: true },
+                ...(!github ? [{ label: 'Live links', value: 'manage', empty: true, left: true }] : []),
                 { label: 'Cancel', value: 'close' },
                 {
                     label: 'Copy link',
@@ -76,9 +80,9 @@ export async function openShareDialog(id: string, initial: 'snapshot' | 'live' =
                     run: async (button) => {
                         if (busy) return;
                         busy = true;
-                        const permission = ui.element.querySelector<HTMLInputElement>(
+                        const permission = (ui.element.querySelector<HTMLInputElement>(
                             'input[name="copyPermission"]:checked',
-                        )!.value as 'view' | 'comment' | 'edit';
+                        )?.value ?? 'view') as 'view' | 'comment' | 'edit';
                         const ttl = lifetimes[mode as 'snapshot' | 'live'];
                         const key = `${format}:${permission}:${ttl}`;
                         ui.busy('Copying link…');
@@ -147,10 +151,11 @@ export async function openShareDialog(id: string, initial: 'snapshot' | 'live' =
             ui.element.querySelector<HTMLElement>('#copyFormatFields')!.hidden = forwarding;
             ui.element.querySelector<HTMLElement>('#copyParentFields')!.hidden = live;
             ui.element.querySelector<HTMLElement>('#copyExpiryFields')!.hidden = !expires;
-            ui.element.querySelector<HTMLElement>('#copyAccessFields')!.hidden = !live || forwarding;
-            const info = ui.element.querySelector<HTMLElement>('#copyForwardInfo')!;
-            info.hidden = !forwarding || !original;
-            if (original)
+            const access = ui.element.querySelector<HTMLElement>('#copyAccessFields');
+            if (access) access.hidden = !live || forwarding;
+            const info = ui.element.querySelector<HTMLElement>('#copyForwardInfo');
+            if (info) info.hidden = !forwarding || !original;
+            if (info && original)
                 info.textContent = `${{ view: 'View only', comment: 'Can comment', edit: 'Can edit', owner: 'Owner' }[original.permission]} · Expires ${new Date(original.expires * 1000).toLocaleDateString()}.`;
             const copy = ui.element.querySelector<HTMLButtonElement>('footer .btn-primary')!;
             if (!busy) copy.disabled = forwarding && !original;

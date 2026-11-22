@@ -96,11 +96,28 @@ An HTML file that MARS exported with embedded source opens as editable Markdown.
 ### Share
 
 The dev-only GitHub preview imports a repository branch with **New → Import from GitHub**.
-Use a fine-grained token restricted to that repository. The token stays in the tab, so reconnect after a reload.
+Use a fine-grained token restricted to the repositories you need. In GitHub, set **Repository permissions → Contents** to **Read-only** or **Read and write**.
+
+In **Import from GitHub** or **Sync**, use the **GitHub credential** dropdown. It starts with the credential used for this import or **None (public read-only)**. The optional GitHub owner puts credentials under **Suggested for** that organization or account. MARS does not try other tokens automatically. Each folder has its own write setting, which starts off for new imports.
+
+Use the key button next to the dropdown to open **Manage credentials**. Add a credential there, or use the pencil and trash buttons to edit or remove one. Replacement applies to every folder that uses the credential. Removal pauses those connections without deleting files or pending edits. Removal does not revoke the token on GitHub.
+
+Existing folder-only tokens still work. To reuse one, choose **Save as reusable…** in **Manage credentials**. The local encryption key does not protect against code that runs on the MARS origin.
+Public file downloads use GitHub's raw content host without sending the token. The repository and branch lookups still use the GitHub API and its anonymous quota when no token is supplied.
+MARS remembers the branch head, its ETag, and the supported file list in IndexedDB. It requests only changed files and shares a polling budget across tabs. A reload can reuse a recent check.
+GitHub's archive download does not allow the MARS origin to read its response. The GitHub importer uses the API and raw content host directly rather than sending repository data through a proxy.
 Public repositories can be imported read-only without a token. Existing Markdown and text files can be edited and committed in batches when writes are enabled.
-The local folder label does not change repository paths. HTML is read-only; this preview does not publish moves, new files, or deletions.
-Conflicting and remotely missing files stay local. Use a dedicated test branch while evaluating the preview.
-GitHub controls access and retention. Short snapshots use Secutils when selected. Live sharing uses an independent Secutils copy, not the GitHub file.
+For a read-only document, **Make a copy** opens an editable, independent document in your library. The original still receives GitHub updates.
+To keep the whole folder but stop GitHub Sync, choose **Sync → Disconnect this device**. The folder, documents, and local edits stay in place. The repository and other devices are unchanged.
+The top-level folder label does not change repository paths. A small lock identifies a read-only GitHub folder, and **Sync** shows its access mode.
+With write access, you can add and duplicate text documents, or rename and delete supported files and folders. Rename and delete update the library first. MARS keeps a pending deletion recoverable until GitHub confirms it. If a name is taken or a file changed upstream, open **Sync → Review pending changes**. An empty folder stays local until it contains a file. Deleting the top-level folder removes only its local copy. Drag-and-drop moves and writing HTML are not supported.
+MARS follows the latest GitHub branch tree, including after a force-push. It matches renames when GitHub or file contents identify the move. Upstream deletions remove unedited local copies; files with unsynced changes become independent local copies. MARS never force-pushes.
+MARS merges independent GitHub edits against the last common file version. Overlapping edits keep both versions and show **Resolve conflicts**. The full Local and GitHub documents appear beside an editable Result. Pick a side for each conflict or edit and mark it resolved.
+If you and GitHub rename the same item to different names, choose **Keep GitHub’s name** or **Use my name** under **Review pending changes**. Keeping GitHub’s name does not write to the repository.
+
+Choose **Exclude from Sync** in a GitHub file or folder menu to hide it on this device. MARS skips matching paths during Sync and keeps cached documents and local edits. To restore items or add `.gitignore` patterns, open **Sync → Manage exclusions** on the repository folder. Rules are case-sensitive and stay tied to paths, not Git renames. Exclusions do not change the repository or its `.gitignore` file.
+Use **Compare changes** in the review bar to compare the source side by side. Use the **Show before** eye beside an edited or removed block to see its previous rendered content.
+GitHub controls access and retention. GitHub folders and their documents support Full and Short snapshot links, not Live links. Short snapshots use Secutils when selected.
 
 **Share > Copy link** opens one dialog for all links.
 

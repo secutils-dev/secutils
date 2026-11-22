@@ -710,6 +710,7 @@ test.describe(`${tool.name} (${tool.path})`, () => {
       });
     });
     await page.goto(tool.path);
+    await expect(page.locator('html')).not.toHaveClass(/mars-boot/);
     await page.locator('#importFolderInput').setInputFiles(dir);
     await row(page, 'drop')
       .getByRole('button', { name: /Actions for drop/ })
@@ -820,8 +821,11 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     // A second copy with new text makes the first copy the review baseline, which Review changes renders.
     await open(fileLink(text('two').replace('Quoted target text.', 'Quoted target text, revised.'), origin, 'Hostile'));
     await expect(page.locator('#changesBar')).toBeVisible();
-    await page.getByRole('button', { name: 'Next change' }).click();
-    await page.getByRole('button', { name: 'Show before' }).click();
+    await page
+      .locator('#previewArticle .su-diff-edit')
+      .filter({ hasText: 'Quoted target text, revised.' })
+      .getByRole('button', { name: 'Show before' })
+      .click();
     await expect(page.locator('#diffBefore')).toContainText(/Quoted target text\.|Forged block one/);
     expect(await page.evaluate(() => (window as { __marsScript?: number[] }).__marsScript ?? [])).toEqual([]);
     expect(await page.locator('#diffBefore [onerror], #diffBefore [style*="fixed"]').count()).toBe(0);
@@ -993,7 +997,7 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     );
     // Only the source changed since it was opened, so MARS takes it without asking.
     await expect(page.locator('#toast')).toContainText('showing what changed');
-    await expect(page.locator('#changesLabel')).toHaveText('3 changes since your review · 1 new reply');
+    await expect(page.locator('#changesLabel')).toHaveText('3 new changes · 1 new reply');
     await expect(page.locator('#previewArticle .su-diff-add')).toHaveCount(1);
     await expect(page.locator('#previewArticle .su-diff-edit')).toHaveCount(1);
     await expect(page.locator('#previewArticle .su-diff-del-end')).toHaveCount(1);
@@ -1003,14 +1007,54 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     await expect(card.locator('.cm-note')).toHaveText('Quoted text changed since your review');
     await expect(card.locator('.cm-new')).toHaveCount(1);
 
+    const bar = page.locator('#changesBar');
+    await expect(bar.getByRole('button', { name: 'Show before' })).toHaveCount(0);
+    await expect(page.locator('#previewArticle .su-diff-add').getByRole('button', { name: 'Show before' })).toHaveCount(
+      0,
+    );
+    const before = page.locator('#previewArticle .su-diff-edit').getByRole('button', { name: 'Show before' });
+    await before.click();
+    const beforePanel = page.getByRole('dialog', { name: 'Before your last review' });
+    await expect(beforePanel).toContainText('I disagree with warnings as the final behavior.');
+    await beforePanel.getByRole('button', { name: 'Close', exact: true }).click();
+    await expect(beforePanel).toBeHidden();
+    await expect(before).toHaveAttribute('aria-expanded', 'false');
+    const removed = page.locator('#previewArticle .su-diff-del-end').getByRole('button', { name: 'Show before' });
+    await removed.click();
+    await expect(beforePanel).toContainText('This paragraph goes away.');
+    await page.keyboard.press('Escape');
+    await expect(beforePanel).toBeHidden();
+    await expect(removed).toHaveAttribute('aria-expanded', 'false');
+
+    const compare = bar.getByRole('button', { name: 'Compare changes' });
+    await compare.focus();
+    await compare.press('Enter');
+    const review = page.getByRole('dialog', { name: 'Compare changes' });
+    await expect(review.locator('header').getByRole('button', { name: 'Close', exact: true })).toBeVisible();
+    const nextChange = review.getByRole('button', { name: 'Next change' });
+    await expect(nextChange).toHaveText('');
+    await expect(review.getByRole('status')).toHaveText(/Change 1 of/);
+    await nextChange.hover();
+    await expect(page.locator('#marsTooltip')).toHaveText('Next change');
+    await nextChange.press('Enter');
+    await expect(review.getByRole('status')).toHaveText(/Change 2 of/);
+    await review.getByRole('button', { name: 'Previous change' }).click();
+    await expect(review.getByRole('status')).toHaveText(/Change 1 of/);
+    await page.keyboard.press('Escape');
+    await expect(review).toBeHidden();
+    await expect(compare).toBeFocused();
+
     await page.getByRole('button', { name: 'Next change' }).click();
     await expect(page.locator('#changesLabel')).toHaveText('Added · 1 of 3 · 1 new reply');
     await page.getByRole('button', { name: 'Next change' }).click();
     await expect(page.locator('#changesLabel')).toHaveText('Edited · 2 of 3 · 1 new reply');
-    await page.getByRole('button', { name: 'Show before' }).click();
-    await expect(page.locator('#diffBefore')).toContainText('I disagree with warnings as the final behavior.');
 
-    await page.getByRole('button', { name: 'Mark reviewed' }).click();
+    const mark = page.getByRole('button', { name: 'Mark reviewed' });
+    await mark.focus();
+    await expect(page.locator('#marsTooltip')).toHaveText('Mark reviewed');
+    await mark.press('Enter');
+    // Reviewing hides the button, so its tooltip must not stay on screen.
+    await expect(page.locator('#marsTooltip')).toHaveCount(0);
     await expect(page.locator('#changesBar')).toBeHidden();
     await expect(page.locator('#tree .tree-dot')).toHaveCount(0);
     // The thread re-quotes to the inserted words of the edited paragraph.
@@ -1063,7 +1107,7 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     await expect(page.getByRole('heading', { name: 'Is this an updated copy?' })).toBeVisible();
     await page.getByRole('button', { name: 'Update "test v1"' }).click();
     await expect(page.locator('#toast')).toContainText('showing what changed');
-    await expect(page.locator('#changesLabel')).toHaveText('1 change since your review');
+    await expect(page.locator('#changesLabel')).toHaveText('1 new change');
     await expect(docRows(page)).toHaveCount(1);
 
     // The file moved: confirm once, then its new path matches directly.

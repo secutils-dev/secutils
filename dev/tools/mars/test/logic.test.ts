@@ -180,11 +180,14 @@ test('block diff pairs edits, additions, and removals in order', () => {
         { kind: 'removed', old: 0, cur: 0 },
         { kind: 'removed', old: 1, cur: 0 },
     ]);
-    // Past the LCS ceiling, a whole gap counts as one replacement.
+    // A large document with a small edit still gets a precise diff.
     const big = Array.from({ length: 2100 }, (_, i) => `p${i}`);
     const changed = diffBlocks(['head', ...big, 'tail'], ['head', ...big.slice(1), 'x', 'y', 'tail']);
-    assert.ok(changed.every((c) => c.kind === 'edited' || c.kind === 'added'));
-    assert.equal(changed.length, 2101);
+    assert.deepEqual(changed, [
+        { kind: 'removed', old: 1, cur: 1 },
+        { kind: 'added', cur: 2100 },
+        { kind: 'added', cur: 2101 },
+    ]);
 });
 
 test('an updated copy matches by threads, or by name or title plus shared text', () => {

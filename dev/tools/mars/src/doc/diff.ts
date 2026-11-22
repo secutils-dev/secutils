@@ -1,19 +1,18 @@
 // Changes between a reviewed baseline and the current document (pure; runs in Node tests).
 // Blocks are compared first; word ranges are computed only inside edited blocks.
 
-// ponytail: the LCS table is O(n*m). Above this many cells a gap counts as one replacement,
-// so a rewrite of a huge document marks every block in the gap as edited.
-const MAX_CELLS = 4_000_000;
+import { diffArrays } from 'diff';
+
+// The review UI runs synchronously. Fall back to one changed span if the exact diff is too costly.
+const DIFF_OPTIONS = { timeout: 24, maxEditLength: 1024 };
 /**
- * Token limit for each side of a word comparison. Two sides at the limit fill exactly `MAX_CELLS`,
- * so a word comparison always uses the full table.
+ * Token limit for each side of a word comparison.
  */
 const MAX_WORDS = 2000;
 
 /**
- * Index pairs [i, j] with a[i] === b[j], in increasing order, forming a longest common subsequence.
- * The common prefix and suffix pair up without the table. When the remaining middle exceeds
- * `MAX_CELLS`, it contributes no pairs.
+ * Unchanged token pairs in order. Keep the common prefix and suffix even if the middle exceeds
+ * the diff budget.
  */
 function commonPairs(a: string[], b: string[]): [number, number][] {
     let start = 0;
@@ -26,32 +25,42 @@ function commonPairs(a: string[], b: string[]): [number, number][] {
     }
     const pairs: [number, number][] = [];
     for (let i = 0; i < start; i++) pairs.push([i, i]);
-    const n = endA - start,
-        m = endB - start;
-    if (n && m && n * m <= MAX_CELLS) {
-        // lcs[i][j]: LCS length of a[start+i..endA) and b[start+j..endB).
-        // The cell limit keeps the shorter side at or below 2,000 entries, so a length fits in 16 bits.
-        const w = m + 1,
-            lcs = new Uint16Array((n + 1) * w);
-        for (let i = n - 1; i >= 0; i--) {
-            for (let j = m - 1; j >= 0; j--) {
-                lcs[i * w + j] =
-                    a[start + i] === b[start + j]
-                        ? lcs[(i + 1) * w + j + 1] + 1
-                        : Math.max(lcs[(i + 1) * w + j], lcs[i * w + j + 1]);
-            }
-        }
-        for (let i = 0, j = 0; i < n && j < m;) {
-            if (a[start + i] === b[start + j]) {
-                pairs.push([start + i, start + j]);
-                i++;
-                j++;
-            } else if (lcs[(i + 1) * w + j] >= lcs[i * w + j + 1]) i++;
-            else j++;
+    if (endA > start && endB > start) {
+        let i = start,
+            j = start;
+        for (const { added, removed, count } of diffArrays(a.slice(start, endA), b.slice(start, endB), DIFF_OPTIONS) ??
+            []) {
+            if (added) j += count;
+            else if (removed) i += count;
+            else for (let k = 0; k < count; k++) pairs.push([i++, j++]);
         }
     }
     for (let k = 0; k < a.length - endA; k++) pairs.push([endA + k, endB + k]);
     return pairs;
+}
+
+/** Exact lines, including their original terminators. Joining them recovers the source byte-for-byte. */
+export const sourceLines = (value: string) => value.match(/[^\r\n]*(?:\r\n|\r|\n)|[^\r\n]+$/g) ?? [];
+
+/** A replacement in base coordinates. An insertion has an empty base range. */
+export interface TextEdit {
+    start: number;
+    end: number;
+    replacement: string[];
+    next: number;
+}
+
+/** Convert two exact token streams into bounded base-coordinate replacements. */
+export function textEdits(base: string[], changed: string[]): TextEdit[] {
+    const result: TextEdit[] = [];
+    let start = 0,
+        next = 0;
+    for (const [a, b] of [...commonPairs(base, changed), [base.length, changed.length]]) {
+        if (a > start || b > next) result.push({ start, end: a, replacement: changed.slice(next, b), next });
+        start = a + 1;
+        next = b + 1;
+    }
+    return result;
 }
 
 /**

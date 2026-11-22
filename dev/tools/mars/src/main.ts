@@ -23,7 +23,17 @@ import { installSyncDebug } from './sync/debug.ts';
 import { installDeveloperTools } from './ui/developer.ts';
 import { startAnalytics } from './platform/analytics.ts';
 import { renameNode } from './ui/rename.ts';
-import { githubReadOnly, installGitHubPolling } from './github/workspace.ts';
+import {
+    githubReadOnly,
+    installGitHubPolling,
+    makeGitHubCopy,
+    refreshGitHubCredential,
+    refreshGitHubSessions,
+    restoreGitHubConnections,
+} from './github/workspace.ts';
+import { githubExclusion } from './github/exclusions.ts';
+import { writablePath } from './github/api.ts';
+import { showGitHubConflict } from './github/conflict-dialog.ts';
 
 // Setup that needs no storage runs first, so it is also in place when a later step fails.
 // `installDeveloperTools` parses the flags and removes their control parameters from the address bar.
@@ -75,14 +85,23 @@ viewer.setHost({
 
 let lastDoc: string | null = null;
 // One listener keeps the page chrome in step with the tree state. It updates the tab title,
-// the Live access badge, the session banner, and the stored last document.
+// the access badge, the session banner, and the stored last document.
 app.onChange(() => {
     const cur = app.current();
+    $('githubConflictBar').hidden = !cur?.githubFile?.conflict;
     document.title = cur ? `${cur.name} | MARS` : DEFAULT_TITLE;
     const access = $('documentAccess'),
-        permission = cur?.connection?.permission;
-    access.hidden = !cur?.connection || cur.connection.kind !== 'live' || permission === 'owner';
-    if (!access.hidden && permission) {
+        permission = cur?.connection?.permission,
+        github = cur?.githubFile,
+        readOnlyGitHub = github && githubReadOnly(cur);
+    $('githubCopyBtn').hidden = !readOnlyGitHub;
+    access.hidden = !readOnlyGitHub && (!cur?.connection || cur.connection.kind !== 'live' || permission === 'owner');
+    if (readOnlyGitHub) {
+        if (access.textContent !== 'Read-only') access.textContent = 'Read-only';
+        access.dataset.tooltip = writablePath(github.path)
+            ? 'Changes come from GitHub. Make a copy to edit locally, or enable write access in Sync.'
+            : 'MARS cannot write back in this file format. Make a copy to edit locally.';
+    } else if (!access.hidden && permission) {
         const labels = { view: 'View only', comment: 'Can comment', edit: 'Can edit', owner: '' };
         const descriptions = {
             view: 'You can read this document and its comments.',
@@ -95,6 +114,9 @@ app.onChange(() => {
             cur!.connection!.phase === 'ended'
                 ? 'The Live link ended. Keep this as a local copy to make it independent.'
                 : descriptions[permission];
+    } else {
+        if (access.textContent) access.textContent = '';
+        delete access.dataset.tooltip;
     }
     renderTemporary();
     // A temporary session never writes library preferences. The write is best-effort.
@@ -102,6 +124,20 @@ app.onChange(() => {
         lastDoc = app.state.currentId;
         if (!db.isTemporaryStorage()) db.setMeta(LAST_DOC_KEY, lastDoc).catch(() => {});
     }
+});
+$('githubCopyBtn').addEventListener('click', () => {
+    const button = $<HTMLButtonElement>('githubCopyBtn');
+    const id = app.state.currentId;
+    if (!id || button.disabled) return;
+    button.disabled = true;
+    void makeGitHubCopy(id)
+        .catch(() => viewer.toast('Could not make a copy. Your original is unchanged.'))
+        .finally(() => {
+            button.disabled = false;
+        });
+});
+$('githubConflictBtn').addEventListener('click', () => {
+    if (app.state.currentId) void showGitHubConflict(app.state.currentId);
 });
 
 /**
@@ -264,23 +300,34 @@ try {
     startupError('Could not open the document')(error);
     viewer.endLoading();
 }
+void restoreGitHubConnections().catch(() => {});
+db.onSideChange((kind, ids) => {
+    if (kind === 'github-credential') for (const id of ids) void refreshGitHubCredential(id).catch(() => {});
+});
 // Another tab changed the library. Reload the tree, adopt the change in the open document, and
 // refresh connected sessions. The persistence queue keeps this work apart from a save of this tab.
 // Registered last: the handler needs the loaded tree. An earlier broadcast is not replayed.
 db.onRemoteChange((ids) => {
     let recovered: string | undefined;
     let deleted = false;
+    let excluded = false;
     void app
         .serializePersistence(async () => {
             const previous = app.current();
             await app.load();
+            await refreshGitHubSessions(ids);
+            if (previous?.githubFile && !app.node(previous.id)) {
+                const root = app.node(previous.githubFile.root);
+                excluded = githubExclusion(root?.githubExcludes)(previous.githubFile.path);
+            }
+            if (previous?.githubFile || app.current()?.githubFile) viewer.refreshConnection();
             if (
-                previous?.connection?.kind === 'sync' &&
+                (previous?.connection?.kind === 'sync' || previous?.githubFile) &&
                 !app.node(previous.id) &&
                 !app.state.currentId &&
-                ids.includes(previous.id)
+                (excluded || ids.includes(previous.id))
             ) {
-                if (!viewer.canPublishConnection() || viewer.isEditing()) {
+                if (!viewer.canPublishConnection() || (excluded ? !viewer.canApplyConnection() : viewer.isEditing())) {
                     // Another tab cannot see this tab's editor draft. Keep it separately rather than
                     // letting the tree refresh close the document or recreate its remote identity.
                     const text = viewer.connectionDraft()?.text ?? viewer.currentText();
@@ -310,7 +357,11 @@ db.onRemoteChange((ids) => {
         .then(async () => {
             if (recovered && app.state.currentId === recovered) {
                 await app.openDoc(recovered);
-                viewer.toast('Sync deleted this content. Your draft is saved under Recovered Sync copies.');
+                viewer.toast(
+                    excluded
+                        ? 'Another tab excluded this file. Your draft is saved under Recovered Sync copies.'
+                        : 'Sync deleted this content. Your draft is saved under Recovered Sync copies.',
+                );
             } else if (deleted && !app.state.currentId) app.closeDoc();
         })
         .catch((error) => viewer.toast(`Could not refresh this library: ${error.message}. Local edits are retained.`));

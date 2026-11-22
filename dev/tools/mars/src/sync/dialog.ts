@@ -2,7 +2,7 @@
 // with the chosen action. It owns focus, the busy state, and an abort signal for the requests of the flow.
 // `FlowScreen.html` reaches `innerHTML` as given. The caller escapes each interpolated value with `esc()`.
 import { icon } from '../ui/icons.ts';
-import { buttonClass } from '../ui/ui.ts';
+import { buttonClass, dialogCloseButton } from '../ui/ui.ts';
 import { hideTooltip } from '../ui/feedback.ts';
 
 /**
@@ -33,8 +33,8 @@ export interface FlowScreen {
 }
 /**
  * A modal dialog. The constructor adds it to the page, and the first `screen` call opens it. A close aborts `signal`,
- * resolves the pending screen with `close`, and removes the element. Escape goes back when the Back button is
- * available. Otherwise it closes. A closed instance cannot open again.
+ * resolves the pending screen with `close`, and removes the element. Escape closes the dialog;
+ * the Back button navigates within it. A closed instance cannot open again.
  */
 export class SyncDialog {
     readonly element = document.createElement('dialog');
@@ -60,34 +60,27 @@ export class SyncDialog {
         this.heading.id = `${id}Title`;
         this.heading.tabIndex = -1;
         this.element.setAttribute('aria-labelledby', this.heading.id);
-        const header = document.createElement('header'),
-            close = document.createElement('button');
+        const header = document.createElement('header');
         header.className = 'su-dialog-header';
-        this.back.type = close.type = 'button';
+        this.back.type = 'button';
         this.back.className = `${buttonClass({ empty: true, text: true, flush: 'left' })} sync-back`;
         this.back.innerHTML = `${icon('chevronRight')}<span>Back</span>`;
         this.back.setAttribute('aria-label', 'Back');
         this.back.onclick = () => this.resolve('back');
-        close.className = 'su-dialog-close';
-        close.innerHTML = icon('cross');
-        close.setAttribute('aria-label', 'Close');
-        close.onclick = () => this.close();
         this.body.className = 'su-dialog-body';
         this.foot.className = 'mars-modal-foot';
         this.notice.className = 'sync-notice';
         this.notice.setAttribute('role', 'status');
-        header.append(this.heading, close);
+        header.append(
+            this.heading,
+            dialogCloseButton(() => this.close()),
+        );
         this.element.append(header, this.body, this.notice, this.foot);
         document.body.append(this.element);
         this.element.addEventListener('close', () => {
             this.controller.abort();
             this.resolve('close');
             this.element.remove();
-        });
-        this.element.addEventListener('cancel', (event) => {
-            event.preventDefault();
-            if (!this.back.hidden && !this.back.disabled) this.resolve('back');
-            else this.close();
         });
         this.foot.addEventListener('pointerdown', () => {
             this.footerGesture = true;

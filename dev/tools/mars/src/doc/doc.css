@@ -193,6 +193,14 @@ body.su-view-edit #editorMount { display: block; }
 .preview-article > .su-diff-del::after { top: -9px; }
 .preview-article > .su-diff-del-end::after { bottom: -9px; }
 .preview-article > .su-diff-focus { outline: 1px dashed var(--text-muted); outline-offset: 6px; border-radius: 2px; }
+#previewScroll:has(.su-diff-before) { padding-inline-end: var(--su-before-gutter, 32px); }
+.preview-article .su-diff-before { position: absolute; inset-inline-start: calc(100% + 3px); inset-block-start: 0; width: 26px; height: 26px; }
+.preview-article .su-diff-del-end:not(.su-diff-edit) > .su-diff-before { inset-block-start: auto; inset-block-end: 0; }
+.preview-article .su-diff-before[aria-expanded="true"] { background: var(--surface-hover); color: var(--text); }
+@media (pointer: coarse) {
+    #previewScroll:has(.su-diff-before) { --su-before-gutter: 48px; }
+    .preview-article .su-diff-before { width: 40px; height: 40px; }
+}
 ::highlight(su-diff-ins) { background-color: var(--diff-ins); }
 .preview-article > .su-reveal { animation: su-reveal 1.6s ease; border-radius: 4px; }
 @keyframes su-reveal { 0%, 40% { background: var(--brand-select); } 100% { background: transparent; } }

@@ -25,7 +25,9 @@ An agent reads and writes threads with ordinary file edits.
 
 On the development host, **New → Import from GitHub** can open a repository branch as a folder.
 If the user needs private access or wants MARS to commit edits, ask them to enter a repository-scoped fine-grained token directly in the app. Do not ask for the token in chat or put it in a URL.
-Choose a test branch. Short snapshots use Secutils. A Live copy uses Secutils and stays independent of GitHub.
+Choose a test branch. GitHub documents support Full and Short snapshot links, but not Live links. Short snapshots use Secutils.
+Select a **GitHub credential** in **Import from GitHub** or **Sync**. Use the key button (**Manage credentials**) next to the dropdown to add, replace, or remove tokens. Removing a credential pauses Sync and keeps local edits. The write setting is separate for each folder.
+Use **Exclude from Sync** in a file or folder menu to hide its GitHub path on this device. Use **Sync → Manage exclusions** on the repository folder to edit or remove `.gitignore` rules. Exclusions keep cached edits and do not modify GitHub.
 
 Pick the section for the task:
 

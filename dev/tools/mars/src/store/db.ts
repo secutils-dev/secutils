@@ -16,6 +16,8 @@
 // - A node write in the library broadcasts the ids of the changed nodes to other tabs.
 import { descendants, textBytes, type TreeNode } from '../tree/model.ts';
 import { openThreads } from '../share/merge.ts';
+import type { GitHubConflict } from '../github/merge.ts';
+import { LOCAL_STRUCTURE_CHANGED, type StructuralJob } from '../github/structure.ts';
 import { MemoryStore } from './memory.ts';
 import { syncDebug, type ConflictReason } from '../sync/debug.ts';
 import type { SessionRecord } from '../sync/session.ts';
@@ -158,8 +160,10 @@ export const onRemoteChange = (fn: (ids: string[]) => void) => {
     remoteListeners.add(fn);
 };
 /** Observes side-record updates without reloading the document tree. Temporary sessions never broadcast. */
-export const onSideChange = (fn: (kind: Side, ids: string[]) => void) => {
+export const onSideChange = (fn: (kind: Side, ids: string[]) => void, signal?: AbortSignal) => {
+    if (signal?.aborted) return;
     sideListeners.add(fn);
+    signal?.addEventListener('abort', () => sideListeners.delete(fn), { once: true });
 };
 const announce = (ids: string[]) => {
     if (!temporary) {
@@ -177,7 +181,8 @@ export interface IncomingSnapshot {
 // Shared by ordinary incoming writes and connected replica commits, inside their write transaction.
 function checkIncoming(expected: IncomingSnapshot, stored?: TreeNode, text?: string, opened?: string) {
     if (!stored) throw new ReplicaConflict('missing-node');
-    if (text !== expected.text || opened !== expected.opened) throw new ReplicaConflict('text-changed');
+    if ((stored.kind === 'doc' && text !== expected.text) || opened !== expected.opened)
+        throw new ReplicaConflict('text-changed');
     if (JSON.stringify(stored) !== JSON.stringify(expected.node)) throw new ReplicaConflict('metadata-changed');
 }
 
@@ -186,6 +191,12 @@ export const allNodes = () =>
     temporary
         ? Promise.resolve(memory.all<TreeNode>('nodes'))
         : tx(['nodes'], 'readonly', (t) => req(t.objectStore('nodes').getAll() as IDBRequest<TreeNode[]>));
+
+/** Reads the latest library node, including connection changes from another tab. */
+export const getNode = (id: string) =>
+    temporary
+        ? Promise.resolve(memory.get<TreeNode>('nodes', id))
+        : tx(['nodes'], 'readonly', (t) => req<TreeNode | undefined>(t.objectStore('nodes').get(id)));
 /**
  * Marks every stored node of one connection (collection and member) as `ended`, in one
  * transaction. `ended` is the only phase that survives a reload. It sends no broadcast.
@@ -241,6 +252,29 @@ export async function getDocument(id: string): Promise<{ node: TreeNode; text: s
           });
 }
 
+/** Read GitHub working text and its baselines together without opening a transaction per file. */
+export async function readGitHubWorkingCopies(ids: string[]) {
+    if (temporary || !ids.length)
+        return new Map<string, IncomingSnapshot & { base?: string; conflict?: GitHubConflict | null }>();
+    return tx(['nodes', 'docs'], 'readonly', async (t) => {
+        const docs = t.objectStore('docs');
+        const nodes = t.objectStore('nodes');
+        const rows = await Promise.all(
+            ids.map(async (id) => {
+                const [node, text, opened, base, conflict] = await Promise.all([
+                    req<TreeNode | undefined>(nodes.get(id)),
+                    req<string | undefined>(docs.get(id)),
+                    req<string | undefined>(docs.get(sideKey('opened', id))),
+                    req<string | undefined>(docs.get(sideKey('github-base', id))),
+                    req<GitHubConflict | null | undefined>(docs.get(sideKey('github-conflict', id))),
+                ]);
+                return [id, node?.githubFile && { node, text: text ?? '', opened, base, conflict }] as const;
+            }),
+        );
+        return new Map(rows.flatMap(([id, row]) => (row ? [[id, row] as const] : [])));
+    });
+}
+
 /**
  * Inserts or replaces nodes and document texts (`texts`: id -> text) in one transaction, then
  * broadcasts the node ids. A node and its text therefore never disagree after a crash.
@@ -256,13 +290,47 @@ export async function putNodes(
         detach?: { collection: string; member: string };
         // Prepared incoming copies use compare-and-set, including the source baseline.
         expected?: IncomingSnapshot[];
+        // A remote GitHub pass must not recreate or modify a detached folder.
+        expectedGitHubRoot?: string;
+        expectedGitHubJobs?: string[];
+        expectedGitHubExcludes?: string;
+        allowGitHubInserts?: boolean;
+        replaceGitHubConnection?: boolean;
+        // Tree reconciliation must remove obsolete rows in the same transaction as their replacements.
+        removeGitHubNodes?: string[];
+        recoverGitHubNodes?: string[];
         // Side records that must commit with the node and body (opened source and review baseline).
         extras?: Record<string, unknown>;
     } = {},
 ) {
     const checked = (node: TreeNode, stored?: TreeNode) => {
-        if (stored?.githubFile && !options.expected?.some((before) => before.node.id === node.id))
-            node = { ...node, githubFile: stored.githubFile };
+        if (!stored && node.githubFile && !options.allowGitHubInserts) throw new ReplicaConflict('missing-node');
+        if (stored?.githubChange) node = { ...node, name: stored.name, githubChange: stored.githubChange };
+        else if (node.githubChange && stored) {
+            node = { ...node, name: stored.name };
+            delete node.githubChange;
+        }
+        if (stored?.github)
+            node = {
+                ...node,
+                github: options.replaceGitHubConnection ? node.github : stored.github,
+                githubReview: stored.githubReview,
+                githubExcludes: stored.githubExcludes,
+            };
+        if (
+            stored?.githubFile &&
+            !options.recoverGitHubNodes?.includes(node.id) &&
+            !options.expected?.some((before) => before.node.id === node.id)
+        )
+            node = { ...node, name: stored.name, githubFile: stored.githubFile };
+        if (stored && ((node.github && !stored.github) || (node.githubFile && !stored.githubFile))) {
+            node = { ...node };
+            if (!stored.github) {
+                delete node.github;
+                delete node.githubExcludes;
+            }
+            if (!stored.githubFile) delete node.githubFile;
+        }
         const a = stored?.connection,
             b = node.connection;
         const previous = a ?? stored?.syncPending;
@@ -307,6 +375,26 @@ export async function putNodes(
         return;
     }
     await tx(['nodes', 'docs'], 'readwrite', async (t) => {
+        if (options.expectedGitHubRoot) {
+            const root = await req<TreeNode | undefined>(t.objectStore('nodes').get(options.expectedGitHubRoot));
+            if (!root?.github) throw new Error('This folder is no longer synced with GitHub.');
+            if (
+                options.expectedGitHubExcludes !== undefined &&
+                (root.githubExcludes ?? '') !== options.expectedGitHubExcludes
+            )
+                throw new Error(LOCAL_STRUCTURE_CHANGED);
+            if (options.expectedGitHubJobs) {
+                const jobs =
+                    (await req<StructuralJob[] | undefined>(
+                        t.objectStore('docs').get(sideKey('github-jobs', root.id)),
+                    )) ?? [];
+                if (
+                    jobs.length !== options.expectedGitHubJobs.length ||
+                    jobs.some((job, i) => job.id !== options.expectedGitHubJobs![i])
+                )
+                    throw new Error(LOCAL_STRUCTURE_CHANGED);
+            }
+        }
         for (const expected of options.expected ?? []) {
             const [stored, text, opened] = await Promise.all([
                 req(t.objectStore('nodes').get(expected.node.id)),
@@ -338,10 +426,211 @@ export async function putNodes(
             const key = sideKey('sync-create', job.id);
             if (!(await req(t.objectStore('docs').get(key)))) t.objectStore('docs').put(job, key);
         }
+        const deletes = new Set(options.removeGitHubNodes);
+        if (deletes.size) {
+            // Retain ancestors of children created in another tab while the pull was being prepared.
+            const rows = await req<TreeNode[]>(t.objectStore('nodes').getAll());
+            const byId = new Map(rows.map((node) => [node.id, node]));
+            for (const node of rows) {
+                if (deletes.has(node.id)) continue;
+                let parent = node.parentId;
+                while (parent && deletes.delete(parent)) parent = byId.get(parent)?.parentId ?? null;
+            }
+        }
+        for (const id of deletes) {
+            t.objectStore('nodes').delete(id);
+            t.objectStore('docs').delete(id);
+            for (const kind of SIDES) t.objectStore('docs').delete(sideKey(kind, id));
+        }
+        for (const id of options.recoverGitHubNodes ?? []) {
+            t.objectStore('docs').delete(sideKey('github-base', id));
+            t.objectStore('docs').delete(sideKey('github-conflict', id));
+        }
         for (const [id, text] of Object.entries(texts)) t.objectStore('docs').put(text, id);
         for (const [key, value] of Object.entries(options.extras ?? {})) t.objectStore('docs').put(value, key);
     });
-    announce(nodes.map((n) => n.id));
+    if (nodes.length || options.removeGitHubNodes?.length)
+        announce([...nodes.map((n) => n.id), ...(options.removeGitHubNodes ?? [])]);
+}
+
+/** Update a connected folder's rules against the same snapshot as its local tree and pending jobs. */
+export async function updateGitHubExclusions(
+    id: string,
+    update: (nodes: TreeNode[], root: TreeNode, jobs: StructuralJob[]) => string,
+) {
+    if (temporary) throw new Error('Open your library to change GitHub exclusions.');
+    const changed = await tx(['nodes', 'docs'], 'readwrite', async (t) => {
+        const nodes = t.objectStore('nodes');
+        const rows = await req<TreeNode[]>(nodes.getAll());
+        const root = rows.find((node) => node.id === id);
+        if (!root?.github) throw new Error('This folder is no longer synced with GitHub.');
+        const jobs =
+            (await req<StructuralJob[] | undefined>(t.objectStore('docs').get(sideKey('github-jobs', id)))) ?? [];
+        const rules = update(rows, root, jobs);
+        if (rules === (root.githubExcludes ?? '')) return false;
+        if (rules) root.githubExcludes = rules;
+        else delete root.githubExcludes;
+        nodes.put(root);
+        return true;
+    });
+    if (changed) announce([id]);
+}
+
+/** Detach one GitHub folder in place, retaining all working text and ordinary review data. */
+export async function detachGitHubFolder(id: string) {
+    if (temporary) throw new Error('Open the library to disconnect this folder.');
+    const changed = await tx(['nodes', 'docs', 'meta'], 'readwrite', async (t) => {
+        const nodes = t.objectStore('nodes'),
+            docs = t.objectStore('docs'),
+            meta = t.objectStore('meta');
+        const root = await req<TreeNode | undefined>(nodes.get(id));
+        if (!root?.github) return [];
+        const jobs = (await req<StructuralJob[] | undefined>(docs.get(sideKey('github-jobs', id)))) ?? [];
+        const jobIds = new Set(jobs.flatMap((job) => job.ids));
+        const attached = (await req<TreeNode[]>(nodes.getAll())).filter(
+            (entry) => entry.githubFile?.root === id || jobIds.has(entry.id),
+        );
+        delete root.github;
+        delete root.githubExcludes;
+        delete root.githubReview;
+        nodes.put(root);
+        for (const entry of attached) {
+            delete entry.githubFile;
+            delete entry.githubChange;
+            nodes.put(entry);
+            docs.delete(sideKey('github-base', entry.id));
+            docs.delete(sideKey('github-conflict', entry.id));
+        }
+        docs.delete(sideKey('github-auth', id));
+        docs.delete(sideKey('github-index', id));
+        docs.delete(sideKey('github-jobs', id));
+        for (const kind of ['auth', 'public']) meta.delete(`github-poll:${id}:${kind}`);
+        return [id, ...attached.map((entry) => entry.id)];
+    });
+    if (changed.length) announce(changed);
+}
+
+/** Read or atomically update structural intents and their optimistic tree markers. */
+export async function updateGitHubJobs<T>(
+    root: string,
+    apply: (
+        jobs: StructuralJob[],
+        nodes: TreeNode[],
+    ) => {
+        value: T;
+        changed: TreeNode[];
+        remove?: string[];
+        bases?: Record<string, string>;
+        clearIndex?: boolean;
+        dropDuplicateGitHubNodes?: string[];
+        pruneGitHubFolders?: string[];
+    },
+) {
+    if (temporary) throw new Error('Open your library to change GitHub files.');
+    const result = await tx(['nodes', 'docs'], 'readwrite', async (t) => {
+        const docs = t.objectStore('docs'),
+            nodes = t.objectStore('nodes');
+        const rows = await req<TreeNode[]>(nodes.getAll());
+        const folder = rows.find((row) => row.id === root);
+        if (!folder?.github) throw new Error('This folder is no longer synced with GitHub.');
+        const jobs = (await req<StructuralJob[] | undefined>(docs.get(sideKey('github-jobs', root)))) ?? [];
+        const { value, changed, remove, bases, clearIndex, dropDuplicateGitHubNodes, pruneGitHubFolders } = apply(
+            jobs,
+            rows,
+        );
+        const deleted = new Set(remove);
+        for (const id of dropDuplicateGitHubNodes ?? []) {
+            const node = rows.find((row) => row.id === id);
+            if (!node?.githubFile) continue;
+            const [text, base, conflict] = await Promise.all([
+                req<string | undefined>(docs.get(id)),
+                req<string | undefined>(docs.get(sideKey('github-base', id))),
+                req(docs.get(sideKey('github-conflict', id))),
+            ]);
+            if (base !== undefined && base === text && !conflict) deleted.add(id);
+            else {
+                delete node.githubFile;
+                node.parentId = null;
+                node.name += ' (local edits)';
+                docs.delete(sideKey('github-base', id));
+                docs.delete(sideKey('github-conflict', id));
+                changed.push(node);
+            }
+        }
+        for (const id of [...(pruneGitHubFolders ?? [])].reverse())
+            if (!rows.some((node) => node.parentId === id && !deleted.has(node.id))) deleted.add(id);
+        folder.githubReview = jobs.length
+            ? { pending: jobs.length, blocked: jobs.filter((job) => job.blocked).length }
+            : undefined;
+        nodes.put(folder);
+        if (jobs.length) docs.put(jobs, sideKey('github-jobs', root));
+        else docs.delete(sideKey('github-jobs', root));
+        for (const node of changed) nodes.put(node);
+        for (const id of deleted) {
+            nodes.delete(id);
+            docs.delete(id);
+            for (const kind of SIDES) docs.delete(sideKey(kind, id));
+        }
+        for (const [id, text] of Object.entries(bases ?? {})) docs.put(text, sideKey('github-base', id));
+        if (clearIndex) docs.delete(sideKey('github-index', root));
+        return { value, ids: [root, ...changed.map((node) => node.id), ...deleted] };
+    });
+    announce(result.ids);
+    return result.value;
+}
+
+/** Record a confirmed structural GitHub commit without replacing newer local editor text. */
+export async function recordGitHubStructure(
+    root: string,
+    added: { node: TreeNode; text: string }[],
+    moved: { id: string; name: string; file?: NonNullable<TreeNode['githubFile']>; text?: string }[],
+    removed: { id: string; text?: string }[],
+) {
+    if (temporary) throw new Error('Open the library to change GitHub files.');
+    const ids = await tx(['nodes', 'docs'], 'readwrite', async (t) => {
+        const nodes = t.objectStore('nodes'),
+            docs = t.objectStore('docs');
+        if (!(await req<TreeNode | undefined>(nodes.get(root)))?.github)
+            throw new Error('This folder is no longer synced with GitHub.');
+        const changed: string[] = [];
+        for (const { node, text } of added) {
+            nodes.add(node);
+            docs.put(text, node.id);
+            docs.put(text, sideKey('github-base', node.id));
+            changed.push(node.id);
+        }
+        for (const { id, name, file, text } of moved) {
+            const node = await req<TreeNode | undefined>(nodes.get(id));
+            if (!node) continue;
+            node.name = name;
+            node.updatedAt = Date.now();
+            if (file) node.githubFile = file;
+            nodes.put(node);
+            if (text !== undefined) docs.put(text, sideKey('github-base', id));
+            changed.push(id);
+        }
+        for (const { id, text } of removed) {
+            const node = await req<TreeNode | undefined>(nodes.get(id));
+            if (!node) continue;
+            if (text !== undefined && ((await req<string | undefined>(docs.get(id))) ?? '') !== text) {
+                // An edit from another tab raced the delete. Preserve it outside the synced tree.
+                delete node.githubFile;
+                node.parentId = null;
+                node.name += ' (local edits)';
+                nodes.put(node);
+                docs.delete(sideKey('github-base', id));
+                docs.delete(sideKey('github-conflict', id));
+            } else {
+                nodes.delete(id);
+                docs.delete(id);
+                for (const kind of SIDES) docs.delete(sideKey(kind, id));
+            }
+            changed.push(id);
+        }
+        docs.delete(sideKey('github-index', root));
+        return changed;
+    });
+    if (ids.length) announce(ids);
 }
 
 /** Update only the GitHub baseline. A newer editor save is not replaced by the acknowledged bytes. */
@@ -390,9 +679,33 @@ export async function deleteNodes(ids: string[]) {
  * - `sync-delete`: a durable deletion job, keyed by its own UUID rather than a document ID.
  * - `sync-create`: a pending registration, keyed by the local node ID.
  */
-export type Side = 'base' | 'opened' | 'vec' | 'sync' | 'sync-delete' | 'sync-create' | 'github-base';
+export type Side =
+    | 'base'
+    | 'opened'
+    | 'vec'
+    | 'sync'
+    | 'sync-delete'
+    | 'sync-create'
+    | 'github-base'
+    | 'github-auth'
+    | 'github-credential'
+    | 'github-index'
+    | 'github-jobs'
+    | 'github-conflict';
 // Every kind. `deleteNodes` uses the list, so a new kind must be added here.
-const SIDES: Side[] = ['base', 'opened', 'vec', 'sync', 'sync-delete', 'sync-create', 'github-base'];
+const SIDES: Side[] = [
+    'base',
+    'opened',
+    'vec',
+    'sync',
+    'sync-delete',
+    'sync-create',
+    'github-base',
+    'github-conflict',
+    'github-auth',
+    'github-index',
+    'github-jobs',
+];
 // The key of a side record in the `docs` store: `<kind>:<id>`.
 const sideKey = (kind: Side, id: string) => `${kind}:${id}`;
 /** One side record, or undefined. */
@@ -402,14 +715,14 @@ export const getSide = <T = string>(kind: Side, id: string) =>
         : tx(['docs'], 'readonly', (t) =>
               req(t.objectStore('docs').get(sideKey(kind, id)) as IDBRequest<T | undefined>),
           );
-/** Inserts or replaces one side record. It sends no broadcast. */
+/** Inserts or replaces one side record. Search and credential writes notify other tabs. */
 export const putSide = async (kind: Side, id: string, value: unknown) => {
     if (temporary) memory.put('docs', sideKey(kind, id), value);
     else
         await tx(['docs'], 'readwrite', (t) => {
             t.objectStore('docs').put(value, sideKey(kind, id));
         });
-    if (!temporary && kind === 'vec') channel?.postMessage({ side: kind, ids: [id] });
+    if (!temporary && (kind === 'vec' || kind === 'github-credential')) channel?.postMessage({ side: kind, ids: [id] });
 };
 /** Deletes one side record. A missing record is not an error. */
 export const deleteSide = async (kind: Side, id: string) => {
@@ -418,6 +731,7 @@ export const deleteSide = async (kind: Side, id: string) => {
         await tx(['docs'], 'readwrite', (t) => {
             t.objectStore('docs').delete(sideKey(kind, id));
         });
+    if (!temporary && kind === 'github-credential') channel?.postMessage({ side: kind, ids: [id] });
 };
 // The key range that holds every record of one kind.
 const sideRange = (kind: Side) => IDBKeyRange.bound(`${kind}:`, `${kind}:\uffff`);

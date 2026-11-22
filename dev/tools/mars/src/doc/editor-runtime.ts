@@ -3,5 +3,6 @@
 // use. The file only re-exports what `editor.js` reads. One module graph keeps CodeMirror's
 // identity-sensitive extensions compatible.
 export { basicSetup, minimalSetup, EditorView } from 'codemirror';
+export { Decoration } from '@codemirror/view';
 export { markdown } from '@codemirror/lang-markdown';
 export { Compartment, EditorState, Transaction } from '@codemirror/state';

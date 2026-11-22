@@ -12,12 +12,15 @@ import { marked } from 'marked';
 import * as app from '../app.ts';
 import * as db from '../store/db.ts';
 import { commentKey, splitComments, type Comment, type Thread } from '../share/merge.ts';
+import { hideTooltip } from '../ui/feedback.ts';
+import { icon } from '../ui/icons.ts';
 import { $ } from '../ui/ui.ts';
 import { diffBlocks, diffWords } from './diff.ts';
 import * as viewer from './viewer.js';
 import { tableReviewBlocks } from './table.ts';
 import { applyTableLayouts, tableMetadataHtml } from './table-layout.ts';
 import { safeRawHtml, safeRenderedHtml } from './preview-safety.ts';
+import { openSourceReview } from './review-workspace.ts';
 
 /** Leading YAML frontmatter. The preview does not render it, so the baseline drops it too. */
 const FRONTMATTER_RE = /^---\r?\n[\s\S]*?\r?\n---\r?\n/;
@@ -39,6 +42,7 @@ interface Base {
     raws: string[];
     texts: Map<number, string>;
     comments: Set<string>;
+    source: string;
 }
 /**
  * One marked change in the preview. `el` is the block that carries the mark, `old` lists the
@@ -62,6 +66,7 @@ let sinceOpened: string | null = null;
 let changes: Change[] = [];
 // Index into `changes` of the change that Previous and Next selected, or -1.
 let focused = -1;
+let beforeTrigger: HTMLButtonElement | undefined;
 // Comments that are absent from the baseline and written by another author.
 let newCount = 0;
 // Baseline block index to the change that replaced or removed that block.
@@ -78,8 +83,7 @@ const bar = $('changesBar'),
     label = $('changesLabel'),
     before = $('diffBefore');
 const prevBtn = $<HTMLButtonElement>('changesPrev'),
-    nextBtn = $<HTMLButtonElement>('changesNext'),
-    beforeBtn = $<HTMLButtonElement>('changesBefore');
+    nextBtn = $<HTMLButtonElement>('changesNext');
 const doneBtn = $('changesDone'),
     closeBtn = $('changesClose'),
     swapBtn = $('changesSwap'),
@@ -89,7 +93,14 @@ const doneBtn = $('changesDone'),
 function parseBase(id: string, mode: Mode, text: string): Base {
     const { body, threads } = splitComments(text.replace(/\r\n?/g, '\n'));
     const raws = tableReviewBlocks(body.replace(FRONTMATTER_RE, ''));
-    return { id, mode, raws, texts: new Map(), comments: new Set(threads.flatMap((t) => t.comments.map(commentKey))) };
+    return {
+        id,
+        mode,
+        raws,
+        texts: new Map(),
+        comments: new Set(threads.flatMap((t) => t.comments.map(commentKey))),
+        source: text,
+    };
 }
 
 // The baseline is document text from another person, like the preview. Render it with the same
@@ -122,6 +133,8 @@ const isNew = (c: Comment) =>
     !!base && !base.comments.has(commentKey(c)) && author(c.author) !== author(viewer.currentAuthor());
 
 function clearMarks() {
+    hideBefore();
+    for (const button of $('previewArticle').querySelectorAll('.su-diff-before')) button.remove();
     for (const el of document.querySelectorAll<HTMLElement>(MARKS.map((c) => `#previewArticle .${c}`).join(',')))
         el.classList.remove(...MARKS);
     highlight?.clear();
@@ -204,6 +217,26 @@ function apply(fromRender = false) {
     }
     if (focused >= changes.length) focused = changes.length - 1;
     changes[focused]?.el.classList.add('su-diff-focus');
+    const previous = new Map<HTMLElement, number[]>();
+    for (const { el, old } of changes) {
+        if (!old.length) continue;
+        const blocks = previous.get(el);
+        if (blocks) blocks.push(...old);
+        else previous.set(el, [...old]);
+    }
+    for (const [el, old] of previous) {
+        const trigger = document.createElement('button');
+        trigger.type = 'button';
+        trigger.className = 'icon-btn su-diff-before';
+        trigger.dataset.tooltip = 'Show before';
+        trigger.setAttribute('aria-label', 'Show before');
+        trigger.setAttribute('aria-controls', before.id);
+        trigger.setAttribute('aria-haspopup', 'dialog');
+        trigger.setAttribute('aria-expanded', 'false');
+        trigger.innerHTML = icon('eye');
+        trigger.addEventListener('click', () => showBefore(trigger, old));
+        el.append(trigger);
+    }
     renderBar();
 }
 
@@ -255,18 +288,19 @@ function renderBar() {
         return;
     }
     const c = changes[focused];
-    const count = `${changes.length} change${changes.length === 1 ? '' : 's'}`;
+    const opened = base!.mode === 'opened';
+    const count = `${changes.length}${opened ? '' : ' new'} change${changes.length === 1 ? '' : 's'}`;
     const replies = newCount ? ` · ${newCount} new repl${newCount === 1 ? 'y' : 'ies'}` : '';
     label.textContent = c
         ? `${KIND[c.kind]} · ${focused + 1} of ${changes.length}${replies}`
-        : `${changes.length ? count : 'No text changes'} ${since()}${replies}`;
+        : `${changes.length ? count : 'No text changes'}${opened ? ' since opened' : ''}${replies}`;
     prevBtn.disabled = nextBtn.disabled = !changes.length;
-    beforeBtn.hidden = !c || c.kind === 'added';
     doneBtn.hidden = base!.mode !== 'review';
     closeBtn.hidden = base!.mode !== 'opened';
     swapBtn.hidden = !(cur?.pending && cur.opened);
-    swapBtn.title = base!.mode === 'review' ? 'Compare with the text as opened' : 'Compare with your last review';
-    swapBtn.setAttribute('aria-label', swapBtn.title);
+    const swapLabel = opened ? 'Compare with your last review' : 'Compare with the text as opened';
+    swapBtn.dataset.tooltip = swapLabel;
+    swapBtn.setAttribute('aria-label', swapLabel);
 }
 
 // Shows or hides "changes since opened" for the open document.
@@ -289,26 +323,28 @@ function go(step: number) {
 
 function hideBefore() {
     if (before.matches(':popover-open')) before.hidePopover();
-    beforeBtn.setAttribute('aria-expanded', 'false');
+    beforeTrigger?.setAttribute('aria-expanded', 'false');
+    beforeTrigger = undefined;
 }
 
-/** Toggles the popover with the baseline blocks of the focused change, next to its block. */
-function showBefore() {
-    const c = changes[focused];
-    if (!c || !base) return;
-    if (before.matches(':popover-open')) {
-        hideBefore();
-        return;
-    }
-    // `oldHtml` returns sanitized output, and the heading is a fixed string.
-    before.innerHTML = `<div class="diff-before-head">${base.mode === 'opened' ? 'As opened' : 'Before your last review'}</div><div class="preview-article">${c.old.map(oldHtml).join('')}</div>`;
+/** Show the baseline next to the block that opened it, independent of review navigation. */
+function showBefore(trigger: HTMLButtonElement, old: number[]) {
+    if (!base || !viewer.inSync()) return;
+    hideTooltip();
+    const closing = before.matches(':popover-open') && beforeTrigger === trigger;
+    hideBefore();
+    if (closing) return;
+    $('diffBeforeTitle').textContent = base.mode === 'opened' ? 'As opened' : 'Before your last review';
+    $('diffBeforeBody').innerHTML = old.map(oldHtml).join('');
     applyTableLayouts(before, true);
-    before.showPopover();
-    const r = c.el.getBoundingClientRect(),
+    beforeTrigger = trigger;
+    before.showPopover({ source: trigger });
+    const r = trigger.getBoundingClientRect(),
         { width, height } = before.getBoundingClientRect();
-    before.style.left = `${Math.round(Math.min(Math.max(8, r.left), innerWidth - width - 8))}px`;
+    before.style.left = `${Math.round(Math.max(8, Math.min(r.right - width, innerWidth - width - 8)))}px`;
     before.style.top = `${Math.round(r.bottom + 6 + height > innerHeight - 8 ? Math.max(8, r.top - height - 6) : r.bottom + 6)}px`;
-    beforeBtn.setAttribute('aria-expanded', 'true');
+    trigger.setAttribute('aria-expanded', 'true');
+    before.querySelector('button')?.focus({ preventScroll: true });
 }
 
 /**
@@ -318,6 +354,7 @@ function showBefore() {
 async function markReviewed() {
     const id = app.state.currentId;
     if (!id || base?.mode !== 'review') return;
+    hideTooltip();
     const requotes = [...followed]
         .filter(([, c]) => c?.el.isConnected)
         .map(([tid, c]): [string, Range] => [tid, followRange(c!)]);
@@ -328,7 +365,17 @@ async function markReviewed() {
 
 prevBtn.addEventListener('click', () => go(-1));
 nextBtn.addEventListener('click', () => go(1));
-beforeBtn.addEventListener('click', showBefore);
+$('changesCompare').addEventListener('click', () => {
+    if (base && base.id === app.state.currentId) {
+        hideTooltip();
+        openSourceReview(
+            app.current()?.name ?? 'Document',
+            base.mode === 'opened' ? 'As opened' : 'Before your last review',
+            base.source,
+            viewer.currentText(),
+        );
+    }
+});
 doneBtn.addEventListener('click', markReviewed);
 closeBtn.addEventListener('click', () => setSinceOpened(false));
 swapBtn.addEventListener('click', () => setSinceOpened(base?.mode !== 'opened'));
@@ -337,7 +384,7 @@ openedBtn.addEventListener('click', () => {
     setSinceOpened(sinceOpened !== app.state.currentId);
 });
 before.addEventListener('toggle', (e) => {
-    if ((e as ToggleEvent).newState === 'closed') beforeBtn.setAttribute('aria-expanded', 'false');
+    if ((e as ToggleEvent).newState === 'closed' && !before.matches(':popover-open')) hideBefore();
 });
 
 viewer.onRendered(() => apply(true));

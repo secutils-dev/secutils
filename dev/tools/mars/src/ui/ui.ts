@@ -9,6 +9,17 @@ import { hydrateIcons } from '../../../shared/icons.js';
 
 /** The shell element with this id. The id must exist: the result is not checked for null. */
 export const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
+
+/** Create the standard MARS dialog dismissal button with a decorative EUI cross. */
+export function dialogCloseButton(close: () => void) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'su-dialog-close';
+    button.setAttribute('aria-label', 'Close');
+    button.innerHTML = icon('cross');
+    button.addEventListener('click', close);
+    return button;
+}
 /**
  * Escapes `&`, `<`, `>`, and `"` for HTML text and for a double-quoted attribute value.
  * It does not escape `'`, so it is not safe inside a single-quoted attribute.
@@ -176,7 +187,7 @@ export function modal(opts: {
             autocomplete: 'off',
             spellcheck: false,
         });
-        // Implicit submission would pick the first (Cancel) button.
+        // Implicit submission would pick the header close button.
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.isComposing) {
                 e.preventDefault();

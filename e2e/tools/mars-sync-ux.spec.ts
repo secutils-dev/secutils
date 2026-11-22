@@ -588,8 +588,6 @@ test.describe('sync user experience', () => {
     await page.getByRole('button', { name: 'Sync link', exact: true }).click();
     await expect(page.getByRole('textbox', { name: 'Sync link', exact: true })).toBeVisible();
     await page.keyboard.press('Escape');
-    await expect(page.getByRole('dialog', { name: /^(Sync|Connections)$/, exact: true })).toBeVisible();
-    await page.keyboard.press('Escape');
     await expect(page.locator('#syncDialog')).toHaveCount(0);
     await expect(page.locator('#previewArticle')).toContainText('My document.');
   });

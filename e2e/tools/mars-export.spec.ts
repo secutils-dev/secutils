@@ -175,8 +175,14 @@ H<sub>2</sub>O keeps <kbd>inline</kbd> tags.
     expect(dimensions.height).toBeCloseTo((215.9 * 96) / 25.4, 0);
     await readerDialog.getByRole('button', { name: 'Print / Save PDF', exact: true }).click();
     await expect(pages.locator('html')).toHaveAttribute('data-print-requested', 'yes');
-    await readerDialog.getByRole('button', { name: 'Close', exact: true }).click();
+    const close = readerDialog.locator('header').getByRole('button', { name: 'Close', exact: true });
+    await expect(close.locator('svg[aria-hidden="true"]')).toBeVisible();
+    await close.press('Escape');
     await expect(readerDialog).toHaveCount(0);
+    await expect(dlg(page)).toBeVisible();
+    await expect(dlg(page).locator('footer').getByRole('button', { name: 'Close', exact: true })).toHaveCount(0);
+    await dlg(page).locator('header').getByRole('button', { name: 'Close export', exact: true }).click();
+    await expect(dlg(page)).toBeHidden();
   });
 
   test('copies prepared HTML, commits block edits, and stays visible after document fullscreen', async ({ page }) => {

@@ -26,6 +26,56 @@ function editorLibrary() {
     return editorModule;
 }
 
+/** Create a standalone merge pane without modifying the main document editor or its hooks. */
+export async function createMergeEditor(parent, doc, { label, readOnly, onChange, ranges = [] }) {
+    const cm = await editorLibrary();
+    const decorations = new cm.Compartment();
+    const highlights = (ranges) =>
+        cm.EditorView.decorations.of(
+            cm.Decoration.set(
+                ranges.flatMap(({ from, to, active }) => {
+                    if (from === to) return [];
+                    return [
+                        cm.Decoration.mark({ class: `mars-merge-highlight${active ? ' is-active' : ''}` }).range(
+                            from,
+                            to,
+                        ),
+                    ];
+                }),
+                true,
+            ),
+        );
+    const view = new cm.EditorView({
+        doc,
+        parent,
+        extensions: [
+            cm.basicSetup,
+            cm.markdown(),
+            cm.EditorState.readOnly.of(readOnly),
+            cm.EditorView.editable.of(!readOnly),
+            cm.EditorView.lineWrapping,
+            cm.EditorView.contentAttributes.of({
+                'aria-label': label,
+                'aria-readonly': String(readOnly),
+                role: 'textbox',
+                'aria-multiline': 'true',
+            }),
+            decorations.of(highlights(ranges)),
+            cm.EditorView.updateListener.of((update) => {
+                if (update.docChanged) onChange?.(update.state.doc.toString());
+            }),
+        ],
+    });
+    return {
+        getText: () => view.state.doc.toString(),
+        replace: (from, to, insert) => view.dispatch({ changes: { from, to, insert } }),
+        highlight: (ranges) => view.dispatch({ effects: decorations.reconfigure(highlights(ranges)) }),
+        reveal: (position) => view.dispatch({ effects: cm.EditorView.scrollIntoView(position, { y: 'center' }) }),
+        focus: () => view.focus(),
+        destroy: () => view.destroy(),
+    };
+}
+
 // Installs the plain textarea editor in `mount` and publishes it as `__suEditorAPI`. It serves
 // as the fallback when CodeMirror cannot load and as the editor for very large documents.
 function textareaEditor(mount, text) {
