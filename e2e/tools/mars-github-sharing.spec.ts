@@ -83,7 +83,7 @@ test('GitHub snapshot links omit parent folders by default and use concise Full 
     await page.getByRole('menuitem', { name: 'Copy link', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Copy link', exact: true });
     const subject = kind === 'document' ? 'this document' : 'this folder and its contents';
-    const parents = dialog.getByRole('checkbox', { name: 'Include parent folders', exact: true });
+    const parents = dialog.getByRole('checkbox', { name: 'Include folder path', exact: true });
     await expect(parents).not.toBeChecked();
     const viewport = page.viewportSize()!;
     for (const width of [1280, 320]) {

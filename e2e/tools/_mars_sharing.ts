@@ -36,7 +36,7 @@ export async function configureCopyLink(
     await dialog.getByRole('radio', { name: options.format === 'full' ? 'Full' : 'Short', exact: true }).check();
     if (options.mode !== 'live' && options.includeParentFolders !== undefined)
       await dialog
-        .getByRole('checkbox', { name: 'Include parent folders', exact: true })
+        .getByRole('checkbox', { name: 'Include folder path', exact: true })
         .setChecked(options.includeParentFolders);
     if (options.mode === 'live')
       await dialog.getByRole('radio', { name: `Can ${options.permission ?? 'view'}`, exact: true }).check();

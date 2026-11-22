@@ -749,7 +749,7 @@ test.describe('source import', () => {
         await expect(
           page
             .getByRole('dialog', { name: 'Copy link', exact: true })
-            .getByRole('checkbox', { name: 'Include parent folders', exact: true }),
+            .getByRole('checkbox', { name: 'Include folder path', exact: true }),
         ).not.toBeChecked();
         const reopenedPath = new URLSearchParams(new URL(reopened).hash.slice(1)).get('p')!;
         expect(JSON.parse(inflateRawSync(Buffer.from(reopenedPath, 'base64url').subarray(4)).toString())).toEqual([]);
@@ -837,7 +837,7 @@ test.describe('source import', () => {
         await page.getByRole('menuitem', { name: 'Copy link', exact: true }).click();
         const dialog = page.getByRole('dialog', { name: 'Copy link', exact: true });
         await expect(dialog.getByRole('radio', { name: 'Live', exact: true })).toHaveCount(0);
-        await expect(dialog.getByRole('checkbox', { name: 'Include parent folders', exact: true })).not.toBeChecked();
+        await expect(dialog.getByRole('checkbox', { name: 'Include folder path', exact: true })).not.toBeChecked();
         const link = await configureCopyLink(page, { format, includeParentFolders });
         const recipientContext = await browser.newContext({ baseURL: MARS_BASE_URL });
         try {

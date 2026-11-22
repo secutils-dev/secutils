@@ -112,7 +112,7 @@ GitHub controls access and retention. Short snapshots use Secutils when selected
 
 Folders support snapshot links only. Their Copy link dialog omits the Live option.
 A link also carries the reading width and the table column widths.
-Snapshots omit parent-folder names by default. **Include parent folders** adds the complete parent path for Full and Short links.
+Snapshots omit parent-folder names by default. **Include folder path** adds the complete parent path for Full and Short links.
 The checkbox starts unchecked each time **Copy link** opens. Other snapshot copies also omit parent folders.
 A document snapshot keeps its saved name, without sibling documents. A folder snapshot keeps the selected folder and its nested contents.
 Recipients get the selection under their default folder, or **Shared with me**, with parent folders only when included.

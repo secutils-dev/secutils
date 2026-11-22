@@ -429,7 +429,7 @@ test.describe('sync user experience sharing', () => {
     await expect(dialog).not.toContainText(/encrypt|decryption|credentials/i);
     await expect(dialog.getByRole('radio', { name: 'Snapshot', exact: true })).toBeChecked();
     await expect(dialog.getByRole('radio', { name: 'Full', exact: true })).toBeChecked();
-    const parents = dialog.getByRole('checkbox', { name: 'Include parent folders', exact: true });
+    const parents = dialog.getByRole('checkbox', { name: 'Include folder path', exact: true });
     await expect(parents).toBeEnabled();
     await expect(parents).not.toBeChecked();
     await expect(dialog.locator('#copyModeHelp')).toHaveText(
@@ -492,7 +492,7 @@ test.describe('sync user experience sharing', () => {
     await links.getByRole('button', { name: 'Copy link', exact: true }).click();
     await expect(dialog).toBeVisible();
     await dialog.getByRole('radio', { name: 'Snapshot', exact: true }).check();
-    await expect(dialog.getByRole('checkbox', { name: 'Include parent folders', exact: true })).not.toBeChecked();
+    await expect(dialog.getByRole('checkbox', { name: 'Include folder path', exact: true })).not.toBeChecked();
     await dialog.getByRole('button', { name: 'Live links', exact: true }).click();
     await expect(links).toHaveCount(1);
     await expect(page.locator('#copyLinkDialog')).toHaveCount(0);

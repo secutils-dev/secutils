@@ -88,7 +88,7 @@ Read each guide whose trigger matches the change.
 
 - Full links are `#name=&md=`, plus `&o=<originId>` and optional `&w=<width>`. A bare `#<state>` still opens as a legacy link.
   New document snapshots add `&p=<state of the folder-name array>` and keep the exact saved document label.
-  Parent folders are off by default in every snapshot copy. **Include parent folders** starts unchecked in **Copy link**.
+  Parent folders are off by default in every snapshot copy. **Include folder path** starts unchecked in **Copy link**.
   Single-document bundles use `docs[0].path`: empty by default, or the complete parent path when selected, without sibling documents.
   Folder bundles always keep the selected folder and descendants. Their optional `path` adds its parent folders only when selected.
   New recipients recreate it under their incoming folder. Known copies keep their own placement and labels.

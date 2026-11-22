@@ -142,7 +142,7 @@ so the URL reveals nothing.
   MARS bundle documents can include `readingWidth` (`full`, or an integer from 320 to 2400).
   Full document links carry this value as `w` in the fragment. An explicit `w` also supplies layout for legacy short links.
   Invalid or absent values retain the recipient's preference. The state encoding and responder script remain unchanged.
-  MARS document snapshots use an empty `path` by default. **Include parent folders** adds saved parent-folder names.
+  MARS document snapshots use an empty `path` by default. **Include folder path** adds saved parent-folder names.
   Full links encode that array as `p` in the fragment. Its presence also preserves the exact saved document label.
   Legacy MARS links without it retain their existing name inference.
   Folder snapshots keep the selected folder and descendants. An optional bundle-level `path` carries opted-in parent-folder names.
