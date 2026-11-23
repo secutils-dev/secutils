@@ -16,6 +16,7 @@ on:
       - 'e2e/mars-test-scopes.ts'
       - 'e2e/tools/_mars_test.ts'
       - 'e2e/tools/registry.ts'
+      - '.github/workflows/actions.lock'
       - '.github/workflows/mars.yml'
   pull_request:
     paths:
@@ -27,6 +28,7 @@ on:
       - 'e2e/mars-test-scopes.ts'
       - 'e2e/tools/_mars_test.ts'
       - 'e2e/tools/registry.ts'
+      - '.github/workflows/actions.lock'
       - '.github/workflows/mars.yml'
 
 jobs:
