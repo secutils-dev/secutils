@@ -54,6 +54,23 @@ Update consumers in stages 3, 4, 8, and 11 before completion.
 Run the standalone suite first after the coordinated bump.
 Its codegen test catches boilerplate changes that affect the Web UI transformer.
 
+## GitHub Actions
+
+When you add or remove a workflow or change an action reference (`uses:`), regenerate the lockfile.
+Use the extension install command in `.github/workflows/verify-lockfile.yml` for the pinned version.
+Run these commands from the repository root:
+
+```bash
+gh actions-lock
+gh actions-lock --verify
+```
+
+Include the generated `.github/workflows/actions.lock` with the workflow changes.
+Do not edit the lockfile by hand.
+
+Dependabot regenerates the lockfile for its action updates.
+Review the resolved commits in every lockfile diff, including Dependabot pull requests.
+
 ## Rust
 
 - After a `deno_core` bump, review the `can_access_deno_apis` snapshot against the changed API surface.

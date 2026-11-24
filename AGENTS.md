@@ -21,6 +21,7 @@ Read each applicable guide before changes to its surface. A task can require sev
 | Add entity lists/grids, paginate them, or change search, tags, or sorting                            | [dev/agent-guides/pagination.md](dev/agent-guides/pagination.md)                   |
 | Measure JS runtime performance, change benchmark scenarios/history, or change Web UI bundle tracking | [dev/agent-guides/performance.md](dev/agent-guides/performance.md)                 |
 | Change Docusaurus, rendered Markdown output, or docs Nginx MIME handling                             | [dev/agent-guides/docs-output.md](dev/agent-guides/docs-output.md)                 |
+| GitHub Actions workflow additions, removals, or changes to action references                         | [Dependency upgrades: GitHub Actions](dev/agent-guides/dependency-upgrades.md#github-actions) |
 
 ## Commands and verification
 
