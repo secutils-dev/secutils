@@ -579,60 +579,6 @@ export async function updateGitHubJobs<T>(
     return result.value;
 }
 
-/** Record a confirmed structural GitHub commit without replacing newer local editor text. */
-export async function recordGitHubStructure(
-    root: string,
-    added: { node: TreeNode; text: string }[],
-    moved: { id: string; name: string; file?: NonNullable<TreeNode['githubFile']>; text?: string }[],
-    removed: { id: string; text?: string }[],
-) {
-    if (temporary) throw new Error('Open the library to change GitHub files.');
-    const ids = await tx(['nodes', 'docs'], 'readwrite', async (t) => {
-        const nodes = t.objectStore('nodes'),
-            docs = t.objectStore('docs');
-        if (!(await req<TreeNode | undefined>(nodes.get(root)))?.github)
-            throw new Error('This folder is no longer synced with GitHub.');
-        const changed: string[] = [];
-        for (const { node, text } of added) {
-            nodes.add(node);
-            docs.put(text, node.id);
-            docs.put(text, sideKey('github-base', node.id));
-            changed.push(node.id);
-        }
-        for (const { id, name, file, text } of moved) {
-            const node = await req<TreeNode | undefined>(nodes.get(id));
-            if (!node) continue;
-            node.name = name;
-            node.updatedAt = Date.now();
-            if (file) node.githubFile = file;
-            nodes.put(node);
-            if (text !== undefined) docs.put(text, sideKey('github-base', id));
-            changed.push(id);
-        }
-        for (const { id, text } of removed) {
-            const node = await req<TreeNode | undefined>(nodes.get(id));
-            if (!node) continue;
-            if (text !== undefined && ((await req<string | undefined>(docs.get(id))) ?? '') !== text) {
-                // An edit from another tab raced the delete. Preserve it outside the synced tree.
-                delete node.githubFile;
-                node.parentId = null;
-                node.name += ' (local edits)';
-                nodes.put(node);
-                docs.delete(sideKey('github-base', id));
-                docs.delete(sideKey('github-conflict', id));
-            } else {
-                nodes.delete(id);
-                docs.delete(id);
-                for (const kind of SIDES) docs.delete(sideKey(kind, id));
-            }
-            changed.push(id);
-        }
-        docs.delete(sideKey('github-index', root));
-        return changed;
-    });
-    if (ids.length) announce(ids);
-}
-
 /** Update only the GitHub baseline. A newer editor save is not replaced by the acknowledged bytes. */
 export async function acknowledgeGitHubBlob(id: string, previousSha: string, sha: string, text: string) {
     if (temporary) return;

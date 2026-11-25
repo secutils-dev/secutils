@@ -13,7 +13,19 @@ import { safeError } from '../debug.ts';
 import { verifyGrant } from '../crypto.ts';
 import { legacyLocalCopy, localCopyPlan, LOCAL_COPIES_FOLDER } from '../inheritance.ts';
 import { initialize } from './engine.ts';
-import { scopes, scopeKey, sessions, repository, belongs, driverFor, scoped, type Scope } from './state.ts';
+import {
+    scopes,
+    scopeKey,
+    scopeId,
+    sessions,
+    repository,
+    belongs,
+    driverFor,
+    scoped,
+    folderScheduleKey,
+    type Scope,
+} from './state.ts';
+import { noteSyncEdit, personalSchedule, readSchedule, syncEdit } from '../schedule.ts';
 
 const RETRY_MS = 2000;
 const MAX_RETRY_MS = 60000;
@@ -54,18 +66,23 @@ export const pendingCreations = (scope: Scope) =>
 /** Queues an explicitly created/moved node. Concurrent calls share the durable job and collection lock. */
 export async function created(id: string) {
     await initialize();
-    if (!(await db.getSide<CreationJob>('sync-create', id))) {
+    let job = await db.getSide<CreationJob>('sync-create', id);
+    if (!job) {
         const all = await db.allNodes(),
             node = all.find((item) => item.id === id);
         if (!node) return;
-        const job = creationIntent(all, node);
+        job = creationIntent(all, node);
         if (!job) return;
+        const prepared = job;
         await app.serializePersistence(async () => {
-            await db.putNodes([node], {}, { creations: [job] });
+            await db.putNodes([node], {}, { creations: [prepared] });
             if (app.node(id)) app.node(id)!.syncPending = node.syncPending;
             app.notify();
         });
     }
+    const scope = scopes.get(scopeKey(job.collection, job.member));
+    const key = scope && folderScheduleKey(scope);
+    if (key) noteSyncEdit(key);
     resumeCreations();
 }
 
@@ -375,11 +392,21 @@ async function enroll(job: CreationJob, signal: AbortSignal) {
             (item) => item.parentId === current.id && !item.connection && !item.syncPending,
         ))
             await created(child.id);
-    void driverFor(scope)?.upload();
+    driverFor(scope)?.reschedule();
 }
 
+const due = (job: CreationJob) => {
+    const scope = scopes.get(scopeKey(job.collection, job.member));
+    if (!scope) return Infinity;
+    const key = folderScheduleKey(scope);
+    if (!key) return 0;
+    const send = readSchedule(key, personalSchedule).send;
+    return typeof send === 'number' ? syncEdit(key).at + send : Infinity;
+};
+
 /** Resumes durable jobs. Returns the active run, including a queued explicit retry. Hidden tabs make no requests. */
-export function resumeCreations(retry = false): Promise<void> | undefined {
+export function resumeCreations(retry = false, manual?: Scope): Promise<void> | undefined {
+    if (manual && running) return running.then(() => resumeCreations(retry, manual));
     if (retry) retryRequested = true;
     if (running) return running;
     if (!available()) return;
@@ -396,11 +423,14 @@ export function resumeCreations(retry = false): Promise<void> | undefined {
         const all = await db.allNodes();
         jobs.sort((a, b) => ancestors(all, a.id).length - ancestors(all, b.id).length);
         for (const job of jobs) {
+            const forced = manual && scopeKey(job.collection, job.member) === scopeId(manual);
+            if (!forced && (manual || due(job) > Date.now())) continue;
             if (job.blocked && !explicitRetry) continue;
             signal.throwIfAborted();
             const run = async () => {
                 const saved = await db.getSide<CreationJob>('sync-create', job.id);
                 if (!saved) return;
+                if (!forced && due(saved) > Date.now()) return;
                 if (explicitRetry && saved.blocked) {
                     delete saved.blocked;
                     await db.putSide('sync-create', job.id, saved);
@@ -443,10 +473,14 @@ export function resumeCreations(retry = false): Promise<void> | undefined {
                 void db
                     .allSides<CreationJob>('sync-create')
                     .then((jobs) => {
-                        if (deferred || jobs.some((job) => !job.blocked))
+                        const next = Math.min(...jobs.filter((job) => !job.blocked).map(due));
+                        if (deferred || Number.isFinite(next))
                             timer = setTimeout(
                                 () => resumeCreations(),
-                                Math.min(MAX_RETRY_MS, RETRY_MS * 2 ** Math.min(failures, 5)),
+                                Math.max(
+                                    deferred ? 0 : next - Date.now(),
+                                    Math.min(MAX_RETRY_MS, RETRY_MS * 2 ** Math.min(failures, 5)),
+                                ),
                             );
                     })
                     .catch(() => {});

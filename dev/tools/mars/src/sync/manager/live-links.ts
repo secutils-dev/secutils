@@ -446,8 +446,9 @@ export async function createLiveLink(
     if (!scope || !session) throw new Error('sync-not-ready');
     // A recipient starts from the uploaded checkpoints. Refuse a link while local work waits in the outbox.
     await viewer.flush();
-    await driverFor(scope)?.upload();
-    if (await driverFor(scope)?.options.replica.pending()) throw new Error('sync-pending');
+    const driver = driverFor(scope);
+    if (!driver?.options.schedule) await driver?.upload();
+    if (await driver?.options.replica.pending()) throw new Error('sync-pending');
     // The delegation key pair belongs to this link. Its private key travels inside the link, and each
     // recipient signs a grant with it. The owner signs the policy that bounds those grants.
     const delegate = await identity(),

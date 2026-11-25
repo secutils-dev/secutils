@@ -57,6 +57,7 @@ async function pair(owner: Page, peer: Page, name: string, browserName?: string,
   if (!(await owner.locator('#syncDialog').count())) {
     await owner.getByRole('button', { name: `Actions for ${name}`, exact: true }).click();
     await owner.getByRole('menuitem', { name: /^(Sync|Connections)$/, exact: true }).click();
+    await owner.getByRole('button', { name: 'Sync settings', exact: true }).click();
     await owner.getByRole('button', { name: 'Sync link', exact: true }).click();
   }
   await expect(owner.getByRole('textbox', { name: 'Sync link' })).toBeVisible({ timeout: 15000 });
@@ -188,15 +189,39 @@ test.describe('sync protocol', () => {
       });
       await owner.getByRole('link', { name: 'Report', exact: true }).click();
       await peer.getByRole('link', { name: 'Report', exact: true }).click();
+      const syncNow = async (page: Page, folder: string) => {
+        await page.getByRole('button', { name: `Actions for ${folder}`, exact: true }).click();
+        await page.getByRole('menuitem', { name: 'Sync', exact: true }).click();
+        const dialog = page.getByRole('dialog', { name: 'Sync', exact: true });
+        const sync = dialog.getByRole('button', { name: 'Sync now', exact: true });
+        await sync.click();
+        await expect(sync).toBeEnabled();
+        await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+      };
       for (const name of ['Renames', 'Report']) {
         await owner.getByRole('button', { name: `Actions for ${name}`, exact: true }).click();
         await owner.getByRole('menuitem', { name: 'Rename', exact: true }).click();
         await owner.getByRole('textbox', { name: 'Name', exact: true }).fill(`${name} changed`);
         await owner.keyboard.press('Enter');
+        const renamedFolder = name === 'Renames' ? 'Renames changed' : 'Renames';
+        await syncNow(owner, renamedFolder);
+        const currentPeerFolder = (await peer
+          .getByRole('button', { name: 'Actions for Renames changed', exact: true })
+          .count())
+          ? 'Renames changed'
+          : 'Renames';
+        await syncNow(peer, currentPeerFolder);
         await expect(peer.getByRole('button', { name: `Actions for ${name} changed`, exact: true })).toBeVisible({
           timeout: 15000,
         });
         await owner.locator('#toast').getByRole('button', { name: 'Undo', exact: true }).click();
+        await syncNow(owner, 'Renames');
+        const currentPeerFolderAfterUndo = (await peer
+          .getByRole('button', { name: 'Actions for Renames', exact: true })
+          .count())
+          ? 'Renames'
+          : renamedFolder;
+        await syncNow(peer, currentPeerFolderAfterUndo);
         await expect(peer.getByRole('button', { name: `Actions for ${name}`, exact: true })).toBeVisible({
           timeout: 15000,
         });
@@ -1096,6 +1121,7 @@ test.describe('sync protocol', () => {
       await expect(owner.locator('#previewArticle')).toContainText('Shared text.');
       await owner.getByRole('button', { name: 'Actions for Report', exact: true }).click();
       await owner.getByRole('menuitem', { name: /^(Sync|Connections)$/, exact: true }).click();
+      await owner.getByRole('button', { name: 'Sync settings', exact: true }).click();
       await owner.getByRole('button', { name: 'Devices', exact: true }).click();
       const item = owner.locator('.sync-access-item').filter({ hasText: 'My work browser' });
       const disconnect = item.getByRole('button', { name: /^Disconnect / });
@@ -1269,7 +1295,7 @@ test.describe('sync protocol', () => {
         await expect(guest.locator('#previewArticle')).toContainText('Before rotation.');
         await owner.getByRole('button', { name: 'Actions for Interrupted', exact: true }).click();
         await owner.getByRole('menuitem', { name: /^(Sync|Connections)$/, exact: true }).click();
-        await owner.getByRole('button', { name: 'Try again', exact: true }).click();
+        await owner.getByRole('button', { name: 'Sync now', exact: true }).click();
         await owner.getByRole('button', { name: 'Close', exact: true }).click();
         await expect(guest.locator('#previewArticle')).toContainText('Local work while rotation is interrupted.', {
           timeout: 15000,
@@ -1857,7 +1883,7 @@ test.describe('sync protocol', () => {
       });
       await owner.getByRole('button', { name: 'Actions for Storage', exact: true }).click();
       await owner.getByRole('menuitem', { name: /^(Sync|Connections)$/, exact: true }).click();
-      await owner.getByRole('button', { name: 'Try again', exact: true }).click();
+      await owner.getByRole('button', { name: 'Sync now', exact: true }).click();
       await owner.getByRole('button', { name: 'Close', exact: true }).click();
       await expect(peer.locator('#previewArticle')).toContainText('Visible unpublished edit', { timeout: 15000 });
       await owner.reload();

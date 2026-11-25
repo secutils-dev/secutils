@@ -5,6 +5,19 @@ import * as viewer from '../doc/viewer.js';
 import { readFileSource } from '../io/source.ts';
 import { openThreads } from '../share/merge.ts';
 import * as db from '../store/db.ts';
+import {
+    acknowledgeGitHubSend,
+    githubSchedule,
+    githubScheduleKey,
+    githubSendPending,
+    noteSyncEdit,
+    readSchedule,
+    resumeGitHubSend,
+    saveSchedule,
+    syncEdit,
+    watchSchedule,
+    type SyncSchedule,
+} from '../sync/schedule.ts';
 import { newId, textBytes, type TreeNode } from '../tree/model.ts';
 import {
     gitBlobOid,
@@ -29,9 +42,8 @@ import {
 import { findGitHubRenames, similarGitHubRenames } from './reconcile.ts';
 import { LOCAL_STRUCTURE_CHANGED, planGitHubStructure, type StructuralJob } from './structure.ts';
 
-const DEBOUNCE_MS = 6_000;
-const POLL_MS = 60_000;
-const PUBLIC_POLL_MS = 180_000;
+const RETRY_MS = 60_000;
+const BUSY_RETRY_MS = 1_000;
 const MAX_PULL_BYTES = 20 * 1024 * 1024;
 const MAX_BATCH_FILES = 30;
 const MAX_BATCH_TEXT_BYTES = 4 * 1024 * 1024;
@@ -42,9 +54,12 @@ interface Session {
     attachment?: string;
     scope?: string;
     busy?: Promise<string>;
-    timer?: ReturnType<typeof setTimeout>;
     retryAt?: number;
-    nextPoll?: number;
+    receivedAt?: number;
+    wakeAt?: number;
+    watch?: AbortController;
+    receive?: AbortController;
+    sendAgain?: boolean;
     message?: string;
     uploadNotice?: string;
     paused?: boolean;
@@ -88,7 +103,9 @@ export async function knownGitHubPaths(root: string) {
     ];
 }
 
-const pollInterval = (token: string) => (token ? POLL_MS : PUBLIC_POLL_MS);
+/** Returns the effective schedule for the current attachment, not the credential draft in the dialog. */
+export const gitHubScheduleOptions = (source: NonNullable<TreeNode['github']>) =>
+    githubSchedule(Boolean(source.credentialId || (source.authenticated ?? source.write)), source.write);
 
 // Serialize same-folder passes across tabs. Automatic passes don't queue behind another tab's work.
 async function withBranch<T>(id: string, automatic: boolean, run: () => Promise<T>): Promise<T | undefined> {
@@ -129,13 +146,6 @@ const githubStatus = (id: string) =>
         ? 'Enter a token to resume sync.'
         : '');
 
-/** True when Sync can use the current configuration. Named credentials reload on each operation. */
-export const hasGitHubSession = (id: string) => {
-    const source = app.node(id)?.github,
-        session = sessions.get(id);
-    return !!source && (!!source.credentialId || (!!session && session.attachment === source.authRevision));
-};
-
 /** Reuse a tab-only token when its settings change, without filling it into the form. */
 const activeGitHubToken = (id: string) => {
     const source = app.node(id)?.github,
@@ -165,8 +175,19 @@ function authorize<T>(
 
 /** Stop polling and drop the in-memory token when deleting the local folder. */
 export function forgetGitHubSession(id: string) {
-    clearTimeout(sessions.get(id)?.timer);
+    const session = sessions.get(id);
+    session?.watch?.abort();
+    session?.receive?.abort();
     sessions.delete(id);
+    planGitHub();
+}
+
+function saveGitHubSession(id: string, session: Session) {
+    forgetGitHubSession(id);
+    session.watch = new AbortController();
+    sessions.set(id, session);
+    watchSchedule(githubScheduleKey(id), planGitHub, session.watch.signal);
+    planGitHub();
 }
 
 /** Stop this browser's GitHub Sync. Keep the folder and its files at their existing locations. */
@@ -202,12 +223,71 @@ export async function makeGitHubCopy(id: string) {
     if (app.state.currentId === copy.id) viewer.setViewMode('edit');
 }
 
-/** Start a repository connection. New folders are imported only after all requested files have been read. */
+/** GitHub authorization and local intervals. An absent send interval means read-only, not Manual. */
+export interface GitHubSettings {
+    authorization: { credentialId: string } | { keepFolderToken: true } | { publicOnly: true };
+    schedule: SyncSchedule;
+}
+
+/** Save settings without fetching or publishing a branch. Keep local work and the existing folder identity. */
+export async function saveGitHubSettings(id: string, expectedRevision: string | undefined, settings: GitHubSettings) {
+    if (db.isTemporaryStorage()) throw new Error('Open your library to change GitHub settings.');
+    await withBranch(id, false, async () => {
+        const root = await db.getNode(id);
+        if (!root?.github || root.github.authRevision !== expectedRevision || disconnecting.has(id))
+            throw new Error('This GitHub connection changed in another tab. Reopen Sync settings and try again.');
+        const { authorization, schedule } = settings;
+        const previous = root.github;
+        const credentialId = 'credentialId' in authorization ? authorization.credentialId : undefined;
+        const reuse = 'keepFolderToken' in authorization;
+        const apply = async (auth: GitHubAuthorization) => {
+            const authenticated = Boolean(auth.token);
+            const write = schedule.send !== undefined;
+            if (write && !authenticated) throw new Error('Choose a GitHub credential before allowing writes.');
+            const key = githubScheduleKey(id);
+            saveSchedule(key, githubSchedule(authenticated, write), schedule);
+            if (write && !previous.write) noteSyncEdit(key);
+            const session = sessions.get(id);
+            const sameCredential = credentialId
+                ? credentialId === previous.credentialId
+                : !previous.credentialId && (reuse || !(previous.authenticated ?? previous.write));
+            if (session && sameCredential && previous.write === write) return;
+            const authRevision = newId();
+            await app.serializePersistence(async () => {
+                const latest = await db.getNode(id);
+                if (!latest?.github || latest.github.authRevision !== expectedRevision)
+                    throw new Error(
+                        'This GitHub connection changed in another tab. Reopen Sync settings and try again.',
+                    );
+                await db.putNodes(
+                    [{ ...latest, github: { ...latest.github, credentialId, authenticated, authRevision, write } }],
+                    {},
+                    {
+                        expectedGitHubRoot: id,
+                        replaceGitHubConnection: true,
+                        ...(reuse ? {} : { extras: { [`github-auth:${id}`]: null } }),
+                    },
+                );
+                await app.load();
+                viewer.refreshConnection();
+            });
+            saveGitHubSession(id, {
+                token: credentialId ? '' : auth.token,
+                attachment: authRevision,
+                scope: reuse ? authRevision : auth.scope,
+                receivedAt: sameCredential ? session?.receivedAt : Date.now(),
+            });
+        };
+        if (credentialId) await withGitHubCredential(credentialId, apply);
+        else if (reuse && !previous.credentialId) await authorize(id, previous, sessions.get(id), apply);
+        else await apply({ token: '' });
+    });
+}
+
+/** Import a branch. The folder and its initial settings become available after the download succeeds. */
 export async function connectGitHub(
     source: GitHubSource,
-    authorization: { credentialId: string } | { keepFolderToken: true } | { publicOnly: true },
-    write: boolean,
-    id?: string,
+    { authorization, schedule }: GitHubSettings,
     signal?: AbortSignal,
     progress?: GitHubProgress,
 ) {
@@ -215,26 +295,17 @@ export async function connectGitHub(
     progress?.(0, 0, 'details');
     const credentialId = 'credentialId' in authorization ? authorization.credentialId : undefined;
     const authRevision = newId();
-    const explicitFolder = id ? app.node(id) : undefined;
-    if (id && !explicitFolder?.github) throw new Error('This GitHub folder no longer exists.');
-    const reuse = 'keepFolderToken' in authorization;
     const use = <T>(run: (auth: GitHubAuthorization) => Promise<T>) =>
-        credentialId
-            ? withGitHubCredential(credentialId, run)
-            : reuse && id && explicitFolder?.github && !explicitFolder.github.credentialId
-              ? authorize(id, explicitFolder.github, sessions.get(id), run)
-              : run({ token: '' });
+        credentialId ? withGitHubCredential(credentialId, run) : run({ token: '' });
     const { target, scope } = await use(async ({ token, scope }) => ({
         target: await new GitHubApi(token).resolve(source, signal),
         scope,
     }));
-    const existing = id
-        ? explicitFolder
-        : app.state.nodes.find(
-              (node) =>
-                  node.github?.repository.toLowerCase() === target.repository.toLowerCase() &&
-                  node.github.branch === target.branch,
-          );
+    const existing = app.state.nodes.find(
+        (node) =>
+            node.github?.repository.toLowerCase() === target.repository.toLowerCase() &&
+            node.github.branch === target.branch,
+    );
     const rootId = existing?.id ?? newId();
     if (existing && sessions.get(existing.id)?.busy) throw new Error('Wait for the current GitHub sync to finish.');
     const root: TreeNode = existing
@@ -259,7 +330,7 @@ export async function connectGitHub(
             }
             root.github = {
                 ...target,
-                write: Boolean(auth.token) && write,
+                write: Boolean(auth.token) && schedule.send !== undefined,
                 authenticated: Boolean(auth.token),
                 credentialId,
                 authRevision,
@@ -267,19 +338,24 @@ export async function connectGitHub(
             const session: Session = {
                 token: credentialId ? '' : auth.token,
                 attachment: authRevision,
-                scope: reuse ? authRevision : scope,
-                nextPoll: Date.now() + pollInterval(auth.token),
+                scope,
+                receivedAt: Date.now(),
             };
-            const message = await runGitHub(root, session, reuse ? { ...auth, scope: authRevision } : auth, {
+            const message = await runGitHub(root, session, auth, {
                 signal,
                 pullOnly: true,
-                clearFolderToken: !reuse,
+                clearFolderToken: true,
                 progress,
                 newAttachment: !existing,
+                beforeSave: () =>
+                    saveSchedule(
+                        githubScheduleKey(root.id),
+                        githubSchedule(Boolean(auth.token), root.github!.write),
+                        schedule,
+                    ),
             });
-            const previous = sessions.get(root.id);
-            clearTimeout(previous?.timer);
-            sessions.set(root.id, session);
+            if (!existing) acknowledgeGitHubSend(githubScheduleKey(root.id), '');
+            saveGitHubSession(root.id, session);
             return message;
         }),
     );
@@ -312,8 +388,11 @@ export async function reuseGitHubToken(id: string, label: { name: string; owner:
                     extras: { [`github-auth:${id}`]: null },
                 },
             );
-            forgetGitHubSession(id);
-            sessions.set(id, { token: '', attachment: authRevision, nextPoll: Date.now() + POLL_MS });
+            saveGitHubSession(id, {
+                token: '',
+                attachment: authRevision,
+                receivedAt: sessions.get(id)?.receivedAt ?? Date.now(),
+            });
             await app.load();
             return credentialId;
         });
@@ -327,11 +406,8 @@ export async function refreshGitHubSessions(ids: string[]) {
         const source = app.node(id)?.github,
             session = sessions.get(id);
         if (session && (!source || session.attachment !== source.authRevision)) forgetGitHubSession(id);
-        if (source && !sessions.has(id)) {
-            await restoreGitHubSession(id, source);
-            const restored = sessions.get(id);
-            if (restored) restored.nextPoll = Date.now() + pollInterval(restored.token || (source.credentialId ?? ''));
-        }
+        // A settings change elsewhere in this profile is not a request for a fresh receive.
+        if (source && !sessions.has(id)) await restoreGitHubSession(id, source, Date.now());
     }
 }
 
@@ -345,8 +421,8 @@ export async function refreshGitHubCredential(id: string) {
         session.retryAt = undefined;
         session.paused = !found;
         session.message = found ? undefined : 'GitHub Sync is paused. Choose another credential in Sync.';
-        if (!found) clearTimeout(session.timer);
     }
+    planGitHub();
 }
 
 /** Resume saved and public connections after reading the browser library. */
@@ -355,24 +431,20 @@ export async function restoreGitHubConnections() {
     for (const node of app.state.nodes) {
         if (node.github && !sessions.has(node.id)) await restoreGitHubSession(node.id, node.github);
     }
-    if (document.hidden || !navigator.onLine) return;
-    for (const [id, session] of sessions) {
-        if (session.nextPoll || session.paused) continue;
-        session.nextPoll = Date.now() + pollInterval(session.token || (app.node(id)?.github?.credentialId ?? ''));
-        await syncGitHub(id, true).catch(() => {});
-    }
+    planGitHub();
 }
 
-async function restoreGitHubSession(id: string, source: NonNullable<TreeNode['github']>) {
+async function restoreGitHubSession(id: string, source: NonNullable<TreeNode['github']>, receivedAt?: number) {
     try {
         const credentialId = source.credentialId;
         const token = credentialId ? '' : await savedGitHubToken(id);
         if (!credentialId && !token && (source.authenticated ?? source.write)) return;
         const paused = credentialId ? !(await hasGitHubCredential(credentialId)) : false;
         if (!sessions.has(id) && app.node(id)?.github?.authRevision === source.authRevision && app.node(id)?.github)
-            sessions.set(id, {
+            saveGitHubSession(id, {
                 token,
                 attachment: source.authRevision,
+                receivedAt,
                 paused,
                 message: paused ? 'GitHub Sync is paused. Choose another credential in Sync.' : undefined,
             });
@@ -381,24 +453,26 @@ async function restoreGitHubSession(id: string, source: NonNullable<TreeNode['gi
     }
 }
 
-/** Pull and flush one workspace, or join a run already in progress. */
-export async function syncGitHub(id: string, automatic = false, reportError = false): Promise<string> {
+type GitHubPass = 'receive' | 'send' | 'manual';
+
+/** Runs an explicit sync, or one automatic direction. Manual never joins a receive-only pass. */
+export async function syncGitHub(id: string, pass: GitHubPass = 'manual'): Promise<string> {
+    const automatic = pass !== 'manual';
     const source = app.node(id)?.github;
     let session = sessions.get(id);
     if (disconnecting.has(id)) return '';
     if (!session && source?.credentialId) {
         session = { token: '', attachment: source.authRevision };
-        sessions.set(id, session);
+        saveGitHubSession(id, session);
     }
     if (!source || !session) return Promise.reject(new Error('Reconnect GitHub in this tab to resume sync.'));
     if (session.busy) {
         const status = await session.busy;
-        if (reportError && (session.retryAt ?? 0) > Date.now()) throw new Error(status);
-        return status;
+        return automatic ? status : syncGitHub(id, pass);
     }
     session.busy = withBranch(id, automatic, async () => {
         const root = await db.getNode(id);
-        if (disconnecting.has(id) || !root?.github) return '';
+        if (disconnecting.has(id) || !root?.github || (automatic && !githubAvailable())) return '';
         const current = session;
         return authorize(id, root.github, current, async (auth) => {
             if (current.scope !== auth.scope) {
@@ -413,38 +487,73 @@ export async function syncGitHub(id: string, automatic = false, reportError = fa
                 current.retryAt = backoff.retryAt;
                 return (current.message = backoff.message);
             }
+            const scheduleKey = githubScheduleKey(id);
+            const settings = () => readSchedule(scheduleKey, githubSchedule(Boolean(auth.token), root.github!.write));
+            const revision = syncEdit(scheduleKey);
+            const canSend = () => {
+                if (!auth.token || !root.github?.write || disconnecting.has(id)) return false;
+                if (pass === 'manual') return true;
+                const delay = settings().send;
+                return (
+                    pass === 'send' &&
+                    githubAvailable() &&
+                    typeof delay === 'number' &&
+                    syncEdit(scheduleKey).marker === revision.marker &&
+                    Date.now() >= revision.at + delay
+                );
+            };
+            if (pass === 'receive' && settings().receive === 'manual') return '';
+            if (pass === 'send' && (!githubSendPending(scheduleKey) || !canSend())) return '';
+            const read = automatic ? new AbortController() : undefined;
+            current.receive = read;
             try {
-                return await runGitHub(root, current, auth, { automatic });
+                current.sendAgain = false;
+                const message = await runGitHub(root, current, auth, {
+                    pass,
+                    canSend,
+                    signal: read?.signal,
+                    canReceive: () => !automatic || (githubAvailable() && settings().receive !== 'manual'),
+                });
+                if (pass !== 'receive' && canSend() && !current.sendAgain)
+                    acknowledgeGitHubSend(scheduleKey, revision.marker);
+                if (current.sendAgain) current.wakeAt = Date.now() + BUSY_RETRY_MS;
+                return message;
             } catch (error) {
                 if (error instanceof GitHubError && error.rateLimited) {
                     await db.setMeta(key, {
-                        retryAt: Date.now() + Math.max(POLL_MS, error.retryAfterMs),
+                        retryAt: Date.now() + Math.max(RETRY_MS, error.retryAfterMs),
                         message: error.message,
                         authScope: auth.scope,
                     });
                 }
                 throw error;
+            } finally {
+                if (current.receive === read) current.receive = undefined;
             }
         });
     })
         .catch((error) => {
-            if (error instanceof Error && error.message === LOCAL_STRUCTURE_CHANGED) {
-                scheduleGitHubSync(id);
+            if (error instanceof Error && (error.message === LOCAL_STRUCTURE_CHANGED || error.name === 'AbortError')) {
+                session.wakeAt = Date.now() + BUSY_RETRY_MS;
                 return '';
             }
             session.message = error instanceof Error ? error.message : 'Could not sync with GitHub.';
             session.retryAt =
                 error instanceof GitHubError && error.status === 401
                     ? Infinity
-                    : Date.now() + Math.max(POLL_MS, error instanceof GitHubError ? error.retryAfterMs : 0);
+                    : Date.now() + Math.max(RETRY_MS, error instanceof GitHubError ? error.retryAfterMs : 0);
             return session.message;
         })
-        .then((message) => message ?? githubStatus(id))
+        .then((message) => {
+            if (message === undefined) session.wakeAt = Date.now() + BUSY_RETRY_MS;
+            return message ?? githubStatus(id);
+        })
         .finally(() => {
             session.busy = undefined;
+            planGitHub();
         });
     const status = await session.busy;
-    if (reportError && (session.retryAt ?? 0) > Date.now()) throw new Error(status);
+    if (!automatic && (session.retryAt ?? 0) > Date.now()) throw new Error(status);
     return status;
 }
 
@@ -456,33 +565,8 @@ export function githubSaved(node: TreeNode) {
 
 /** Schedule queued changes in the same debounce window as document edits. */
 export function scheduleGitHubSync(id: string) {
-    const session = sessions.get(id);
     const source = app.node(id)?.github;
-    if (
-        disconnecting.has(id) ||
-        !session ||
-        session.paused ||
-        (!session.token && !source?.credentialId) ||
-        !source?.write
-    )
-        return;
-    clearTimeout(session.timer);
-    session.timer = setTimeout(() => {
-        if (sessions.get(id) !== session) return;
-        void syncGitHub(id, false, true).then(
-            () => {
-                session.uploadNotice = undefined;
-            },
-            (error: unknown) => {
-                if (sessions.get(id) !== session) return;
-                const message = error instanceof Error ? error.message : 'Could not sync with GitHub.';
-                if (session.uploadNotice !== message) {
-                    session.uploadNotice = message;
-                    viewer.toast(`Your edit is saved in MARS but not synced to GitHub. ${message}`);
-                }
-            },
-        );
-    }, DEBOUNCE_MS);
+    if (!disconnecting.has(id) && source?.write) noteSyncEdit(githubScheduleKey(id));
 }
 
 /** Compare a retained local deletion with the exact upstream version that blocked it. */
@@ -511,7 +595,8 @@ async function publishStructuralJobs(
     head: GitHubHead,
     jobs: StructuralJob[],
     excludes: ReturnType<typeof githubExclusion>,
-    signal?: AbortSignal,
+    signal: AbortSignal | undefined,
+    canSend: () => boolean,
 ) {
     const tree = new Map((await api.tree(source, head.tree!, signal)).map((entry) => [entry.path, entry]));
     const finished: StructuralJob[] = [],
@@ -582,9 +667,10 @@ async function publishStructuralJobs(
             await app.load();
         });
     let published: string | undefined;
-    if (ready.length && !disconnecting.has(root)) {
+    if (ready.length && canSend() && !disconnecting.has(root)) {
         if (changes.length || deletions.length) {
-            published = await api.commit(source, head.commit, changes, signal, deletions);
+            signal?.throwIfAborted();
+            published = await api.commit(source, head.commit, changes, undefined, deletions);
         }
         finished.push(...ready);
     }
@@ -629,24 +715,154 @@ async function publishStructuralJobs(
     return published;
 }
 
-/** Poll only connected workspaces in a visible, online tab. Public and private sessions use the same budget. */
-export function installGitHubPolling() {
-    const poll = () => {
-        if (document.hidden || !navigator.onLine || db.isTemporaryStorage()) return;
-        for (const [id, session] of sessions) {
-            if (!app.node(id)?.github) {
-                clearTimeout(session.timer);
-                sessions.delete(id);
-            } else if (!session.paused && (session.nextPoll ?? 0) <= Date.now()) {
-                session.nextPoll =
-                    Date.now() + pollInterval(session.token || (app.node(id)?.github?.credentialId ?? ''));
-                void syncGitHub(id, true).catch(() => {});
+async function sendGitHubFiles(
+    root: string,
+    api: GitHubApi,
+    source: NonNullable<TreeNode['github']>,
+    head: GitHubHead,
+    files: GitHubFile[],
+    excludes: ReturnType<typeof githubExclusion>,
+    session: Session,
+    canSend: () => boolean,
+    signal?: AbortSignal,
+) {
+    const docs = (await db.allNodes()).filter((node) => node.githubFile?.root === root && !node.githubChange);
+    const snapshots = await db.readGitHubWorkingCopies(docs.map((node) => node.id));
+    const remoteFiles = new Map(files.map((file) => [file.path, file.sha]));
+    const edits: { id: string; path: string; text: string; previousSha: string }[] = [];
+    let bytes = 0,
+        blocked = 0;
+    let tree: Map<string, GitHubTreeEntry> | undefined;
+    for (const [id, current] of snapshots) {
+        const binding = current.node.githubFile;
+        if (binding?.root !== root || excludes(binding.path) || !writablePath(binding.path)) continue;
+        const { path, sha: previousSha } = binding;
+        const size = textBytes(current.text);
+        if (previousSha && current.text === current.base) continue;
+        if (id === app.state.currentId && (viewer.isEditing() || !viewer.canPublishConnection())) {
+            session.sendAgain = true;
+            continue;
+        }
+        if (current.conflict || (previousSha && remoteFiles.get(path) !== previousSha)) {
+            blocked++;
+            continue;
+        }
+        if (!previousSha) {
+            // Untracked paths must be checked against the complete tree, not the filtered file index.
+            tree ??= new Map((await api.tree(source, head.tree!, signal)).map((file) => [file.path, file]));
+            const existing = tree.get(path);
+            if (existing?.mode === '100644' && existing.sha === (await gitBlobOid(current.text))) {
+                await db.acknowledgeGitHubBlob(id, '', existing.sha, current.text);
+                continue;
+            }
+            if (
+                existing ||
+                path
+                    .split('/')
+                    .slice(0, -1)
+                    .some((_, i, parts) => {
+                        const parent = tree!.get(parts.slice(0, i + 1).join('/'));
+                        return parent && parent.type !== 'tree';
+                    })
+            ) {
+                blocked++;
+                continue;
             }
         }
-    };
-    setInterval(poll, POLL_MS);
-    document.addEventListener('visibilitychange', poll);
-    window.addEventListener('online', poll);
+        if (size > 2 * 1024 * 1024) {
+            blocked++;
+            continue;
+        }
+        if (edits.length >= MAX_BATCH_FILES || bytes + size > MAX_BATCH_TEXT_BYTES) {
+            session.sendAgain = true;
+            continue;
+        }
+        edits.push({ id, path, text: current.text, previousSha });
+        bytes += size;
+    }
+    if (edits.length && canSend()) {
+        signal?.throwIfAborted();
+        const live = await db.getNode(root);
+        if (!canSend() || !live?.github?.write || live.github.authRevision !== source.authRevision)
+            return { sent: 0, blocked };
+        const commit = await api.commit(source, head.commit, edits);
+        const oids = await Promise.all(edits.map((edit) => gitBlobOid(edit.text)));
+        await app.serializePersistence(async () => {
+            for (const [i, edit] of edits.entries())
+                await db.acknowledgeGitHubBlob(edit.id, edit.previousSha, oids[i], edit.text);
+            // Reuse a known branch index after our commit, but do not postpone the next receive.
+            const index = await db.getSide<BranchIndex>('github-index', root);
+            if (index?.head.commit === head.commit) {
+                const next = new Map(index.files.map((file) => [file.path, file]));
+                for (const [i, edit] of edits.entries())
+                    next.set(edit.path, { path: edit.path, sha: oids[i], size: textBytes(edit.text) });
+                await db.putSide('github-index', root, {
+                    ...index,
+                    head: { commit, tree: null },
+                    files: [...next.values()],
+                });
+            }
+            await app.load();
+        });
+        return { sent: edits.length, blocked };
+    }
+    return { sent: 0, blocked };
+}
+
+let githubTimer: ReturnType<typeof setTimeout> | undefined;
+let suspended = false;
+const githubAvailable = () => !suspended && !document.hidden && navigator.onLine && !db.isTemporaryStorage();
+
+function planGitHub() {
+    clearTimeout(githubTimer);
+    if (!githubAvailable()) {
+        for (const session of sessions.values()) session.receive?.abort();
+        return;
+    }
+    const now = Date.now();
+    let next = Infinity;
+    for (const [id, session] of sessions) {
+        const source = app.node(id)?.github;
+        if (!source) {
+            session.watch?.abort();
+            session.receive?.abort();
+            sessions.delete(id);
+            continue;
+        }
+        if (session.paused || session.busy) continue;
+        const key = githubScheduleKey(id);
+        const { receive, send } = readSchedule(key, gitHubScheduleOptions(source));
+        const receiveAt = typeof receive === 'number' ? (session.receivedAt ?? 0) + receive : Infinity;
+        const sendAt = typeof send === 'number' && githubSendPending(key) ? syncEdit(key).at + send : Infinity;
+        const due = Math.max(Math.min(receiveAt, sendAt), session.retryAt ?? 0, session.wakeAt ?? 0);
+        if (due <= now) {
+            const pass = sendAt <= receiveAt ? 'send' : 'receive';
+            void syncGitHub(id, pass)
+                .then((status) => {
+                    if (pass === 'send' && status && status !== session.uploadNotice) {
+                        session.uploadNotice = status;
+                        viewer.toast(`Your edit is saved in MARS but not synced to GitHub. ${status}`);
+                    } else if (pass === 'send' && !status) session.uploadNotice = undefined;
+                })
+                .catch(() => {});
+        } else next = Math.min(next, due);
+    }
+    if (Number.isFinite(next)) githubTimer = setTimeout(planGitHub, Math.max(0, next - now));
+}
+
+/** Wakes only when a folder is due. Hidden or offline tabs cancel automatic reads until they resume. */
+export function installGitHubPolling() {
+    document.addEventListener('visibilitychange', planGitHub);
+    window.addEventListener('online', planGitHub);
+    window.addEventListener('offline', planGitHub);
+    window.addEventListener('pagehide', () => {
+        suspended = true;
+        planGitHub();
+    });
+    window.addEventListener('pageshow', () => {
+        suspended = false;
+        planGitHub();
+    });
 }
 
 /** True when the viewer must not edit a GitHub attachment (HTML remains a read-only import). */
@@ -716,7 +932,10 @@ async function runGitHub(
         pullOnly?: boolean;
         clearFolderToken?: boolean;
         progress?: GitHubProgress;
-        automatic?: boolean;
+        pass?: GitHubPass;
+        canSend?(): boolean;
+        canReceive?(): boolean;
+        beforeSave?(): void;
         newAttachment?: boolean;
     } = {},
 ) {
@@ -725,30 +944,38 @@ async function runGitHub(
     if (!options.newAttachment && !storedRoot?.github) throw new Error('This folder is no longer synced with GitHub.');
     const rules = storedRoot?.githubExcludes ?? '';
     const excludes = githubExclusion(rules);
+    const canSend = options.canSend ?? (() => false);
+    const automatic = options.pass === 'receive' || options.pass === 'send';
     const source = root.github,
-        api = new GitHubApi(auth.token, undefined, options.automatic ? 'low' : 'auto'),
+        api = new GitHubApi(auth.token, undefined, automatic ? 'low' : 'auto'),
         signal = options.signal;
     const cached = await getIndex(root.id, source, auth);
     const jobs = (await db.getSide<StructuralJob[]>('github-jobs', root.id)) ?? [];
+    const cadence = readSchedule(githubScheduleKey(root.id), githubSchedule(Boolean(auth.token), source.write)).receive;
     if (
-        options.automatic &&
-        !jobs.some((job) => !job.blocked) &&
+        options.pass === 'receive' &&
         cached &&
-        Date.now() - cached.checkedAt < pollInterval(auth.token)
-    )
+        typeof cadence === 'number' &&
+        Date.now() - cached.checkedAt < cadence
+    ) {
+        session.receivedAt = cached.checkedAt;
         return session.message ?? '';
+    }
     // A different token may yield a different representation. Reconnect always does a fresh branch check.
     let head = await api.head(source, signal, options.pullOnly ? undefined : cached?.head);
     let reusable = cached;
     const published =
-        !options.pullOnly && source.write && auth.token && jobs.length && head.tree
-            ? await publishStructuralJobs(root.id, api, source, head, jobs, excludes, signal)
+        canSend() && jobs.length && head.tree
+            ? await publishStructuralJobs(root.id, api, source, head, jobs, excludes, signal, canSend)
             : undefined;
     if (published) {
         const previous = head.commit;
         head = await api.head(source, signal);
         // The branch read can briefly lag behind the accepted commit. Do not reimport obsolete paths.
-        if (head.commit === previous) return '';
+        if (head.commit === previous) {
+            session.sendAgain = true;
+            return '';
+        }
         reusable = undefined;
     }
     const remaining = (await db.getSide<StructuralJob[]>('github-jobs', root.id)) ?? [];
@@ -765,6 +992,14 @@ async function runGitHub(
         reusable && (reusable.head.commit === head.commit || (head.tree && reusable.head.tree === head.tree))
             ? reusable.files
             : await api.files(source, head.tree!, signal);
+    if (options.pass === 'send') {
+        const result = await sendGitHubFiles(root.id, api, source, head, files, excludes, session, canSend, signal);
+        if ((await db.getSide<StructuralJob[]>('github-jobs', root.id))?.some((job) => !job.blocked))
+            session.sendAgain = true;
+        return (session.message = result.blocked
+            ? 'Use Sync now to check GitHub before sending the remaining changes.'
+            : '');
+    }
     const index: BranchIndex = {
         v: 1,
         source: { repository: source.repository, branch: source.branch },
@@ -779,10 +1014,10 @@ async function runGitHub(
     const docs = new Map(library.filter((n) => n.githubFile?.root === root.id).map((n) => [n.githubFile!.path, n]));
     const remotePaths = new Set(files.map((file) => file.path));
     const activeOld = [...docs]
-        .filter(([path, node]) => !reserved(path) && !node.githubChange && !excludes(path))
+        .filter(([path, node]) => !!node.githubFile?.sha && !reserved(path) && !node.githubChange && !excludes(path))
         .map(([path, node]) => ({ path, sha: node.githubFile!.sha }));
     const activeNew = files.filter((file) => !reserved(file.path) && !excludes(file.path));
-    const snapshots = await db.readGitHubWorkingCopies(activeOld.map(({ path }) => docs.get(path)!.id));
+    const snapshots = await db.readGitHubWorkingCopies([...docs.values()].map(({ id }) => id));
     const renames = findGitHubRenames(activeOld, activeNew);
     const exactSources = new Set(renames.values());
     if (
@@ -831,7 +1066,7 @@ async function runGitHub(
     const texts: Record<string, string> = {},
         extras: Record<string, unknown> = {};
     const expected: db.IncomingSnapshot[] = [];
-    const edits: { id: string; path: string; text: string; previousSha: string }[] = [];
+    let readyAfterReceive = false;
     if (options.clearFolderToken) extras[`github-auth:${root.id}`] = null;
     const changedFiles = activeNew.filter((file) => {
         const existing = oldFor(file.path);
@@ -965,8 +1200,7 @@ async function runGitHub(
         }
         return parent;
     };
-    let conflicts = 0,
-        editedBytes = 0;
+    let conflicts = 0;
     let deadline = performance.now() + 50;
     for (const file of activeNew) {
         if (performance.now() >= deadline) {
@@ -1056,20 +1290,7 @@ async function runGitHub(
             conflicts++;
             continue;
         }
-        if (nextText !== incoming) {
-            const bytes = textBytes(nextText);
-            if (
-                !options.pullOnly &&
-                source.write &&
-                auth.token &&
-                writablePath(file.path) &&
-                edits.length < MAX_BATCH_FILES &&
-                editedBytes + bytes <= MAX_BATCH_TEXT_BYTES
-            ) {
-                edits.push({ id, path: file.path, text: nextText, previousSha: file.sha });
-                editedBytes += bytes;
-            }
-        }
+        if (nextText !== incoming && current.node.githubFile?.sha !== file.sha) readyAfterReceive = true;
         if (!moved && current.node.githubFile?.sha === file.sha && !current.node.githubFile?.conflict && !changesBody)
             continue;
         expected.push(current);
@@ -1134,6 +1355,7 @@ async function runGitHub(
     signal?.throwIfAborted();
     await app.serializePersistence(async () => {
         signal?.throwIfAborted();
+        if (options.canReceive && !options.canReceive()) return;
         if (db.isTemporaryStorage() || (previousRoot && !app.node(root.id)))
             throw new Error('The GitHub folder is no longer available.');
         const open = app.state.currentId;
@@ -1146,6 +1368,7 @@ async function runGitHub(
                 throw new Error('Finish the open edit and sync again. Your changes are still here.');
         }
         extras[`github-index:${root.id}`] = index;
+        options.beforeSave?.();
         await db.putNodes(updated, texts, {
             expected,
             extras,
@@ -1166,30 +1389,14 @@ async function runGitHub(
             }
         }
     });
-    if (edits.length) {
-        if (disconnecting.has(root.id) || !(await db.getNode(root.id))?.github) return '';
-        const commit = await api.commit(source, head.commit, edits, signal);
-        // Keep the exact acknowledged bytes, not newer editor text saved during the upload.
-        const oids = await Promise.all(edits.map((edit) => gitBlobOid(edit.text)));
-        await app.serializePersistence(async () => {
-            for (const [i, edit] of edits.entries())
-                await db.acknowledgeGitHubBlob(edit.id, edit.previousSha, oids[i], edit.text);
-            if (app.node(root.id)?.github) {
-                const replacements = new Map(
-                    edits.map((edit, i) => [edit.path, { path: edit.path, sha: oids[i], size: textBytes(edit.text) }]),
-                );
-                await db.putSide('github-index', root.id, {
-                    ...index,
-                    head: { commit, tree: null },
-                    files: files.map((file) => replacements.get(file.path) ?? file),
-                } satisfies BranchIndex);
-            }
-            await app.load();
-        });
-    }
+    session.receivedAt = index.checkedAt;
+    if (readyAfterReceive && options.pass === 'receive') resumeGitHubSend(githubScheduleKey(root.id));
+    const sent = canSend()
+        ? (await sendGitHubFiles(root.id, api, source, head, files, excludes, session, canSend, signal)).sent
+        : 0;
     const pulled = Object.keys(texts).length;
     session.message = [
-        edits.length ? `Synced ${edits.length} file${edits.length === 1 ? '' : 's'} to GitHub.` : '',
+        sent ? `Synced ${sent} file${sent === 1 ? '' : 's'} to GitHub.` : '',
         pulled && !options.pullOnly ? `Updated ${pulled} file${pulled === 1 ? '' : 's'} from GitHub.` : '',
         conflicts ? `${conflicts} conflicting or open edits were kept locally.` : '',
         renames.size ? `Moved ${renames.size} renamed ${renames.size === 1 ? 'file' : 'files'} from GitHub.` : '',

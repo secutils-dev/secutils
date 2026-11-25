@@ -213,6 +213,8 @@ body.sb-collapsed .mars-sidebar { display: none; }
 @media (prefers-reduced-motion: reduce) { .tree-connection[data-phase="working"] svg { animation: none; } }
 .sync-dialog .su-dialog-header { gap: 8px; }
 .sync-dialog .su-dialog-header h2 { flex: 1; }
+.sync-header-settings:not([hidden]) + .su-dialog-close { position: relative; margin-inline-start: 8px; }
+.sync-header-settings:not([hidden]) + .su-dialog-close::before { content: ''; position: absolute; inset-block: 0; inset-inline-start: -8px; border-inline-start: 1px solid var(--border); pointer-events: none; }
 .sync-back { display: inline-flex; align-items: center; gap: 4px; margin-inline-end: auto; }
 .sync-back svg { transform: rotate(180deg); }
 .sync-notice { margin: 0; padding: 0 18px; color: var(--text-muted); }
@@ -226,12 +228,21 @@ body.sb-collapsed .mars-sidebar { display: none; }
 /* The extra Back control must not push a long action beyond a narrow, zoomed dialog. */
 .sync-dialog[data-inherited-context] .mars-modal-foot .btn { max-inline-size: 100%; min-block-size: 32px; block-size: auto; white-space: normal; }
 .sync-footer-left { margin-inline-end: auto; }
-.sync-tools { display: flex; flex-wrap: wrap; gap: 8px; margin-block: 20px 12px; }
-.sync-tools .btn { gap: 6px; }
+.sync-management { display: grid; margin-block-start: 8px; border-block-start: 1px solid var(--border); }
+.sync-management-action { display: flex; align-items: center; gap: 8px; min-block-size: 40px; padding: 6px 8px; border: 0; border-block-end: 1px solid var(--border); background: transparent; color: var(--text); font: inherit; text-align: start; cursor: pointer; }
+.sync-management-action span { flex: 1; }
+.sync-management-action svg { flex: none; color: var(--text-muted); }
+.sync-management-action:hover:not(:disabled) { background: var(--surface-hover); }
+.sync-management-action:disabled { opacity: .6; cursor: default; }
+.github-sync-source { overflow-wrap: anywhere; }
 .sync-dialog .sync-fineprint { font-size: 12px; color: var(--text-muted); }
-#githubImportDialog:modal { overscroll-behavior: contain; }
-#githubImportDialog::backdrop { overflow: hidden; overscroll-behavior: contain; }
+.sync-interval-label { display: flex; align-items: center; gap: 4px; }
+.sync-interval-label .sync-interval-help { width: 22px; height: 22px; min-width: 22px; color: var(--text-muted); }
+.su-tooltip.su-tooltip-interactive { pointer-events: auto; }
+.sync-dialog:modal { overscroll-behavior: contain; }
+.sync-dialog::backdrop { overflow: hidden; overscroll-behavior: contain; }
 .github-fields { display: grid; gap: 8px; }
+fieldset.github-fields { border: 0; margin: 0; padding: 0; min-inline-size: 0; }
 .github-fields .field { width: 100%; }
 .github-fields .select, .github-credential-fields .field { width: 100%; }
 .github-credential-picker { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
@@ -246,7 +257,6 @@ body.sb-collapsed .mars-sidebar { display: none; }
 .github-credential-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; padding-block: 10px; border-block-start: 1px solid var(--eui-border); overflow-wrap: anywhere; }
 .github-credential-actions { display: flex; gap: 4px; }
 .github-legacy-credential { padding-block-start: 10px; border-block-start: 1px solid var(--eui-border); }
-.github-sync-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-block-start: 6px; }
 .github-exclusions .field-label { display: block; margin-block-end: 4px; }
 .github-exclusions .textarea { display: block; width: 100%; min-height: 6rem; font-family: var(--mono); }
 .github-exclusions [data-preview-result]:not([hidden]) { margin-block-start: 10px; padding: 10px 12px; background: var(--surface-hover); border-radius: var(--radius-s); }

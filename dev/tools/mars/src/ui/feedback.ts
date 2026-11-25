@@ -62,6 +62,13 @@ export function showTooltip(element: HTMLElement, content: string, duration = 0)
     tip.textContent = content;
     tip.setAttribute('role', 'tooltip');
     tip.setAttribute('popover', 'manual');
+    if (element.hasAttribute('data-tooltip-help')) {
+        tip.classList.add('su-tooltip-interactive');
+        tip.addEventListener('pointerenter', () => clearTimeout(timer));
+        tip.addEventListener('pointerleave', () => {
+            if (!element.matches(':focus-within, :hover')) timer = setTimeout(hideTooltip, 150);
+        });
+    }
     // A tooltip that repeats the label is hidden from assistive technology. Other text is linked
     // as a description.
     const label = element.getAttribute('aria-label') ?? element.textContent?.trim() ?? '';
@@ -125,17 +132,32 @@ export function installTooltips() {
             element &&
             !element.contains(event.relatedTarget as Node | null) &&
             !element.matches(':hover, :focus-within')
-        )
-            hideTooltip();
+        ) {
+            if (anchor === element && element.hasAttribute('data-tooltip-help')) timer = setTimeout(hideTooltip, 150);
+            else hideTooltip();
+        }
     };
     document.addEventListener('pointerover', enter);
     document.addEventListener('focusin', enter);
     document.addEventListener('pointerout', leave);
     document.addEventListener('focusout', leave);
+    document.addEventListener('pointerdown', (event) => {
+        if (
+            anchor?.hasAttribute('data-tooltip-help') &&
+            !anchor.contains(event.target as Node) &&
+            !tip?.contains(event.target as Node)
+        )
+            hideTooltip();
+    });
     document.addEventListener(
         'keydown',
         (event) => {
-            if (event.key === 'Escape') hideTooltip();
+            if (event.key !== 'Escape') return;
+            if (anchor?.hasAttribute('data-tooltip-help')) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+            hideTooltip();
         },
         true,
     );

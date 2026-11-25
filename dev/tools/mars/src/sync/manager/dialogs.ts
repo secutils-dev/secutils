@@ -11,10 +11,20 @@ import * as viewer from '../../doc/viewer.js';
 import { ancestors, descendants } from '../../tree/model.ts';
 import { esc } from '../../ui/ui.ts';
 import { LIMITS, SyncError } from '../protocol.ts';
-import { SyncDialog, type FlowScreen } from '../dialog.ts';
-import { icon, type IconName } from '../../ui/icons.ts';
+import { SyncDialog, syncManagement, type FlowScreen } from '../dialog.ts';
+import { icon } from '../../ui/icons.ts';
 import { syncDebug, safeError } from '../debug.ts';
-import { rootFor, sessions, belongs, saveScope, rotationRepository, driverFor, rotations, scopeId } from './state.ts';
+import {
+    rootFor,
+    sessions,
+    belongs,
+    saveScope,
+    rotationRepository,
+    driverFor,
+    rotations,
+    scopeId,
+    type Scope,
+} from './state.ts';
 import { initialize, start } from './engine.ts';
 import { SyncSetupError, enrollSelection, canRestartUnfinished } from './enrollment.ts';
 import { syncLinkPanel } from './pairing.ts';
@@ -23,6 +33,9 @@ import { accessPanel, continueRotation, stopHere } from './access.ts';
 import { pendingCreations, resumeCreations } from './creation.ts';
 import { insideSyncedFolder } from '../inheritance.ts';
 import { label as itemLabel } from '../index.ts';
+import { folderScheduleKey } from './state.ts';
+import { personalSchedule, readSchedule, type SyncSchedule } from '../schedule.ts';
+import { openSyncSchedule } from '../schedule-dialog.ts';
 
 /** Opens the Sync dialog for node `id`: the setup offer for a local node, or the status of a connection. */
 export const enroll = (id: string) => syncDialog(id);
@@ -59,6 +72,8 @@ export const syncError = (error: unknown) =>
         'temporary-storage': 'Save this document to your library before turning on Sync.',
         'sync-pending':
             'Your connection is saved, but its first upload has not finished. Keep this tab visible and check your connection, then try again.',
+        'receive-required':
+            'Use Sync now to receive a remote change before sending your edits. Your edits are saved here.',
         'selection-grown':
             'The folder contents changed during setup. Your documents are still here. Try again with the current folder.',
         'missing-node': 'The selected item was removed during setup. Your other documents are still here.',
@@ -76,12 +91,51 @@ export const syncError = (error: unknown) =>
         'unsupported-link-key-format': 'Unsupported link key format. Create a new link from the sharing device.',
     })[safeError(typeof error === 'string' ? { message: error } : error).code] ??
     'Could not finish. Your document is still here. Try again.';
-/**
- * Markup for an action button inside a dialog body. `SyncDialog` resolves a click with `action`.
- * The arguments are not escaped: pass literals only.
- */
-const syncTool = (label: string, action: string, glyph: IconName) =>
-    `<button type="button" class="btn" data-sync-action="${action}">${icon(glyph)}<span>${label}</span></button>`;
+async function syncNow(scope: Scope, ui: SyncDialog) {
+    ui.busy('Syncing…');
+    await viewer.flush();
+    // Finish required recovery before sending or receiving ordinary changes.
+    if (scope.cleanup) await continueCleanup(scope, ui.signal);
+    else if (await rotationRepository(scope).get()) await continueRotation(scope);
+    else {
+        if (scope.kind === 'folder') await resumeCreations(true, scope);
+        start(scope);
+        await driverFor(scope)?.syncNow();
+    }
+}
+
+async function syncSettings(scope: Scope, ui: SyncDialog) {
+    const key = folderScheduleKey(scope);
+    const owner = scope.member.grant.permission === 'owner';
+    let draft: SyncSchedule | undefined;
+    while (ui.open) {
+        const result = await openSyncSchedule(
+            key ? { key, options: personalSchedule } : undefined,
+            owner
+                ? [
+                      { label: 'Devices', value: 'access', icon: 'users' },
+                      ...(!rotations.has(scopeId(scope)) && !scope.selection
+                          ? [{ label: 'Sync link', value: 'link', icon: 'link' as const }]
+                          : []),
+                  ]
+                : [],
+            draft,
+        );
+        draft = result.draft;
+        if (!result.action || !ui.open) return;
+        try {
+            if (result.action === 'access') await accessPanel(scope, ui);
+            else if (result.action === 'link' && !(await syncLinkPanel(scope, ui))) return;
+        } catch (error) {
+            const { value } = await ui.screen({
+                title: result.action === 'access' ? 'Sync devices' : 'Sync link',
+                back: true,
+                html: `<p class="sync-error" role="alert">${esc(syncError(error))}</p>`,
+            });
+            if (value !== 'back') return;
+        }
+    }
+}
 /**
  * Markup for a pairing confirmation code. `phrase` holds groups separated by single spaces, as
  * `pairingPhrase` returns them. Each group is escaped.
@@ -176,15 +230,16 @@ async function syncDialog(id: string) {
                             html: `<p data-sync-field="name"><strong>${esc(item.name)}</strong></p><p data-sync-field="status" class="sync-status" data-state="${state}" role="status" aria-atomic="true">${state === 'working' ? '<span class="su-spinner" aria-hidden="true"></span>' : icon(state === 'current' ? 'check' : state === 'ended' ? 'unlink' : state === 'attention' ? 'warning' : 'refresh')}<strong>${esc(status)}</strong></p>
                             <p data-sync-field="folder">${connected ? 'Sync inherited from' : 'Folder Sync is disconnected for'} <strong>${esc(path)}</strong>.</p>
                             <p data-sync-field="error" class="sync-error" role="alert"${failure ? '' : ' hidden'}>${failure ? esc(syncError(new SyncError(failure))) : ''}</p>
-                            <p class="sync-fineprint">Device settings and Sync links apply to that folder and all its contents.</p>`,
-                            buttons: [{ label: 'Manage folder Sync', value: 'manage', primary: true }],
+                            <p class="sync-fineprint">Device settings and Sync links apply to that folder and all its contents.</p>
+                            ${syncManagement([{ label: 'Manage folder Sync', value: 'manage', icon: 'folder' }])}`,
+                            buttons: connected ? [{ label: 'Sync now', value: 'now', primary: true }] : [],
                         };
                     });
                     if (answer.value === 'close') break;
                     if (answer.value === 'manage') {
                         showingItem = false;
                         id = managedFolder;
-                    }
+                    } else if (answer.value === 'now' && folderScope) await syncNow(folderScope, ui);
                     continue;
                 }
                 if (restart) {
@@ -246,9 +301,10 @@ async function syncDialog(id: string) {
                 }
                 if (openSyncLink && scope.member.grant.permission === 'owner') {
                     openSyncLink = false;
-                    await syncLinkPanel(scope, ui);
+                    if (await syncLinkPanel(scope, ui)) await syncSettings(scope, ui);
                     if (!ui.open) break;
                 }
+                const scheduleKey = folderScheduleKey(scope);
                 const answer = await liveScreen(ui, () => {
                     const node = app.node(id);
                     if (!node?.connection || !belongs(node, scope)) return;
@@ -267,7 +323,6 @@ async function syncDialog(id: string) {
                               : enrolling.length
                                 ? 'waiting'
                                 : (node.connection!.phase ?? 'waiting');
-                    const rotating = rotations.has(scopeId(scope));
                     if (status === 'current') problem = '';
                     const transportError = driverFor(scope)?.lastFailure;
                     const failure = enrollmentError
@@ -284,18 +339,20 @@ async function syncDialog(id: string) {
                         ended: 'Sync stopped',
                     }[status];
                     const message = blocked
-                        ? 'Your latest changes are not saved yet. Try again, or download a copy before closing.'
+                        ? 'Your latest changes are not saved yet. Use Sync now, or download a copy before closing.'
                         : status === 'offline'
                           ? db.isTemporaryStorage()
                               ? 'Your edits are waiting to sync. Keep this tab open or download a copy before closing.'
                               : 'Your changes are saved here and will sync when you are back online.'
                           : status === 'ended'
                             ? 'This connection is no longer available. Your document stays here.'
-                            : status === 'attention'
-                              ? 'Your changes are saved here. Try again to finish syncing.'
-                              : owner
-                                ? 'Use a Sync link to connect your other device.'
-                                : 'Changes appear on your synced devices.';
+                            : status === 'waiting' &&
+                                scheduleKey &&
+                                readSchedule(scheduleKey, personalSchedule).send === 'manual'
+                              ? 'Your changes are saved here. Use Sync now to send them.'
+                              : status === 'attention'
+                                ? 'Your changes are saved here. Use Sync now to finish syncing.'
+                                : '';
                     const rootName = app.node(scope.localRoot)?.name ?? node.name;
                     const folder =
                         scope.kind === 'folder' && node.id !== scope.localRoot
@@ -308,9 +365,9 @@ async function syncDialog(id: string) {
                     return {
                         title: 'Sync',
                         back: !!managedFolder,
-                        html: `<p data-sync-field="name"><strong>${esc(node.name)}</strong></p>${scopeDescription}<p data-sync-field="status" class="sync-status" data-state="${status}" role="status" aria-atomic="true">${status === 'working' ? '<span class="su-spinner" aria-hidden="true"></span>' : icon(status === 'current' ? 'check' : status === 'ended' ? 'unlink' : status === 'attention' ? 'warning' : 'refresh')}<strong>${status === 'ended' ? 'Local copy · Sync ended' : label}</strong></p><p data-sync-field="error" class="sync-error" role="alert"${failure ? '' : ' hidden'}>${esc(failure)}</p><p data-sync-field="message"${failure ? ' hidden' : ''}>${esc(message)}</p>${folder}
+                        settings: Boolean(owner || scheduleKey) && status !== 'ended',
+                        html: `<p data-sync-field="name"><strong>${esc(node.name)}</strong></p>${scopeDescription}<p data-sync-field="status" class="sync-status" data-state="${status}" role="status" aria-atomic="true">${status === 'working' ? '<span class="su-spinner" aria-hidden="true"></span>' : icon(status === 'current' ? 'check' : status === 'ended' ? 'unlink' : status === 'attention' ? 'warning' : 'refresh')}<strong>${status === 'ended' ? 'Local copy · Sync ended' : label}</strong></p><p data-sync-field="error" class="sync-error" role="alert"${failure ? '' : ' hidden'}>${esc(failure)}</p><p data-sync-field="message"${failure || !message ? ' hidden' : ''}>${esc(message)}</p>${folder}
                 <p data-sync-field="pending"${enrolling.length ? '' : ' hidden'}>${enrolling.length} ${enrolling.length === 1 ? 'item is' : 'items are'} saved locally and waiting to join Sync.</p>
-                <nav data-sync-field="settings" class="sync-tools" aria-label="Sync settings"${owner && status !== 'ended' ? '' : ' hidden'}>${syncTool('Devices', 'access', 'refresh')}</nav>
                 ${scope.selection ? '<p>To connect a new device, open the original synced folder.</p>' : ''}
                 <p data-sync-field="expiry" class="sync-fineprint">${status === 'ended' ? 'Your local copies remain available.' : scope.kind === 'folder' ? 'Sync for this folder and its documents will stop after 30 days without opening the folder or a document inside. Local copies will remain.' : "Sync will stop if this document isn't opened for 30 days, but local copies will remain."}</p>`,
                         buttons: [
@@ -320,11 +377,7 @@ async function syncDialog(id: string) {
                                 empty: true,
                                 left: true,
                             },
-                            ...(status === 'attention' || status === 'waiting'
-                                ? [{ label: 'Try again', value: 'retry', primary: true }]
-                                : owner && status !== 'ended' && !rotating && !scope.selection
-                                  ? [{ label: 'Sync link', value: 'link', primary: true }]
-                                  : []),
+                            ...(status === 'ended' ? [] : [{ label: 'Sync now', value: 'now', primary: true }]),
                         ],
                     };
                 });
@@ -335,23 +388,9 @@ async function syncDialog(id: string) {
                     continue;
                 }
                 if (answer.value === 'close') break;
-                if (answer.value === 'link') {
-                    openSyncLink = true;
-                    continue;
-                }
-                if (answer.value === 'access') await accessPanel(scope, ui);
-                else if (answer.value === 'retry') {
-                    ui.busy('Trying again…');
-                    await viewer.flush();
-                    await resumeCreations(true);
-                    // Resume in this order: a remote cleanup, then a saved key rotation, then the transport.
-                    if (scope.cleanup) await continueCleanup(scope, ui.signal);
-                    else if (await rotationRepository(scope).get()) await continueRotation(scope);
-                    else {
-                        start(scope);
-                        driverFor(scope)?.retry();
-                    }
-                } else if (answer.value === 'stop') {
+                if (answer.value === 'settings') await syncSettings(scope, ui);
+                else if (answer.value === 'now') await syncNow(scope, ui);
+                else if (answer.value === 'stop') {
                     const result = await ui.screen({
                         title: 'Disconnect this device?',
                         back: true,

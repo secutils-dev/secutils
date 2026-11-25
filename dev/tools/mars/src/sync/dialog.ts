@@ -1,8 +1,8 @@
 // Modal flow dialog of Sync and Live links: one <dialog> shows a sequence of screens and resolves each
 // with the chosen action. It owns focus, the busy state, and an abort signal for the requests of the flow.
 // `FlowScreen.html` reaches `innerHTML` as given. The caller escapes each interpolated value with `esc()`.
-import { icon } from '../ui/icons.ts';
-import { buttonClass, dialogCloseButton } from '../ui/ui.ts';
+import { icon, type IconName } from '../ui/icons.ts';
+import { buttonClass, dialogCloseButton, esc } from '../ui/ui.ts';
 import { hideTooltip } from '../ui/feedback.ts';
 
 /**
@@ -28,8 +28,30 @@ export interface FlowScreen {
     title: string;
     html: string;
     back?: boolean;
+    settings?: boolean;
     buttons?: FlowButton[];
     field?: { label: string; value: string; type?: 'text' | 'password'; readonly?: boolean };
+}
+
+/** Shared EUI-style gear, immediately before the Close button. */
+export const syncSettingsButton = () =>
+    `<button type="button" class="icon-btn sync-header-settings" aria-label="Sync settings" data-tooltip="Sync settings" aria-haspopup="dialog">${icon('gear')}</button>`;
+
+/** Shared footer Back button. The caller defines which screen to return to. */
+export function syncBackButton(onBack: () => void) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `${buttonClass({ empty: true, text: true, flush: 'left' })} sync-back`;
+    button.innerHTML = `${icon('chevronRight')}<span>Back</span>`;
+    button.setAttribute('aria-label', 'Back');
+    button.onclick = onBack;
+    return button;
+}
+
+/** Secondary connection actions, separate from the primary footer. */
+export function syncManagement(actions: readonly { label: string; value: string; icon: IconName }[]) {
+    if (!actions.length) return '';
+    return `<nav class="sync-management" aria-label="Connection actions">${actions.map((action) => `<button type="button" class="sync-management-action" data-sync-action="${esc(action.value)}">${icon(action.icon)}<span>${esc(action.label)}</span>${icon('chevronRight')}</button>`).join('')}</nav>`;
 }
 /**
  * A modal dialog. The constructor adds it to the page, and the first `screen` call opens it. A close aborts `signal`,
@@ -44,8 +66,9 @@ export class SyncDialog {
     private heading = document.createElement('h2');
     private body = document.createElement('div');
     private foot = document.createElement('footer');
-    private back = document.createElement('button');
+    private back = syncBackButton(() => this.resolve('back'));
     private notice = document.createElement('p');
+    private settings: HTMLButtonElement;
     private input: HTMLInputElement | null = null;
     private answer: ((value: { value: string; text: string }) => void) | null = null;
     private resetBusy: (() => void) | null = null;
@@ -62,11 +85,6 @@ export class SyncDialog {
         this.element.setAttribute('aria-labelledby', this.heading.id);
         const header = document.createElement('header');
         header.className = 'su-dialog-header';
-        this.back.type = 'button';
-        this.back.className = `${buttonClass({ empty: true, text: true, flush: 'left' })} sync-back`;
-        this.back.innerHTML = `${icon('chevronRight')}<span>Back</span>`;
-        this.back.setAttribute('aria-label', 'Back');
-        this.back.onclick = () => this.resolve('back');
         this.body.className = 'su-dialog-body';
         this.foot.className = 'mars-modal-foot';
         this.notice.className = 'sync-notice';
@@ -75,6 +93,10 @@ export class SyncDialog {
             this.heading,
             dialogCloseButton(() => this.close()),
         );
+        header.querySelector('.su-dialog-close')!.insertAdjacentHTML('beforebegin', syncSettingsButton());
+        this.settings = header.querySelector<HTMLButtonElement>('.sync-header-settings')!;
+        this.settings.hidden = true;
+        this.settings.onclick = () => this.resolve('settings');
         this.element.append(header, this.body, this.notice, this.foot);
         document.body.append(this.element);
         this.element.addEventListener('close', () => {
@@ -124,6 +146,7 @@ export class SyncDialog {
         this.resolve('replaced');
         this.heading.textContent = screen.title;
         this.back.hidden = !screen.back;
+        this.settings.hidden = !screen.settings;
         this.body.innerHTML = screen.html;
         this.notice.classList.remove('sr-only');
         this.notice.textContent = '';
@@ -150,10 +173,7 @@ export class SyncDialog {
                 }
             };
         }
-        this.foot.replaceChildren(
-            this.back,
-            ...(screen.buttons ?? []).map((choice, index) => this.button(choice, index, screen.buttons!.length)),
-        );
+        this.foot.replaceChildren(...this.footer(screen.buttons ?? []));
         this.foot.hidden = !screen.back && !screen.buttons?.length;
         this.bindActions();
         if (!this.element.open) this.element.showModal();
@@ -179,6 +199,7 @@ export class SyncDialog {
     update(screen: FlowScreen) {
         if (!this.open || !this.answer || this.resetBusy) return;
         this.lastUpdate = screen;
+        this.settings.hidden = !screen.settings;
         const template = document.createElement('template');
         template.innerHTML = screen.html;
         const fields = new Map(
@@ -234,16 +255,19 @@ export class SyncDialog {
                 .filter((button) => button !== this.back)
                 .map((button) => [button.value, button]),
         );
-        const next = [
-            this.back,
-            ...choices.map((choice, index) => this.button(choice, index, choices.length, existing.get(choice.value))),
-        ];
+        const next = this.footer(choices, existing);
         if (
             next.length !== this.foot.children.length ||
             next.some((element, index) => this.foot.children[index] !== element)
         )
             this.foot.replaceChildren(...next);
         this.foot.hidden = this.back.hidden && !choices.length;
+    }
+    private footer(choices: FlowButton[], existing?: Map<string, HTMLButtonElement>) {
+        return [
+            this.back,
+            ...choices.map((choice, index) => this.button(choice, index, choices.length, existing?.get(choice.value))),
+        ];
     }
     /** Applies the latest deferred footer state while the same screen is still awaiting an action. */
     private flushButtons() {
@@ -295,6 +319,7 @@ export class SyncDialog {
         ))
             input.disabled = true;
         this.back.disabled = true;
+        this.settings.disabled = true;
     }
     /** Ends the busy state, restores the earlier disabled state of each control, and clears the status line. */
     idle() {

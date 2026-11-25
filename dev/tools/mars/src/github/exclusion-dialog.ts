@@ -2,6 +2,7 @@
 import * as app from '../app.ts';
 import * as viewer from '../doc/viewer.js';
 import * as db from '../store/db.ts';
+import { syncBackButton } from '../sync/dialog.ts';
 import { ancestors, type TreeNode } from '../tree/model.ts';
 import { dialogCloseButton } from '../ui/ui.ts';
 import { githubRoot } from './binding.ts';
@@ -105,7 +106,7 @@ export function openGitHubExclusions(root: string) {
                 <div role="status" aria-live="polite" data-preview-result hidden></div>
                 <p class="sync-error" role="alert" hidden></p>
             </div>
-            <footer class="mars-modal-foot"><button class="btn btn-empty btn-text" type="button" data-cancel>Cancel</button><button class="btn btn-primary" type="submit">Save exclusions</button></footer>
+            <footer class="mars-modal-foot"><button class="btn btn-primary" type="submit">Save exclusions</button></footer>
         </form>`;
     const form = dialog.querySelector('form')!;
     const field = form.querySelector('textarea')!;
@@ -174,7 +175,7 @@ export function openGitHubExclusions(root: string) {
         }
     });
     dialog.querySelector('header')!.append(dialogCloseButton(() => dialog.close()));
-    form.querySelector('[data-cancel]')!.addEventListener('click', () => dialog.close());
+    submit.before(syncBackButton(() => dialog.close()));
     dialog.addEventListener('close', () => dialog.remove(), { once: true });
     document.body.append(dialog);
     dialog.showModal();

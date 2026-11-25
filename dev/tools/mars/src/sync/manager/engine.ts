@@ -50,11 +50,13 @@ import {
     rootFor,
     renewing,
     saveScope,
+    folderScheduleKey,
     type SnapshotImport,
 } from './state.ts';
 import { continueCleanup } from './live-links.ts';
 import { synchronizeDeletions, resumeDeletions, personalSync } from './deletion.ts';
 import { resumeCreations, pendingCreations } from './creation.ts';
+import { personalSchedule, readSchedule, watchSchedule } from '../schedule.ts';
 
 // True after the first `initialize` call starts. The call sets it before its first await.
 let initialized = false;
@@ -168,6 +170,13 @@ export function start(scope: Scope) {
             return null;
         },
     };
+    const key = folderScheduleKey(scope);
+    const manualReceive = () => key && readSchedule(key, personalSchedule).receive === 'manual';
+    const deletionCheck = personalSync(scope)
+        ? async (signal: AbortSignal) => {
+              await synchronizeDeletions(scope, signal);
+          }
+        : undefined;
     const driver = new Transport({
         origin: location.origin,
         token: scope.token,
@@ -179,12 +188,16 @@ export function start(scope: Scope) {
         // Accepts a grant that the owner signed, or a Live grant under an invitation that the owner signed.
         authorValid: (author) => verifyGrant(author, scope.owner.grant),
         directory: scope.kind === 'folder',
-        beforeUpload: personalSync(scope)
-            ? async (signal) => {
-                  await synchronizeDeletions(scope, signal);
+        beforeUpload: deletionCheck
+            ? async (signal, explicit) => {
+                  await synchronizeDeletions(scope, signal, explicit || !manualReceive());
               }
             : undefined,
-        deleted: personalSync(scope) ? (signal) => synchronizeDeletions(scope, signal) : undefined,
+        beforeReceive: deletionCheck,
+        schedule: key ? { key, read: () => readSchedule(key, personalSchedule) } : undefined,
+        deleted: personalSync(scope)
+            ? (signal) => (manualReceive() ? Promise.resolve(true) : synchronizeDeletions(scope, signal))
+            : undefined,
         // A document without a local session waits for its folder manifest. Its ciphertext stays on the service.
         wanted: (key) => {
             const checkpoint = checkpointKey(key);
@@ -296,6 +309,15 @@ export function start(scope: Scope) {
                 await persistProjection(app.state.currentId!, current.record.projection);
         },
     });
+    if (key)
+        watchSchedule(
+            key,
+            () => {
+                driver.reschedule();
+                if (pendingCreations(scope).length) void resumeCreations();
+            },
+            driver.signal,
+        );
     drivers.set(scopeId(scope), driver);
     driver.start();
 }
@@ -441,9 +463,7 @@ export async function snapshot(node: TreeNode, text: string, incoming?: Snapshot
             const next = await staged.change(stored.projection, text);
             await session.synchronize();
             await persistProjection(node.id, next);
-            setTimeout(() => {
-                void driverFor(rootFor(node))?.upload();
-            }, 0);
+            uploadSavedBody(node);
         } finally {
             staged.destroy();
         }
@@ -723,12 +743,16 @@ export async function persist(node: TreeNode, text: string) {
     await persistProjection(node.id, next);
     // The viewer counts this save as in progress until the caller returns, and `prepare` publishes
     // nothing during a save. Upload in a later task.
-    setTimeout(() => {
-        void driverFor(rootFor(node))?.upload();
-    }, 0);
+    uploadSavedBody(node);
     const scope = rootFor(node);
     // 86400000 ms is 24 hours, the minimum interval between lease renewals of one scope.
     if (scope && (!scope.lastRenewed || Date.now() - scope.lastRenewed > 86400000)) void opened(node.id);
+}
+
+function uploadSavedBody(node: TreeNode) {
+    const driver = driverFor(rootFor(node));
+    if (driver?.options.schedule) driver.requestUpload();
+    else setTimeout(() => driver?.requestUpload(), 0);
 }
 /**
  * Publishes the current name and shared reading width of a connected node after a rename or a move.
@@ -747,7 +771,7 @@ export async function metadata(id: string) {
         });
     const scope = rootFor(node);
     if (scope?.kind === 'folder') await updateManifest(scope);
-    void driverFor(rootFor(node))?.upload();
+    driverFor(rootFor(node))?.requestUpload();
 }
 /**
  * Writes the local tree of a folder scope to its manifest. Each entry keeps its other fields, such
@@ -889,7 +913,7 @@ export async function undo(id: string, redo = false) {
     if (!session) return;
     const text = await session.undo(redo);
     await persistProjection(id, text);
-    void driverFor(rootFor(app.node(id)!))?.upload();
+    driverFor(rootFor(app.node(id)!))?.requestUpload();
 }
 /**
  * Publishes a signed acknowledgement that this participant reviewed the current body.
@@ -900,7 +924,7 @@ export async function markReviewed(id: string) {
     const session = sessions.get(id);
     if (!session) return;
     await session.markReviewed();
-    void driverFor(rootFor(app.node(id)!))?.upload();
+    driverFor(rootFor(app.node(id)!))?.requestUpload();
 }
 /**
  * Reverts a review action of this member: a deleted thread, a deleted comment, or a resolve toggle.
@@ -917,7 +941,7 @@ export async function undoReview(
     if (!session) return;
     const text = await session.undoReview(before, after);
     await persistProjection(id, text);
-    void driverFor(rootFor(app.node(id)!))?.upload();
+    driverFor(rootFor(app.node(id)!))?.requestUpload();
 }
 /**
  * Publishes a reading width as shared metadata of a connected document, for every participant.
@@ -929,7 +953,7 @@ export async function sharedWidth(id: string, width: number | 'full') {
     await session.metadataChanged({ readingWidth: width });
     const node = app.node(id)!;
     node.readingWidth = width;
-    void driverFor(rootFor(node))?.upload();
+    driverFor(rootFor(node))?.requestUpload();
 }
 /**
  * Verifies and decrypts a key update for a Live link, and returns the document key and its epoch.

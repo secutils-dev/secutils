@@ -77,7 +77,7 @@ async function apply(scope: Scope, packets: SignedDeletion[], job?: DeletionJob)
  * Downloads and verifies deletion receipts before uploading local edits. Legacy unsigned fences retain
  * the previous ended-copy behavior. Whole-response validation finishes before the first local write.
  */
-export async function synchronizeDeletions(scope: Scope, signal: AbortSignal) {
+export async function synchronizeDeletions(scope: Scope, signal: AbortSignal, applyReceipts = true) {
     if (!personalSync(scope)) return false;
     const transport = driverFor(scope);
     if (!transport) return false;
@@ -95,6 +95,17 @@ export async function synchronizeDeletions(scope: Scope, signal: AbortSignal) {
         }
     }
     signal.throwIfAborted();
+    if (!applyReceipts) {
+        if (
+            app.state.nodes.some(
+                (node) =>
+                    belongs(node, scope) &&
+                    packets.some((packet) => packet.deletion.document === node.connection!.document),
+            )
+        )
+            throw new SyncError('receive-required', 409);
+        return false;
+    }
     const previous = applying.get(scopeId(scope)) ?? Promise.resolve();
     const task = previous
         .catch(() => {})

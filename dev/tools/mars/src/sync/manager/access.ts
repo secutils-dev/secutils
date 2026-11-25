@@ -497,7 +497,8 @@ export async function continueRotation(scope: Scope) {
         );
         start(scope);
         driverFor(scope)?.retry();
-        await driverFor(scope)?.upload();
+        const driver = driverFor(scope);
+        if (!driver?.options.schedule) await driver?.upload();
         viewer.toast('Access revoked and document keys rotated');
     };
     // The lock name is the storage key of the plan, so each tab waits on the same lock.

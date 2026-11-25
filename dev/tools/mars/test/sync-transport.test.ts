@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { setImmediate } from 'node:timers/promises';
 import { DurableBody, type DurableRecord } from '../src/sync/durable.ts';
 import {
     identity,
@@ -23,6 +24,16 @@ import {
 } from '../src/sync/protocol.ts';
 import { Session } from '../src/sync/session.ts';
 import { Transport, type ConnectionStatus } from '../src/sync/transport.ts';
+import {
+    acknowledgeGitHubSend,
+    githubSchedule,
+    githubSendPending,
+    noteSyncEdit,
+    personalSchedule,
+    readSchedule,
+    syncEdit,
+    type SyncSchedule,
+} from '../src/sync/schedule.ts';
 
 async function replica(owner = false) {
     const who = await identity(),
@@ -60,6 +71,100 @@ const deferred = <T>() => {
 };
 const response = (value: unknown) =>
     new Response(JSON.stringify(value), { status: 200, headers: { 'Content-Type': 'application/json' } });
+
+test('folder defaults stay independent and read-only GitHub has no send interval', () => {
+    assert.deepEqual(readSchedule('unsaved', personalSchedule), { receive: 5_000, send: 5_000 });
+    assert.deepEqual(readSchedule('unsaved', githubSchedule(true, true)), { receive: 60_000, send: 60_000 });
+    assert.deepEqual(readSchedule('unsaved', githubSchedule(true, false)), { receive: 60_000, send: undefined });
+    assert.deepEqual(readSchedule('unsaved', githubSchedule(false, false)), { receive: 180_000, send: undefined });
+});
+
+test('a denied preference store cannot make a completed GitHub send run again', (t) => {
+    const previous = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+    Object.defineProperty(globalThis, 'localStorage', {
+        configurable: true,
+        get: () => {
+            throw new Error('Storage unavailable');
+        },
+    });
+    t.after(() => {
+        if (previous) Object.defineProperty(globalThis, 'localStorage', previous);
+        else Reflect.deleteProperty(globalThis, 'localStorage');
+    });
+    noteSyncEdit('blocked');
+    const { marker } = syncEdit('blocked');
+    assert.equal(githubSendPending('blocked'), true);
+    noteSyncEdit('blocked');
+    acknowledgeGitHubSend('blocked', marker);
+    assert.equal(githubSendPending('blocked'), true);
+    acknowledgeGitHubSend('blocked', syncEdit('blocked').marker);
+    assert.equal(githubSendPending('blocked'), false);
+});
+
+test('receive never sends a folder edit and the send deadline follows the last edit', async (t) => {
+    t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 100_000 });
+    let settings: SyncSchedule = { receive: 5_000, send: 5_000 };
+    let pending = false;
+    const calls: string[] = [];
+    const transport = new Transport({
+        origin: 'https://mars.test',
+        token: 'test',
+        ownerPublicKey: 'test',
+        replica: {
+            binding: {
+                collection: 'collection',
+                document: 'folder',
+                member: 'member',
+                epoch: 1,
+                kind: 'sync',
+                permission: 'owner',
+            },
+            prepare: async () => (pending ? ({} as NonNullable<Awaited<ReturnType<DurableBody['prepare']>>>) : null),
+            pending: async () => Number(pending),
+            acknowledge: async () => {
+                pending = false;
+            },
+            receive: async () => null,
+        },
+        schedule: { key: 'test-schedule', read: () => settings },
+        environment: {
+            visible: () => true,
+            online: () => true,
+            visibility: new EventTarget(),
+            connectivity: new EventTarget(),
+        },
+        status: () => {},
+        projection: () => {},
+        fetch: async (url) => {
+            calls.push(String(url).split('/').at(-1)!);
+            return response({ entries: [], complete: true });
+        },
+    });
+    t.after(() => transport.dispose());
+    const advance = async (ms: number) => {
+        t.mock.timers.tick(ms);
+        await setImmediate();
+    };
+    transport.start();
+    await advance(0);
+    assert.deepEqual(calls, ['index']);
+    pending = true;
+    transport.requestUpload();
+    await advance(3_000);
+    transport.requestUpload();
+    await advance(2_000);
+    assert.deepEqual(calls, ['index', 'index']);
+    await advance(3_000);
+    assert.deepEqual(calls, ['index', 'index', 'append']);
+    settings = { receive: 'manual', send: 'manual' };
+    transport.reschedule();
+    pending = true;
+    transport.requestUpload();
+    await advance(60_000);
+    assert.deepEqual(calls, ['index', 'index', 'append']);
+    await transport.syncNow();
+    assert.deepEqual(calls, ['index', 'index', 'append', 'append', 'index']);
+});
 
 test('checkpoint keys expose durable cursors only after strict namespace and sequence validation', () => {
     const collection = crypto.randomUUID(),

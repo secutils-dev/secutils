@@ -98,7 +98,8 @@ An HTML file that MARS exported with embedded source opens as editable Markdown.
 **New → Import from GitHub** imports a repository branch on production, dev, and local MARS hosts.
 Use a fine-grained token restricted to the repositories you need. In GitHub, set **Repository permissions → Contents** to **Read-only** or **Read and write**.
 
-In **Import from GitHub** or **Sync**, use the **GitHub credential** dropdown. It starts with the credential used for this import or **None (public read-only)**. The optional GitHub owner puts credentials under **Suggested for** that organization or account. MARS does not try other tokens automatically. Each folder has its own write setting, which starts off for new imports.
+In **Import from GitHub** or **Sync → Sync settings**, use the **GitHub credential** dropdown. It starts with the credential used for this import or **None (public read-only)**. The optional GitHub owner puts credentials under **Suggested for** that organization or account. MARS does not try other tokens automatically.
+New imports set **Send updates** to **Never**, even with a token. **Never** keeps the folder read-only. Sending updates requires a credential with **Contents: Read and write** permission.
 
 Use the key button next to the dropdown to open **Manage credentials**. Add a credential there, or use the pencil and trash buttons to edit or remove one. Replacement applies to every folder that uses the credential. Removal pauses those connections without deleting files or pending edits. Removal does not revoke the token on GitHub.
 
@@ -115,7 +116,7 @@ MARS follows the latest GitHub branch tree, including after a force-push. It mat
 MARS merges independent GitHub edits against the last common file version. Overlapping edits keep both versions and show **Resolve conflicts**. The full Local and GitHub documents appear beside an editable Result. Pick a side for each conflict or edit and mark it resolved.
 If you and GitHub rename the same item to different names, choose **Keep GitHub’s name** or **Use my name** under **Review pending changes**. Keeping GitHub’s name does not write to the repository.
 
-Choose **Exclude from Sync** in a GitHub file or folder menu to hide it on this device. MARS skips matching paths during Sync and keeps cached documents and local edits. To restore items or add `.gitignore` patterns, open **Sync → Manage exclusions** on the repository folder. Rules are case-sensitive and stay tied to paths, not Git renames. Exclusions do not change the repository or its `.gitignore` file.
+Choose **Exclude from Sync** in a GitHub file or folder menu to hide it on this device. MARS skips matching paths during Sync and keeps cached documents and local edits. To restore items or add `.gitignore` patterns, open **Sync → Sync settings → Manage exclusions** on the repository folder. Rules are case-sensitive and stay tied to paths, not Git renames. Exclusions do not change the repository or its `.gitignore` file.
 Use **Compare changes** in the review bar to compare the source side by side. Use the **Show before** eye beside an edited or removed block to see its previous rendered content.
 GitHub controls access and retention. GitHub folders and their documents support Full and Short snapshot links, not Live links. Short snapshots use Secutils when selected.
 
@@ -140,14 +141,14 @@ An existing snapshot stays unchanged. Create a new link to include a later renam
 ### Sync your devices
 
 1. Open the document or folder menu and select **Sync**.
-2. Select **Sync link** and open that link on the other device. The link expires after 10 minutes.
+2. Select **Sync settings → Sync link** on an existing connection. Open that link on the other device. The link expires after 10 minutes.
 3. Make sure that both devices show the same code. Then approve the code on the first device.
 4. On the other device, keep the download dialog open until **Sync connected** appears.
 
 After setup, the first window can close. New documents in a synced folder join Sync automatically.
 New files have a pending badge until registration and the folder manifest are complete.
 Registration retries retain the same remote identity and survive reloads. Multiple tabs share enrollment through browser locks.
-The Sync dialog shows unfinished enrollment and offers **Try again**.
+The Sync dialog shows unfinished enrollment. **Sync now** retries it.
 Open Sync dialogs update status, pending counts, and enrollment errors as they change.
 Status updates preserve keyboard focus and do not interrupt a footer action.
 An enrollment failure shows its reason in the child and folder Sync dialogs, including after a reload.
@@ -157,6 +158,20 @@ Recovery from incomplete imports is automatic. MARS retains local text and comme
 The Sync dialog for a child shows its own status and the name of its synced folder.
 **Manage folder Sync** opens the folder settings. **Back** returns to the child status.
 Device settings and Sync links apply to the complete synced folder.
+
+### Folder Sync settings
+
+Open **Sync** on a Personal Sync or GitHub folder. The **Sync settings** gear sits next to **Close**. The settings apply to that folder in this browser.
+**Receive updates** sets the time between checks for remote changes. MARS receives updates only while the tab is visible and online.
+**Send updates** sets how long MARS waits after your last edit. Each new edit starts the wait again. MARS keeps the edits in the local library.
+If you select **Manual**, use **Sync now** to run that direction. **Sync now** runs both directions when the connection can send.
+Without a GitHub credential, **Send updates** is disabled at **Never**. **Sync now** does not send GitHub updates while **Never** is selected.
+
+Personal Sync waits 5 seconds by default in both directions. GitHub waits 1 minute with a token and receives every 3 minutes without one.
+The settings do not change initial setup, access management, or the explicit Personal Sync action **Delete everywhere**.
+
+### Folder Sync maintenance
+
 Legacy disconnected copies and mismatched saved state remain outside synced folders, under **Local copies**.
 MARS preserves their saved data instead of uploading them again. A copy can explicitly move into Sync after disconnection.
 

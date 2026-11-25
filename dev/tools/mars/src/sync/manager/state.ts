@@ -19,6 +19,7 @@ import type { RotationPlan } from '../rotation.ts';
 import type { LiveLink } from '../live-link.ts';
 import { syncDebug, safeError } from '../debug.ts';
 import { connectionStates } from '../status.ts';
+import { personalScheduleKey } from '../schedule.ts';
 
 /**
  * One connection of this device to a collection: the credentials, keys, and local root of one member.
@@ -83,6 +84,12 @@ export const materializedViews = new Map<string, string>();
 /** `meta` store key of a saved scope. It is also the scope ID in every registry. */
 export const scopeKey = (collection: string, member: string) => `sync:scope:${collection}:${member}`;
 export const scopeId = (scope: Scope) => scopeKey(scope.collection, scope.member.grant.member);
+/** Local scheduling key for a personal folder scope. Live and standalone document transports use their own defaults. */
+export const folderScheduleKey = (scope: Scope) =>
+    scope.kind === 'folder' &&
+    !scope.live &&
+    !scope.selection &&
+    personalScheduleKey(scope.collection, scope.member.grant.member);
 /** `meta` store key of the saved key-rotation plan of a scope. Rotation also uses it as its Web Locks name. */
 export const rotationKey = (scope: Scope) => `sync:rotation:${scopeId(scope)}`;
 /** Members and Live invitations whose revocation finished. Later rotations wrap no keys for them. */

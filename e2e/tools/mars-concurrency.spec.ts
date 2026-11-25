@@ -150,7 +150,7 @@ test('twelve tabs retain nested imports, stable registrations, renames, and offl
     await page.getByRole('button', { name: 'Actions for Root', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Sync', exact: true }).click();
     failing = false;
-    await page.getByRole('button', { name: 'Try again', exact: true }).click();
+    await page.getByRole('button', { name: 'Sync now', exact: true }).click();
     await expect.poll(async () => (await inventory(page)).jobs, { timeout: 60000 }).toBe(0);
     await expect.poll(async () => (await inventory(page)).nodes.filter((n) => n.syncPending).length).toBe(0);
     await page.getByRole('button', { name: 'Close', exact: true }).click();
@@ -213,7 +213,9 @@ test('automatic recovery retains stranded replica identity, local edits, review 
         db.close();
         return record.outbox;
       }, original.id);
-    await expect.poll(async () => (await pending()).some((packet) => !!packet.envelope)).toBe(true);
+    await expect
+      .poll(async () => (await pending()).some((packet) => !!packet.envelope), { timeout: 10_000 })
+      .toBe(true);
     const originalPackets = await pending();
     await page.evaluate(async (id) => {
       const db = await new Promise<IDBDatabase>((resolve) => {
@@ -516,11 +518,11 @@ test('child Sync controls explain pending enrollment while only roots and issues
   await row.locator('.tree-connection').click();
   const dialog = page.getByRole('dialog', { name: 'Sync', exact: true });
   await expect(dialog).toContainText('Saved locally · Sync enrollment needs attention');
-  await expect(dialog.getByRole('button', { name: 'Try again', exact: true })).toHaveCount(0);
+  await expect(dialog.locator('footer').getByRole('button', { name: 'Sync now', exact: true })).toBeVisible();
   await dialog.getByRole('button', { name: 'Manage folder Sync', exact: true }).click();
-  await expect(dialog.getByRole('button', { name: 'Try again', exact: true })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Sync now', exact: true })).toBeVisible();
   await context.unroute('**/sync/document');
-  await dialog.getByRole('button', { name: 'Try again', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Sync now', exact: true }).click();
   await expect.poll(async () => (await inventory(page)).jobs, { timeout: 30000 }).toBe(0);
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(row.locator('.tree-sync-mark')).toHaveCount(1);

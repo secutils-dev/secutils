@@ -16,6 +16,10 @@ import {
 import { syncDebug, safeError } from './debug.ts';
 import type { Grant, SignedGrant, Stream, SyncBinding, SyncDirectory } from './protocol.ts';
 import { readDirectory } from './directory.ts';
+import { noteSyncEdit, syncEdit, type SyncSchedule } from './schedule.ts';
+
+const LEGACY_POLL_MS = 3_000;
+const SEND_RETRY_MS = 2_000;
 
 /**
  * Connection state for the UI.
@@ -83,9 +87,13 @@ export interface TransportOptions {
     exclude?(): string[];
     keyChanged?(envelope: SignedCheckpoint, signal: AbortSignal): Promise<void>;
     /** Verifies resource deletions before any queued content is uploaded. Reads pause with visibility. */
-    beforeUpload?(signal: AbortSignal): Promise<void>;
+    beforeUpload?(signal: AbortSignal, explicit: boolean): Promise<void>;
+    /** Verifies deletions before a scheduled receive, even if sending is Manual. */
+    beforeReceive?(signal: AbortSignal): Promise<void>;
     /** Handles a deletion that raced with a read/upload. True keeps unrelated documents connected. */
     deleted?(signal: AbortSignal): Promise<boolean>;
+    /** A folder schedule. Without it, standalone Sync and Live keep their existing transport behavior. */
+    schedule?: { key: string; read(): SyncSchedule };
 }
 /**
  * Poll and upload loop of one scope. One poll runs at a time: upload the outbox, scan the checkpoint index, download
@@ -93,6 +101,11 @@ export interface TransportOptions {
  * online, and no `pagehide` suspended it.
  */
 export class Transport {
+    private lifetime = new AbortController();
+    /** Stops local preference subscriptions when the transport is disposed. */
+    get signal() {
+        return this.lifetime.signal;
+    }
     /**
      * The latest error of a poll or an upload. `null` after `retry` or after an upload pass that emptied the outbox.
      */
@@ -107,6 +120,12 @@ export class Transport {
     private preflightRead: AbortController | null = null;
     private timer: ReturnType<typeof setTimeout> | undefined;
     private running = false;
+    private polling: Promise<void> | undefined;
+    private explicitReceive = false;
+    private sendTimer: ReturnType<typeof setTimeout> | undefined;
+    private sendRetryAt = 0;
+    private receivedAt = 0;
+    private receiveRetryAt = 0;
     private sending: Promise<void> | null = null;
     // Index keys that this instance applied, found in durable progress, or rejected. The set is not durable.
     private seen = new Set<string>();
@@ -120,8 +139,8 @@ export class Transport {
     private listener = () => {
         if (!this.available()) this.pause();
         else if (this.enabled) {
-            this.wake = true;
-            this.schedule(0);
+            if (!this.options.schedule) this.wake = true;
+            this.reschedule();
         }
     };
     private pagehide = () => {
@@ -167,14 +186,16 @@ export class Transport {
     /** Enables the loop and schedules an immediate poll. */
     start() {
         this.enabled = true;
-        this.schedule(0);
+        this.reschedule();
     }
     /** Clears the failure state and starts the loop again, also after `attention` or `ended` stopped it. */
     retry() {
         this.failures = 0;
         this.lastFailure = null;
         this.enabled = true;
-        this.schedule(0);
+        this.sendRetryAt = this.receiveRetryAt = 0;
+        this.wake = true;
+        this.reschedule();
     }
     /** Aborts reads and the timer but keeps the enabled intent. A running upload request continues. */
     private pause() {
@@ -187,6 +208,8 @@ export class Transport {
         this.preflightRead = null;
         clearTimeout(this.timer);
         this.timer = undefined;
+        clearTimeout(this.sendTimer);
+        this.sendTimer = undefined;
         if (this.enabled && !this.environment.online()) this.options.status('offline');
     }
     /**
@@ -200,6 +223,7 @@ export class Transport {
     /** Stops the loop and removes the page event listeners. Call it before the instance is dropped. */
     dispose() {
         this.stop();
+        this.lifetime.abort();
         this.environment.visibility.removeEventListener('visibilitychange', this.listener);
         for (const event of ['online', 'offline'])
             this.environment.connectivity.removeEventListener(event, this.listener);
@@ -214,6 +238,111 @@ export class Transport {
             this.timer = undefined;
             void this.poll();
         }, delay);
+    }
+
+    /** Re-arms both directions after a browser-local setting or edit marker changes. */
+    reschedule() {
+        this.scheduleReceive();
+        this.scheduleSend();
+    }
+
+    private scheduleReceive() {
+        const settings = this.options.schedule?.read();
+        if (!settings) {
+            this.schedule(0);
+            return;
+        }
+        if (settings.receive === 'manual') {
+            clearTimeout(this.timer);
+            this.timer = undefined;
+            if (!this.explicitReceive) this.reads?.abort();
+        } else {
+            const due = this.wake ? 0 : this.receivedAt + settings.receive;
+            this.schedule(Math.max(0, due - Date.now(), this.receiveRetryAt - Date.now()));
+        }
+    }
+
+    /** Restarts the outgoing quiet period after local work saves; standalone connections still send promptly. */
+    requestUpload() {
+        const schedule = this.options.schedule;
+        if (!schedule) {
+            void this.upload();
+            return;
+        }
+        noteSyncEdit(schedule.key);
+        if (this.enabled && !this.sending) this.options.status(this.environment.online() ? 'waiting' : 'offline');
+        this.scheduleSend();
+    }
+
+    private scheduleSend() {
+        clearTimeout(this.sendTimer);
+        this.sendTimer = undefined;
+        if (!this.enabled || !this.available()) return;
+        const schedule = this.options.schedule;
+        const delay = schedule?.read().send;
+        if (!schedule || typeof delay !== 'number') return;
+        this.sendTimer = setTimeout(
+            () => {
+                this.sendTimer = undefined;
+                void this.sendDue().catch((error) => {
+                    this.failure(error);
+                    this.sendRetryAt = Date.now() + this.backoff();
+                    this.scheduleSend();
+                });
+            },
+            Math.max(0, syncEdit(schedule.key).at + delay - Date.now(), this.sendRetryAt - Date.now()),
+        );
+    }
+
+    private async sendDue() {
+        const schedule = this.options.schedule!;
+        const send = async () => {
+            const revision = syncEdit(schedule.key);
+            const allowed = () => {
+                const delay = schedule.read().send;
+                return (
+                    this.available() &&
+                    typeof delay === 'number' &&
+                    syncEdit(schedule.key).marker === revision.marker &&
+                    Date.now() >= revision.at + delay
+                );
+            };
+            if (!allowed()) return this.scheduleSend();
+            if (!(await this.options.replica.pending())) {
+                if (allowed() && this.enabled && !this.sending && !this.lastFailure) this.options.status('current');
+                return;
+            }
+            if (allowed()) await this.upload(allowed);
+            if (await this.options.replica.pending()) {
+                this.sendRetryAt = Date.now() + (this.lastFailure ? this.backoff() : SEND_RETRY_MS);
+                this.scheduleSend();
+            }
+        };
+        const locks = globalThis.navigator?.locks;
+        if (locks) await locks.request(`${schedule.key}:send`, send);
+        else await send();
+    }
+
+    /** Runs both directions on explicit user action, even when either is set to Manual. */
+    async syncNow() {
+        if (!this.available()) return;
+        if (this.polling) await this.polling;
+        if (!this.available()) return;
+        this.retry();
+        clearTimeout(this.timer);
+        clearTimeout(this.sendTimer);
+        try {
+            if (this.options.schedule) await this.upload();
+            this.explicitReceive = true;
+            await this.poll();
+        } finally {
+            this.explicitReceive = false;
+            this.scheduleSend();
+        }
+    }
+
+    private backoff() {
+        return Math.min(60_000, 1_000 * 2 ** Math.min(6, this.failures)) * (0.8 + Math.random() * 0.4);
     }
     /**
      * Sends one authenticated POST to `/sync/<action>` and returns the parsed JSON body. The body carries the
@@ -294,9 +423,10 @@ export class Transport {
      * share one run. The promise never rejects: a failure goes to `status` and `lastFailure`. A visibility change does
      * not abort a request in flight.
      */
-    upload() {
+    upload(guard?: () => boolean) {
+        const allowed = guard ?? (() => true);
         if (this.sending) return this.sending;
-        if (!this.enabled || !this.available()) return Promise.resolve();
+        if (!this.enabled || !this.available() || !allowed()) return Promise.resolve();
         this.sending = (async () => {
             let envelope: SignedCheckpoint | null = null;
             try {
@@ -304,14 +434,19 @@ export class Transport {
                     const read = new AbortController();
                     this.preflightRead = read;
                     try {
-                        await this.options.beforeUpload(read.signal);
+                        await this.options.beforeUpload(read.signal, !guard);
                     } finally {
                         if (this.preflightRead === read) this.preflightRead = null;
                     }
                     if (!this.enabled || !this.available()) return;
                 }
-                while (this.enabled && this.available() && (envelope = await this.options.replica.prepare())) {
-                    if (!this.enabled || !this.available()) break;
+                while (
+                    this.enabled &&
+                    this.available() &&
+                    allowed() &&
+                    (envelope = await this.options.replica.prepare())
+                ) {
+                    if (!this.enabled || !this.available() || !allowed()) break;
                     this.options.status('working');
                     const result = await this.request('append', { envelope });
                     // A detached binding or a stopped session cannot resume uploads after this await.
@@ -401,7 +536,15 @@ export class Transport {
      * does nothing while another poll runs or the transport is unavailable. It never rejects. Each cycle ends with the
      * schedule of the next poll.
      */
-    async poll() {
+    poll() {
+        if (this.polling) return this.polling;
+        const task = this.runPoll().finally(() => {
+            if (this.polling === task) this.polling = undefined;
+        });
+        return (this.polling = task);
+    }
+
+    private async runPoll() {
         if (this.running || !this.enabled || !this.available()) return;
         this.wake = false;
         this.running = true;
@@ -412,7 +555,8 @@ export class Transport {
         // nothing.
         const current = () => this.enabled && generation === this.generation && !reads.signal.aborted;
         try {
-            await this.upload();
+            if (!this.options.schedule) await this.upload();
+            else await this.options.beforeReceive?.(reads.signal);
             let after: string | undefined;
             let directory: SyncDirectory | undefined;
             let downloads = 0,
@@ -504,21 +648,19 @@ export class Transport {
             if (current()) await this.options.cycle?.(reads.signal, directory);
             if (current()) syncDebug.record('poll.finished', { items: visited.size, downloads, rejected });
             this.failures = 0;
+            this.receivedAt = Date.now();
+            this.receiveRetryAt = 0;
         } catch (error) {
             if (!(await this.handleDeletion(error))) this.failure(error);
+            if (this.failures) this.receiveRetryAt = Date.now() + this.backoff();
         } finally {
             if (this.reads === reads) this.reads = null;
             this.running = false;
             // Visibility can change while an old request aborts. Intent remains enabled.
             // Next poll: at once after a wake, after 3 s normally, or after backoff. Backoff doubles from 2 s to a 60 s
             // limit, with 20% jitter.
-            this.schedule(
-                this.wake
-                    ? 0
-                    : this.failures
-                      ? Math.min(60000, 1000 * 2 ** Math.min(6, this.failures)) * (0.8 + Math.random() * 0.4)
-                      : 3000,
-            );
+            if (this.options.schedule) this.scheduleReceive();
+            else this.schedule(this.wake ? 0 : this.failures ? this.backoff() : LEGACY_POLL_MS);
         }
     }
 }

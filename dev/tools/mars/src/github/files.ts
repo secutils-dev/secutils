@@ -4,10 +4,10 @@ import * as db from '../store/db.ts';
 import * as viewer from '../doc/viewer.js';
 import { openThreads } from '../share/merge.ts';
 import { ancestors, descendants, newId, nextOrder, textBytes, type TreeNode } from '../tree/model.ts';
-import { gitBlobOid, writablePath, type GitHubTreeEntry } from './api.ts';
+import { writablePath } from './api.ts';
 import { githubRoot } from './binding.ts';
 import { excludedJobPath, githubExclusion } from './exclusions.ts';
-import { scheduleGitHubSync, withGitHubJobLock, withGitHubWrite } from './workspace.ts';
+import { knownGitHubPaths, scheduleGitHubSync, withGitHubJobLock } from './workspace.ts';
 import type { StructuralJob } from './structure.ts';
 
 type FileAction =
@@ -34,19 +34,51 @@ const folderPath = (nodes: TreeNode[], folder: TreeNode, root: string) =>
               .join('/');
 const extension = (path: string) => path.match(/\.(?:md|markdown|mdx|txt)$/i)?.[0] ?? '.md';
 
-function ensureFree(tree: Map<string, GitHubTreeEntry>, path: string) {
-    if (tree.has(path)) throw new Error(`That path already exists on GitHub: ${path}`);
-    const parts = path.split('/');
-    while (parts.length > 1) {
-        parts.pop();
-        const entry = tree.get(parts.join('/'));
-        if (entry && entry.type !== 'tree') throw new Error('A GitHub file blocks the destination folder.');
-    }
-}
-
 /** Save local rename/delete intents without waiting for a network request. */
 export async function queueGitHubStructure(root: string, action: Extract<FileAction, { id: string }>) {
     await viewer.flush();
+    const binding = app.node(action.id)?.githubFile;
+    if (binding?.root === root && !binding.sha) {
+        // A file that has never been sent can move or disappear without changing the branch.
+        const handled = await withGitHubJobLock(root, () =>
+            app.serializePersistence(async () => {
+                const current = (await db.readGitHubWorkingCopies([action.id])).get(action.id);
+                const file = current?.node.githubFile;
+                const repo = await db.getNode(root);
+                if (!current || file?.root !== root || file.sha || current.conflict || !repo?.github?.write)
+                    return false;
+                const wasOpen = app.state.currentId === action.id;
+                if (action.kind === 'delete') {
+                    await db.putNodes(
+                        [],
+                        {},
+                        { expected: [current], expectedGitHubRoot: root, removeGitHubNodes: [action.id] },
+                    );
+                } else {
+                    const name = pathSegment(action.name);
+                    if (name === current.node.name) return true;
+                    const path = [...file.path.split('/').slice(0, -1), name + extension(file.path)].join('/');
+                    if (githubExclusion(repo.githubExcludes)(path)) throw excludedChange();
+                    if ((await knownGitHubPaths(root)).includes(path))
+                        throw new Error(`That GitHub path is already in use: ${path}`);
+                    await db.putNodes(
+                        [{ ...current.node, name, githubFile: { ...file, path } }],
+                        {},
+                        { expected: [current], expectedGitHubRoot: root },
+                    );
+                }
+                await app.load();
+                if (wasOpen && action.kind === 'delete') app.closeDoc();
+                else if (action.kind === 'rename' && app.state.currentId === action.id)
+                    viewer.renameDocument(action.name.trim());
+                return true;
+            }),
+        );
+        if (handled) {
+            scheduleGitHubSync(root);
+            return;
+        }
+    }
     await app.serializePersistence(async () => {
         const open = app.state.currentId;
         await db.updateGitHubJobs(root, (jobs, nodes) => {
@@ -256,53 +288,45 @@ export async function reviseGitHubStructure(
     scheduleGitHubSync(root);
 }
 
-/** Add or duplicate a file. Rename and delete are handled by the local queue. */
+/** Save a file addition in the working copy. A scheduled or manual send publishes it. */
 export async function changeGitHubFiles(root: string, action: FileAction) {
     if ('id' in action) return queueGitHubStructure(root, action);
     await viewer.flush();
-    return withGitHubWrite(root, async (api, source) => {
-        const nodes = await db.allNodes();
-        const selected = nodes.find((n) => n.id === action.parent);
-        if (!selected || selected.githubChange || githubRoot(nodes, selected)?.id !== root)
-            throw new Error('This item is no longer synced with GitHub.');
-        const prefix = folderPath(nodes, selected, root),
-            name = pathSegment(action.name),
-            path = join(prefix, name + extension(action.originalPath ?? ''));
-        if (githubExclusion(nodes.find((n) => n.id === root)?.githubExcludes)(path)) throw excludedChange();
-        const head = await api.head(source);
-        if (!head.tree) throw new Error('Could not check the GitHub branch.');
-        const entries = await api.tree(source, head.tree),
-            tree = new Map(entries.map((entry) => [entry.path, entry]));
-        const changes: { path: string; text: string }[] = [];
-        const added: Parameters<typeof db.recordGitHubStructure>[1] = [];
-        {
+    const id = await withGitHubJobLock(root, () =>
+        app.serializePersistence(async () => {
+            const nodes = await db.allNodes();
+            const selected = nodes.find((n) => n.id === action.parent);
+            const repo = githubRoot(nodes, selected);
+            if (!selected || selected.githubChange || repo?.id !== root || !repo.github?.write)
+                throw new Error('This item is no longer writable on GitHub.');
             if (selected.kind !== 'folder') throw new Error('Choose a GitHub folder.');
-            ensureFree(tree, path);
+            const prefix = folderPath(nodes, selected, root),
+                name = pathSegment(action.name),
+                path = join(prefix, name + extension(action.originalPath ?? ''));
+            if (githubExclusion(repo.githubExcludes)(path)) throw excludedChange();
+            if ((await knownGitHubPaths(root)).includes(path))
+                throw new Error(`That GitHub path is already in use: ${path}`);
             const id = newId(),
                 now = Date.now();
-            added.push({
-                text: action.text,
-                node: {
-                    id,
-                    originId: id,
-                    name,
-                    kind: 'doc',
-                    parentId: selected.id,
-                    order: nextOrder(nodes, selected.id),
-                    createdAt: now,
-                    updatedAt: now,
-                    threads: openThreads(action.text),
-                    size: textBytes(action.text),
-                    githubFile: { root, path, sha: await gitBlobOid(action.text) },
-                },
-            });
-            changes.push({ path, text: action.text });
-        }
-        await api.commit(source, head.commit, changes);
-        await app.serializePersistence(async () => {
-            await db.recordGitHubStructure(root, added, [], []);
+            const node: TreeNode = {
+                id,
+                originId: id,
+                name,
+                kind: 'doc',
+                parentId: selected.id,
+                order: nextOrder(nodes, selected.id),
+                createdAt: now,
+                updatedAt: now,
+                threads: openThreads(action.text),
+                size: textBytes(action.text),
+                // An empty SHA is a local addition. Only a verified upstream acknowledgement sets its baseline.
+                githubFile: { root, path, sha: '' },
+            };
+            await db.putNodes([node], { [id]: action.text }, { expectedGitHubRoot: root, allowGitHubInserts: true });
             await app.load();
-        });
-        return added[0]?.node.id;
-    });
+            return id;
+        }),
+    );
+    scheduleGitHubSync(root);
+    return id;
 }

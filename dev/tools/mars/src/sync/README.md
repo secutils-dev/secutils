@@ -249,6 +249,11 @@ Cleanup failure keeps the local document and its saved cleanup job. Source delet
 
 ## Activity and UI boundaries
 
+Folder schedules use browser-local settings and edit markers, never signed metadata. Personal folder transports schedule receive and send separately.
+A scheduled send checks the edit marker again before upload. Sync now can send and receive even if both settings are Manual.
+Pairing, leases, key rotation, and the explicit Delete everywhere action keep their separate protocol and safety rules.
+GitHub Never disables the folder write binding. Manual retains write access for Sync now. Saving GitHub settings does not pull or publish the branch.
+
 Open Sync status screens subscribe to app changes and unsubscribe before navigation or dismissal.
 `SyncDialog.update` changes marked `data-sync-field` content without replacing the screen or resolving its action promise.
 Repeated states leave live regions unchanged. Footer action changes wait until neither focus nor a pointer gesture remains in the footer.

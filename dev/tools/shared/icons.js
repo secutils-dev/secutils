@@ -2,6 +2,7 @@
 // source dev/tools already inlines icons from (EUI license: SSPL v1 / Elastic License 2.0).
 // Add glyphs with the procedure in dev/tools/shared/guides/design-system.md.
 export const ICONS = Object.freeze({
+    question: '<path d="M8 10a1 1 0 1 1 0 2 1 1 0 0 1 0-2Zm0-6a2 2 0 0 1 1.237 3.571 3.59 3.59 0 0 0-.548.505c-.137.169-.189.305-.189.424V9h-1v-.5c0-.433.195-.787.413-1.055.216-.265.487-.487.705-.659a1 1 0 1 0-1.562-.453l-.942.334A2 2 0 0 1 8 4Z"/><path fill-rule="evenodd" d="M8 1a7 7 0 1 1 0 14A7 7 0 0 1 8 1Zm0 1a6 6 0 1 0 0 12A6 6 0 0 0 8 2Z" clip-rule="evenodd"/>',
     key: '<path fill-rule="evenodd" d="M11.5 3a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Zm0 1a.5.5 0 1 0 0 1 .5.5 0 0 0 0-1Z" clip-rule="evenodd"/><path fill-rule="evenodd" d="M10.5 1A4.5 4.5 0 1 1 9 9.742V11H7v2H5v2H1v-3.707l5.06-5.06A4.5 4.5 0 0 1 10.5 1Zm0 1a3.5 3.5 0 0 0-3.411 4.287l.061.27L2 11.707V14h2v-2h2v-2h2V8.098l.75.434A3.5 3.5 0 1 0 10.5 2Z" clip-rule="evenodd"/>',
     lock: '<path fill-rule="evenodd" d="M4 7V5a4 4 0 1 1 8 0v2h1a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h1Zm1-2a3 3 0 0 1 6 0v2H5V5Zm-2 9V8h10v6H3Z" clip-rule="evenodd"/>',
     chartLine: '<path d="M1 1v13a1 1 0 0 0 1 1h13v-1H2V1H1Z"/><path d="m9.5 9.207 4.854-4.853-.707-.708L9.5 7.793l-2-2-4.854 4.853.708.708L7.5 7.207l2 2Z"/>',

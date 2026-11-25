@@ -41,7 +41,19 @@ async function addCredential(page: Page, parent: Locator, token: string, name = 
   );
 }
 
+async function openSettings(page: Page, summary = page.getByRole('dialog', { name: 'Sync', exact: true })) {
+  await summary.locator('header').getByRole('button', { name: 'Sync settings', exact: true }).click();
+  return page.getByRole('dialog', { name: 'Sync settings', exact: true });
+}
+
+const githubEditMarker = (page: Page) =>
+  page.evaluate(() => {
+    const key = Object.keys(localStorage).find((key) => /^mars\.syncSchedule:github:.*:edited$/.test(key));
+    return key ? localStorage.getItem(key) : null;
+  });
+
 test('GitHub import loads nested files and sends one commit with the expected branch head', async ({ page }) => {
+  await page.clock.install();
   const token = 'github_pat_synthetic_test';
   const oldHead = '1'.repeat(40),
     blob = '3'.repeat(40);
@@ -120,7 +132,7 @@ test('GitHub import loads nested files and sends one commit with the expected br
   const dialog = page.getByRole('dialog', { name: 'Import from GitHub' });
   await dialog.getByLabel('Repository (required)').fill('fake/notes');
   const picker = dialog.getByRole('combobox', { name: 'GitHub credential' });
-  const write = dialog.getByLabel('Sync my edits back to GitHub');
+  const write = dialog.getByLabel('Send updates');
   await expect(picker.locator('option:checked')).toHaveText('None (public read-only)');
   await expect(dialog.locator('input[type="password"]')).toHaveCount(0);
   const manage = dialog.getByRole('button', { name: 'Manage credentials' });
@@ -131,11 +143,18 @@ test('GitHub import loads nested files and sends one commit with the expected br
   expect(buttonBox.y).toBe(selectBox.y);
   expect(buttonBox.height).toBe(selectBox.height);
   await expect(write).toBeDisabled();
-  await expect(write).not.toBeChecked();
+  await expect(write).toHaveValue('never');
+  await expect(dialog.getByLabel('Receive updates')).toHaveValue('180000');
+  await expect(dialog.locator('strong', { hasText: 'Contents: Read and write' })).toBeVisible();
+  await expect(dialog).not.toContainText('Manual runs only');
+  await dialog.getByRole('button', { name: 'About send timing' }).focus();
+  await expect(page.getByRole('tooltip')).toContainText('Contents: Read and write');
   await addCredential(page, dialog, token);
   await expect(manage).toBeFocused();
   await expect(write).toBeEnabled();
-  await write.check();
+  await expect(write).toHaveValue('never');
+  await expect(dialog.getByLabel('Receive updates')).toHaveValue('60000');
+  await write.selectOption('60000');
   await dialog.getByRole('button', { name: 'Import folder' }).click();
   await expect(page.getByRole('progressbar', { name: 'GitHub download' })).toHaveAttribute('max', '1');
   releaseBlob();
@@ -143,11 +162,23 @@ test('GitHub import loads nested files and sends one commit with the expected br
   await page.getByRole('link', { name: 'Welcome', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'GitHub document' })).toBeVisible();
   await expect(page.locator('#documentAccess')).toBeHidden();
-  await page.getByRole('button', { name: 'Source', exact: true }).click();
-  await page.evaluate(() => (window as EditorWindow).__suEditorAPI.setText('# Edited from MARS\n'));
-  await page.getByRole('button', { name: 'Preview', exact: true }).click();
+  const edit = async (text: string) => {
+    const before = await githubEditMarker(page);
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.evaluate((source) => (window as EditorWindow).__suEditorAPI.setText(source), text);
+    await page.getByRole('button', { name: 'Preview', exact: true }).click();
+    await expect.poll(() => githubEditMarker(page)).not.toBe(before);
+  };
+  await edit('# First draft\n');
+  await page.clock.fastForward(40_000);
+  expect(bodies).toHaveLength(0);
+  await edit('# Edited from MARS\n');
   await expect(page.getByRole('heading', { name: 'Edited from MARS' })).toBeVisible();
-  await expect.poll(() => bodies.length, { timeout: 15_000 }).toBe(1);
+  await page.clock.fastForward(30_000);
+  await expect.poll(() => branchValidators.length).toBeGreaterThan(1);
+  expect(bodies).toHaveLength(0);
+  await page.clock.fastForward(32_000);
+  await expect.poll(() => bodies.length).toBe(1);
   expect(branchValidators).toContain(`"${oldHead}"`);
   expect(bodies[0]).toMatchObject({
     expectedHeadOid: oldHead,
@@ -192,9 +223,14 @@ test('GitHub import loads nested files and sends one commit with the expected br
   await page.getByRole('menuitem', { name: 'Sync', exact: true }).click();
   const settings = page.getByRole('dialog', { name: 'Sync', exact: true });
   await expect(settings.getByText('fake/notes', { exact: true })).toBeVisible();
-  await expect(settings.getByRole('combobox').locator('option:checked')).toHaveText('Test credential · fake');
-  await expect(settings.locator('input[type="password"]')).toHaveCount(0);
-  await expect(settings.getByLabel('Sync my edits back to GitHub')).toBeEnabled();
+  await expect(settings.locator('footer').getByRole('button')).toHaveText(['Disconnect this device', 'Sync now']);
+  const config = await openSettings(page, settings);
+  await expect(config.getByLabel('GitHub credential').locator('option:checked')).toHaveText('Test credential · fake');
+  await expect(config.locator('input[type="password"]')).toHaveCount(0);
+  await expect(config.getByLabel('Send updates')).toHaveValue('60000');
+  await config.getByLabel('Send updates').selectOption('never');
+  await config.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(settings.getByText('Read and write', { exact: true })).toBeVisible();
   await settings.getByRole('button', { name: 'Sync now' }).click();
   await expect(settings).not.toBeVisible();
   await expect(page.getByText('Checked GitHub.', { exact: true })).toHaveCount(0);
@@ -306,7 +342,7 @@ test('named credentials are explicit per repository, rotate across tabs, and pau
   await page.goto('/');
   let dialog = await open('acme/handbook');
   await addCredential(page, dialog, tokens.acme, 'Acme docs');
-  await expect(dialog.getByLabel('Sync my edits back to GitHub')).not.toBeChecked();
+  await expect(dialog.getByLabel('Send updates')).toHaveValue('never');
   expect(traffic).toHaveLength(0);
   await dialog.getByRole('button', { name: 'Import folder' }).click();
   await expect(dialog).not.toBeVisible();
@@ -324,18 +360,19 @@ test('named credentials are explicit per repository, rotate across tabs, and pau
   await expect(dialog.getByRole('alert')).toContainText('whether your token has access');
   expect(traffic.slice(beforeDenied)).toEqual([{ repo: 'acme/guides', auth: `Bearer ${tokens.other}` }]);
   await picker.selectOption({ label: 'Acme docs · acme' });
-  await dialog.getByLabel('Sync my edits back to GitHub').check();
+  await dialog.getByLabel('Send updates').selectOption('60000');
   await dialog.getByRole('button', { name: 'Import folder' }).click();
   await expect(dialog).not.toBeVisible();
   dialog = await open('acme/guides');
   await expect(picker.locator('option:checked')).toHaveText('Acme docs · acme');
-  await expect(dialog.getByLabel('Sync my edits back to GitHub')).not.toBeChecked();
+  await expect(dialog.getByLabel('Send updates')).toHaveValue('never');
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
   const otherTab = await context.newPage();
   await otherTab.goto('/');
-  let remoteSettings = await settings(otherTab, 'guides');
-  await expect(remoteSettings.getByRole('combobox').locator('option:checked')).toHaveText('Acme docs · acme');
-  const localSettings = await settings(page, 'handbook');
+  let remoteSummary = await settings(otherTab, 'guides');
+  let remoteSettings = await openSettings(otherTab, remoteSummary);
+  await expect(remoteSettings.getByLabel('GitHub credential').locator('option:checked')).toHaveText('Acme docs · acme');
+  const localSettings = await openSettings(page, await settings(page, 'handbook'));
   await localSettings.getByRole('button', { name: 'Manage credentials' }).click();
   const manager = page.getByRole('dialog', { name: 'GitHub credentials', exact: true });
   await expect(manager.getByText('acme · 2 folders')).toBeVisible();
@@ -355,8 +392,9 @@ test('named credentials are explicit per repository, rotate across tabs, and pau
   accepted.set('acme', tokens.replacement);
   await manager.getByRole('button', { name: 'Close', exact: true }).click();
   const beforeRotation = traffic.length;
-  await remoteSettings.getByRole('button', { name: 'Sync now' }).click();
-  await expect(remoteSettings).not.toBeVisible();
+  await remoteSettings.getByRole('button', { name: 'Back', exact: true }).click();
+  await remoteSummary.getByRole('button', { name: 'Sync now' }).click();
+  await expect(remoteSummary).not.toBeVisible();
   expect(traffic.slice(beforeRotation).filter(({ repo }) => repo === 'acme/guides')).not.toHaveLength(0);
   expect(
     traffic
@@ -364,7 +402,8 @@ test('named credentials are explicit per repository, rotate across tabs, and pau
       .filter(({ repo }) => repo === 'acme/guides')
       .every(({ auth }) => auth === `Bearer ${tokens.replacement}`),
   ).toBe(true);
-  remoteSettings = await settings(otherTab, 'guides');
+  remoteSummary = await settings(otherTab, 'guides');
+  remoteSettings = await openSettings(otherTab, remoteSummary);
   await localSettings.getByRole('button', { name: 'Manage credentials' }).click();
   await manager.getByRole('button', { name: 'Remove Acme docs' }).click();
   await page
@@ -372,12 +411,16 @@ test('named credentials are explicit per repository, rotate across tabs, and pau
     .getByRole('button', { name: 'Remove credential' })
     .click();
   await expect(manager.getByText('Acme docs', { exact: true })).toHaveCount(0);
-  await expect(remoteSettings.getByRole('combobox').locator('option:checked')).toHaveText('Credential unavailable');
+  await expect(remoteSettings.getByLabel('GitHub credential').locator('option:checked')).toHaveText(
+    'Credential unavailable',
+  );
   const beforePause = traffic.length;
-  await remoteSettings.getByRole('button', { name: 'Sync now' }).click();
+  await expect(remoteSettings.getByLabel('Send updates')).toBeDisabled();
+  await remoteSettings.getByRole('button', { name: 'Save' }).click();
   await expect(remoteSettings.getByRole('alert')).toContainText('no longer available');
   expect(traffic.slice(beforePause).filter(({ repo }) => repo === 'acme/guides')).toHaveLength(0);
   await remoteSettings.getByRole('button', { name: 'Close', exact: true }).click();
+  await remoteSummary.getByRole('button', { name: 'Close', exact: true }).click();
   await otherTab.getByRole('link', { name: 'About-guides', exact: true }).click();
   await expect(otherTab.locator('#previewArticle')).toContainText('guides');
   await otherTab.getByRole('button', { name: 'Source', exact: true }).click();
@@ -389,20 +432,24 @@ test('named credentials are explicit per repository, rotate across tabs, and pau
   await expect(otherTab.locator('#previewArticle')).toContainText('Preserved draft');
   expect(traffic.slice(beforePause).filter(({ repo }) => repo === 'acme/guides')).toHaveLength(0);
 
-  remoteSettings = await settings(otherTab, 'guides');
+  remoteSummary = await settings(otherTab, 'guides');
+  remoteSettings = await openSettings(otherTab, remoteSummary);
   await addCredential(otherTab, remoteSettings, tokens.replacement, 'Acme guides read-only');
-  await expect(remoteSettings.getByRole('combobox').locator('option:checked')).toHaveText(
+  await expect(remoteSettings.getByLabel('GitHub credential').locator('option:checked')).toHaveText(
     'Acme guides read-only · acme',
   );
-  await remoteSettings.getByLabel('Sync my edits back to GitHub').uncheck();
-  await remoteSettings.getByRole('button', { name: 'Sync now' }).click();
+  await remoteSettings.getByLabel('Send updates').selectOption('never');
+  const beforeSave = traffic.length;
+  await remoteSettings.getByRole('button', { name: 'Save' }).click();
   await expect(remoteSettings).not.toBeVisible();
+  expect(traffic.slice(beforeSave).filter(({ repo }) => repo === 'acme/guides')).toHaveLength(0);
   await expect(otherTab.locator('#previewArticle')).toContainText('Preserved draft');
-  remoteSettings = await settings(otherTab, 'guides');
-  await expect(remoteSettings.getByRole('combobox').locator('option:checked')).toHaveText(
+  await expect(remoteSummary.getByText('Read-only', { exact: true })).toBeVisible();
+  remoteSettings = await openSettings(otherTab, remoteSummary);
+  await expect(remoteSettings.getByLabel('GitHub credential').locator('option:checked')).toHaveText(
     'Acme guides read-only · acme',
   );
-  await expect(remoteSettings.getByLabel('Sync my edits back to GitHub')).not.toBeChecked();
+  await expect(remoteSettings.getByLabel('Send updates')).toHaveValue('never');
   expect(leaks).toEqual([]);
 });
 
@@ -482,8 +529,8 @@ test('Sync keeps a legacy folder token selected and lets you save it from the ma
   await expect.poll(() => requests).toBeGreaterThanOrEqual(2);
   await page.getByRole('button', { name: 'Actions for Legacy notes', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Sync', exact: true }).click();
-  const settings = page.getByRole('dialog', { name: 'Sync', exact: true });
-  const picker = settings.getByRole('combobox', { name: 'GitHub credential' });
+  const settings = await openSettings(page);
+  const picker = settings.getByLabel('GitHub credential');
   await expect(picker.locator('option:checked')).toHaveText('This folder’s token');
   await settings.getByRole('button', { name: 'Manage credentials' }).click();
   const manager = page.getByRole('dialog', { name: 'GitHub credentials', exact: true });
@@ -495,7 +542,7 @@ test('Sync keeps a legacy folder token selected and lets you save it from the ma
   await editor.getByRole('button', { name: 'Save credential' }).click();
   await manager.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(picker.locator('option:checked')).toHaveText('Existing notes credential · fake');
-  await expect(settings.getByLabel('Sync my edits back to GitHub')).toBeChecked();
+  await expect(settings.getByLabel('Send updates')).toHaveValue('60000');
   expect(requests).toBe(before);
 });
 
@@ -571,6 +618,12 @@ test('a read-only GitHub document can be copied or disconnected without modifyin
   await page.getByRole('menuitem', { name: 'Sync', exact: true }).click();
   const settings = page.getByRole('dialog', { name: 'Sync', exact: true });
   await expect(settings.getByText('Read-only', { exact: true }).first()).toBeVisible();
+  await settings.getByRole('button', { name: 'Sync settings' }).click();
+  const timing = page.getByRole('dialog', { name: 'Sync settings' });
+  await expect(timing.getByLabel('Receive updates')).toHaveValue('180000');
+  await expect(timing.getByLabel('Send updates')).toBeDisabled();
+  await expect(timing.getByLabel('Send updates')).toHaveValue('never');
+  await timing.getByRole('button', { name: 'Back', exact: true }).click();
   await settings.getByRole('button', { name: 'Disconnect this device' }).click();
   let confirmation = page.getByRole('dialog', { name: 'Disconnect this device?' });
   await confirmation.getByRole('button', { name: 'Cancel' }).click();
@@ -659,17 +712,53 @@ test('a writable GitHub folder can add, duplicate, rename and delete files witho
   const importer = page.getByRole('dialog', { name: 'Import from GitHub' });
   await importer.getByLabel('Repository (required)').fill('fake/notes');
   await addCredential(page, importer, 'github_pat_synthetic_test');
-  await importer.getByLabel('Sync my edits back to GitHub').check();
+  await importer.getByLabel('Send updates').selectOption('60000');
   await importer.getByRole('button', { name: 'Import folder' }).click();
   await expect(importer).not.toBeVisible();
+  const syncDialog = page.getByRole('dialog', { name: 'Sync', exact: true });
+  const syncNow = async () => {
+    await action('notes', 'Sync');
+    await syncDialog.getByRole('button', { name: 'Sync now' }).click();
+    await expect(syncDialog).not.toBeVisible();
+  };
+  await action('notes', 'Sync');
+  await syncDialog.getByRole('button', { name: 'Sync settings' }).click();
+  const timing = page.getByRole('dialog', { name: 'Sync settings' });
+  await expect(timing.getByLabel('Receive updates')).toHaveValue('60000');
+  await expect(timing.getByLabel('Send updates')).toHaveValue('60000');
+  await timing.getByLabel('Send updates').selectOption('manual');
+  await timing.getByRole('button', { name: 'Save' }).click();
+  await syncDialog.getByRole('button', { name: 'Close', exact: true }).click();
   await action('notes', 'New document');
   const create = page.getByRole('dialog', { name: 'New document' });
   await create.getByLabel('Document name').fill('Draft');
   await create.getByRole('button', { name: 'Create' }).click();
   await expect(page.getByRole('link', { name: 'Draft', exact: true })).toBeVisible();
+  expect(remote.has('Draft.md')).toBe(false);
+  await action('notes', 'Sync');
+  await openSettings(page, syncDialog);
+  await timing.getByLabel('Send updates').selectOption('never');
+  await timing.getByRole('button', { name: 'Save' }).click();
+  await expect(syncDialog.getByText('Read-only', { exact: true })).toBeVisible();
+  await syncDialog.getByRole('button', { name: 'Sync now' }).click();
+  await expect(syncDialog).not.toBeVisible();
+  expect(remote.has('Draft.md')).toBe(false);
+  await page.reload();
+  await expect(page.getByRole('link', { name: 'Draft', exact: true })).toBeVisible();
+  expect(remote.has('Draft.md')).toBe(false);
+  await action('notes', 'Sync');
+  await openSettings(page, syncDialog);
+  await expect(timing.getByLabel('Send updates')).toHaveValue('never');
+  await timing.getByLabel('Send updates').selectOption('manual');
+  await timing.getByRole('button', { name: 'Save' }).click();
+  await expect(syncDialog.getByText('Read and write', { exact: true })).toBeVisible();
+  await syncDialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await syncNow();
   expect(remote.has('Draft.md')).toBe(true);
   await action('Notes', 'Duplicate');
   await expect(page.getByRole('link', { name: 'Notes (copy)', exact: true })).toBeVisible();
+  expect(remote.has('Notes (copy).md')).toBe(false);
+  await syncNow();
   expect(remote.get('Notes (copy).md')).toBe('# Original notes\n');
   await action('Notes (copy)', 'Rename');
   const rename = page.locator('.tree-rename');
@@ -691,6 +780,7 @@ test('a writable GitHub folder can add, duplicate, rename and delete files witho
   remote.set('Archive.md', '# Existing upstream\n');
   version++;
   release();
+  await syncNow();
   await expect(page.getByRole('button', { name: 'Rename blocked', exact: true })).toBeVisible({ timeout: 12_000 });
   expect(remote.get('Archive.md')).toBe('# Existing upstream\n');
   await action('Archive', 'Exclude from Sync');
@@ -707,6 +797,7 @@ test('a writable GitHub folder can add, duplicate, rename and delete files witho
     .getByRole('button', { name: 'Close', exact: true })
     .click();
   await expect(page.getByRole('link', { name: 'Renamed notes', exact: true })).toBeVisible();
+  await syncNow();
   await expect.poll(() => remote.has('Renamed notes.md'), { timeout: 12_000 }).toBe(true);
   expect(remote.has('Notes (copy).md')).toBe(false);
   expect(remote.get('Renamed notes.md')).toBe('# Original notes\n');
@@ -723,6 +814,7 @@ test('a writable GitHub folder can add, duplicate, rename and delete files witho
   remote.set('Renamed notes.md', '# Edited upstream\n');
   version++;
   release();
+  await syncNow();
   await expect(page.getByRole('button', { name: 'GitHub changes blocked', exact: true })).toBeVisible({
     timeout: 12_000,
   });
@@ -741,6 +833,10 @@ test('a writable GitHub folder can add, duplicate, rename and delete files witho
   await review.getByRole('button', { name: 'Delete the latest version' }).click();
   const confirm = page.getByRole('dialog', { name: 'Delete the latest version?' });
   await confirm.getByRole('button', { name: 'Delete the latest version', exact: true }).click();
+  if (await review.isVisible())
+    await review.locator('header').getByRole('button', { name: 'Close', exact: true }).click();
+  if (await syncDialog.isVisible()) await syncDialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await syncNow();
   await expect.poll(() => remote.has('Renamed notes.md'), { timeout: 12_000 }).toBe(false);
   expect(remote.get('Archive.md')).toBe('# Existing upstream\n');
   expect(remote.get('Notes.md')).toBe('# Original notes\n');
@@ -790,7 +886,7 @@ test('different names for a GitHub folder are resolved without a duplicate', asy
   const importer = page.getByRole('dialog', { name: 'Import from GitHub' });
   await importer.getByLabel('Repository (required)').fill('fake/notes');
   await addCredential(page, importer, 'github_pat_synthetic_test');
-  await importer.getByLabel('Sync my edits back to GitHub').check();
+  await importer.getByLabel('Send updates').selectOption('60000');
   await importer.getByRole('button', { name: 'Import folder' }).click();
   await expect(importer).not.toBeVisible();
   const guide = page.getByRole('link', { name: 'Guide', exact: true });
@@ -875,16 +971,19 @@ test('GitHub exclusions hide files and subtrees, skip sync, and restore cached d
     await page.getByRole('menuitem', { name: label, exact: true }).click();
   };
   const settings = page.getByRole('dialog', { name: 'Sync', exact: true });
+  const config = page.getByRole('dialog', { name: 'Sync settings', exact: true });
   const exclusions = page.getByRole('dialog', { name: 'Manage exclusions' });
   const rules = exclusions.getByLabel('Exclusion rules');
   const manage = async () => {
     await menu('notes', 'Sync');
-    await settings.getByRole('button', { name: 'Manage exclusions' }).click();
+    await openSettings(page, settings);
+    await config.getByRole('button', { name: 'Manage exclusions' }).click();
   };
   const saveRules = async (text: string) => {
     await rules.fill(text);
     await exclusions.getByRole('button', { name: 'Save exclusions' }).click();
     await expect(exclusions).not.toBeVisible();
+    await config.getByRole('button', { name: 'Close', exact: true }).click();
   };
   const link = (name: string) => page.getByRole('link', { name, exact: true });
   const archive = page.getByRole('button', { name: 'Actions for archive', exact: true });
@@ -895,7 +994,7 @@ test('GitHub exclusions hide files and subtrees, skip sync, and restore cached d
   const importer = page.getByRole('dialog', { name: 'Import from GitHub' });
   await importer.getByLabel('Repository (required)').fill('fake/notes');
   await addCredential(page, importer, 'github_pat_synthetic_test');
-  await importer.getByLabel('Sync my edits back to GitHub').check();
+  await importer.getByLabel('Send updates').selectOption('60000');
   await importer.getByRole('button', { name: 'Import folder' }).click();
   await expect(importer).not.toBeVisible();
   const draftId = (await link('Draft').getAttribute('href'))!;
@@ -918,6 +1017,13 @@ test('GitHub exclusions hide files and subtrees, skip sync, and restore cached d
 
   await manage();
   const exactRules = '/Draft.md\n/docs/archive/';
+  await expect(rules).toHaveValue(exactRules);
+  await rules.fill('/docs/Guide.md');
+  await exclusions.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(exclusions).not.toBeVisible();
+  const manageButton = config.getByRole('button', { name: 'Manage exclusions', exact: true });
+  await expect(manageButton).toBeFocused();
+  await manageButton.click();
   await expect(rules).toHaveValue(exactRules);
   await rules.fill(`${exactRules}\n**/*.txt\n!/docs/Keep.txt`);
   await exclusions.getByRole('button', { name: 'Preview matches' }).click();
@@ -1064,7 +1170,7 @@ test('GitHub tree follows edited renames and deletions after history is rewritte
   const importer = page.getByRole('dialog', { name: 'Import from GitHub' });
   await importer.getByLabel('Repository (required)').fill('fake/notes');
   await addCredential(page, importer, 'github_pat_synthetic_test');
-  await importer.getByLabel('Sync my edits back to GitHub').check();
+  await importer.getByLabel('Send updates').selectOption('60000');
   await importer.getByRole('button', { name: 'Import folder' }).click();
   await expect(importer).not.toBeVisible();
   const originalNotes = await page.getByRole('link', { name: 'Notes', exact: true }).getAttribute('href');
@@ -1097,6 +1203,7 @@ test('GitHub tree follows edited renames and deletions after history is rewritte
 });
 
 test('a rejected automatic push tells the user that their local edit is not synced', async ({ page }) => {
+  await page.clock.install();
   const commit = '1'.repeat(40),
     tree = '2'.repeat(40),
     blob = '3'.repeat(40);
@@ -1131,13 +1238,15 @@ test('a rejected automatic push tells the user that their local edit is not sync
   const importer = page.getByRole('dialog', { name: 'Import from GitHub' });
   await importer.getByLabel('Repository (required)').fill('fake/notes');
   await addCredential(page, importer, 'github_pat_synthetic_test');
-  await importer.getByLabel('Sync my edits back to GitHub').check();
+  await importer.getByLabel('Send updates').selectOption('60000');
   await importer.getByRole('button', { name: 'Import folder' }).click();
   await expect(importer).not.toBeVisible();
   await page.getByRole('link', { name: 'Notes', exact: true }).click();
   await page.getByRole('button', { name: 'Source', exact: true }).click();
   await page.evaluate(() => (window as EditorWindow).__suEditorAPI.setText('# Still local\n'));
   await page.getByRole('button', { name: 'Preview', exact: true }).click();
+  await expect.poll(() => githubEditMarker(page)).not.toBeNull();
+  await page.clock.fastForward(61_000);
   await expect(
     page.getByText(/Your edit is saved in MARS but not synced to GitHub.*Contents: Read and write/),
   ).toBeVisible({ timeout: 15_000 });
@@ -1189,7 +1298,7 @@ test('GitHub sync merges independent edits and resolves an overlap after reload'
   const importer = page.getByRole('dialog', { name: 'Import from GitHub' });
   await importer.getByLabel('Repository (required)').fill('fake/notes');
   await addCredential(page, importer, token);
-  await importer.getByLabel('Sync my edits back to GitHub').check();
+  await importer.getByLabel('Send updates').selectOption('60000');
   await importer.getByRole('button', { name: 'Import folder' }).click();
   await expect(importer).not.toBeVisible();
   await page.getByRole('link', { name: 'Notes', exact: true }).click();

@@ -31,6 +31,7 @@ import { beginInput, cancelInput, checkInput, type InputOperation } from './io/i
 import { validWidth, type ReadingWidth } from './export/settings.ts';
 import { TemporaryRoute, type TemporaryLinkStatus } from './share/temporary.ts';
 import * as sync from './sync/index.ts';
+import { noteSyncEdit, personalScheduleKey } from './sync/schedule.ts';
 import { DEFAULT_DESTINATION_KEY, incomingFolder } from './io/destination.ts';
 
 /**
@@ -674,6 +675,7 @@ async function persistOne(doc: PersistedDoc) {
         return;
     }
     await save([n], { [n.id]: doc.text });
+    if (n.syncPending) noteSyncEdit(personalScheduleKey(n.syncPending.collection, n.syncPending.member));
     githubSaved(n);
     if (db.isTemporaryStorage()) await setRoute(n.id);
     emit();

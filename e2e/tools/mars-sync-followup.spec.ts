@@ -108,8 +108,15 @@ test.describe('sync protocol follow-up', () => {
       await expect(owner.locator('#tree [data-connection]')).toHaveCount(1, { timeout: 60000 });
       await owner.getByRole('button', { name: 'Actions for Root', exact: true }).click();
       await owner.getByRole('menuitem', { name: 'Sync', exact: true }).click();
+      // Registration can finish before the folder's changes are sent. Pair only after Sync now sends them.
+      const sync = owner.getByRole('dialog', { name: 'Sync', exact: true });
+      await sync.getByRole('button', { name: 'Sync now', exact: true }).click();
+      await expect(sync.locator('.sync-status')).toHaveText('Up to date', { timeout: 60000 });
+      await owner.getByRole('button', { name: 'Sync settings', exact: true }).click();
       await owner.getByRole('button', { name: 'Sync link', exact: true }).click();
-      const link = await owner.getByRole('textbox', { name: 'Sync link', exact: true }).inputValue();
+      const linkField = owner.getByRole('textbox', { name: 'Sync link', exact: true });
+      await expect(linkField).toBeVisible({ timeout: 15000 });
+      const link = await linkField.inputValue();
       await peer.goto(link);
       await peer.getByRole('button', { name: 'Connect', exact: true }).click();
       await expect(owner.getByRole('button', { name: 'Codes match', exact: true })).toBeVisible({ timeout: 15000 });
@@ -181,7 +188,7 @@ test.describe('sync protocol follow-up', () => {
       await page.getByRole('button', { name: 'Manage folder Sync', exact: true }).click();
       await expect(page.getByRole('alert')).toContainText('smaller folders');
       const before = requests;
-      await page.getByRole('button', { name: 'Try again', exact: true }).click();
+      await page.getByRole('button', { name: 'Sync now', exact: true }).click();
       await expect.poll(() => requests).toBeGreaterThan(before);
       await expect(page.getByRole('dialog', { name: 'Sync', exact: true })).not.toHaveAttribute('aria-busy', 'true');
       await expect(page.getByRole('alert')).toContainText('1,000');
@@ -191,7 +198,7 @@ test.describe('sync protocol follow-up', () => {
       await open('Root');
       await expect(page.getByRole('alert')).toContainText('1,000');
       await page.unroute('**/sync/document');
-      await page.getByRole('button', { name: 'Try again', exact: true }).click();
+      await page.getByRole('button', { name: 'Sync now', exact: true }).click();
       await expect(page.getByRole('alert')).toHaveCount(0);
       await expect(page.locator('#tree [data-phase="attention"]')).toHaveCount(0);
       await page.getByRole('button', { name: 'Close', exact: true }).click();
@@ -446,10 +453,12 @@ test.describe('sync protocol follow-up', () => {
         ),
       );
       await expect
-        .poll(async () =>
-          (await storage(owner)).docs[`sync:${pendingId}`]?.outbox.some(
-            (packet: { envelope: unknown }) => packet.envelope,
-          ),
+        .poll(
+          async () =>
+            (await storage(owner)).docs[`sync:${pendingId}`]?.outbox.some(
+              (packet: { envelope: unknown }) => packet.envelope,
+            ),
+          { timeout: 10_000 },
         )
         .toBe(true);
       await owner.goto('about:blank');
@@ -561,10 +570,14 @@ test.describe('sync protocol follow-up', () => {
       expect(saved.snapshot.texts[pendingId]).toContain('Newer local text.');
       expect(after.docs[`sync:${pendingId}`].binding.collection).not.toBe(oldRecords[pendingId].binding.collection);
       await owner.getByRole('button', { name: 'Back', exact: true }).click();
+      await owner
+        .getByRole('dialog', { name: 'Sync settings', exact: true })
+        .getByRole('button', { name: 'Close' })
+        .click();
       await expect(owner.getByRole('button', { name: 'Previous setup backup', exact: true })).toHaveCount(0);
       await expect(owner.getByRole('button', { name: 'Copy debug report', exact: true })).toHaveCount(0);
       const footer = owner.locator('#syncDialog footer button:visible');
-      await expect(footer).toHaveText(['Disconnect this device', 'Sync link']);
+      await expect(footer).toHaveText(['Disconnect this device', 'Sync now']);
       for (const width of [1280, 320]) {
         await owner.setViewportSize({ width, height: 800 });
         const tops = await footer.evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().top));
@@ -817,7 +830,7 @@ test.describe('sync protocol follow-up', () => {
     await page.unroute('**/sync/append');
     await page.getByRole('button', { name: 'Actions for Upload diagnostics', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Sync', exact: true }).click();
-    await page.getByRole('button', { name: 'Try again', exact: true }).click();
+    await page.getByRole('button', { name: 'Sync now', exact: true }).click();
     await expect(page.locator('#saveState')).toContainText('Up to date', { timeout: 15000 });
   });
 

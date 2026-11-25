@@ -26,8 +26,8 @@ An agent reads and writes threads with ordinary file edits.
 **New → Import from GitHub** opens a repository branch as a folder on every MARS host.
 If the user needs private access or wants MARS to commit edits, ask them to enter a repository-scoped fine-grained token directly in the app. Do not ask for the token in chat or put it in a URL.
 Choose a test branch. GitHub documents support Full and Short snapshot links, but not Live links. Short snapshots use Secutils.
-Select a **GitHub credential** in **Import from GitHub** or **Sync**. Use the key button (**Manage credentials**) next to the dropdown to add, replace, or remove tokens. Removing a credential pauses Sync and keeps local edits. The write setting is separate for each folder.
-Use **Exclude from Sync** in a file or folder menu to hide its GitHub path on this device. Use **Sync → Manage exclusions** on the repository folder to edit or remove `.gitignore` rules. Exclusions keep cached edits and do not modify GitHub.
+Select a **GitHub credential** in **Import from GitHub** or **Sync → Sync settings**. Use **Manage credentials** next to the dropdown to add, replace, or remove tokens. Removing a credential pauses Sync and keeps local edits. New imports set **Send updates** to **Never**. **Never** keeps the folder read-only even when the user selects **Sync now**.
+Use **Exclude from Sync** in a file or folder menu to hide its GitHub path on this device. Use **Sync → Sync settings → Manage exclusions** on the repository folder to edit or remove `.gitignore` rules. Exclusions keep cached edits and do not modify GitHub.
 
 Pick the section for the task:
 
@@ -242,8 +242,9 @@ Use this reference when the user asks how to do a task in MARS. Each row is one 
 | Share a copy | **Share > Copy link > Snapshot** | Parent folders are off by default. **Include folder path** adds them. Documents keep their saved name without siblings. Folders keep their nested contents. **Full** contains the unencrypted snapshot. **Short** encrypts it and expires after 1, 7, 14, or 30 days. |
 | Share live access | **Share > Copy link > Live** | One document. **Can view**, **Can comment**, or **Can edit**. Expires after 1, 7, 14, or 30 days (default 7). Folders support snapshots only. |
 | Stop live access | **Copy link > Live links** (bottom left) | **Stop sharing** disables every Live link of the document. Copies that recipients saved stay with them. |
-| Sync own devices | Document or folder menu > **Sync**, then **Sync link** | The Sync link expires after 10 minutes. Both devices must show the same code before approval. |
+| Sync own devices | Document or folder menu > **Sync > Sync settings > Sync link** | The Sync link expires after 10 minutes. Both devices must show the same code before approval. |
 | Inspect inherited Sync | Child menu > **Sync** | Shows the child status and its synced folder. **Manage folder Sync** opens folder settings. **Back** returns to the child. |
+| Change when a folder syncs | Folder menu > **Sync > Sync settings** (gear) | **Receive updates** sets the check interval. **Send updates** waits for a pause after the last edit. **Manual** waits for **Sync now**. |
 | Disconnect a device | Root menu > **Sync > Disconnect this device** | For a child, select **Manage folder Sync** first. The complete synced folder disconnects. Local copies stay. Other devices and Live links stay connected. |
 | Keep a received Live document | **Save live document to library** | Live recipients start in a temporary session. **Keep as local copy** stops updates without an effect on the link of the owner. |
 | Work without storage | **New > New temporary document**, or **Document options > Read temporarily** | The header shows **Temporary**. Only the current document returns after a reload. |

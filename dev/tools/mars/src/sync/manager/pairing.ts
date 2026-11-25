@@ -150,31 +150,33 @@ export async function ownerMatchesLink(owner: unknown, ownerKey: string): Promis
  * `LIMITS.invitationSeconds`. It needs an empty outbox, so the other device downloads the latest state.
  * Approval signs the requested grant, wraps the root key for the new device, and saves its name.
  * Marks the scope as personal Sync. A scope restored from a partial selection cannot pair.
- * Returns when the reader leaves the flow. A failed `invite` or `pair-approve` request throws.
+ * Returns true when the reader goes back, and false on completion or dismissal.
+ * A failed `invite` or `pair-approve` request throws.
  * A failed poll shows an error screen instead.
  */
 export async function syncLinkPanel(scope: Scope, ui: SyncDialog) {
-    if (!ui.open) return;
+    if (!ui.open) return false;
     if (scope.selection) {
-        await ui.screen({
+        const answer = await ui.screen({
             title: 'Connect a device',
             back: true,
             html: '<p>Open the original synced folder to connect another device. This recovery contains selected documents only.</p>',
         });
-        return;
+        return answer.value === 'back';
     }
     scope.personalSync = true;
     await saveScope(scope);
     ui.busy('Creating Sync link…');
     await viewer.flush();
-    await driverFor(scope)?.upload();
-    if (await driverFor(scope)?.options.replica.pending()) {
-        await ui.screen({
+    const driver = driverFor(scope);
+    if (!driver?.options.schedule) await driver?.upload();
+    if (await driver?.options.replica.pending()) {
+        const answer = await ui.screen({
             title: 'Sync link',
             back: true,
-            html: '<p>Your latest changes have not finished syncing. Go back and try again before connecting another device.</p>',
+            html: '<p>Your latest changes have not finished syncing. Return to Sync and select Sync now before connecting another device.</p>',
         });
-        return;
+        return answer.value === 'back';
     }
     // The URL fragment holds one random secret. The invitation ID, the bearer token, and the
     // encryption key derive from it separately. The secret and the encryption key never enter a request.
@@ -253,10 +255,14 @@ export async function syncLinkPanel(scope: Scope, ui: SyncDialog) {
         controller.abort();
         await waiting;
         if (result.value === 'error' && ui.open) {
-            await ui.screen({ title: 'Sync link', back: true, html: `<p role="alert">${esc(problem)}</p>` });
-            return;
+            const answer = await ui.screen({
+                title: 'Sync link',
+                back: true,
+                html: `<p role="alert">${esc(problem)}</p>`,
+            });
+            return answer.value === 'back';
         }
-        if (result.value !== 'candidate' || !pending?.candidate || !ui.open) return;
+        if (result.value !== 'candidate' || !pending?.candidate || !ui.open) return result.value === 'back';
         // The request arrives through the service, so it is untrusted until two checks pass. The grant
         // must be exactly what a Sync link permits. The device name must decrypt under the link key
         // with this grant as authenticated data: the service never sees that key, so it cannot swap
@@ -282,12 +288,12 @@ export async function syncLinkPanel(scope: Scope, ui: SyncDialog) {
             );
             if (typeof label?.name !== 'string') throw new Error('invalid-pair-request');
         } catch {
-            await ui.screen({
+            const answer = await ui.screen({
                 title: 'Sync link',
                 back: true,
                 html: '<p role="alert">The request from the other device is not valid. Reload MARS on both devices, then create a new Sync link.</p>',
             });
-            return;
+            return answer.value === 'back';
         }
         const phrase = await pairingPhrase(policy, candidate.grant);
         const answer = await ui.screen({
@@ -296,7 +302,7 @@ export async function syncLinkPanel(scope: Scope, ui: SyncDialog) {
             html: `<p><strong>${esc(label.name)}</strong> is ready to connect.</p><p>Does your other device show this same code?</p>${confirmationCode(phrase)}`,
             buttons: [{ label: 'Codes match', value: 'yes', primary: true }],
         });
-        if (answer.value !== 'yes') return;
+        if (answer.value !== 'yes') return answer.value === 'back';
         // Only the root key is wrapped for the new device. The keys of the other documents are in
         // the folder manifest, inside the root replica.
         const rootEpoch = sessions.get(scope.localRoot)?.record.binding.epoch ?? 1;
@@ -318,6 +324,7 @@ export async function syncLinkPanel(scope: Scope, ui: SyncDialog) {
         await scoped(scope, 'pair-approve', { invitation: invitation.id, signed, keys });
         scope.clientNames = { ...scope.clientNames, [signed.grant.member]: label.name };
         await saveScope(scope);
+        return false;
     } finally {
         controller.abort();
         ui.signal.removeEventListener('abort', close);

@@ -59,6 +59,67 @@ test.describe('sync user experience', () => {
       route.continue({ headers: { ...route.request().headers(), ...headers } }),
     );
   });
+  test('folder Sync settings keep both directions Manual across reload until Sync now', async ({ page }) => {
+    await page.clock.install();
+    await connectedStatus(page, true);
+    const root = await openStatus(page, 'Folder');
+    await root.getByRole('button', { name: 'Sync settings', exact: true }).click();
+    const settings = page.getByRole('dialog', { name: 'Sync settings', exact: true });
+    await expect(settings.getByLabel('Receive updates')).toHaveValue('5000');
+    await expect(settings.getByLabel('Send updates')).toHaveValue('5000');
+    await settings.getByRole('button', { name: 'About send timing' }).evaluate((button) => {
+      (button as HTMLButtonElement).focus({ preventScroll: true });
+    });
+    await expect(page.getByRole('tooltip')).toContainText('after you stop editing');
+    await settings.getByLabel('Receive updates').selectOption('manual');
+    await settings.getByLabel('Send updates').selectOption('manual');
+    await settings.getByRole('button', { name: 'Save', exact: true }).click();
+    await root.getByRole('button', { name: 'Close', exact: true }).click();
+    let sends = 0,
+      receives = 0;
+    page.on('request', (request) => {
+      const path = new URL(request.url()).pathname;
+      if (path === '/sync/append') sends++;
+      if (path === '/sync/index') receives++;
+    });
+    await editStatus(page);
+    await expect(page.locator('#previewArticle')).toContainText('After.');
+    await page.clock.fastForward(30_000);
+    await page.reload();
+    await expect(page.locator('#previewArticle')).toContainText('After.');
+    await page.clock.fastForward(30_000);
+    expect(sends).toBe(0);
+    expect(receives).toBe(0);
+    await openStatus(page, 'Folder');
+    await root.getByRole('button', { name: 'Sync now', exact: true }).click();
+    await expect.poll(() => sends).toBeGreaterThan(0);
+    await expect.poll(() => receives).toBeGreaterThan(0);
+    await expect(root.locator('.sync-status')).toContainText('Up to date');
+  });
+  test('Back from Devices or Sync link returns to the unsaved folder Sync settings', async ({ page }) => {
+    await connectedStatus(page, true);
+    const root = await openStatus(page, 'Folder');
+    const gear = root.getByRole('button', { name: 'Sync settings', exact: true });
+    await gear.click();
+    const settings = page.getByRole('dialog', { name: 'Sync settings', exact: true });
+    await settings.getByLabel('Receive updates').selectOption('15000');
+    await settings.getByLabel('Send updates').selectOption('manual');
+    await settings.getByRole('button', { name: 'Devices', exact: true }).click();
+    await page.getByRole('dialog', { name: 'Sync devices', exact: true }).getByRole('button', { name: 'Back' }).click();
+    await expect(settings.getByLabel('Receive updates')).toHaveValue('15000');
+    await expect(settings.getByLabel('Send updates')).toHaveValue('manual');
+    await settings.getByRole('button', { name: 'Sync link', exact: true }).click();
+    const link = page.getByRole('dialog', { name: 'Sync link', exact: true });
+    await expect(link.getByRole('textbox', { name: 'Sync link', exact: true })).toBeVisible();
+    await link.getByRole('button', { name: 'Back' }).click();
+    await expect(settings.getByLabel('Receive updates')).toHaveValue('15000');
+    await expect(settings.getByLabel('Send updates')).toHaveValue('manual');
+    await settings.getByRole('button', { name: 'Back', exact: true }).click();
+    await expect(root.getByRole('button', { name: 'Sync now', exact: true })).toBeVisible();
+    await gear.click();
+    await expect(settings.getByLabel('Receive updates')).toHaveValue('5000');
+    await expect(settings.getByLabel('Send updates')).toHaveValue('5000');
+  });
   for (const selection of ['document', 'folder', 'child'] as const) {
     test(`open Sync status updates after upload without reopening or moving focus (${selection})`, async ({ page }) => {
       await connectedStatus(page, selection !== 'document');
@@ -72,7 +133,7 @@ test.describe('sync user experience', () => {
       });
       try {
         await editStatus(page);
-        await expect(page.locator('#tree [data-phase="working"]')).toHaveCount(1);
+        await expect(page.locator('#tree [data-phase="working"]')).toHaveCount(1, { timeout: 10_000 });
         const dialog = await openStatus(page, selection === 'folder' ? 'Folder' : 'Status');
         const status = dialog.locator('.sync-status');
         await expect(status).toHaveText(selection === 'child' ? 'Syncing' : 'Syncing changes…');
@@ -82,7 +143,7 @@ test.describe('sync user experience', () => {
             selection === 'child'
               ? 'Manage folder Sync'
               : selection === 'folder'
-                ? 'Devices'
+                ? 'Sync settings'
                 : 'Disconnect this device',
           exact: true,
         });
@@ -114,6 +175,7 @@ test.describe('sync user experience', () => {
       await expect(control).toBeFocused();
       await context.setOffline(false);
       await expect(dialog.locator('.sync-status')).toHaveText('Up to date', { timeout: 15000 });
+      await expect(dialog.locator('[data-sync-field="message"]')).toBeHidden();
       await expect(control).toBeFocused();
       await dialog.getByRole('button', { name: 'Close', exact: true }).click();
     } finally {
@@ -152,7 +214,7 @@ test.describe('sync user experience', () => {
           await expect(dialog.getByRole('button', { name: 'Sync link', exact: true })).toHaveCount(0);
         } else {
           await expect(dialog.getByRole('alert')).toContainText('Sync storage is full');
-          await expect(dialog.getByRole('button', { name: 'Try again', exact: true })).toBeVisible();
+          await expect(dialog.getByRole('button', { name: 'Sync now', exact: true })).toBeVisible();
         }
         await close.click();
         await expect(page.locator('#previewArticle')).toContainText('After.');
@@ -183,23 +245,21 @@ test.describe('sync user experience', () => {
       const dialog = await openStatus(page, 'Folder');
       await expect(dialog.locator('.sync-status')).toHaveText('Waiting to sync');
       await expect(dialog.getByRole('alert')).toHaveCount(0);
-      const devices = dialog.getByRole('button', { name: 'Devices', exact: true });
-      await devices.focus();
+      const settings = dialog.getByRole('button', { name: 'Sync settings', exact: true });
+      await settings.focus();
       release();
-      await expect(dialog.locator('.sync-status')).toHaveText('Sync needs attention');
+      await expect(dialog.locator('.sync-status')).toHaveText('Sync needs attention', { timeout: 10_000 });
       await expect(dialog.getByRole('alert')).toContainText('1,000');
       await expect(dialog.getByRole('alert')).toContainText('saved locally');
-      await expect(devices).toBeFocused();
-      await expect(dialog.getByRole('button', { name: 'Try again', exact: true })).toBeVisible();
+      await expect(settings).toBeFocused();
+      await expect(dialog.getByRole('button', { name: 'Sync now', exact: true })).toBeVisible();
       await page.getByRole('button', { name: 'Close', exact: true }).click();
     } finally {
       release();
     }
   });
 
-  test('open Sync status keeps a focused footer action until blur while pending enrollment completes', async ({
-    page,
-  }) => {
+  test('open Sync status keeps Sync now focused while pending enrollment completes', async ({ page }) => {
     await connectedStatus(page, true);
     let release = () => {};
     const held = new Promise<void>((resolve) => {
@@ -219,15 +279,13 @@ test.describe('sync user experience', () => {
       await expect(page.locator('#toast')).toContainText('Imported 1 document');
       const dialog = await openStatus(page, 'Folder');
       await expect(dialog.locator('[data-sync-field="pending"]')).toContainText('1 item is saved locally');
-      const retry = dialog.getByRole('button', { name: 'Try again', exact: true });
-      await retry.focus();
+      const syncNow = dialog.locator('footer').getByRole('button', { name: 'Sync now', exact: true });
+      await syncNow.focus();
       release();
       await expect(dialog.locator('.sync-status')).toHaveText('Up to date', { timeout: 15000 });
       await expect(dialog.locator('[data-sync-field="pending"]')).toBeHidden();
-      await expect(retry).toBeFocused();
-      await dialog.getByRole('button', { name: 'Close', exact: true }).focus();
-      await expect(dialog.getByRole('button', { name: 'Sync link', exact: true })).toBeVisible();
-      await expect(retry).toHaveCount(0);
+      await expect(syncNow).toBeFocused();
+      await expect(syncNow).toBeEnabled();
       await dialog.getByRole('button', { name: 'Close', exact: true }).click();
     } finally {
       release();
@@ -488,6 +546,7 @@ test.describe('sync user experience', () => {
           await page.getByRole('button', { name: 'Turn on sync', exact: true }).click();
           const dialog = page.locator('#syncDialog'),
             footer = dialog.locator('footer');
+          const settings = page.getByRole('dialog', { name: 'Sync settings', exact: true });
           await expect(dialog.getByRole('textbox', { name: 'Sync link', exact: true })).toBeVisible({ timeout: 15000 });
           const back = (await footer.getByRole('button', { name: 'Back', exact: true }).boundingBox())!,
             copy = (await footer.getByRole('button', { name: 'Copy link', exact: true }).boundingBox())!;
@@ -495,24 +554,33 @@ test.describe('sync user experience', () => {
           expect(Math.abs(back.y - copy.y)).toBeLessThanOrEqual(1);
           await expect(dialog.locator('header').getByRole('button', { name: 'Back', exact: true })).toHaveCount(0);
           await footer.getByRole('button', { name: 'Back', exact: true }).click();
-          await expect(footer.getByRole('button', { name: 'Sync link', exact: true })).toBeVisible();
+          await settings.getByRole('button', { name: 'Close', exact: true }).click();
+          await expect(footer.getByRole('button', { name: 'Sync now', exact: true })).toBeVisible();
           const stop = (await footer
               .getByRole('button', { name: 'Disconnect this device', exact: true })
               .boundingBox())!,
-            link = (await footer.getByRole('button', { name: 'Sync link', exact: true }).boundingBox())!;
-          expect(stop.x).toBeLessThan(link.x);
-          if (width >= 760) expect(Math.abs(stop.y - link.y)).toBeLessThanOrEqual(1);
+            syncNow = (await footer.getByRole('button', { name: 'Sync now', exact: true }).boundingBox())!;
+          expect(stop.x).toBeLessThan(syncNow.x);
+          if (width >= 760) expect(Math.abs(stop.y - syncNow.y)).toBeLessThanOrEqual(1);
           else {
-            expect(link.y - stop.y).toBeGreaterThanOrEqual(0);
-            expect(link.y - stop.y).toBeLessThanOrEqual(40);
+            expect(syncNow.y - stop.y).toBeGreaterThanOrEqual(0);
+            expect(syncNow.y - stop.y).toBeLessThanOrEqual(40);
           }
           const bounds = (await dialog.boundingBox())!;
-          for (const control of [stop, link]) {
+          for (const control of [stop, syncNow]) {
             expect(control.x).toBeGreaterThanOrEqual(bounds.x);
             expect(control.x + control.width).toBeLessThanOrEqual(bounds.x + bounds.width);
           }
           await expect(dialog.locator('details')).toHaveCount(0);
-          await expect(dialog.getByRole('button', { name: 'Devices', exact: true })).toBeVisible();
+          const header = dialog.locator('header');
+          const gear = header.getByRole('button', { name: 'Sync settings', exact: true });
+          expect((await gear.boundingBox())!.x).toBeLessThan(
+            (await header.getByRole('button', { name: 'Close', exact: true }).boundingBox())!.x,
+          );
+          await gear.click();
+          await expect(settings.getByRole('button', { name: 'Devices', exact: true })).toBeVisible();
+          await expect(settings.getByRole('button', { name: 'Sync link', exact: true })).toBeVisible();
+          await settings.getByRole('button', { name: 'Close', exact: true }).click();
           await expect(dialog.getByRole('button', { name: 'Backup', exact: true })).toHaveCount(0);
           expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
           await dialog.getByRole('button', { name: 'Close', exact: true }).click();
@@ -577,6 +645,10 @@ test.describe('sync user experience', () => {
       { timeout: 15000 },
     );
     await page.getByRole('button', { name: 'Back', exact: true }).click();
+    await page
+      .getByRole('dialog', { name: 'Sync settings', exact: true })
+      .getByRole('button', { name: 'Close' })
+      .click();
     await expect(page.getByRole('dialog', { name: /^(Sync|Connections)$/, exact: true })).toBeVisible();
     await page.unroute('**/sync/pair-pending');
     for (let i = 0; i < 3; i++) {
@@ -585,6 +657,7 @@ test.describe('sync user experience', () => {
       await page.getByRole('menuitem', { name: /^(Sync|Connections)$/, exact: true }).click();
       await expect(page.getByRole('dialog', { name: /^(Sync|Connections)$/, exact: true })).toHaveCount(1);
     }
+    await page.getByRole('button', { name: 'Sync settings', exact: true }).click();
     await page.getByRole('button', { name: 'Sync link', exact: true }).click();
     await expect(page.getByRole('textbox', { name: 'Sync link', exact: true })).toBeVisible();
     await page.keyboard.press('Escape');
@@ -621,6 +694,8 @@ test.describe('sync user experience', () => {
       ),
     ).toBe(true);
     await page.getByRole('button', { name: 'Back', exact: true }).click();
+    const settings = page.getByRole('dialog', { name: 'Sync settings', exact: true });
+    await settings.getByRole('button', { name: 'Close', exact: true }).click();
     await expect(page.getByRole('dialog', { name: /^(Sync|Connections)$/, exact: true })).toBeVisible();
     await expect(dialog.locator('footer').getByRole('button')).toHaveCount(2);
     await expect(
@@ -631,10 +706,12 @@ test.describe('sync user experience', () => {
     ).toHaveCount(0);
     await expect(dialog).not.toContainText('polling');
     await expect(dialog).not.toContainText('lease');
+    await page.getByRole('button', { name: 'Sync settings', exact: true }).click();
     await page.getByRole('button', { name: 'Devices', exact: true }).click();
     await expect(dialog).toContainText('No other devices connected yet.');
     await expect(dialog.getByRole('button', { name: /^(Disconnect|Disable)/ })).toHaveCount(0);
     await page.getByRole('button', { name: 'Back', exact: true }).click();
+    await settings.getByRole('button', { name: 'Close', exact: true }).click();
     await expect(dialog.locator('details')).toHaveCount(0);
     await expect(dialog.getByRole('button', { name: 'Backup', exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: 'Disconnect this device', exact: true }).click();
